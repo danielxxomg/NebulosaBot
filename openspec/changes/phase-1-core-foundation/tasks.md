@@ -26,20 +26,20 @@ Chain strategy: feature-branch-chain
 
 ## Phase 1: Foundation (Scaffolding, Config, Models, Migration, Utils)
 
-- [ ] 1.1 Create `pyproject.toml` with Python 3.11+, deps (discord.py>=2.3, supabase-py, python-dotenv), and project metadata
-- [ ] 1.2 Create `requirements.txt` with pinned versions for reproducible installs
-- [ ] 1.3 Create `.env.example` with DISCORD_TOKEN, SUPABASE_URL, SUPABASE_KEY placeholders
-- [ ] 1.4 Create `bot/__init__.py` with `__version__` constant
-- [ ] 1.5 Create `bot/config.py` — `BotConfig` dataclass, `python-dotenv` loading, validation of required vars
-- [ ] 1.6 Create `bot/models/__init__.py` (empty subpackage init)
-- [ ] 1.7 Create `bot/models/guild.py` — `GuildConfig` dataclass mirroring Guild table columns
-- [ ] 1.8 Create `bot/models/member.py` — `Member` dataclass mirroring Member table columns
-- [ ] 1.9 Create `bot/models/ticket.py` — `Ticket` dataclass mirroring Ticket table columns
-- [ ] 1.10 Create `bot/models/infraction.py` — `Infraction` dataclass mirroring Infraction table columns
-- [ ] 1.11 Create `bot/utils/__init__.py` (empty subpackage init)
-- [ ] 1.12 Create `bot/utils/checks.py` — `is_mod()` and `is_admin()` as `@app_commands.check()` decorators reading guild config + Discord perms
-- [ ] 1.13 Create `bot/utils/embeds.py` — `error_embed()`, `success_embed()`, `info_embed()` helpers with consistent styling
-- [ ] 1.14 Create `migrations/001_initial_schema.sql` — Guild, User, Member, Infraction, Ticket tables in FK dependency order with all columns per spec
+- [x] 1.1 Create `pyproject.toml` with Python 3.11+, deps (discord.py>=2.3, supabase-py, python-dotenv), and project metadata
+- [x] 1.2 Create `requirements.txt` with pinned versions for reproducible installs
+- [x] 1.3 Create `.env.example` with DISCORD_TOKEN, SUPABASE_URL, SUPABASE_KEY placeholders
+- [x] 1.4 Create `bot/__init__.py` with `__version__` constant
+- [x] 1.5 Create `bot/config.py` — `BotConfig` dataclass, `python-dotenv` loading, validation of required vars
+- [x] 1.6 Create `bot/models/__init__.py` (empty subpackage init)
+- [x] 1.7 Create `bot/models/guild.py` — `GuildConfig` dataclass mirroring Guild table columns
+- [x] 1.8 Create `bot/models/member.py` — `Member` dataclass mirroring Member table columns
+- [x] 1.9 Create `bot/models/ticket.py` — `Ticket` dataclass mirroring Ticket table columns
+- [x] 1.10 Create `bot/models/infraction.py` — `Infraction` dataclass mirroring Infraction table columns
+- [x] 1.11 Create `bot/utils/__init__.py` (empty subpackage init)
+- [x] 1.12 Create `bot/utils/checks.py` — `is_mod()` and `is_admin()` as `@app_commands.check()` decorators reading guild config + Discord perms
+- [x] 1.13 Create `bot/utils/embeds.py` — `error_embed()`, `success_embed()`, `info_embed()` helpers with consistent styling
+- [x] 1.14 Create `migrations/001_initial_schema.sql` — Guild, User, Member, Infraction, Ticket tables in FK dependency order with all columns per spec
 
 ## Phase 2: Core Infrastructure (Database, Cache, Context)
 
