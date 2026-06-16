@@ -419,6 +419,43 @@ class Database:
         logger.debug("DB delete_ticket_category(%s)", category_id)
         self._client.table("ticket_category").delete().eq("id", category_id).execute()
 
+    # -- ticket_channel ------------------------------------------------
+
+    async def get_open_ticket_channel_ids(self, guild_id: str) -> list[str]:
+        """Return channel IDs of all open/claimed tickets for a guild.
+
+        Used on startup to rebuild the ticket channel cache for O(1)
+        ``on_message`` lookups.
+        """
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        logger.debug("DB get_open_ticket_channel_ids(guild=%s)", guild_id)
+        response = (
+            self._client.table("ticket")
+            .select("channelId")
+            .eq("guildId", guild_id)
+            .in_("status", ["open", "claimed"])
+            .execute()
+        )
+        rows = _unwrap(response)
+        return [r["channelId"] for r in rows]
+
+    async def update_ticket_last_activity(self, channel_id: str) -> None:
+        """Set ``lastActivity`` to now for the ticket with the given channel ID.
+
+        Called by the ``on_message`` listener — avoids a separate
+        lookup-then-update round-trip.
+        """
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        now = datetime.now(timezone.utc).isoformat()
+        logger.debug("DB update_ticket_last_activity(ch=%s)", channel_id)
+        self._client.table("ticket").update(
+            {"lastActivity": now}
+        ).eq("channelId", channel_id).execute()
+
     # -- guild_panel ---------------------------------------------------
 
     async def update_guild_panel(

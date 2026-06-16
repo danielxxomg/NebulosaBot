@@ -15,8 +15,11 @@ from discord.ext import commands
 from bot.core.cache import TTLCache
 from bot.core.context import NebulosaContext
 from bot.core.database import Database
+from bot.cogs.tickets import TicketActionsView, TicketPanelView
 from bot.services.guild_service import GuildService
 from bot.services.infraction_service import InfractionService
+from bot.services.ticket_service import TicketService
+from bot.services.transcript_service import TranscriptService
 from bot.utils.embeds import error_embed
 
 if TYPE_CHECKING:
@@ -72,6 +75,8 @@ class NebulosaBot(commands.Bot):
         cache: In-memory :class:`TTLCache` instance.
         guild_service: Cache-first :class:`GuildService` instance.
         infraction_service: Moderation business-logic :class:`InfractionService` instance.
+        ticket_service: Ticket lifecycle :class:`~bot.services.ticket_service.TicketService` instance.
+        transcript_service: HTML transcript :class:`~bot.services.transcript_service.TranscriptService` instance.
     """
 
     __slots__ = (
@@ -80,6 +85,8 @@ class NebulosaBot(commands.Bot):
         "cache",
         "guild_service",
         "infraction_service",
+        "ticket_service",
+        "transcript_service",
         "_guild_mod_role_cache",
     )
 
@@ -96,6 +103,8 @@ class NebulosaBot(commands.Bot):
         self.cache: TTLCache | None = None
         self.guild_service: GuildService | None = None
         self.infraction_service: InfractionService | None = None
+        self.ticket_service: TicketService | None = None
+        self.transcript_service: TranscriptService | None = None
 
         # Used by bot/utils/checks.py is_mod() to resolve the moderator
         # role without a DB query.  Populated by GuildService.
@@ -147,12 +156,25 @@ class NebulosaBot(commands.Bot):
         self.infraction_service = InfractionService(db=self.db)
         logger.info("InfractionService initialised")
 
+        # --- 3c. TicketService + TranscriptService ---
+        self.ticket_service = TicketService(db=self.db, cache=self.cache)
+        self.transcript_service = TranscriptService()
+        logger.info("TicketService and TranscriptService initialised")
+
+        # --- 3d. Register persistent views ---
+        self.add_view(TicketPanelView())
+        self.add_view(TicketActionsView())
+        logger.info("Persistent ticket views registered")
+
         # --- 4. Load cogs ---
         await self.load_extension("bot.cogs.core")
         logger.info("Cog loaded: CoreCog")
 
         await self.load_extension("bot.cogs.sentinel")
         logger.info("Cog loaded: SentinelCog")
+
+        await self.load_extension("bot.cogs.tickets")
+        logger.info("Cog loaded: TicketsCog")
 
         # --- 5. Tree sync ---
         logger.info("Syncing command tree ...")
