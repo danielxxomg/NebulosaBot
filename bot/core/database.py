@@ -419,6 +419,24 @@ class Database:
         logger.debug("DB delete_ticket_category(%s)", category_id)
         self._client.table("ticket_category").delete().eq("id", category_id).execute()
 
+    async def count_open_tickets_by_category(self, category_id: str) -> int:
+        """Return the number of open/claimed tickets referencing *category_id*.
+
+        Used to block deletion of a category that still has active tickets.
+        """
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        logger.debug("DB count_open_tickets_by_category(%s)", category_id)
+        response = (
+            self._client.table("ticket")
+            .select("id")
+            .eq("categoryId", category_id)
+            .in_("status", ["open", "claimed"])
+            .execute()
+        )
+        return len(_unwrap(response))
+
     # -- ticket_channel ------------------------------------------------
 
     async def get_open_ticket_channel_ids(self, guild_id: str) -> list[str]:
