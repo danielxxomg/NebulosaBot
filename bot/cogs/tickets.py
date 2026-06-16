@@ -873,7 +873,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         name="Category name (e.g. 'Support', 'Bug Report')",
         emoji="Optional emoji to display in the panel",
         description="Optional short description",
-        position="Display order (lower = first). Default: last",
+        position="Display order (lower = first). Auto-increments if omitted",
     )
     @is_mod()
     async def create_category(
@@ -882,7 +882,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         name: str,
         emoji: str | None = None,
         description: str | None = None,
-        position: int = 999,
+        position: int | None = None,
     ) -> None:
         """Create a new ticket category for the guild."""
         if ctx.guild is None:
@@ -906,6 +906,13 @@ class TicketsCog(commands.Cog, name="Tickets"):
                     )
                 )
                 return
+
+            # Auto-increment position if not explicitly provided.
+            if position is None:
+                max_pos = max(
+                    (cat.get("position", 0) for cat in existing), default=0
+                )
+                position = max_pos + 1
         except Exception:
             logger.exception("Failed to check for duplicate category name")
             await ctx.send(
