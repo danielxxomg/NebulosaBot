@@ -1,0 +1,117 @@
+# Economy Service Specification
+
+## Purpose
+
+Define business rules for guild economy: XP gain, level progression, daily coin claims with streak bonuses, coin balance, and leaderboards.
+
+## Requirements
+
+### Requirement: XP gain with cooldown
+
+The system MUST award XP only when the configured per-user per-guild cooldown has elapsed.
+
+#### Scenario: XP awarded after cooldown
+
+- GIVEN member A's cooldown has elapsed
+- WHEN an XP gain is processed
+- THEN total XP increases by `xpPerMessage`
+
+#### Scenario: XP gain blocked during cooldown
+
+- GIVEN member A gained XP less than `xpCooldownSeconds` ago
+- WHEN another XP gain is processed
+- THEN no XP is awarded and the total is unchanged
+
+#### Scenario: Cooldown is per guild
+
+- GIVEN member A is in guilds X and Y
+- WHEN XP is gained in guild X
+- THEN XP may still be gained in guild Y
+
+### Requirement: Level calculation
+
+The system MUST compute a member's level from total XP using `levelBaseXp * (levelMultiplier ^ level)`.
+
+#### Scenario: Level threshold
+
+- GIVEN `levelBaseXp` is 100 and `levelMultiplier` is 1.5
+- WHEN computing XP needed for level 3
+- THEN the threshold equals 337.5 XP
+
+#### Scenario: Level from XP
+
+- GIVEN a member has 400 XP and the configured formula
+- WHEN the level is computed
+- THEN it is the highest integer whose threshold does not exceed 400 XP
+
+### Requirement: Daily coin claim with streak bonus
+
+The system MUST award daily coins equal to `dailyReward * (1 + 0.10 * min(streak,7))` and reset the streak when more than `dailyCooldownHours` have passed.
+
+#### Scenario: First daily claim
+
+- GIVEN a member has never claimed daily
+- WHEN daily is claimed
+- THEN `coins` increases by `dailyReward` and `daily_streak` becomes 1
+
+#### Scenario: Consecutive daily claim
+
+- GIVEN a member claimed 20 hours ago with `daily_streak` 3
+- WHEN daily is claimed again
+- THEN `daily_streak` becomes 4 and coins increase by 140% of `dailyReward`
+
+#### Scenario: Streak bonus cap
+
+- GIVEN `daily_streak` is 7
+- WHEN daily is claimed consecutively
+- THEN coins increase by 160% of `dailyReward` and streak stays at 7
+
+#### Scenario: Broken streak
+
+- GIVEN a member claimed 48 hours ago with `daily_streak` 5
+- WHEN daily is claimed
+- THEN `daily_streak` resets to 1 and coins increase by `dailyReward`
+
+#### Scenario: Daily cooldown blocks claim
+
+- GIVEN a member claimed 2 hours ago with `dailyCooldownHours` 24
+- WHEN daily is claimed again
+- THEN the claim is rejected and no coins are awarded
+
+### Requirement: Coin balance
+
+The system MUST maintain an integer coin balance per member and support incrementing and querying it.
+
+#### Scenario: Award daily coins
+
+- GIVEN a member claims daily successfully
+- WHEN coins are credited
+- THEN the balance reflects the awarded amount
+
+#### Scenario: Query balance
+
+- GIVEN a member has 500 coins
+- WHEN the balance is queried
+- THEN the result is 500
+
+### Requirement: Leaderboard queries
+
+The system MUST provide separate leaderboard queries for XP and coins, ordered descending, with optional limit and offset.
+
+#### Scenario: XP leaderboard
+
+- GIVEN 15 members with varying XP in guild X
+- WHEN the XP leaderboard is queried with limit 10 and offset 0
+- THEN the result contains the top 10 members by XP
+
+#### Scenario: Coins leaderboard
+
+- GIVEN 15 members with varying coins in guild X
+- WHEN the coins leaderboard is queried with limit 10 and offset 0
+- THEN the result contains the top 10 members by coins
+
+#### Scenario: Leaderboard pagination
+
+- GIVEN 25 members with XP in guild X
+- WHEN the XP leaderboard is queried with limit 10 and offset 10
+- THEN the result contains members ranked 11–20 by XP
