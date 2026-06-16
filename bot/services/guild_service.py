@@ -105,6 +105,24 @@ class GuildService:
         # Re-read through cache-first path to ensure consistency.
         await self.get_config(config.id)
 
+    async def deactivate_guild(self, guild_id: str) -> None:
+        """Soft-delete a guild by setting its ``active`` flag to ``False``.
+
+        Invalidates the cache so the next read picks up the updated row.
+        """
+        config = await self.get_config(guild_id)
+        config.active = False
+        await self.save_config(config)
+
+    async def reactivate_guild(self, guild_id: str) -> None:
+        """Re-activate a previously deactivated guild.
+
+        Sets ``active = True`` and invalidates the cache.
+        """
+        config = await self.get_config(guild_id)
+        config.active = True
+        await self.save_config(config)
+
     async def on_guild_join(self, guild_id: str) -> GuildConfig:
         """Insert default configuration for a freshly joined guild.
 

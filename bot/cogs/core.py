@@ -172,12 +172,29 @@ class CoreCog(commands.Cog, name="Core"):
         name="help",
         description="Show available commands grouped by module.",
     )
-    async def help_command(self, ctx: NebulosaContext) -> None:
-        """Display an embed-per-module paginated help view.
+    @app_commands.describe(module="Show help for a specific module")
+    async def help_command(self, ctx: NebulosaContext, module: str | None = None) -> None:
+        """Display help — all modules (paginated), or a single module if specified.
 
         For Phase 1 only the Core module exists. Future cogs will
         register their commands in additional modules automatically.
         """
+        # -- single-module help --
+        if module is not None:
+            prefix = _resolve_prefix(ctx)
+            embed = _build_cog_help_embed(self.bot, module, prefix)
+            if embed is None:
+                await ctx.send(
+                    embed=error_embed(
+                        f"Module '{module}' not found.",
+                        "Use `/help` without arguments to see available modules.",
+                    )
+                )
+                return
+            await ctx.send(embed=embed)
+            return
+
+        # -- all-modules paginated help --
         pages = _build_help_pages(self.bot, ctx)
         if not pages:
             await ctx.send(embed=error_embed("Help", "No commands are registered yet."))
@@ -237,6 +254,58 @@ async def teardown(bot: NebulosaBot) -> None:
 # ======================================================================
 
 
+def _resolve_prefix(ctx: NebulosaContext) -> str:
+    """Return the active prefix for the context, or the fallback default."""
+    if ctx.guild is not None and ctx.guild_config is not None:
+        return ctx.guild_config.prefix
+    return "nb!"
+
+
+def _build_cog_help_embed(
+    bot: NebulosaBot, cog_name: str, prefix: str
+) -> discord.Embed | None:
+    """Build a single embed for *cog_name* showing its commands.
+
+    Returns ``None`` if the cog is not loaded or has no commands.
+    """
+    cog = bot.get_cog(cog_name)
+    if cog is None:
+        return None
+
+    cmds = cog.get_commands()
+    # Skip hidden commands
+    visible = [c for c in cmds if not c.hidden]
+    if not visible:
+        return None
+
+    embed = discord.Embed(
+        title=f"📚 {cog_name} Commands",
+        description=(
+            f"{len(visible)} command(s) available.\n"
+            f"Prefix: `{prefix}`  •  Slash: `/`"
+        ),
+        color=COLOR_INFO,
+        timestamp=datetime.now(timezone.utc),
+    )
+
+    for cmd in visible:
+        desc = cmd.description or "No description."
+        is_hybrid = isinstance(cmd, commands.HybridCommand)
+        suffix = " [prefix + slash]" if is_hybrid else " [prefix]"
+
+        embed.add_field(
+            name=(
+                f"`{prefix}{cmd.name}` / `/{cmd.name}`" if is_hybrid
+                else f"`{prefix}{cmd.name}`"
+            ),
+            value=f"{desc}{suffix}",
+            inline=False,
+        )
+
+    embed.set_footer(text="NebulosaBot • /help")
+    return embed
+
+
 def _build_help_pages(bot: NebulosaBot, ctx: NebulosaContext) -> list[discord.Embed]:
     """Build one embed per loaded cog showing its commands.
 
@@ -245,42 +314,13 @@ def _build_help_pages(bot: NebulosaBot, ctx: NebulosaContext) -> list[discord.Em
     - Command name, description, and whether it's hybrid (prefix + slash)
     - Fetches prefix from context for consistent display
     """
-    prefix = "nb!"
-    if ctx.guild is not None and ctx.guild_config is not None:
-        prefix = ctx.guild_config.prefix
-
+    prefix = _resolve_prefix(ctx)
     pages: list[discord.Embed] = []
 
-    for cog_name, cog in bot.cogs.items():
-        cmds = cog.get_commands()
-        if not cmds:
-            continue  # skip empty cogs
-
-        embed = discord.Embed(
-            title=f"📚 {cog_name} Commands",
-            description=f"{len(cmds)} command(s) available.\n"
-            f"Prefix: `{prefix}`  •  Slash: `/`",
-            color=COLOR_INFO,
-            timestamp=datetime.now(timezone.utc),
-        )
-
-        for cmd in cmds:
-            # Skip hidden commands
-            if cmd.hidden:
-                continue
-
-            desc = cmd.description or "No description."
-            is_hybrid = isinstance(cmd, commands.HybridCommand)
-            suffix = " [prefix + slash]" if is_hybrid else " [prefix]"
-
-            embed.add_field(
-                name=f"`{prefix}{cmd.name}` / `/{cmd.name}`" if is_hybrid
-                else f"`{prefix}{cmd.name}`",
-                value=f"{desc}{suffix}",
-                inline=False,
-            )
-
-        embed.set_footer(text=f"NebulosaBot • /help")
+    for cog_name in bot.cogs:
+        embed = _build_cog_help_embed(bot, cog_name, prefix)
+        if embed is None:
+            continue  # skip empty / missing cogs
         pages.append(embed)
 
     return pages
