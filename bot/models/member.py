@@ -19,6 +19,8 @@ class Member:
     level: int = 0
     warnings: int = 0
     coins: int = 0
+    daily_streak: int = 0
+    last_daily_reset: datetime | None = None
     last_daily: datetime | None = None
     last_xp_gain: datetime | None = None
 
@@ -32,6 +34,8 @@ class Member:
             level=row.get("level", 0),
             warnings=row.get("warnings", 0),
             coins=row.get("coins", 0),
+            daily_streak=row.get("dailyStreak", 0),
+            last_daily_reset=row.get("lastDailyReset"),
             last_daily=row.get("lastDaily"),
             last_xp_gain=row.get("lastXpGain"),
         )
@@ -45,6 +49,8 @@ class Member:
             "level": self.level,
             "warnings": self.warnings,
             "coins": self.coins,
+            "dailyStreak": self.daily_streak,
+            "lastDailyReset": self.last_daily_reset.isoformat() if self.last_daily_reset else None,
             "lastDaily": self.last_daily.isoformat() if self.last_daily else None,
             "lastXpGain": self.last_xp_gain.isoformat() if self.last_xp_gain else None,
         }
