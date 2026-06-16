@@ -31,7 +31,7 @@ Chain strategy: feature-branch-chain
 - [x] 1.3 Modify `bot/models/guild.py`: add `ticket_panel_message_id: str | None` and `ticket_panel_channel_id: str | None` fields; update `from_db_row()`, `to_db_dict()`, and `_db_aliases`
 - [x] 1.4 Add ticket CRUD to `bot/core/database.py`: `insert_ticket()`, `update_ticket()`, `get_ticket_by_channel()`, `get_max_ticket_number(guild_id)`, `get_stale_tickets(cutoff)`
 - [x] 1.5 Add category CRUD to `bot/core/database.py`: `insert_ticket_category()`, `get_ticket_categories(guild_id)`, `delete_ticket_category()`, `update_guild_panel()`
-- [ ] 1.6 Write round-trip test for `TicketCategory.from_db_row()`/`to_db_dict()` in `tests/test_ticket_category.py`
+- [x] 1.6 Write round-trip test for `TicketCategory.from_db_row()`/`to_db_dict()` in `tests/test_ticket_category.py`
 
 ## Phase 2: Core Services & Tests
 
@@ -50,6 +50,6 @@ Chain strategy: feature-branch-chain
 
 ## Phase 4: Integration Verification
 
-- [ ] 4.1 Verify end-to-end: panel deploy → ticket create → claim → close with transcript → channel deleted
-- [ ] 4.2 Verify auto-close: mock stale ticket → task fires → close flow executes
-- [ ] 4.3 Verify persistence: restart bot → views still respond to interactions
+- [x] 4.1 Verify end-to-end: panel deploy → ticket create → claim → close with transcript → channel deleted
+- [x] 4.2 Verify auto-close: mock stale ticket → task fires → close flow executes
+- [x] 4.3 Verify persistence: restart bot → views still respond to interactions

@@ -164,6 +164,18 @@ class TicketActionsView(discord.ui.View):
             )
             return
 
+        # Check if already claimed.
+        claimed_by_id = ticket_row.get("claimedBy")
+        if claimed_by_id:
+            await interaction.response.send_message(
+                embed=error_embed(
+                    "Already Claimed",
+                    f"This ticket is already claimed by <@{claimed_by_id}>.",
+                ),
+                ephemeral=True,
+            )
+            return
+
         ticket_id = ticket_row["id"]
         staff_id = str(interaction.user.id)
 
@@ -713,17 +725,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             ticket.id, transcript_url=transcript_url
         )
 
-        # 3. Notify + delete.
-        try:
-            await channel.send(
-                embed=info_embed(
-                    "Ticket Auto-Closed",
-                    f"{reason}",
-                )
-            )
-        except discord.HTTPException:
-            pass
-
+        # 3. Delete channel silently after delay.
         await asyncio.sleep(CHANNEL_DELETE_DELAY)
         try:
             await channel.delete(reason=reason)
@@ -893,6 +895,27 @@ class TicketsCog(commands.Cog, name="Tickets"):
             # Could be a custom emoji like <:name:id> — allow it.
             pass
 
+        # Check for duplicate category name in this guild.
+        try:
+            existing = await self.bot.db.get_ticket_categories(guild_id)
+            if any(cat.get("name", "").lower() == name.lower() for cat in existing):
+                await ctx.send(
+                    embed=error_embed(
+                        "Duplicate Name",
+                        f"A ticket category named **{name}** already exists in this server.",
+                    )
+                )
+                return
+        except Exception:
+            logger.exception("Failed to check for duplicate category name")
+            await ctx.send(
+                embed=error_embed(
+                    "Check Failed",
+                    "Could not verify category uniqueness. Please try again.",
+                )
+            )
+            return
+
         try:
             row = await self.bot.db.insert_ticket_category(
                 guild_id=guild_id,
@@ -1032,6 +1055,31 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
 
         cat_name = row.get("name", category_id)
+
+        # Check for open tickets referencing this category.
+        try:
+            open_count = await self.bot.db.count_open_tickets_by_category(category_id)
+        except Exception:
+            logger.exception(
+                "Failed to count open tickets for category %s", category_id
+            )
+            await ctx.send(
+                embed=error_embed(
+                    "Check Failed",
+                    "Could not verify open tickets for this category. Please try again.",
+                )
+            )
+            return
+
+        if open_count > 0:
+            await ctx.send(
+                embed=error_embed(
+                    "Category In Use",
+                    f"Cannot delete category **{cat_name}** because it has "
+                    f"**{open_count}** open ticket(s).",
+                )
+            )
+            return
 
         try:
             await self.bot.db.delete_ticket_category(category_id)
