@@ -16,6 +16,7 @@ from bot.core.cache import TTLCache
 from bot.core.context import NebulosaContext
 from bot.core.database import Database
 from bot.services.guild_service import GuildService
+from bot.services.infraction_service import InfractionService
 from bot.utils.embeds import error_embed
 
 if TYPE_CHECKING:
@@ -70,6 +71,7 @@ class NebulosaBot(commands.Bot):
         db: Supabase-backed :class:`Database` instance.
         cache: In-memory :class:`TTLCache` instance.
         guild_service: Cache-first :class:`GuildService` instance.
+        infraction_service: Moderation business-logic :class:`InfractionService` instance.
     """
 
     __slots__ = (
@@ -77,6 +79,7 @@ class NebulosaBot(commands.Bot):
         "db",
         "cache",
         "guild_service",
+        "infraction_service",
         "_guild_mod_role_cache",
     )
 
@@ -92,6 +95,7 @@ class NebulosaBot(commands.Bot):
         self.db: Database | None = None
         self.cache: TTLCache | None = None
         self.guild_service: GuildService | None = None
+        self.infraction_service: InfractionService | None = None
 
         # Used by bot/utils/checks.py is_mod() to resolve the moderator
         # role without a DB query.  Populated by GuildService.
@@ -139,9 +143,16 @@ class NebulosaBot(commands.Bot):
             mod_role_cache=self._guild_mod_role_cache,
         )
 
+        # --- 3b. InfractionService ---
+        self.infraction_service = InfractionService(db=self.db)
+        logger.info("InfractionService initialised")
+
         # --- 4. Load cogs ---
         await self.load_extension("bot.cogs.core")
         logger.info("Cog loaded: CoreCog")
+
+        await self.load_extension("bot.cogs.sentinel")
+        logger.info("Cog loaded: SentinelCog")
 
         # --- 5. Tree sync ---
         logger.info("Syncing command tree ...")
