@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from supabase import ClientOptions, create_client
@@ -227,6 +228,217 @@ class Database:
         self._client.table("infraction").update({"active": False}).eq(
             "id", infraction_id
         ).execute()
+
+    # -- ticket -------------------------------------------------------
+
+    async def insert_ticket(
+        self,
+        guild_id: str,
+        author_id: str,
+        channel_id: str,
+        category_id: str | None,
+        ticket_number: int,
+    ) -> dict:
+        """Insert a new ticket row and return the persisted row.
+
+        Generates a v4 UUID for the primary key. The ``created_at`` and
+        ``last_activity`` timestamps are set by database defaults.
+        """
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        ticket_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        row = {
+            "id": ticket_id,
+            "ticketNumber": ticket_number,
+            "guildId": guild_id,
+            "authorId": author_id,
+            "channelId": channel_id,
+            "categoryId": category_id,
+            "status": "open",
+            "lastActivity": now,
+        }
+        logger.debug("DB insert_ticket(%s) number=%d", ticket_id, ticket_number)
+        response = self._client.table("ticket").insert(row).execute()
+        rows = _unwrap(response)
+        return rows[0] if rows else {}
+
+    async def get_ticket(self, ticket_id: str) -> dict | None:
+        """Fetch a ticket by its UUID primary key."""
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        logger.debug("DB get_ticket(%r)", ticket_id)
+        response = (
+            self._client.table("ticket")
+            .select("*")
+            .eq("id", ticket_id)
+            .execute()
+        )
+        rows = _unwrap(response)
+        return rows[0] if rows else None
+
+    async def get_ticket_by_channel(self, channel_id: str) -> dict | None:
+        """Fetch a ticket by its Discord channel snowflake."""
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        logger.debug("DB get_ticket_by_channel(%r)", channel_id)
+        response = (
+            self._client.table("ticket")
+            .select("*")
+            .eq("channelId", channel_id)
+            .execute()
+        )
+        rows = _unwrap(response)
+        return rows[0] if rows else None
+
+    async def update_ticket(self, ticket_id: str, **kwargs: Any) -> None:
+        """Update a ticket row with the given camelCase column values.
+
+        Accepts keyword arguments matching the DB column names (e.g.
+        ``status="closed"``, ``claimedBy=staff_id``).
+        """
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        logger.debug("DB update_ticket(%s) %s", ticket_id, kwargs)
+        self._client.table("ticket").update(kwargs).eq("id", ticket_id).execute()
+
+    async def get_stale_tickets(
+        self, guild_id: str, hours: int = 48
+    ) -> list[dict]:
+        """Return open/claimed tickets with ``lastActivity`` older than *hours*.
+
+        Used by the auto-close task to identify inactive tickets.
+        """
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        logger.debug(
+            "DB get_stale_tickets(guild=%s, cutoff=%s)", guild_id, cutoff.isoformat()
+        )
+        response = (
+            self._client.table("ticket")
+            .select("*")
+            .eq("guildId", guild_id)
+            .in_("status", ["open", "claimed"])
+            .lt("lastActivity", cutoff.isoformat())
+            .execute()
+        )
+        return _unwrap(response)
+
+    async def get_max_ticket_number(self, guild_id: str) -> int:
+        """Return the highest ``ticketNumber`` for a guild, or 0 if none exist."""
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        logger.debug("DB get_max_ticket_number(guild=%s)", guild_id)
+        response = (
+            self._client.table("ticket")
+            .select("ticketNumber")
+            .eq("guildId", guild_id)
+            .order("ticketNumber", desc=True)
+            .limit(1)
+            .execute()
+        )
+        rows = _unwrap(response)
+        return rows[0]["ticketNumber"] if rows else 0
+
+    # -- ticket_category -----------------------------------------------
+
+    async def insert_ticket_category(
+        self,
+        guild_id: str,
+        name: str,
+        emoji: str | None = None,
+        description: str | None = None,
+        position: int = 0,
+    ) -> dict:
+        """Insert a ticket category and return the persisted row.
+
+        Generates a v4 UUID for the primary key. The ``created_at`` timestamp
+        is set by the database default clause.
+        """
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        category_id = str(uuid.uuid4())
+        row = {
+            "id": category_id,
+            "guildId": guild_id,
+            "name": name,
+            "emoji": emoji,
+            "description": description,
+            "position": position,
+            "active": True,
+        }
+        logger.debug("DB insert_ticket_category(%s) name=%r", category_id, name)
+        response = self._client.table("ticket_category").insert(row).execute()
+        rows = _unwrap(response)
+        return rows[0] if rows else {}
+
+    async def get_ticket_categories(self, guild_id: str) -> list[dict]:
+        """Return all active ticket categories for a guild, ordered by position."""
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        logger.debug("DB get_ticket_categories(guild=%s)", guild_id)
+        response = (
+            self._client.table("ticket_category")
+            .select("*")
+            .eq("guildId", guild_id)
+            .eq("active", True)
+            .order("position")
+            .execute()
+        )
+        return _unwrap(response)
+
+    async def get_ticket_category(self, category_id: str) -> dict | None:
+        """Fetch a ticket category by its UUID primary key."""
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        logger.debug("DB get_ticket_category(%r)", category_id)
+        response = (
+            self._client.table("ticket_category")
+            .select("*")
+            .eq("id", category_id)
+            .execute()
+        )
+        rows = _unwrap(response)
+        return rows[0] if rows else None
+
+    async def delete_ticket_category(self, category_id: str) -> None:
+        """Delete a ticket category by its UUID primary key."""
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        logger.debug("DB delete_ticket_category(%s)", category_id)
+        self._client.table("ticket_category").delete().eq("id", category_id).execute()
+
+    # -- guild_panel ---------------------------------------------------
+
+    async def update_guild_panel(
+        self, guild_id: str, message_id: str, channel_id: str
+    ) -> None:
+        """Persist the ticket panel message and channel IDs on the guild row.
+
+        Called after deploying a panel so it survives bot restarts.
+        """
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        logger.debug(
+            "DB update_guild_panel(guild=%s, msg=%s, ch=%s)",
+            guild_id, message_id, channel_id,
+        )
+        self._client.table("guild").update({
+            "ticketPanelMessageId": message_id,
+            "ticketPanelChannelId": channel_id,
+        }).eq("id", guild_id).execute()
 
     # -- member -------------------------------------------------------
 

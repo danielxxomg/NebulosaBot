@@ -19,6 +19,8 @@ class GuildConfig:
     mod_role_id: str | None = None
     log_channel_id: str | None = None
     ticket_category_id: str | None = None
+    ticket_panel_message_id: str | None = None
+    ticket_panel_channel_id: str | None = None
     log_enabled: bool = False
     welcome_enabled: bool = False
     active: bool = True
@@ -29,6 +31,8 @@ class GuildConfig:
             "modRoleId": "mod_role_id",
             "logChannelId": "log_channel_id",
             "ticketCategoryId": "ticket_category_id",
+            "ticketPanelMessageId": "ticket_panel_message_id",
+            "ticketPanelChannelId": "ticket_panel_channel_id",
             "logEnabled": "log_enabled",
             "welcomeEnabled": "welcome_enabled",
         },
@@ -46,6 +50,8 @@ class GuildConfig:
             mod_role_id=row.get("modRoleId"),
             log_channel_id=row.get("logChannelId"),
             ticket_category_id=row.get("ticketCategoryId"),
+            ticket_panel_message_id=row.get("ticketPanelMessageId"),
+            ticket_panel_channel_id=row.get("ticketPanelChannelId"),
             log_enabled=row.get("logEnabled", False),
             welcome_enabled=row.get("welcomeEnabled", False),
             active=row.get("active", True),
@@ -60,6 +66,8 @@ class GuildConfig:
             "modRoleId": self.mod_role_id,
             "logChannelId": self.log_channel_id,
             "ticketCategoryId": self.ticket_category_id,
+            "ticketPanelMessageId": self.ticket_panel_message_id,
+            "ticketPanelChannelId": self.ticket_panel_channel_id,
             "logEnabled": self.log_enabled,
             "welcomeEnabled": self.welcome_enabled,
             "active": self.active,
