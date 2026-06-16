@@ -42,11 +42,11 @@ Chain strategy: feature-branch-chain
 
 ## Phase 3: Cog, Views & Bot Wiring
 
-- [ ] 3.1 Create `bot/cogs/tickets.py` — `TicketPanelView` (timeout=None, custom_id="ticket:panel", category Select + open button) and `TicketActionsView` (timeout=None, custom_id="ticket:actions:{channel_id}", close/claim buttons)
-- [ ] 3.2 Add slash commands to `TicketsCog`: `/ticket_panel` (deploy panel, persist IDs), `/create_category`, `/list_categories`, `/delete_category` — all with `app_commands.check()` for mod permission
-- [ ] 3.3 Add `auto_close_stale_tickets` task (`@tasks.loop(hours=1)`) and `on_message` listener (cached channel set O(1) early exit → DB update `lastActivity`) to `TicketsCog`
-- [ ] 3.4 Modify `bot/bot.py`: add `ticket_service` + `transcript_service` to `__slots__`; init in `setup_hook()`; register persistent views; load `bot.cogs.tickets` extension
-- [ ] 3.5 Verify: bot starts without errors, views register, slash commands appear in tree
+- [x] 3.1 Create `bot/cogs/tickets.py` — `TicketPanelView` (timeout=None, custom_id="ticket:open" button + ephemeral category select) and `TicketActionsView` (timeout=None, static custom_ids "ticket:claim"/"ticket:close", identified by `interaction.channel_id`)
+- [x] 3.2 Add slash commands to `TicketsCog`: `/ticket_panel` (deploy panel, persist IDs), `/create_category`, `/list_categories`, `/delete_category` — all with `@is_mod()` check
+- [x] 3.3 Add `auto_close_stale_tickets` task (`@tasks.loop(hours=1)`) and `on_message` listener (cached channel set O(1) early exit → DB update `lastActivity`) to `TicketsCog`
+- [x] 3.4 Modify `bot/bot.py`: add `ticket_service` + `transcript_service` to `__slots__`; init in `setup_hook()`; register persistent views; load `bot.cogs.tickets` extension
+- [x] 3.5 Verify: all 67 existing tests pass; new module imports without errors
 
 ## Phase 4: Integration Verification
 
