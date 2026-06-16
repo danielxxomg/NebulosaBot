@@ -16,6 +16,7 @@ from bot.core.cache import TTLCache
 from bot.core.context import NebulosaContext
 from bot.core.database import Database
 from bot.cogs.tickets import TicketActionsView, TicketPanelView
+from bot.services.economy_service import EconomyService
 from bot.services.guild_service import GuildService
 from bot.services.infraction_service import InfractionService
 from bot.services.ticket_service import TicketService
@@ -29,7 +30,6 @@ logger = logging.getLogger(__name__)
 
 # -- Sentry for missing guild config (used by get_prefix fallback) ----------
 _FALLBACK_PREFIX = "nb!"
-_FALLBACK_LANGUAGE = "es"
 
 
 async def _build_prefix_callable(
@@ -77,6 +77,8 @@ class NebulosaBot(commands.Bot):
         infraction_service: Moderation business-logic :class:`InfractionService` instance.
         ticket_service: Ticket lifecycle :class:`~bot.services.ticket_service.TicketService` instance.
         transcript_service: HTML transcript :class:`~bot.services.transcript_service.TranscriptService` instance.
+        economy_service: Economy system :class:`~bot.services.economy_service.EconomyService` instance.
+        image_service: Rank card :class:`~bot.services.image_service.ImageService` instance (PR 3).
     """
 
     __slots__ = (
@@ -87,6 +89,8 @@ class NebulosaBot(commands.Bot):
         "infraction_service",
         "ticket_service",
         "transcript_service",
+        "economy_service",
+        "image_service",
         "_guild_mod_role_cache",
     )
 
@@ -105,6 +109,8 @@ class NebulosaBot(commands.Bot):
         self.infraction_service: InfractionService | None = None
         self.ticket_service: TicketService | None = None
         self.transcript_service: TranscriptService | None = None
+        self.economy_service: EconomyService | None = None
+        self.image_service: object | None = None  # ImageService in PR 3
 
         # Used by bot/utils/checks.py is_mod() to resolve the moderator
         # role without a DB query.  Populated by GuildService.
@@ -161,6 +167,10 @@ class NebulosaBot(commands.Bot):
         self.transcript_service = TranscriptService()
         logger.info("TicketService and TranscriptService initialised")
 
+        # --- 3d. EconomyService ---
+        self.economy_service = EconomyService(db=self.db, cache=self.cache)
+        logger.info("EconomyService initialised")
+
         # --- 3d. Register persistent views ---
         self.add_view(TicketPanelView())
         self.add_view(TicketActionsView())
@@ -175,6 +185,12 @@ class NebulosaBot(commands.Bot):
 
         await self.load_extension("bot.cogs.tickets")
         logger.info("Cog loaded: TicketsCog")
+
+        await self.load_extension("bot.cogs.stellar")
+        logger.info("Cog loaded: StellarCog")
+
+        await self.load_extension("bot.listeners.xp_listener")
+        logger.info("Listener loaded: XPListener")
 
         # --- 5. Tree sync ---
         logger.info("Syncing command tree ...")
