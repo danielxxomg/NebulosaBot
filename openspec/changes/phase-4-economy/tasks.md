@@ -26,12 +26,12 @@ Chain strategy: feature-branch-chain
 
 ## Phase 1: Foundation (PR 1)
 
-- [ ] 1.1 Create `migrations/003_economy_config.sql` — `economy_config` table, `dailyStreak`/`lastDailyReset` columns, `idx_member_guild_xp` index
-- [ ] 1.2 Create `bot/models/economy_config.py` — `EconomyConfig` dataclass with `from_db_row`/`to_db_dict`
-- [ ] 1.3 Modify `bot/models/member.py` — add `daily_streak: int = 0`, `last_daily_reset: datetime | None = None`; update serialization
-- [ ] 1.4 Add DB methods to `bot/core/database.py`: `get_economy_config`, `upsert_economy_config`, `update_member_xp`, `update_member_coins`, `claim_daily`, `get_leaderboard`, `get_member_rank`
-- [ ] 1.5 Create `bot/services/economy_service.py` — `gain_xp`, `claim_daily`, `get_balance`, `get_leaderboard`, `get_rank_info`, `compute_level`, `xp_progress`; leaderboard cache `{guild_id}:leaderboard` 30s TTL + write-through invalidation
-- [ ] 1.6 Create `tests/test_economy_service.py` — pure-function tests for `compute_level`/`xp_progress`/streak; mock-DB tests for cooldown, streak reset, leaderboard ordering
+- [x] 1.1 Create `migrations/003_economy_config.sql` — `economy_config` table, `dailyStreak`/`lastDailyReset` columns, `idx_member_guild_xp` index
+- [x] 1.2 Create `bot/models/economy_config.py` — `EconomyConfig` dataclass with `from_db_row`/`to_db_dict`
+- [x] 1.3 Modify `bot/models/member.py` — add `daily_streak: int = 0`, `last_daily_reset: datetime | None = None`; update serialization
+- [x] 1.4 Add DB methods to `bot/core/database.py`: `get_economy_config`, `upsert_economy_config`, `update_member_xp`, `update_member_coins`, `claim_daily`, `get_leaderboard`, `get_member_rank`
+- [x] 1.5 Create `bot/services/economy_service.py` — `gain_xp`, `claim_daily`, `get_balance`, `get_leaderboard`, `get_rank_info`, `compute_level`, `xp_progress`; leaderboard cache `{guild_id}:leaderboard` 30s TTL + write-through invalidation
+- [x] 1.6 Create `tests/test_economy_service.py` — pure-function tests for `compute_level`/`xp_progress`/streak; mock-DB tests for cooldown, streak reset, leaderboard ordering
 
 ## Phase 2: Commands + Listener (PR 2)
 
