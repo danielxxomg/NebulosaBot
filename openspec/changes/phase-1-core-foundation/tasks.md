@@ -43,22 +43,22 @@ Chain strategy: feature-branch-chain
 
 ## Phase 2: Core Infrastructure (Database, Cache, Context)
 
-- [ ] 2.1 Create `bot/core/__init__.py` (empty subpackage init)
-- [ ] 2.2 Create `bot/core/database.py` — `Database` class wrapping Supabase client with `connect()`, `health_check()`, `get_guild()`, `upsert_guild()`
-- [ ] 2.3 Create `bot/core/cache.py` — `TTLCache` class with `get()`, `set()`, `invalidate()`, `invalidate_guild()`, 5min default TTL, dict-based with timestamp tracking
-- [ ] 2.4 Create `bot/core/context.py` — `NebulosaContext` extending `commands.Context` with `db`, `cache`, `guild_config` accessors
+- [x] 2.1 Create `bot/core/__init__.py` (empty subpackage init)
+- [x] 2.2 Create `bot/core/database.py` — `Database` class wrapping Supabase client with `connect()`, `health_check()`, `get_guild()`, `upsert_guild()`
+- [x] 2.3 Create `bot/core/cache.py` — `TTLCache` class with `get()`, `set()`, `invalidate()`, `invalidate_guild()`, 5min default TTL, dict-based with timestamp tracking
+- [x] 2.4 Create `bot/core/context.py` — `NebulosaContext` extending `commands.Context` with `db`, `cache`, `guild_config` accessors
 
 ## Phase 3: Services (GuildService)
 
-- [ ] 3.1 Create `bot/services/__init__.py` (empty subpackage init)
-- [ ] 3.2 Create `bot/services/guild_service.py` — `GuildService` with `get_config()` (cache-first → DB fallback → cache populate), `save_config()` (DB upsert + cache invalidate), `on_guild_join()` (insert defaults: prefix=`nb!`, language=`es`)
+- [x] 3.1 Create `bot/services/__init__.py` (empty subpackage init)
+- [x] 3.2 Create `bot/services/guild_service.py` — `GuildService` with `get_config()` (cache-first → DB fallback → cache populate), `save_config()` (DB upsert + cache invalidate), `on_guild_join()` (insert defaults: prefix=`nb!`, language=`es`)
 
 ## Phase 4: Bot & Cogs (NebulosaBot, CoreCog, Entry Point)
 
-- [ ] 4.1 Create `bot/bot.py` — `NebulosaBot(commands.Bot)` with `setup_hook()` (DB connect → cache init → GuildService init → cog load → tree sync), async `get_prefix()` reading cache-first guild config, `on_app_command_error` (ephemeral embed for slash, channel embed for prefix)
-- [ ] 4.2 Create `bot/cogs/__init__.py` (empty subpackage init)
-- [ ] 4.3 Create `bot/cogs/core.py` — `CoreCog` with hybrid commands: `ping` (latency ms), `status` (DB+cache health embed), `help` (embed by module with pagination), `sync` (tree sync, admin-gated)
-- [ ] 4.4 Create `bot/__main__.py` — entry point: load config → instantiate `NebulosaBot` with intents + prefix callable → `bot.run()`
+- [x] 4.1 Create `bot/bot.py` — `NebulosaBot(commands.Bot)` with `setup_hook()` (DB connect → cache init → GuildService init → cog load → tree sync), async `get_prefix()` reading cache-first guild config, `on_app_command_error` (ephemeral embed for slash, channel embed for prefix)
+- [x] 4.2 Create `bot/cogs/__init__.py` (empty subpackage init)
+- [x] 4.3 Create `bot/cogs/core.py` — `CoreCog` with hybrid commands: `ping` (latency ms), `status` (DB+cache health embed), `help` (embed by module with pagination), `sync` (tree sync, admin-gated)
+- [x] 4.4 Create `bot/__main__.py` — entry point: load config → instantiate `NebulosaBot` with intents + prefix callable → `bot.run()`
 
 ## Phase 5: Testing & Verification
 
