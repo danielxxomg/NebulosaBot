@@ -1,0 +1,194 @@
+"""Unit tests for bot.utils.checks — is_admin() and is_mod().
+
+Covers the permission-model spec scenarios:
+    - Administrator permission → passes both checks
+    - Mod with configured modRoleId → passes is_mod
+    - Admin fallback when mod role configured → passes is_mod
+    - Regular user without permissions → denied
+    - Unconfigured mod role → only admins pass
+    - DM invocation → NoPrivateMessage
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+from unittest.mock import MagicMock, patch
+
+import discord
+import pytest
+from discord import app_commands
+
+from bot.utils.checks import is_admin, is_mod
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _unwrap_predicate(
+    factory: Callable[[], Any],
+) -> Callable[..., Any]:
+    """Extract the inner predicate function from an app_commands.check wrapper.
+
+    Patches ``app_commands.check`` so it becomes a transparent pass-through,
+    returning the raw predicate async function that factories like
+    ``is_admin()`` and ``is_mod()`` would normally wrap.
+    """
+    with patch("bot.utils.checks.app_commands.check") as mock_check:
+        mock_check.side_effect = lambda pred: pred
+        return factory()
+
+
+# ---------------------------------------------------------------------------
+# is_admin()
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_is_admin_administrator_passes(mock_interaction: MagicMock) -> None:
+    """A user with the Administrator permission MUST pass is_admin()."""
+    predicate = _unwrap_predicate(is_admin)
+
+    mock_interaction.guild = MagicMock(spec=discord.Guild)  # not None
+    mock_interaction.user.guild_permissions.administrator = True
+
+    result = await predicate(mock_interaction)
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_is_admin_regular_user_denied(mock_interaction: MagicMock) -> None:
+    """A user WITHOUT Administrator MUST raise MissingPermissions."""
+    predicate = _unwrap_predicate(is_admin)
+
+    mock_interaction.guild = MagicMock(spec=discord.Guild)
+    mock_interaction.user.guild_permissions.administrator = False
+
+    with pytest.raises(app_commands.MissingPermissions) as exc:
+        await predicate(mock_interaction)
+    assert "administrator" in exc.value.missing_permissions
+
+
+@pytest.mark.asyncio
+async def test_is_admin_dm_raises_no_private_message(
+    mock_interaction: MagicMock,
+) -> None:
+    """is_admin() in a DM channel MUST raise NoPrivateMessage."""
+    predicate = _unwrap_predicate(is_admin)
+
+    mock_interaction.guild = None  # DM
+
+    with pytest.raises(app_commands.NoPrivateMessage):
+        await predicate(mock_interaction)
+
+
+# ---------------------------------------------------------------------------
+# is_mod() — administrator fallback
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_is_mod_administrator_passes(mock_interaction: MagicMock) -> None:
+    """An admin MUST pass is_mod() regardless of mod-role configuration."""
+    predicate = _unwrap_predicate(is_mod)
+
+    mock_interaction.guild = MagicMock(spec=discord.Guild)
+    mock_interaction.user.guild_permissions.administrator = True
+    # No mod-role cache configured — admin still passes.
+    mock_interaction.client._guild_mod_role_cache = {}
+
+    result = await predicate(mock_interaction)
+    assert result is True
+
+
+# ---------------------------------------------------------------------------
+# is_mod() — configured mod role
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_is_mod_with_mod_role_passes(mock_interaction: MagicMock) -> None:
+    """A non-admin user who has the configured mod role MUST pass is_mod()."""
+    predicate = _unwrap_predicate(is_mod)
+
+    mod_role_id = 987654321
+    guild_id = 123456789
+
+    mock_interaction.guild = MagicMock(spec=discord.Guild)
+    mock_interaction.guild_id = guild_id
+    mock_interaction.user.guild_permissions.administrator = False
+
+    # Set up the mod-role cache (populated by GuildService).
+    mock_interaction.client._guild_mod_role_cache = {guild_id: str(mod_role_id)}
+
+    # Give the user the moderator role.
+    role = MagicMock(spec=discord.Role)
+    role.id = mod_role_id
+    mock_interaction.user.roles = [role]
+
+    result = await predicate(mock_interaction)
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_is_mod_regular_user_denied(mock_interaction: MagicMock) -> None:
+    """A regular user who is neither admin nor mod MUST raise MissingRole."""
+    predicate = _unwrap_predicate(is_mod)
+
+    mod_role_id = 987654321
+    guild_id = 123456789
+
+    mock_interaction.guild = MagicMock(spec=discord.Guild)
+    mock_interaction.guild_id = guild_id
+    mock_interaction.user.guild_permissions.administrator = False
+
+    # Mod role is configured…
+    mock_interaction.client._guild_mod_role_cache = {guild_id: str(mod_role_id)}
+
+    # …but the user does NOT have it.
+    mock_interaction.user.roles = []
+
+    with pytest.raises(app_commands.MissingRole) as exc:
+        await predicate(mock_interaction)
+    assert exc.value.missing_role == mod_role_id
+
+
+# ---------------------------------------------------------------------------
+# is_mod() — unconfigured mod role
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_is_mod_unconfigured_mod_role_denied(
+    mock_interaction: MagicMock,
+) -> None:
+    """When no mod role is configured, non-admin users MUST be denied with CheckFailure."""
+    predicate = _unwrap_predicate(is_mod)
+
+    guild_id = 123456789
+
+    mock_interaction.guild = MagicMock(spec=discord.Guild)
+    mock_interaction.guild_id = guild_id
+    mock_interaction.user.guild_permissions.administrator = False
+
+    # No mod-role cache at all.
+    mock_interaction.client._guild_mod_role_cache = {}
+
+    with pytest.raises(app_commands.CheckFailure) as exc:
+        await predicate(mock_interaction)
+    assert "No moderator role is configured" in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_is_mod_dm_raises_no_private_message(
+    mock_interaction: MagicMock,
+) -> None:
+    """is_mod() in a DM channel MUST raise NoPrivateMessage."""
+    predicate = _unwrap_predicate(is_mod)
+
+    mock_interaction.guild = None  # DM
+
+    with pytest.raises(app_commands.NoPrivateMessage):
+        await predicate(mock_interaction)

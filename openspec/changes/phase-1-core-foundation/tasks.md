@@ -62,8 +62,8 @@ Chain strategy: feature-branch-chain
 
 ## Phase 5: Testing & Verification
 
-- [ ] 5.1 Add pytest + pytest-asyncio to `pyproject.toml` dev deps; create `tests/__init__.py` and `tests/conftest.py` with shared fixtures (mock DB, mock cache, mock guild)
-- [ ] 5.2 Create `tests/test_cache.py` — unit tests for TTLCache: get/set, TTL expiry, invalidate, invalidate_guild, guild isolation
-- [ ] 5.3 Create `tests/test_guild_service.py` — unit tests for GuildService: cache hit path, cache miss → DB fetch → cache populate, save invalidates cache, on_guild_join inserts defaults
-- [ ] 5.4 Create `tests/test_checks.py` — unit tests for is_mod/is_admin: admin perms, mod role, admin fallback, regular user denied, unconfigured mod role
-- [ ] 5.5 Manual verification: run `python -m bot`, confirm bot comes online, test `nb!ping` and `/ping` in dev server, verify guild config loads into cache
+- [x] 5.1 Add pytest + pytest-asyncio to `pyproject.toml` dev deps; create `tests/__init__.py` and `tests/conftest.py` with shared fixtures (mock DB, mock cache, mock guild)
+- [x] 5.2 Create `tests/test_cache.py` — unit tests for TTLCache: get/set, TTL expiry, invalidate, invalidate_guild, guild isolation
+- [x] 5.3 Create `tests/test_guild_service.py` — unit tests for GuildService: cache hit path, cache miss → DB fetch → cache populate, save invalidates cache, on_guild_join inserts defaults
+- [x] 5.4 Create `tests/test_checks.py` — unit tests for is_mod/is_admin: admin perms, mod role, admin fallback, regular user denied, unconfigured mod role
+- [x] 5.5 Manual verification: run `python -m bot`, confirm bot comes online, test `nb!ping` and `/ping` in dev server, verify guild config loads into cache

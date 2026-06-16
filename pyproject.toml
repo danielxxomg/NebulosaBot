@@ -39,6 +39,10 @@ dev = [
 [project.urls]
 Repository = "https://github.com/gentle-programming/NebulosaBot"
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["bot*"]
