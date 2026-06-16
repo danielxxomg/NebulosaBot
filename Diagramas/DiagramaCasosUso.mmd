@@ -1,0 +1,30 @@
+@startuml
+left to right direction
+
+actor "Usuario Discord" as User
+actor "Admin Servidor" as Admin
+
+package "Sistema Nebulosa" {
+    usecase "Ganar XP y Monedas (Global)" as UC1
+    usecase "Crear Ticket de Soporte" as UC2
+    usecase "Participar en Sorteos" as UC3
+    usecase "Ver Perfil Web" as UC4
+    
+    usecase "Configurar Prefijos/Logs (Web)" as UC5
+    usecase "Moderación (Warn/Ban/Mute)" as UC6
+    usecase "Gestionar Tickets" as UC7
+}
+
+User --> UC1
+User --> UC2
+User --> UC3
+User --> UC4
+
+Admin --> UC4
+Admin --> UC5
+Admin --> UC6
+Admin --> UC7
+
+note right of UC5 : Exclusivo Dashboard Next.js
+note right of UC1 : Motor Python (Listeners)
+@enduml

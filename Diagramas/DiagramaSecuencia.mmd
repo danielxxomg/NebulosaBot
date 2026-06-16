@@ -1,0 +1,48 @@
+%%{init: {'theme': 'dark', 'themeVariables': { 'darkMode': true, 'fontFamily': 'Inter', 'fontSize': '14px'}} }%%
+sequenceDiagram
+    autonumber
+    actor User as 👤 Usuario
+    actor Admin as 🛡️ Admin
+    participant Bot as 🤖 Nebulosa (Python + Cache)
+    participant Web as 🌐 Dashboard (Server Actions)
+    participant DB as 🐘 Supabase (Transaction Mode)
+    participant Discord as 💬 Discord API
+
+    rect rgb(30, 30, 40)
+        note right of User: Flujo 1: Comandos (Lectura Caché - Coste Cero)
+        User->>Bot: Comando !help
+        Bot->>Bot: Verifica Cache Local (RAM)
+        alt Cache Miss (Dato no está o expiró)
+            Bot->>DB: SELECT config FROM Guild
+            DB-->>Bot: Retorna config
+            Bot->>Bot: Guarda en Cache
+        end
+        Bot-->>User: Responde mensaje
+    end
+
+    rect rgb(40, 20, 40)
+        note right of Admin: Flujo 2: Configuración (Invalidación Inteligente)
+        Admin->>Web: Cambia Prefijo a "?"
+        Web->>DB: UPDATE Guild SET prefix="?"
+        
+        par Notificación Asíncrona
+            Web->>Bot: ⚡ POST /webhook/sync {guild_id, type: "config"}
+            Bot->>Bot: 🗑️ Borra Cache del Guild ID
+        and Feedback Visual
+            Web-->>Admin: "Guardado exitosamente"
+        end
+        
+        note right of User: Siguiente uso
+        User->>Bot: Comando ?help
+        Bot->>Bot: Cache Miss (fue borrado) -> Lee DB -> Responde
+    end
+
+    rect rgb(20, 40, 40)
+        note right of Bot: Flujo 3: Tickets (Ahorro Storage)
+        User->>Bot: Cierra Ticket
+        Bot->>Bot: Genera transcript.html
+        Bot->>Discord: Sube archivo a #logs-canal
+        Discord-->>Bot: Retorna URL del adjunto
+        Bot->>DB: INSERT INTO Ticket (url, status="closed")
+        Bot-->>User: Ticket cerrado, log guardado.
+    end

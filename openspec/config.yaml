@@ -1,0 +1,57 @@
+schema: spec-driven
+
+context: |
+  Project: NebulosaBot — Discord bot with web dashboard
+  Stack: Python (bot), Next.js (dashboard), Supabase/PostgreSQL (DB)
+  Architecture: Cache-first with webhook invalidation, modular command system
+  Modules: Core, Tickets, Moderation (Sentinel), Economy (Stellar), Utility
+  Status: Pre-code / Design phase — no source code yet
+  Diagrams: 4 Mermaid/PlantUML design docs in /Diagramas
+  Language: Spanish (design docs), English (code artifacts)
+
+strict_tdd: false
+
+testing:
+  runner: none
+  command: ""
+  framework: none
+  layers:
+    unit: false
+    integration: false
+    e2e: false
+  coverage:
+    available: false
+    command: ""
+  quality:
+    linter: false
+    type_checker: false
+    formatter: false
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - Reference design diagrams in /Diagramas when relevant
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Include sequence diagrams for complex flows
+    - Document architecture decisions with rationale
+    - Follow cache-first + webhook invalidation pattern from design docs
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+  apply:
+    - Follow existing code patterns
+    tdd: false
+    test_command: ""
+  verify:
+    test_command: ""
+    build_command: ""
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas
+
+session:
+  chained_pr_strategy: ask-always
+  review_budget_lines: 400

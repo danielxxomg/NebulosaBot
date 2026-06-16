@@ -1,0 +1,55 @@
+erDiagram
+    %% Core - Base de datos ligera
+    User ||--o{ Member : "has"
+    Guild ||--o{ Member : "contains"
+    
+    %% Configuración (Datos críticos)
+    Guild {
+        string id PK "Discord ID"
+        string prefix
+        string language
+        string modRoleId
+        string logChannelId
+        string ticketCategoryId
+        boolean active "Para soft delete"
+    }
+
+    User {
+        string id PK "Discord ID"
+        string username
+        string avatarUrl
+        datetime lastSeen
+    }
+
+    Member {
+        string guildId FK
+        string userId FK
+        bigint xp "GlobalXP (simplificado)"
+        int level
+        int warnings
+    }
+
+    %% Logs y Moderación (Metadata solamente)
+    Ticket {
+        uuid id PK
+        int ticketId "Numérico para el usuario"
+        string guildId FK
+        string authorId FK
+        string status "open/closed"
+        string transcriptUrl "Link a Discord CDN"
+        datetime createdAt
+        datetime closedAt
+    }
+
+    Infraction {
+        uuid id PK
+        string guildId FK
+        string targetId FK
+        string moderatorId FK
+        string type "WARN/MUTE/KICK/BAN"
+        string reason
+        datetime createdAt
+    }
+
+    Guild ||--o{ Ticket : "manages"
+    Guild ||--o{ Infraction : "enforces"
