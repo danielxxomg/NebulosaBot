@@ -35,10 +35,10 @@ Chain strategy: feature-branch-chain
 
 ## Phase 2: Core Services & Tests
 
-- [ ] 2.1 Create `bot/services/ticket_service.py`: `TicketService` with `__slots__`, `create_ticket()` (MAX+1 with 3-retry), `close_ticket()`, `claim_ticket()`, `_ticket_channel_cache: set[int]`, `sync_channel_cache()`
-- [ ] 2.2 Create `bot/services/transcript_service.py`: `TranscriptService` with `generate(channel, limit=5000) → discord.File` (inline-CSS HTML) and `upload(file, log_channel) → str | None`
-- [ ] 2.3 Create `tests/test_ticket_service.py`: test sequential numbering (normal + retry on conflict), `create_ticket` flow (mock DB + guild), `close_ticket` (mock transcript + DB), `claim_ticket` (status/claimedBy), cache sync
-- [ ] 2.4 Verify: all tests pass with `pytest tests/test_ticket_service.py`
+- [x] 2.1 Create `bot/services/ticket_service.py`: `TicketService` with `__slots__`, `create_ticket()` (MAX+1 with 3-retry), `close_ticket()`, `claim_ticket()`, `_ticket_channel_cache: set[int]`, `sync_channel_cache()`
+- [x] 2.2 Create `bot/services/transcript_service.py`: `TranscriptService` with `generate(channel, limit=5000) → discord.File` (inline-CSS HTML) and `upload(file, log_channel) → str | None`
+- [x] 2.3 Create `tests/test_ticket_service.py`: test sequential numbering (normal + retry on conflict), `create_ticket` flow (mock DB + guild), `close_ticket` (mock transcript + DB), `claim_ticket` (status/claimedBy), cache sync
+- [x] 2.4 Create `tests/test_transcript_service.py` and verify all tests pass (67/67, including ticket + transcript)
 
 ## Phase 3: Cog, Views & Bot Wiring
 
