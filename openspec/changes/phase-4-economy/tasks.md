@@ -45,8 +45,8 @@ Chain strategy: feature-branch-chain
 
 ## Phase 3: Rank Card (PR 3)
 
-- [ ] 3.1 Add `Pillow` to `requirements.txt`; create `assets/fonts/`; commit Inter Regular font (SIL OFL)
-- [ ] 3.2 Create `bot/services/image_service.py` — `generate_rank_card()` sync: dark gradient, circular avatar, username, level, XP bar, rank #; return `BytesIO` PNG; placeholder on missing avatar
-- [ ] 3.3 Add `/rank [member]` hybrid command in `StellarCog` — `ctx.defer()`, `get_rank_info()`, `asyncio.to_thread(generate_rank_card, ...)`, send `discord.File`
-- [ ] 3.4 Modify `bot/bot.py` — init `ImageService()` in `setup_hook()`; pass to `StellarCog`
-- [ ] 3.5 Test: `generate_rank_card` returns valid PNG; `/rank` defers and sends file
+- [x] 3.1 Add `Pillow` to `requirements.txt`; create `assets/fonts/`; commit Inter Regular font (SIL OFL)
+- [x] 3.2 Create `bot/services/image_service.py` — `generate_rank_card()` sync: dark gradient, circular avatar, username, level, XP bar, rank #; return `BytesIO` PNG; placeholder on missing avatar
+- [x] 3.3 Add `/rank [member]` hybrid command in `StellarCog` — `ctx.defer()`, `get_rank_info()`, `asyncio.to_thread(generate_rank_card, ...)`, send `discord.File`
+- [x] 3.4 Modify `bot/bot.py` — init `ImageService()` in `setup_hook()`; pass to `StellarCog`
+- [x] 3.5 Test: `generate_rank_card` returns valid PNG; `/rank` defers and sends file
