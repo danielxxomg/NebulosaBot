@@ -2,6 +2,7 @@
 discord.py==2.4.0
 supabase==2.7.0
 python-dotenv==1.0.1
+Pillow>=10.0.0
 
 # Transitive dependencies (auto-generated, pinned for reproducibility)
 aiohttp==3.9.5

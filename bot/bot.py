@@ -7,7 +7,7 @@ Wires together the database, cache, services, and cogs during
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 import discord
 from discord.ext import commands
@@ -18,6 +18,7 @@ from bot.core.database import Database
 from bot.cogs.tickets import TicketActionsView, TicketPanelView
 from bot.services.economy_service import EconomyService
 from bot.services.guild_service import GuildService
+from bot.services.image_service import ImageService
 from bot.services.infraction_service import InfractionService
 from bot.services.ticket_service import TicketService
 from bot.services.transcript_service import TranscriptService
@@ -32,9 +33,9 @@ logger = logging.getLogger(__name__)
 _FALLBACK_PREFIX = "nb!"
 
 
-async def _build_prefix_callable(
+def _build_prefix_callable(
     bot: NebulosaBot,
-) -> callable:
+) -> Callable:
     """Return an async callable that resolves the prefix per-message.
 
     Closure over *bot* so it can access ``guild_service`` at runtime.
@@ -118,7 +119,7 @@ class NebulosaBot(commands.Bot):
 
         # Build the prefix callable.  We pass `self` by reference so the
         # closure calls back into guild_service at message time.
-        prefix_callable = _build_prefix_callable(self)  # type: ignore[arg-type]
+        prefix_callable = _build_prefix_callable(self)
 
         super().__init__(
             command_prefix=prefix_callable,
@@ -170,6 +171,10 @@ class NebulosaBot(commands.Bot):
         # --- 3d. EconomyService ---
         self.economy_service = EconomyService(db=self.db, cache=self.cache)
         logger.info("EconomyService initialised")
+
+        # --- 3e. ImageService ---
+        self.image_service = ImageService()
+        logger.info("ImageService initialised")
 
         # --- 3d. Register persistent views ---
         self.add_view(TicketPanelView())
