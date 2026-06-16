@@ -313,6 +313,18 @@ class EconomyService:
         }
 
     # ------------------------------------------------------------------
+    # Config
+    # ------------------------------------------------------------------
+
+    async def get_economy_config(self, guild_id: str) -> dict | None:
+        """Return the economy configuration for *guild_id*, or ``None``.
+
+        Thin wrapper over ``Database.get_economy_config()`` so callers
+        never need to reach into the private ``_db`` attribute.
+        """
+        return await self._db.get_economy_config(guild_id)
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 

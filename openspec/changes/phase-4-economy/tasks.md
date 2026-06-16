@@ -35,12 +35,13 @@ Chain strategy: feature-branch-chain
 
 ## Phase 2: Commands + Listener (PR 2)
 
-- [ ] 2.1 Create `bot/cogs/stellar.py` — `on_message` XP listener: guard bot/DM, call `gain_xp()`, detect level-up, auto-assign role from `level_role_map`, send level-up embed
-- [ ] 2.2 Add `/daily` hybrid command — `claim_daily()`, success/cooldown embeds
-- [ ] 2.3 Add `/coins [member]` hybrid command — `get_balance()`, display embed
-- [ ] 2.4 Add `/leaderboard <xp|coins>` hybrid command — paginated top-10 embed, empty-state handling
-- [ ] 2.5 Modify `bot/bot.py` — add `economy_service`/`image_service` to `__slots__`; init `EconomyService(db, cache)` in `setup_hook()`; load `bot.cogs.stellar`
-- [ ] 2.6 Add `async def setup(bot)` in `bot/cogs/stellar.py`
+- [x] 2.1 Create `bot/listeners/xp_listener.py` — `on_message` XP listener: guard bot/DM, call `gain_xp()`, detect level-up, auto-assign role from `level_role_map`, send level-up embed
+- [x] 2.2 Create `bot/cogs/stellar.py` — StellarCog class with hybrid commands
+- [x] 2.3 Implement `/daily` hybrid command — `claim_daily()`, success/cooldown embeds
+- [x] 2.4 Implement `/coins [member]` hybrid command — `get_balance()`, display embed
+- [x] 2.5 Implement `/leaderboard <xp|coins>` hybrid command — top-10 embed, empty-state handling
+- [x] 2.6 Modify `bot/bot.py` — add `economy_service`/`image_service` to `__slots__`; init `EconomyService(db, cache)` in `setup_hook()`; load `bot.cogs.stellar` + `bot.listeners.xp_listener`
+- [x] 2.7 Add `async def setup(bot)` in `bot/cogs/stellar.py`
 
 ## Phase 3: Rank Card (PR 3)
 
