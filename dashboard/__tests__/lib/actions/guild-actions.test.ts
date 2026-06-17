@@ -63,7 +63,7 @@ function setupAuth({
       : { data: null, error: null },
   });
 
-  vi.mocked(createServiceClient).mockResolvedValue(svc as unknown as ReturnType<typeof createServiceClient>);
+  vi.mocked(createServiceClient).mockResolvedValue(svc as unknown as Awaited<ReturnType<typeof createServiceClient>>);
 
   mockFetchUserGuilds.mockResolvedValue([
     { id: GUILD_ID, permissions: isAdmin ? "8" : "1024" },

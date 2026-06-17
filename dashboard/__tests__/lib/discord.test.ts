@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
 
 // ---------------------------------------------------------------------------
 // hasAdministratorPerm — pure function, no mocking needed
