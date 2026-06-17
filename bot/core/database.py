@@ -749,6 +749,40 @@ class Database:
         )
         return _unwrap(response)
 
+    # -- greeting_config -----------------------------------------------
+
+    async def get_greeting_config(self, guild_id: str) -> dict | None:
+        """Fetch a greeting_config row by guild ID.
+
+        Returns the raw camelCase row dict, or ``None`` if the guild has
+        no greeting configuration yet.
+        """
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        logger.debug("DB get_greeting_config(%r)", guild_id)
+        response = (
+            self._client.table("greeting_config")
+            .select("*")
+            .eq("guildId", guild_id)
+            .execute()
+        )
+        rows = _unwrap(response)
+        return rows[0] if rows else None
+
+    async def upsert_greeting_config(self, config: Any) -> None:
+        """Insert or update a greeting_config row.
+
+        Args:
+            config: A :class:`~bot.models.greeting_config.GreetingConfig`
+                instance whose ``to_db_dict()`` produces camelCase keys.
+        """
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        logger.debug("DB upsert_greeting_config(%r)", config.guild_id)
+        self._client.table("greeting_config").upsert(config.to_db_dict()).execute()
+
     async def get_member_rank(
         self, guild_id: str, user_id: str, sort_by: str = "xp"
     ) -> int | None:
