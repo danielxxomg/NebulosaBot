@@ -1,4 +1,4 @@
-import { vi } from "vitest";
+import { vi, expect } from "vitest";
 import type { ActionResult } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
