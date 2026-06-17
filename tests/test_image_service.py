@@ -218,3 +218,154 @@ class TestGenerateRankCard:
             xp_for_next=225.0,
         )
         assert _is_valid_png(buf.getvalue())
+
+
+# ==========================================================================
+# generate_greeting_card — welcome/goodbye card tests
+# ==========================================================================
+
+
+class TestGenerateGreetingCard:
+    """Tests for ImageService.generate_greeting_card().
+
+    The method must produce valid PNG output for both welcome and goodbye
+    card types, handle missing avatars gracefully, and produce distinct
+    outputs for different card types.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _import_service(self) -> None:
+        """Lazy-import ImageService inside each test."""
+        from bot.services.image_service import ImageService
+
+        self.service = ImageService()
+
+    # -- Valid PNG output ---------------------------------------------------
+
+    def test_generate_greeting_card_returns_valid_png_welcome(self) -> None:
+        """Welcome card must produce a valid PNG with non-trivial content."""
+        buf = self.service.generate_greeting_card(
+            username="TestUser",
+            avatar_url="https://cdn.discordapp.com/avatars/111/abc.png",
+            guild_name="Test Server",
+            member_count=150,
+            card_type="welcome",
+        )
+        assert isinstance(buf, io.BytesIO)
+        png_data = buf.getvalue()
+        assert _is_valid_png(png_data), "Output is not a valid PNG"
+        assert _has_non_zero_pixels(png_data), "PNG is too small — likely empty"
+
+    def test_generate_greeting_card_returns_valid_png_goodbye(self) -> None:
+        """Goodbye card must produce a valid PNG with non-trivial content."""
+        buf = self.service.generate_greeting_card(
+            username="LeavingUser",
+            avatar_url=None,
+            guild_name="Test Guild",
+            member_count=42,
+            card_type="goodbye",
+        )
+        assert isinstance(buf, io.BytesIO)
+        png_data = buf.getvalue()
+        assert _is_valid_png(png_data), "Output is not a valid PNG"
+        assert _has_non_zero_pixels(png_data), "PNG is too small — likely empty"
+
+    def test_generate_greeting_card_returns_bytesio(self) -> None:
+        """Output must be an io.BytesIO object positioned at the start."""
+        buf = self.service.generate_greeting_card(
+            username="User",
+            avatar_url=None,
+            guild_name="Guild",
+            member_count=1,
+            card_type="welcome",
+        )
+        assert isinstance(buf, io.BytesIO)
+        # Positioned at start — ready for Discord upload.
+        assert buf.tell() == 0
+
+    # -- Card type produces different output ---------------------------------
+
+    def test_welcome_vs_goodbye_produces_different_images(self) -> None:
+        """Welcome and goodbye cards must be visually distinct."""
+        buf_welcome = self.service.generate_greeting_card(
+            username="SameUser", avatar_url=None, guild_name="G",
+            member_count=100, card_type="welcome",
+        )
+        buf_goodbye = self.service.generate_greeting_card(
+            username="SameUser", avatar_url=None, guild_name="G",
+            member_count=100, card_type="goodbye",
+        )
+        assert buf_welcome.getvalue() != buf_goodbye.getvalue(), (
+            "Welcome and goodbye cards must produce different images"
+        )
+
+    # -- Missing avatar ------------------------------------------------------
+
+    def test_handle_missing_avatar_none(self) -> None:
+        """When avatar_url is None, must not crash and still produce PNG."""
+        buf = self.service.generate_greeting_card(
+            username="NoAvatar",
+            avatar_url=None,
+            guild_name="Server",
+            member_count=50,
+            card_type="welcome",
+        )
+        assert isinstance(buf, io.BytesIO)
+        assert _is_valid_png(buf.getvalue())
+
+    def test_handle_empty_avatar_string(self) -> None:
+        """When avatar_url is empty string, must not crash."""
+        buf = self.service.generate_greeting_card(
+            username="EmptyAvatar",
+            avatar_url="",
+            guild_name="Guild",
+            member_count=10,
+            card_type="goodbye",
+        )
+        assert _is_valid_png(buf.getvalue())
+
+    # -- Edge cases ----------------------------------------------------------
+
+    def test_long_username_does_not_crash(self) -> None:
+        """Very long usernames should not crash or overflow the card."""
+        buf = self.service.generate_greeting_card(
+            username="SuperLongUsernameThatExceedsTheTypical32CharDiscordLimit",
+            avatar_url=None,
+            guild_name="A Guild",
+            member_count=200,
+            card_type="welcome",
+        )
+        assert _is_valid_png(buf.getvalue())
+
+    def test_zero_member_count(self) -> None:
+        """Member count of 0 should not crash."""
+        buf = self.service.generate_greeting_card(
+            username="FirstMember",
+            avatar_url=None,
+            guild_name="New Server",
+            member_count=0,
+            card_type="welcome",
+        )
+        assert _is_valid_png(buf.getvalue())
+
+    def test_high_member_count(self) -> None:
+        """Large member counts should display without overflow."""
+        buf = self.service.generate_greeting_card(
+            username="Member",
+            avatar_url=None,
+            guild_name="Popular Server",
+            member_count=999999,
+            card_type="welcome",
+        )
+        assert _is_valid_png(buf.getvalue())
+
+    def test_invalid_card_type_defaults_to_welcome(self) -> None:
+        """Unknown card_type should not crash — fallback to welcome style."""
+        buf = self.service.generate_greeting_card(
+            username="User",
+            avatar_url=None,
+            guild_name="Guild",
+            member_count=5,
+            card_type="unknown_value",
+        )
+        assert _is_valid_png(buf.getvalue())

@@ -17,6 +17,7 @@ from bot.core.context import NebulosaContext
 from bot.core.database import Database
 from bot.cogs.tickets import TicketActionsView, TicketPanelView
 from bot.services.economy_service import EconomyService
+from bot.services.greeting_service import GreetingService
 from bot.services.guild_service import GuildService
 from bot.services.image_service import ImageService
 from bot.services.infraction_service import InfractionService
@@ -91,6 +92,7 @@ class NebulosaBot(commands.Bot):
         "ticket_service",
         "transcript_service",
         "economy_service",
+        "greeting_service",
         "image_service",
         "_guild_mod_role_cache",
     )
@@ -111,7 +113,8 @@ class NebulosaBot(commands.Bot):
         self.ticket_service: TicketService | None = None
         self.transcript_service: TranscriptService | None = None
         self.economy_service: EconomyService | None = None
-        self.image_service: object | None = None  # ImageService in PR 3
+        self.greeting_service: GreetingService | None = None
+        self.image_service: ImageService | None = None
 
         # Used by bot/utils/checks.py is_mod() to resolve the moderator
         # role without a DB query.  Populated by GuildService.
@@ -176,6 +179,14 @@ class NebulosaBot(commands.Bot):
         self.image_service = ImageService()
         logger.info("ImageService initialised")
 
+        # --- 3f. GreetingService ---
+        self.greeting_service = GreetingService(
+            db=self.db,
+            cache=self.cache,
+            image_service=self.image_service,
+        )
+        logger.info("GreetingService initialised")
+
         # --- 3d. Register persistent views ---
         self.add_view(TicketPanelView())
         self.add_view(TicketActionsView())
@@ -193,6 +204,9 @@ class NebulosaBot(commands.Bot):
 
         await self.load_extension("bot.cogs.stellar")
         logger.info("Cog loaded: StellarCog")
+
+        await self.load_extension("bot.cogs.greetings")
+        logger.info("Cog loaded: GreetingsCog")
 
         await self.load_extension("bot.listeners.xp_listener")
         logger.info("Listener loaded: XPListener")

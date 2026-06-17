@@ -35,10 +35,10 @@ Chain strategy: feature-branch-chain
 
 ## Phase 2: Welcome/Goodbye Feature
 
-- [ ] 2.1 Add `generate_greeting_card()` to `bot/services/image_service.py` — reuse gradient, `_fetch_avatar()`, `_load_font()`; accept `card_type` param for welcome/goodbye styling
-- [ ] 2.2 Create `bot/cogs/greetings.py` — `GreetingsCog` with `on_member_join`/`on_member_remove` listeners + `/welcome` `/goodbye` hybrid config commands (admin-gated)
-- [ ] 2.3 Wire `GreetingService` + `GreetingsCog` in `bot/bot.py` — init service after `ImageService`, load extension
-- [ ] 2.4 Add tests for `GreetingService.dispatch_welcome()` (enabled/disabled/missing channel) and `ImageService.generate_greeting_card()` (returns BytesIO PNG, avatar fallback)
+- [x] 2.1 Add `generate_greeting_card()` to `bot/services/image_service.py` — reuse gradient, `_fetch_avatar()`, `_load_font()`; accept `card_type` param for welcome/goodbye styling
+- [x] 2.2 Create `bot/cogs/greetings.py` — `GreetingsCog` with `on_member_join`/`on_member_remove` listeners + `/welcome` `/goodbye` hybrid config commands (admin-gated)
+- [x] 2.3 Wire `GreetingService` + `GreetingsCog` in `bot/bot.py` — init service after `ImageService`, load extension
+- [x] 2.4 Add tests for `GreetingService.dispatch_welcome()` (enabled/disabled/missing channel) and `ImageService.generate_greeting_card()` (returns BytesIO PNG, avatar fallback)
 
 ## Phase 3: Audit Listener + SentinelCog Refactor
 

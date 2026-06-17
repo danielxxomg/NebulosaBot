@@ -71,15 +71,24 @@ def make_mock_member(
     name: str = "TestUser",
     guild_id: int = 123456789,
 ) -> MagicMock:
-    """Build a mock discord.Member."""
+    """Build a mock discord.Member with a guild that has a mock channel."""
+    # Mock the channel that dispatch will send to.
+    mock_channel = MagicMock()
+    mock_channel.send = AsyncMock()
+
     member = MagicMock()
     member.id = member_id
     member.name = name
+    member.display_name = name
     member.mention = f"<@{member_id}>"
+    member.bot = False
+    member.display_avatar = MagicMock()
+    member.display_avatar.url = "https://cdn.discordapp.com/avatars/333/abc.png"
     member.guild = MagicMock()
     member.guild.id = guild_id
     member.guild.name = "TestServer"
     member.guild.member_count = 150
+    member.guild.get_channel.return_value = mock_channel
     return member
 
 
