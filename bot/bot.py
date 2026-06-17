@@ -21,6 +21,7 @@ from bot.services.greeting_service import GreetingService
 from bot.services.guild_service import GuildService
 from bot.services.image_service import ImageService
 from bot.services.infraction_service import InfractionService
+from bot.services.logging_service import LoggingService
 from bot.services.ticket_service import TicketService
 from bot.services.transcript_service import TranscriptService
 from bot.utils.embeds import error_embed
@@ -94,6 +95,7 @@ class NebulosaBot(commands.Bot):
         "economy_service",
         "greeting_service",
         "image_service",
+        "logging_service",
         "_guild_mod_role_cache",
     )
 
@@ -115,6 +117,7 @@ class NebulosaBot(commands.Bot):
         self.economy_service: EconomyService | None = None
         self.greeting_service: GreetingService | None = None
         self.image_service: ImageService | None = None
+        self.logging_service: LoggingService | None = None
 
         # Used by bot/utils/checks.py is_mod() to resolve the moderator
         # role without a DB query.  Populated by GuildService.
@@ -187,6 +190,10 @@ class NebulosaBot(commands.Bot):
         )
         logger.info("GreetingService initialised")
 
+        # --- 3g. LoggingService ---
+        self.logging_service = LoggingService(self)
+        logger.info("LoggingService initialised")
+
         # --- 3d. Register persistent views ---
         self.add_view(TicketPanelView())
         self.add_view(TicketActionsView())
@@ -210,6 +217,9 @@ class NebulosaBot(commands.Bot):
 
         await self.load_extension("bot.listeners.xp_listener")
         logger.info("Listener loaded: XPListener")
+
+        await self.load_extension("bot.listeners.audit_listener")
+        logger.info("Listener loaded: AuditListener")
 
         # --- 5. Tree sync ---
         logger.info("Syncing command tree ...")

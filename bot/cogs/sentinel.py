@@ -108,64 +108,6 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     # Internal helpers
     # ==================================================================
 
-    async def _log_action(
-        self,
-        guild_id: str,
-        action: str,
-        target: discord.Member,
-        moderator: discord.Member,
-        reason: str,
-    ) -> None:
-        """Send a moderation-action embed to the configured log channel.
-
-        Queries ``GuildService.get_config()`` to resolve the log channel.
-        Silently returns when logging is disabled or the channel is not found.
-        """
-        try:
-            config = await self.bot.guild_service.get_config(guild_id)
-        except Exception:
-            logger.exception("Failed to fetch guild config for log (guild=%s)", guild_id)
-            return
-
-        if not config.log_enabled or not config.log_channel_id:
-            return
-
-        try:
-            channel = self.bot.get_channel(int(config.log_channel_id))
-        except (ValueError, TypeError):
-            logger.warning(
-                "Invalid logChannelId %r for guild %s",
-                config.log_channel_id,
-                guild_id,
-            )
-            return
-
-        if channel is None:
-            return
-
-        embed = discord.Embed(
-            title=f"🔨 {action}",
-            color=discord.Color.red(),
-            timestamp=datetime.now(timezone.utc),
-        )
-        embed.add_field(
-            name="User", value=f"{target.mention} ({target.id})", inline=True
-        )
-        embed.add_field(
-            name="Moderator",
-            value=f"{moderator.mention} ({moderator.id})",
-            inline=True,
-        )
-        embed.add_field(name="Reason", value=reason, inline=False)
-        embed.set_footer(text="NebulosaBot • Sentinel")
-
-        try:
-            await channel.send(embed=embed)
-        except (discord.Forbidden, discord.HTTPException):
-            logger.exception(
-                "Failed to send mod-log embed to channel %s", config.log_channel_id
-            )
-
     @staticmethod
     def _guild_id(ctx: commands.Context) -> str:
         """Return the guild ID as a string for the current context."""
@@ -285,7 +227,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             )
             return
 
-        await self._log_action(
+        await self.bot.logging_service.log_moderation_action(
             guild_id, "Warn", member, ctx.author, reason  # type: ignore[arg-type]
         )
 
@@ -307,7 +249,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                             f"Auto-escalation after {escalation.threshold} warnings"
                         ),
                     )
-                    await self._log_action(
+                    await self.bot.logging_service.log_moderation_action(
                         guild_id,
                         "Mute (Auto-escalation)",
                         member,
@@ -339,7 +281,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                             f"Auto-escalation after {escalation.threshold} warnings"
                         ),
                     )
-                    await self._log_action(
+                    await self.bot.logging_service.log_moderation_action(
                         guild_id,
                         "Kick (Auto-escalation)",
                         member,
@@ -402,7 +344,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             )
             return
 
-        await self._log_action(
+        await self.bot.logging_service.log_moderation_action(
             guild_id,
             "Unwarn",
             member,
@@ -464,7 +406,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         except Exception:
             logger.exception("Failed to insert MUTE infraction (non-fatal)")
 
-        await self._log_action(
+        await self.bot.logging_service.log_moderation_action(
             guild_id, "Mute", member, ctx.author, reason  # type: ignore[arg-type]
         )
 
@@ -496,7 +438,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             await self._handle_mod_error(ctx, exc, "unmute", member)
             return
 
-        await self._log_action(
+        await self.bot.logging_service.log_moderation_action(
             guild_id,
             "Unmute",
             member,
@@ -551,7 +493,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         except Exception:
             logger.exception("Failed to insert KICK infraction (non-fatal)")
 
-        await self._log_action(
+        await self.bot.logging_service.log_moderation_action(
             guild_id, "Kick", member, ctx.author, reason  # type: ignore[arg-type]
         )
 
@@ -608,7 +550,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         except Exception:
             logger.exception("Failed to insert BAN infraction (non-fatal)")
 
-        await self._log_action(
+        await self.bot.logging_service.log_moderation_action(
             guild_id, "Ban", member, ctx.author, reason  # type: ignore[arg-type]
         )
 
@@ -671,7 +613,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             )
             return
 
-        await self._log_action(
+        await self.bot.logging_service.log_moderation_action(
             guild_id,
             "Lock",
             ctx.author,  # type: ignore[arg-type]
@@ -735,7 +677,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             )
             return
 
-        await self._log_action(
+        await self.bot.logging_service.log_moderation_action(
             guild_id,
             "Unlock",
             ctx.author,  # type: ignore[arg-type]
