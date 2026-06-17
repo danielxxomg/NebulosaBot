@@ -93,7 +93,7 @@ class LoggingService:
         """
         if not await self._should_log(guild_id):
             return
-        if not self._can_log_in_channel(before.channel):
+        if not self.can_log_in_channel(before.channel):
             return
 
         channel_name = getattr(before.channel, "name", "unknown")
@@ -128,7 +128,7 @@ class LoggingService:
         """
         if not await self._should_log(guild_id):
             return
-        if not self._can_log_in_channel(message.channel):
+        if not self.can_log_in_channel(message.channel):
             return
 
         channel_name = getattr(message.channel, "name", "unknown")
@@ -274,7 +274,7 @@ class LoggingService:
             return False
         return True
 
-    def _can_log_in_channel(self, channel: discord.abc.GuildChannel) -> bool:
+    def can_log_in_channel(self, channel: discord.abc.GuildChannel) -> bool:
         """Return ``True`` if ``@everyone`` can read messages in *channel*.
 
         Only applies to ``discord.TextChannel`` — non-text channels always

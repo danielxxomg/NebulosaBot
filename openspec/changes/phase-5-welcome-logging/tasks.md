@@ -42,7 +42,7 @@ Chain strategy: feature-branch-chain
 
 ## Phase 3: Audit Listener + SentinelCog Refactor
 
-- [ ] 3.1 Create `bot/listeners/audit_listener.py` — `AuditListener` with 5 listeners: `on_message_edit`, `on_message_delete`, `on_member_update`, `on_guild_channel_create`, `on_guild_channel_delete` (early exits: bot, DM, log channel, disabled)
-- [ ] 3.2 Refactor `bot/cogs/sentinel.py` — replace all 9 `_log_action()` calls with `self.bot.logging_service.log_moderation_action()`; delete `_log_action()` method
-- [ ] 3.3 Wire `AuditListener` in `bot/bot.py` — load extension after `LoggingService` init
-- [ ] 3.4 Add tests for `AuditListener` early exits (bot message, DM, own message, log channel, disabled logging, private channel) and verify SentinelCog handlers call `logging_service`
+- [x] 3.1 Create `bot/listeners/audit_listener.py` — `AuditListener` with 5 listeners: `on_message_edit`, `on_message_delete`, `on_member_update`, `on_guild_channel_create`, `on_guild_channel_delete` (early exits: bot, DM, log channel, disabled)
+- [x] 3.2 Refactor `bot/cogs/sentinel.py` — replace all 9 `_log_action()` calls with `self.bot.logging_service.log_moderation_action()`; delete `_log_action()` method
+- [x] 3.3 Wire `AuditListener` in `bot/bot.py` — load extension after `LoggingService` init
+- [x] 3.4 Add tests for `AuditListener` early exits (bot message, DM, own message, log channel, disabled logging, private channel) and verify SentinelCog handlers call `logging_service`

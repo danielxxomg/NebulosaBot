@@ -4,7 +4,7 @@ Covers the logging-service spec scenarios:
     - Embed building per event type (edit, delete, join, leave, update, channel create/delete)
     - Log moderation action
     - Routing guards: logging disabled, missing channel, private channel skip
-    - _can_log_in_channel: visibility filter
+    - can_log_in_channel: visibility filter
 
 Strict TDD: tests written BEFORE implementation (RED phase).
 """
@@ -119,7 +119,7 @@ async def _setup_service_and_config(
 
 
 # ---------------------------------------------------------------------------
-# _can_log_in_channel — visibility filter
+# can_log_in_channel — visibility filter
 # ---------------------------------------------------------------------------
 
 
@@ -132,7 +132,7 @@ class TestCanLogInChannel:
         channel = make_mock_channel(everyone_read_messages=True)
         service, _, _ = await _setup_service_and_config()
 
-        result = service._can_log_in_channel(channel)
+        result = service.can_log_in_channel(channel)
         assert result is True
 
     @pytest.mark.asyncio
@@ -141,7 +141,7 @@ class TestCanLogInChannel:
         channel = make_mock_channel(everyone_read_messages=None)
         service, _, _ = await _setup_service_and_config()
 
-        result = service._can_log_in_channel(channel)
+        result = service.can_log_in_channel(channel)
         assert result is True
 
     @pytest.mark.asyncio
@@ -150,7 +150,7 @@ class TestCanLogInChannel:
         channel = make_mock_channel(everyone_read_messages=False)
         service, _, _ = await _setup_service_and_config()
 
-        result = service._can_log_in_channel(channel)
+        result = service.can_log_in_channel(channel)
         assert result is False
 
     @pytest.mark.asyncio
@@ -159,7 +159,7 @@ class TestCanLogInChannel:
         channel = make_mock_channel(is_text=False, everyone_read_messages=True)
         service, _, _ = await _setup_service_and_config()
 
-        result = service._can_log_in_channel(channel)
+        result = service.can_log_in_channel(channel)
         assert result is False
 
 
