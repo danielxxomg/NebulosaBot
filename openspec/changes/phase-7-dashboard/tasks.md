@@ -9,11 +9,11 @@
 | Chained PRs recommended | Yes |
 | Suggested split | PR 1 → PR 2 → PR 3 → PR 4 |
 | Delivery strategy | ask-on-risk |
-| Chain strategy | pending |
+| Chain strategy | feature-branch-chain (PR 2) |
 
 Decision needed before apply: Yes
 Chained PRs recommended: Yes
-Chain strategy: pending
+Chain strategy: feature-branch-chain (PR 2 in progress)
 400-line budget risk: High
 
 ### Suggested Work Units
@@ -38,20 +38,20 @@ Chain strategy: pending
 
 - [x] 2.1 Create `dashboard/lib/supabase.ts` — single-file Supabase clients: browser (anon key), server (cookie auth), and service role (bypasses RLS)
 - [x] 2.2 Create `dashboard/lib/supabase.ts` — browser Supabase client via `createClient()` (included in single-file supabase module)
-- [ ] 2.3 Create `dashboard/lib/supabase/middleware.ts` — session refresh helper for middleware
-- [ ] 2.4 Create `dashboard/middleware.ts` — auth guard redirecting to `/login`, guild admin check with Discord API + Supabase active guild
+- [x] 2.3 Create `dashboard/lib/supabase/middleware.ts` — session refresh helper for middleware
+- [x] 2.4 Create `dashboard/middleware.ts` — auth guard redirecting to `/login`, guild admin check with Discord API + Supabase active guild
 - [x] 2.5 Create `dashboard/lib/discord.ts` — `fetchUserGuilds()`, `fetchGuildInfo()`, and `hasAdministratorPerm()` helpers
-- [ ] 2.6 Create `dashboard/app/login/page.tsx` — Discord OAuth2 login button
-- [ ] 2.7 Create `dashboard/app/api/auth/callback/route.ts` — exchanges OAuth2 code for Supabase session
+- [x] 2.6 Create `dashboard/app/login/page.tsx` — Discord OAuth2 login button
+- [x] 2.7 Create `dashboard/app/api/auth/callback/route.ts` — exchanges OAuth2 code for Supabase session
 
 ## Phase 3: Layout & Navigation
 
-- [ ] 3.1 Create `dashboard/app/layout.tsx` — root layout with sidebar shell and session provider
-- [ ] 3.2 Create `dashboard/components/sidebar.tsx` — nav links (overview, config, economy, greeting), mobile toggle
-- [ ] 3.3 Create `dashboard/app/page.tsx` — guild selector: fetches Discord guilds, filters admin+active, renders GuildCards
-- [ ] 3.4 Create `dashboard/components/guild-card.tsx` — guild icon, name, link to `/guilds/[id]`
-- [ ] 3.5 Create `dashboard/app/guilds/[guildId]/layout.tsx` — guild context layout with permission re-check
-- [ ] 3.6 Create `dashboard/app/guilds/[guildId]/page.tsx` — guild overview with config summary cards
+- [x] 3.1 Create `dashboard/app/layout.tsx` — root layout with sidebar shell and session provider
+- [x] 3.2 Create `dashboard/components/sidebar.tsx` — nav links (overview, config, economy, greeting), mobile toggle
+- [x] 3.3 Create `dashboard/app/page.tsx` — guild selector: fetches Discord guilds, filters admin+active, renders GuildCards
+- [x] 3.4 Create `dashboard/components/guild-card.tsx` — guild icon, name, link to `/guilds/[id]`
+- [x] 3.5 Create `dashboard/app/guilds/[guildId]/layout.tsx` — guild context layout with permission re-check
+- [x] 3.6 Create `dashboard/app/guilds/[guildId]/page.tsx` — guild overview with config summary cards
 
 ## Phase 4: Config Pages & Server Actions
 
