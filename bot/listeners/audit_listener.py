@@ -1,6 +1,6 @@
 """AuditListener — passive event listeners for audit logging.
 
-Listens to 5 Discord gateway events and routes them to
+Listens to 7 Discord gateway events and routes them to
 :class:`~bot.services.logging_service.LoggingService` for embed
 generation and delivery.  Early exits for bot messages and DMs
 keep the listener cheap; all config-based guards (enabled/disabled,
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class AuditListener(commands.Cog):
-    """Passive listeners for audit-logging 5 event types.
+    """Passive listeners for audit-logging 7 event types.
 
     Early exits (bot, DM, non-loggable channel) happen here before
     delegating to :class:`LoggingService`.  The service owns the
@@ -84,6 +84,28 @@ class AuditListener(commands.Cog):
 
         guild_id = str(before.guild.id)
         await self._logging.log_member_update(guild_id, before, after)
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member) -> None:
+        """Log member joins — skip bots."""
+        if member.bot:
+            return
+        if member.guild is None:
+            return
+
+        guild_id = str(member.guild.id)
+        await self._logging.log_member_join(guild_id, member)
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member: discord.Member) -> None:
+        """Log member leaves — skip bots."""
+        if member.bot:
+            return
+        if member.guild is None:
+            return
+
+        guild_id = str(member.guild.id)
+        await self._logging.log_member_leave(guild_id, member)
 
     # ------------------------------------------------------------------
     # Channel events

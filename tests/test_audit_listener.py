@@ -30,6 +30,8 @@ def make_mock_logging_service() -> MagicMock:
     svc = MagicMock()
     svc.log_message_edit = AsyncMock()
     svc.log_message_delete = AsyncMock()
+    svc.log_member_join = AsyncMock()
+    svc.log_member_leave = AsyncMock()
     svc.log_member_update = AsyncMock()
     svc.log_channel_create = AsyncMock()
     svc.log_channel_delete = AsyncMock()
@@ -281,6 +283,76 @@ class TestOnMemberUpdate:
         # Listener always calls — LoggingService decides whether to send.
         mock_logging.log_member_update.assert_awaited_once_with(
             "123456789", before, after,
+        )
+
+
+# ---------------------------------------------------------------------------
+# AuditListener: on_member_join
+# ---------------------------------------------------------------------------
+
+
+class TestOnMemberJoin:
+    """Member join listener — delegates to log_member_join."""
+
+    @pytest.mark.asyncio
+    async def test_skip_bot_members(
+        self, listener: commands.Cog, mock_logging: MagicMock,
+    ) -> None:
+        """Bot member joins must be skipped."""
+        member = make_mock_member(member_id=888, name="BotUser")
+        member.bot = True
+
+        await listener.on_member_join(member)  # type: ignore[union-attr]
+
+        mock_logging.log_member_join.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_calls_log_member_join_on_valid_member(
+        self, listener: commands.Cog, mock_logging: MagicMock,
+    ) -> None:
+        """Valid member join must call log_member_join with correct args."""
+        member = make_mock_member(member_id=333, name="NewUser")
+        member.bot = False
+
+        await listener.on_member_join(member)  # type: ignore[union-attr]
+
+        mock_logging.log_member_join.assert_awaited_once_with(
+            "123456789", member,
+        )
+
+
+# ---------------------------------------------------------------------------
+# AuditListener: on_member_remove
+# ---------------------------------------------------------------------------
+
+
+class TestOnMemberRemove:
+    """Member leave listener — delegates to log_member_leave."""
+
+    @pytest.mark.asyncio
+    async def test_skip_bot_members(
+        self, listener: commands.Cog, mock_logging: MagicMock,
+    ) -> None:
+        """Bot member leaves must be skipped."""
+        member = make_mock_member(member_id=888, name="BotUser")
+        member.bot = True
+
+        await listener.on_member_remove(member)  # type: ignore[union-attr]
+
+        mock_logging.log_member_leave.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_calls_log_member_leave_on_valid_member(
+        self, listener: commands.Cog, mock_logging: MagicMock,
+    ) -> None:
+        """Valid member leave must call log_member_leave with correct args."""
+        member = make_mock_member(member_id=444, name="LeavingUser")
+        member.bot = False
+
+        await listener.on_member_remove(member)  # type: ignore[union-attr]
+
+        mock_logging.log_member_leave.assert_awaited_once_with(
+            "123456789", member,
         )
 
 
