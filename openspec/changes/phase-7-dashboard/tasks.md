@@ -55,19 +55,19 @@ Chain strategy: feature-branch-chain (PR 2 in progress)
 
 ## Phase 4: Config Pages & Server Actions
 
-- [ ] 4.1 Create `dashboard/lib/actions/guild-actions.ts` — `updateGuildConfig()` with validation (prefix length, language code, snowflake IDs), auth re-check, Supabase UPDATE, revalidatePath
-- [ ] 4.2 Create `dashboard/app/guilds/[guildId]/config/page.tsx` — form with prefix, language, modRoleId, logChannelId, ticketCategoryId, logEnabled
-- [ ] 4.3 Create `dashboard/lib/actions/economy-actions.ts` — `updateEconomyConfig()` with numeric validation, auth re-check
-- [ ] 4.4 Create `dashboard/app/guilds/[guildId]/economy/page.tsx` — form with dailyReward, xpPerMessage, cooldowns, levelRoles, levelUpChannelId
-- [ ] 4.5 Create `dashboard/lib/actions/greeting-actions.ts` — `updateGreetingConfig()` with channel/message validation, auth re-check
-- [ ] 4.6 Create `dashboard/app/guilds/[guildId]/greeting/page.tsx` — form with welcome/goodbye toggles, channel IDs, messages, card toggles
-- [ ] 4.7 Create `dashboard/components/config-form.tsx` — reusable form wrapper with Server Action integration, field errors, success/warning toasts
+- [x] 4.1 Create `dashboard/lib/actions/guild-actions.ts` — `updateGuildConfig()` with validation (prefix length, language code, snowflake IDs), auth re-check, Supabase UPDATE, revalidatePath
+- [x] 4.2 Create `dashboard/app/guilds/[guildId]/config/page.tsx` — form with prefix, language, modRoleId, logChannelId, ticketCategoryId, logEnabled
+- [x] 4.3 Create `dashboard/lib/actions/economy-actions.ts` — `updateEconomyConfig()` with numeric validation, auth re-check
+- [x] 4.4 Create `dashboard/app/guilds/[guildId]/economy/page.tsx` — form with dailyReward, xpPerMessage, cooldowns, levelRoles, levelUpChannelId
+- [x] 4.5 Create `dashboard/lib/actions/greeting-actions.ts` — `updateGreetingConfig()` with channel/message validation, auth re-check
+- [x] 4.6 Create `dashboard/app/guilds/[guildId]/greeting/page.tsx` — form with welcome/goodbye toggles, channel IDs, messages, card toggles
+- [x] 4.7 Create `dashboard/components/config-form.tsx` — reusable form wrapper with Server Action integration, field errors, success/warning toasts
 
 ## Phase 5: Testing
 
-- [ ] 5.1 Configure Vitest in `dashboard/vitest.config.ts` with jsdom environment
-- [ ] 5.2 Write `dashboard/__tests__/lib/discord.test.ts` — test `hasAdministratorPerm()` bitfield check, `getUserGuilds()` filtering
-- [ ] 5.3 Write `dashboard/__tests__/lib/actions/guild-actions.test.ts` — test validation (prefix too long, invalid language, bad snowflake), unauthorized rejection, successful update
-- [ ] 5.4 Write `dashboard/__tests__/lib/actions/economy-actions.test.ts` — test numeric bounds, auth check
-- [ ] 5.5 Write `dashboard/__tests__/lib/actions/greeting-actions.test.ts` — test channel ID validation, message length
-- [ ] 5.6 Write `dashboard/__tests__/lib/types.test.ts` — snapshot test TS interfaces match expected shape
+- [x] 5.1 Configure Vitest in `dashboard/vitest.config.ts` with jsdom environment
+- [x] 5.2 Write `dashboard/__tests__/lib/discord.test.ts` — test `hasAdministratorPerm()` bitfield check, `getUserGuilds()` filtering
+- [x] 5.3 Write `dashboard/__tests__/lib/actions/guild-actions.test.ts` — test validation (prefix too long, invalid language, bad snowflake), unauthorized rejection, successful update
+- [x] 5.4 Write `dashboard/__tests__/lib/actions/economy-actions.test.ts` — test numeric bounds, auth check
+- [x] 5.5 Write `dashboard/__tests__/lib/actions/greeting-actions.test.ts` — test channel ID validation, message length
+- [x] 5.6 Write `dashboard/__tests__/lib/types.test.ts` — snapshot test TS interfaces match expected shape
