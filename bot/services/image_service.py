@@ -225,6 +225,114 @@ class ImageService:
         return buffer
 
     # ------------------------------------------------------------------
+    # Greeting card generation
+    # ------------------------------------------------------------------
+
+    # Greeting card layout constants
+    GREETING_AVATAR_X = 60
+    GREETING_AVATAR_Y = 77
+    GREETING_AVATAR_SIZE = 128
+
+    GREETING_TITLE_X = 210
+    GREETING_TITLE_Y = 80
+
+    GREETING_COUNT_X = 210
+    GREETING_COUNT_Y = 170
+
+    GREETING_TITLE_COLOR = (255, 255, 255, 255)
+    GREETING_COUNT_COLOR = (185, 187, 190, 255)
+
+    def generate_greeting_card(
+        self,
+        username: str,
+        avatar_url: str | None,
+        guild_name: str,
+        member_count: int,
+        card_type: str = "welcome",
+    ) -> io.BytesIO:
+        """Generate a welcome or goodbye card PNG image.
+
+        Args:
+            username: The member's display name.
+            avatar_url: URL to the member's avatar, or ``None`` for a
+                default placeholder.
+            guild_name: Name of the guild (server).
+            member_count: Current member count for the guild.
+            card_type: ``"welcome"`` or ``"goodbye"`` — determines the
+                greeting text.  Unknown values fall back to ``"welcome"``.
+
+        Returns:
+            A :class:`io.BytesIO` buffer containing the PNG image.
+        """
+        if card_type not in ("welcome", "goodbye"):
+            card_type = "welcome"
+
+        # -- Base image with gradient background --------------------------
+        img = Image.new("RGBA", (CARD_WIDTH, CARD_HEIGHT))
+        draw = ImageDraw.Draw(img)
+
+        for y in range(CARD_HEIGHT):
+            ratio = y / CARD_HEIGHT
+            r = int(BG_TOP[0] + (BG_BOTTOM[0] - BG_TOP[0]) * ratio)
+            g = int(BG_TOP[1] + (BG_BOTTOM[1] - BG_TOP[1]) * ratio)
+            b = int(BG_TOP[2] + (BG_BOTTOM[2] - BG_TOP[2]) * ratio)
+            draw.line([(0, y), (CARD_WIDTH, y)], fill=(r, g, b, 255))
+
+        # -- Load fonts ---------------------------------------------------
+        font_title = self._load_font(32)
+        font_count = self._load_font(22)
+
+        # -- Avatar (circular crop) ----------------------------------------
+        avatar = self._fetch_avatar(avatar_url)
+        if avatar is not None:
+            avatar = avatar.resize(
+                (self.GREETING_AVATAR_SIZE, self.GREETING_AVATAR_SIZE),
+                Image.LANCZOS,
+            )
+            mask = Image.new("L", (self.GREETING_AVATAR_SIZE, self.GREETING_AVATAR_SIZE), 0)
+            ImageDraw.Draw(mask).ellipse(
+                (0, 0, self.GREETING_AVATAR_SIZE, self.GREETING_AVATAR_SIZE),
+                fill=255,
+            )
+            avatar.putalpha(mask)
+            img.paste(
+                avatar,
+                (self.GREETING_AVATAR_X, self.GREETING_AVATAR_Y),
+                avatar,
+            )
+
+        # -- Greeting title (e.g. "Welcome, Username!") --------------------
+        greeting = "Welcome" if card_type == "welcome" else "Goodbye"
+
+        # Truncate username if too long.
+        display_name = username[:MAX_USERNAME_DISPLAY]
+        if len(username) > MAX_USERNAME_DISPLAY:
+            display_name += "…"
+
+        title_text = f"{greeting},\n{display_name}!"
+        draw.text(
+            (self.GREETING_TITLE_X, self.GREETING_TITLE_Y),
+            title_text,
+            fill=self.GREETING_TITLE_COLOR,
+            font=font_title,
+        )
+
+        # -- Member count --------------------------------------------------
+        count_text = f"Member #{member_count:,}"
+        draw.text(
+            (self.GREETING_COUNT_X, self.GREETING_COUNT_Y),
+            count_text,
+            fill=self.GREETING_COUNT_COLOR,
+            font=font_count,
+        )
+
+        # -- Encode to PNG buffer ------------------------------------------
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        buffer.seek(0)
+        return buffer
+
+    # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
 

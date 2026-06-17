@@ -6,15 +6,19 @@ and dispatches welcome/goodbye cards via ImageService.
 
 from __future__ import annotations
 
+import asyncio
+import io
 import logging
 from typing import TYPE_CHECKING
+
+import discord
 
 from bot.models.greeting_config import GreetingConfig
 
 if TYPE_CHECKING:
-    import discord
     from bot.core.cache import TTLCache
     from bot.core.database import Database
+    from bot.services.image_service import ImageService
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +42,8 @@ class GreetingService:
         self,
         db: Database,
         cache: TTLCache,
-        image_service: object,
-    ) -> None:
+    image_service: ImageService,
+) -> None:
         self._db = db
         self._cache = cache
         self._image_service = image_service
@@ -93,8 +97,7 @@ class GreetingService:
         """Send a welcome card/message for *member*, if configured.
 
         Resolves the greeting config.  If welcome is enabled and a channel
-        is set, delegates to ``ImageService.generate_greeting_card()``
-        (wired in Phase 2).
+        is set, generates a greeting card via ``ImageService`` and sends it.
         """
         guild_id = str(member.guild.id)
         config = await self.get_config(guild_id)
@@ -104,13 +107,32 @@ class GreetingService:
         if not config.welcome_channel_id:
             return
 
-        # Phase 2: generate and send the card via ImageService.
-        # card = await asyncio.to_thread(
-        #     self._image_service.generate_greeting_card, ...)
-        # await channel.send(file=discord.File(card))
+        channel = member.guild.get_channel(int(config.welcome_channel_id))
+        if channel is None:
+            logger.warning(
+                "dispatch_welcome: channel %s not found for guild %s",
+                config.welcome_channel_id, guild_id,
+            )
+            return
+
+        avatar_url = _resolve_avatar_url(member)
+        buffer: io.BytesIO = await asyncio.to_thread(
+            self._image_service.generate_greeting_card,
+            username=member.display_name,
+            avatar_url=avatar_url,
+            guild_name=member.guild.name,
+            member_count=member.guild.member_count,
+            card_type="welcome",
+        )
+
+        file = discord.File(buffer, filename="welcome.png")
+        message_template = config.welcome_message or ""
+        content = _format_template(message_template, member) if message_template else ""
+
+        await channel.send(content=content if content else None, file=file)
 
         logger.info(
-            "dispatch_welcome: enabled for guild %s, channel %s, member %s",
+            "dispatch_welcome: sent for guild %s, channel %s, member %s",
             guild_id, config.welcome_channel_id, member.name,
         )
 
@@ -118,8 +140,7 @@ class GreetingService:
         """Send a goodbye card/message for *member*, if configured.
 
         Resolves the greeting config.  If goodbye is enabled and a channel
-        is set, delegates to ``ImageService.generate_greeting_card()``
-        (wired in Phase 2).
+        is set, generates a goodbye card via ``ImageService`` and sends it.
         """
         guild_id = str(member.guild.id)
         config = await self.get_config(guild_id)
@@ -129,12 +150,61 @@ class GreetingService:
         if not config.goodbye_channel_id:
             return
 
-        # Phase 2: generate and send the card via ImageService.
-        # card = await asyncio.to_thread(
-        #     self._image_service.generate_greeting_card, ...)
-        # await channel.send(file=discord.File(card))
+        channel = member.guild.get_channel(int(config.goodbye_channel_id))
+        if channel is None:
+            logger.warning(
+                "dispatch_goodbye: channel %s not found for guild %s",
+                config.goodbye_channel_id, guild_id,
+            )
+            return
+
+        avatar_url = _resolve_avatar_url(member)
+        buffer: io.BytesIO = await asyncio.to_thread(
+            self._image_service.generate_greeting_card,
+            username=member.display_name,
+            avatar_url=avatar_url,
+            guild_name=member.guild.name,
+            member_count=member.guild.member_count,
+            card_type="goodbye",
+        )
+
+        file = discord.File(buffer, filename="goodbye.png")
+        message_template = config.goodbye_message or ""
+        content = _format_template(message_template, member) if message_template else ""
+
+        await channel.send(content=content if content else None, file=file)
 
         logger.info(
-            "dispatch_goodbye: enabled for guild %s, channel %s, member %s",
+            "dispatch_goodbye: sent for guild %s, channel %s, member %s",
             guild_id, config.goodbye_channel_id, member.name,
         )
+
+
+# ------------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------------
+
+
+def _format_template(template: str, member) -> str:
+    """Format a message template string with member placeholders.
+
+    Supported placeholders: ``{mention}``, ``{user}``, ``{server}``.
+    Unknown placeholders are left as-is.
+    """
+    try:
+        return template.format(
+            mention=member.mention,
+            user=member.mention,
+            server=member.guild.name,
+        )
+    except (KeyError, ValueError):
+        return template
+
+
+def _resolve_avatar_url(member) -> str | None:
+    """Return the display avatar URL for *member*, or ``None`` on failure."""
+    try:
+        return str(member.display_avatar.url)
+    except Exception:
+        logger.debug("Could not resolve avatar URL for user %s", member.id, exc_info=True)
+        return None
