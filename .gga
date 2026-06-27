@@ -1,8 +1,8 @@
 # Gentleman Guardian Angel — NebulosaBot
-# Provider: OpenCode (suscripción opencode-go)
-# Model: qwen3.7-plus
+# Provider: Command Code
+# Model: MiMo V2.5 Pro
 
-PROVIDER="opencode:opencode-go/qwen3.7-plus"
+PROVIDER="opencode:commandcode/mimo-v2.5-pro"
 
 FILE_PATTERNS="*.py"
 EXCLUDE_PATTERNS="__pycache__,*.pyc,.mypy_cache,.pytest_cache,tests/"
@@ -10,4 +10,4 @@ RULES_FILE="AGENTS.md"
 STRICT_MODE="true"
 TIMEOUT=500
 
-PR_BASE_BRANCH="feature/phase-1-core-foundation"
+PR_BASE_BRANCH="master"
