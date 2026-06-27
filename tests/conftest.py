@@ -6,6 +6,8 @@ mock objects that avoid hitting the real Discord API or Supabase.
 
 from __future__ import annotations
 
+import asyncio
+import selectors
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
@@ -14,6 +16,25 @@ import pytest
 from bot.core.cache import TTLCache
 from bot.core.database import Database
 from bot.models.guild import GuildConfig
+
+
+# ---------------------------------------------------------------------------
+# Event-loop factory — force PollSelector on Python ≥ 3.14
+# ---------------------------------------------------------------------------
+# Python 3.14's asyncio.Runner + EpollSelector can hit OSError EINVAL
+# (epoll fd invalidated) when many function-scoped loops are created and
+# destroyed in a single pytest session.  PollSelector avoids the epoll
+# syscall entirely and eliminates the flake.  See GH issue #TBD.
+
+
+@pytest.fixture(scope="session")
+def _asyncio_loop_factory():
+    """Return a loop factory that uses PollSelector instead of EpollSelector."""
+
+    def _factory() -> asyncio.AbstractEventLoop:
+        return asyncio.SelectorEventLoop(selectors.PollSelector())
+
+    return _factory
 
 
 # ---------------------------------------------------------------------------
