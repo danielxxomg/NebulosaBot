@@ -1,10 +1,6 @@
-# Mod Logging Specification
+# Delta for Mod Logging
 
-## Purpose
-
-Emit embeds to the configured log channel for every moderation action.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Log actions to channel
 
