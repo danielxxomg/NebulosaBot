@@ -76,3 +76,26 @@
 - ❌ Using `on_ready` for cog loading or tree sync
 - ❌ `timeout=None` without `custom_id` on persistent views
 - ❌ Bare `except:` — always catch specific exceptions
+
+## GGA Review Discipline
+
+These rules bind the Gentleman Guardian Angel (GGA) reviewer so strict
+mode blocks only on real AGENTS.md violations, not on opinion or
+inherited debt.
+
+- **Cite the rule**: every blocking violation MUST cite the specific
+  AGENTS.md section or bullet it violates. Stylistic suggestions,
+  framework-idiom preferences, and "consider X" advice that do not map
+  to an explicit AGENTS.md rule are non-blocking observations, not
+  failures.
+- **Scope to the diff**: blocking violations MUST be in lines added or
+  modified by the commit. Pre-existing issues in untouched code of a
+  file the diff happens to touch are tech-debt notes to file for a
+  later pass, not commit blockers.
+- **No false positives**: before blocking, verify the claimed
+  violation against the actual code at the cited location. If the code
+  already conforms (e.g. return type hints present, error_embed used),
+  the violation is invalid and must not block.
+- **Bundled scope ok**: a restoration/scoping commit that wires in
+  previously-uncommitted artifacts is judged only on the artifacts it
+  restores plus the wiring lines — not on adjacent pre-existing debt.
