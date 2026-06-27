@@ -283,7 +283,7 @@ class NebulosaBot(commands.Bot):
         # Delegate to per-command handlers if they exist.
         if interaction.command is not None:
             cog = interaction.command.cog
-            if cog is not None and cog.cog_app_command_error is not None:
+            if cog is not None and cog.has_app_command_error_handler():
                 return
 
         embed = error_embed("Unexpected Error", str(error))
