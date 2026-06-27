@@ -346,12 +346,19 @@ class TestClaimDaily:
         user_id = "111111111"
 
         mock_db.get_economy_config.return_value = default_config_row
+        # lastDaily 26h ago -> passes the 24h cooldown check regardless of
+        # time of day (26h > 24h always).
         yesterday_26h = datetime.now(timezone.utc) - timedelta(hours=26)
-        yesterday_20h = datetime.now(timezone.utc) - timedelta(hours=20)
+        # lastDailyReset must fall on YESTERDAY's calendar date at any time
+        # of day so the "consecutive day" branch fires deterministically.
+        # timedelta(hours=20) only equals yesterday before 20:00 UTC; after
+        # that, 20h ago is still today and the same-day branch fires
+        # (giving new_streak=old_streak instead of old_streak+1).
+        yesterday = datetime.now(timezone.utc) - timedelta(days=1)
         member_with_streak = {
             **member_row,
             "dailyStreak": 3,
-            "lastDailyReset": yesterday_20h.isoformat(),
+            "lastDailyReset": yesterday.isoformat(),
             "lastDaily": yesterday_26h.isoformat(),
         }
         mock_db.get_member.return_value = member_with_streak
@@ -373,12 +380,17 @@ class TestClaimDaily:
         user_id = "111111111"
 
         mock_db.get_economy_config.return_value = default_config_row
+        # Same deterministic "yesterday" construction as the consecutive
+        # test (see comment there). Without this, the cap test passes
+        # via the same-day branch after 20:00 UTC instead of actually
+        # exercising the consecutive-day cap path — masking the same
+        # latent flake.
         yesterday_26h = datetime.now(timezone.utc) - timedelta(hours=26)
-        yesterday_20h = datetime.now(timezone.utc) - timedelta(hours=20)
+        yesterday = datetime.now(timezone.utc) - timedelta(days=1)
         member_max_streak = {
             **member_row,
             "dailyStreak": 7,
-            "lastDailyReset": yesterday_20h.isoformat(),
+            "lastDailyReset": yesterday.isoformat(),
             "lastDaily": yesterday_26h.isoformat(),
         }
         mock_db.get_member.return_value = member_max_streak
