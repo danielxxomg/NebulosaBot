@@ -44,25 +44,25 @@ jobs:
       - name: Install dependencies
         run: |
           pip install uv
-          uv sync --dev
+          uv sync --extra dev
 
       - name: Ruff check
-        run: uv run ruff check bot/services/economy_service.py tests/conftest.py tests/property/ tests/test_economy_service.py tests/test_guild_service.py
+        run: uv run --extra dev ruff check bot/services/economy_service.py bot/config.py tests/conftest.py tests/property/ tests/test_economy_service.py tests/test_guild_service.py tests/test_config.py tests/test_database.py tests/test_sentinel_cog.py tests/test_tickets_cog.py tests/test_greeting_service.py tests/integration/
 
       - name: Ruff format check
-        run: uv run ruff format --check bot/services/economy_service.py tests/conftest.py tests/property/ tests/test_economy_service.py tests/test_guild_service.py
+        run: uv run --extra dev ruff format --check bot/services/economy_service.py bot/config.py tests/conftest.py tests/property/ tests/test_economy_service.py tests/test_guild_service.py tests/test_config.py tests/test_database.py tests/test_sentinel_cog.py tests/test_tickets_cog.py tests/test_greeting_service.py tests/integration/
 
       - name: Mypy
-        run: uv run mypy bot/services/economy_service.py tests/conftest.py tests/test_guild_service.py
+        run: uv run --extra dev mypy bot/services/economy_service.py bot/config.py tests/conftest.py tests/test_guild_service.py tests/test_config.py tests/test_database.py
 
       - name: Bandit
-        run: uv run bandit -r bot/ -c pyproject.toml --severity-level medium
+        run: uv run --extra dev bandit -r bot/ -c pyproject.toml --severity-level medium
 
       - name: pip-audit
-        run: uv run --with pip-audit pip-audit -l --strict
+        run: uv run --extra dev --with pip-audit pip-audit -l --strict
 
       - name: Tests with coverage
-        run: uv run pytest
+        run: uv run --extra dev pytest
 
       - name: Upload coverage
         if: matrix.python-version == '3.12'
@@ -79,5 +79,5 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install uv && uv sync --dev
-      - run: uv run --with pip-audit pip-audit -l --strict
+      - run: pip install uv && uv sync --extra dev
+      - run: uv run --extra dev --with pip-audit pip-audit -l --strict
