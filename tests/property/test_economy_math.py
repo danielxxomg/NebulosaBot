@@ -16,19 +16,19 @@ from __future__ import annotations
 
 import sys
 
-from hypothesis import given, settings, assume
+from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
 from bot.services.economy_service import EconomyService
 
 # Deterministic domain per spec.
-level_strategy = st.integers(min_value=0, max_value=1000)
-xp_strategy = st.integers(min_value=0, max_value=10_000_000)
-base_strategy = st.integers(min_value=1, max_value=1000)
-multiplier_strategy = st.floats(min_value=1.01, max_value=10.0, allow_nan=False, allow_infinity=False)
+LEVEL_STRATEGY = st.integers(min_value=0, max_value=1000)
+XP_STRATEGY = st.integers(min_value=0, max_value=10_000_000)
+BASE_STRATEGY = st.integers(min_value=1, max_value=1000)
+MULTIPLIER_STRATEGY = st.floats(min_value=1.01, max_value=10.0, allow_nan=False, allow_infinity=False)
 
 
-@given(level=level_strategy, base=base_strategy, multiplier=multiplier_strategy)
+@given(level=LEVEL_STRATEGY, base=BASE_STRATEGY, multiplier=MULTIPLIER_STRATEGY)
 @settings(max_examples=200, deadline=None)
 def test_compute_xp_for_level_positive(level, base, multiplier):
     """XP threshold for any level >= 0 must be non-negative."""
@@ -39,8 +39,8 @@ def test_compute_xp_for_level_positive(level, base, multiplier):
 @given(
     level_a=st.integers(min_value=0, max_value=999),
     level_b=st.integers(min_value=1, max_value=1000),
-    base=base_strategy,
-    multiplier=multiplier_strategy,
+    base=BASE_STRATEGY,
+    multiplier=MULTIPLIER_STRATEGY,
 )
 @settings(max_examples=200, deadline=None)
 def test_compute_xp_for_level_monotonic(level_a, level_b, base, multiplier):
@@ -53,7 +53,7 @@ def test_compute_xp_for_level_monotonic(level_a, level_b, base, multiplier):
     assert xp_b > xp_a
 
 
-@given(xp=xp_strategy, base=base_strategy, multiplier=multiplier_strategy)
+@given(xp=XP_STRATEGY, base=BASE_STRATEGY, multiplier=MULTIPLIER_STRATEGY)
 @settings(max_examples=200, deadline=None)
 def test_compute_level_non_negative(xp, base, multiplier):
     """Level must be >= 0 for any valid XP."""
@@ -62,10 +62,10 @@ def test_compute_level_non_negative(xp, base, multiplier):
 
 
 @given(
-    xp_a=xp_strategy,
-    xp_b=xp_strategy,
-    base=base_strategy,
-    multiplier=multiplier_strategy,
+    xp_a=XP_STRATEGY,
+    xp_b=XP_STRATEGY,
+    base=BASE_STRATEGY,
+    multiplier=MULTIPLIER_STRATEGY,
 )
 @settings(max_examples=200, deadline=None)
 def test_compute_level_monotonic(xp_a, xp_b, base, multiplier):
