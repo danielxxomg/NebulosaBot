@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import selectors
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
@@ -23,7 +23,7 @@ from bot.core.database import Database
 from bot.models.guild import GuildConfig
 
 # Frozen deterministic timestamp: 2024-06-15 12:00:00 UTC
-_FROZEN_NOW = datetime(2024, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+_FROZEN_NOW = datetime(2024, 6, 15, 12, 0, 0, tzinfo=UTC)
 
 
 # ---------------------------------------------------------------------------

@@ -9,10 +9,8 @@ from hypothesis import strategies as st
 
 from bot.services.economy_service import EconomyService
 
-# NOTE: level capped at 100 for smoke test to avoid float overflow
-# at extreme multiplier * level combos (10.0^309).  PR3 full battery
-# will include the [0, 1000] range after a production overflow guard.
-level_strategy = st.integers(min_value=0, max_value=100)
+# Deterministic domain per spec: levels [0, 1000], XP [0, 10_000_000].
+level_strategy = st.integers(min_value=0, max_value=1000)
 xp_strategy = st.integers(min_value=0, max_value=10_000_000)
 base_strategy = st.integers(min_value=1, max_value=1000)
 multiplier_strategy = st.floats(min_value=1.01, max_value=10.0, allow_nan=False, allow_infinity=False)
