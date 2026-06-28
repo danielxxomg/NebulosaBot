@@ -6,11 +6,11 @@
 # -----------------------------------------------------------------
 
 lint:
-	uv run ruff check bot/services/economy_service.py tests/conftest.py tests/property/ tests/test_economy_service.py tests/test_guild_service.py
-	uv run ruff format --check bot/services/economy_service.py tests/conftest.py tests/property/ tests/test_economy_service.py tests/test_guild_service.py
+	uv run ruff check bot/services/economy_service.py bot/config.py tests/conftest.py tests/property/ tests/test_economy_service.py tests/test_guild_service.py tests/test_config.py tests/test_database.py
+	uv run ruff format --check bot/services/economy_service.py bot/config.py tests/conftest.py tests/property/ tests/test_economy_service.py tests/test_guild_service.py tests/test_config.py tests/test_database.py
 
 type:
-	uv run mypy bot/services/economy_service.py tests/conftest.py tests/test_guild_service.py
+	uv run mypy bot/services/economy_service.py bot/config.py tests/conftest.py tests/test_guild_service.py tests/test_config.py tests/test_database.py
 
 security:
 	uv run bandit -r bot/ -c pyproject.toml --severity-level medium

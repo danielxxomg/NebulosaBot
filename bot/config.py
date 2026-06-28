@@ -21,11 +21,11 @@ class BotConfig:
         supabase_key: Supabase API key (anon or service_role).
     """
 
-    discord_token: str
-    supabase_url: str
-    supabase_key: str
+    discord_token: str = ""
+    supabase_url: str = ""
+    supabase_key: str = ""
 
-    _required_vars: tuple[str, ...] = field(
+    _env_vars: tuple[str, ...] = field(
         default=("DISCORD_TOKEN", "SUPABASE_URL", "SUPABASE_KEY"),
         init=False,
         repr=False,
@@ -35,39 +35,39 @@ class BotConfig:
     def from_env(cls, env_path: str | None = None) -> BotConfig:
         """Load configuration from environment variables.
 
+        Missing or empty env vars fall back to field defaults (empty strings)
+        rather than raising, so the bot can start in a degraded state.
+
         Args:
             env_path: Optional path to a .env file. If None, dotenv searches
                 the current working directory for a .env file.
 
         Returns:
-            A validated BotConfig instance.
-
-        Raises:
-            ValueError: If any required variable is missing or empty.
+            A BotConfig instance — fields may be empty if env vars are missing.
         """
         load_dotenv(dotenv_path=env_path, override=False)
 
-        missing: list[str] = []
         values: dict[str, str] = {}
+        missing: list[str] = []
 
-        for var in cls._required_vars:  # type: ignore[has-type]
+        for var in cls._env_vars:
             value = os.getenv(var)
-            if not value:
-                missing.append(var)
-            else:
+            if value:
                 values[var.lower()] = value
+            else:
+                missing.append(var)
 
         if missing:
-            msg = (
-                f"Missing required environment variables: {', '.join(missing)}. "
-                "Check your .env file — copy .env.example and set real values."
+            logger.warning(
+                "Missing env vars (falling back to defaults): %s",
+                ", ".join(missing),
             )
-            logger.error(msg)
-            raise ValueError(msg)
 
-        logger.info("Configuration loaded successfully (token: %s...)", values["discord_token"][:8])
+        if "discord_token" in values:
+            logger.info("Configuration loaded successfully (token: %s...)", values["discord_token"][:8])
+
         return cls(
-            discord_token=values["discord_token"],
-            supabase_url=values["supabase_url"],
-            supabase_key=values["supabase_key"],
+            discord_token=values.get("discord_token", ""),
+            supabase_url=values.get("supabase_url", ""),
+            supabase_key=values.get("supabase_key", ""),
         )
