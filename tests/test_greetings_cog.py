@@ -12,6 +12,7 @@ Strict TDD: RED phase — tests written BEFORE the implementation exists.
 
 from __future__ import annotations
 
+import io
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
@@ -19,6 +20,17 @@ import pytest
 from discord.ext import commands
 
 from bot.cogs.greetings import GreetingsCog
+
+# Minimal valid PNG for mock card buffers — avoids fd corruption when
+# discord.File opens the buffer (MagicMock.__index__() returns 1, which
+# makes open() interpret it as fd 1 / stdout).
+_MINIMAL_PNG = (
+    b"\x89PNG\r\n\x1a\n"  # signature
+    b"\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx"
+    b"\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00"
+    b"\x00\x00\x00IEND\xaeB`\x82"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -37,18 +49,27 @@ def mock_greeting_service() -> MagicMock:
 
 @pytest.fixture
 def mock_image_service() -> MagicMock:
-    """Return a mock ImageService."""
+    """Return a mock ImageService with generate_greeting_card returning BytesIO.
+
+    Returns a real io.BytesIO so discord.File receives a seekable/readable
+    buffer instead of MagicMock (whose __index__ returns 1, causing
+    open(MagicMock, 'rb') to corrupt stdout fd 1).
+    """
     svc = MagicMock()
-    svc.generate_greeting_card = MagicMock()
+
+    def _make_card(**_kwargs: object) -> io.BytesIO:
+        return io.BytesIO(_MINIMAL_PNG)
+
+    svc.generate_greeting_card = MagicMock(side_effect=_make_card)
     return svc
 
 
 @pytest.fixture
-def mock_bot(mock_greeting_service: MagicMock) -> MagicMock:
+def mock_bot(mock_greeting_service: MagicMock, mock_image_service: MagicMock) -> MagicMock:
     """Return a mock NebulosaBot with greeting_service and image_service."""
     bot = MagicMock(spec=commands.Bot)
     bot.greeting_service = mock_greeting_service
-    bot.image_service = MagicMock()
+    bot.image_service = mock_image_service
     return bot
 
 

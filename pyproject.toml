@@ -26,6 +26,7 @@ classifiers = [
 
 dependencies = [
     "discord.py>=2.3",
+    "pillow>=11.0",
     "supabase>=2.0",
     "python-dotenv>=1.0",
 ]
@@ -49,7 +50,7 @@ Repository = "https://github.com/gentle-programming/NebulosaBot"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "--cov=bot --cov-fail-under=55 --randomly-seed=42"
+addopts = "--cov=bot --cov-fail-under=70 --randomly-seed=42"
 filterwarnings = [
     # discord.py 2.x triggers this under PYTHONASYNCIODEBUG=1
     "ignore:.*coroutine.*is not a coroutine:DeprecationWarning",
