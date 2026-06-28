@@ -13,7 +13,8 @@ TDD cycle: RED → GREEN — tests specify expected behavior of existing code.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import io
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -23,12 +24,10 @@ from bot.cogs.tickets import (
     TicketActionsView,
     TicketPanelView,
     TicketsCog,
-    _CategorySelect,
     _build_ticket_embed,
+    _CategorySelect,
 )
 from bot.models.ticket import Ticket
-from bot.models.ticket_category import TicketCategory
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -47,9 +46,9 @@ def _ticket_row(ticket_number: int = 1, status: str = "open", channel_id: str = 
         "status": status,
         "claimedBy": None,
         "transcriptUrl": None,
-        "createdAt": datetime.now(timezone.utc),
+        "createdAt": datetime.now(UTC),
         "closedAt": None,
-        "lastActivity": datetime.now(timezone.utc),
+        "lastActivity": datetime.now(UTC),
     }
 
 
@@ -313,7 +312,7 @@ class TestTicketActionsView:
         ticket_row = _ticket_row(status="open")
         mock_db.get_ticket_by_channel = AsyncMock(return_value=ticket_row)
 
-        transcript_file = MagicMock(spec=discord.File)
+        transcript_file = discord.File(io.BytesIO(b"<html>transcript</html>"), filename="transcript.html")
         ticket_bot.transcript_service.generate = AsyncMock(return_value=transcript_file)
 
         config = MagicMock()
