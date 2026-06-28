@@ -9,14 +9,14 @@ context: |
   Diagrams: 4 Mermaid/PlantUML design docs in /Diagramas
   Language: Spanish (design docs), English (code artifacts)
 
-strict_tdd: false
+strict_tdd: true
 
 testing:
-  runner: none
-  command: ""
-  framework: none
+  runner: pytest
+  command: "python -m pytest -v"
+  framework: pytest-asyncio
   layers:
-    unit: false
+    unit: true
     integration: false
     e2e: false
   coverage:
@@ -43,11 +43,12 @@ rules:
     - Keep tasks completable in one session
   apply:
     - Follow existing code patterns
-    tdd: false
-    test_command: ""
+    - Strict TDD: write tests FIRST, then implement
+    tdd: true
+    test_command: "python -m pytest -v"
   verify:
-    test_command: ""
-    build_command: ""
+    test_command: "python -m pytest -v"
+    build_command: "python -m py_compile bot/__main__.py"
     coverage_threshold: 0
   archive:
     - Warn before merging destructive deltas
