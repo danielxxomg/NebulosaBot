@@ -15,16 +15,15 @@ TDD cycle: RED → GREEN — tests specify expected behavior of existing code.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
 
-from bot.cogs.sentinel import SentinelCog, _ModlogsPaginator, _build_modlog_pages
+from bot.cogs.sentinel import SentinelCog, _ModlogsPaginator
 from bot.services.infraction_service import InfractionService
 from bot.services.logging_service import LoggingService
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -112,7 +111,7 @@ def warn_row() -> dict:
         "type": "WARN",
         "reason": "test reason",
         "active": True,
-        "createdAt": datetime.now(timezone.utc),
+        "createdAt": datetime.now(UTC),
     }
 
 
@@ -174,16 +173,20 @@ class TestUnwarnCommand:
         mock_db,
     ) -> None:
         """unwarn → deactivate_infraction called + success embed."""
-        mock_db.get_active_warnings = AsyncMock(return_value=[{
-            "id": "inf-001",
-            "guildId": "123456789",
-            "targetId": "555555555",
-            "moderatorId": "111111111",
-            "type": "WARN",
-            "reason": "test",
-            "active": True,
-            "createdAt": datetime.now(timezone.utc),
-        }])
+        mock_db.get_active_warnings = AsyncMock(
+            return_value=[
+                {
+                    "id": "inf-001",
+                    "guildId": "123456789",
+                    "targetId": "555555555",
+                    "moderatorId": "111111111",
+                    "type": "WARN",
+                    "reason": "test",
+                    "active": True,
+                    "createdAt": datetime.now(UTC),
+                }
+            ]
+        )
         mock_db.deactivate_infraction = AsyncMock()
         mock_db.update_member_warnings = AsyncMock()
 
@@ -231,19 +234,23 @@ class TestMuteCommand:
     ) -> None:
         """mute → member.timeout called + infraction inserted + log embed."""
         target_member.timeout = AsyncMock()
-        mock_db.insert_infraction = AsyncMock(return_value={
-            "id": "inf-mute-001",
-            "guildId": "123456789",
-            "targetId": "555555555",
-            "moderatorId": "111111111",
-            "type": "MUTE",
-            "reason": "spamming",
-            "active": True,
-            "createdAt": datetime.now(timezone.utc),
-        })
+        mock_db.insert_infraction = AsyncMock(
+            return_value={
+                "id": "inf-mute-001",
+                "guildId": "123456789",
+                "targetId": "555555555",
+                "moderatorId": "111111111",
+                "type": "MUTE",
+                "reason": "spamming",
+                "active": True,
+                "createdAt": datetime.now(UTC),
+            }
+        )
 
         with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
-            await sentinel_cog.mute.callback(sentinel_cog, sentinel_ctx, target_member, duration="1h", reason="spamming")
+            await sentinel_cog.mute.callback(
+                sentinel_cog, sentinel_ctx, target_member, duration="1h", reason="spamming"
+            )
 
         target_member.timeout.assert_awaited_once()
         timeout_args = target_member.timeout.call_args
@@ -290,16 +297,18 @@ class TestKickCommand:
     ) -> None:
         """kick → member.kick called + infraction inserted + log embed."""
         target_member.kick = AsyncMock()
-        mock_db.insert_infraction = AsyncMock(return_value={
-            "id": "inf-kick-001",
-            "guildId": "123456789",
-            "targetId": "555555555",
-            "moderatorId": "111111111",
-            "type": "KICK",
-            "reason": "rule violation",
-            "active": True,
-            "createdAt": datetime.now(timezone.utc),
-        })
+        mock_db.insert_infraction = AsyncMock(
+            return_value={
+                "id": "inf-kick-001",
+                "guildId": "123456789",
+                "targetId": "555555555",
+                "moderatorId": "111111111",
+                "type": "KICK",
+                "reason": "rule violation",
+                "active": True,
+                "createdAt": datetime.now(UTC),
+            }
+        )
 
         with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
             await sentinel_cog.kick.callback(sentinel_cog, sentinel_ctx, target_member, reason="rule violation")
@@ -324,16 +333,18 @@ class TestBanCommand:
     ) -> None:
         """ban → member.ban called + infraction inserted + log embed."""
         target_member.ban = AsyncMock()
-        mock_db.insert_infraction = AsyncMock(return_value={
-            "id": "inf-ban-001",
-            "guildId": "123456789",
-            "targetId": "555555555",
-            "moderatorId": "111111111",
-            "type": "BAN",
-            "reason": "severe violation",
-            "active": True,
-            "createdAt": datetime.now(timezone.utc),
-        })
+        mock_db.insert_infraction = AsyncMock(
+            return_value={
+                "id": "inf-ban-001",
+                "guildId": "123456789",
+                "targetId": "555555555",
+                "moderatorId": "111111111",
+                "type": "BAN",
+                "reason": "severe violation",
+                "active": True,
+                "createdAt": datetime.now(UTC),
+            }
+        )
 
         with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
             await sentinel_cog.ban.callback(sentinel_cog, sentinel_ctx, target_member, reason="severe violation")
@@ -430,16 +441,18 @@ class TestModlogsCommand:
         """modlogs → paginated embed sent with infraction entries."""
         infractions = []
         for i in range(7):
-            infractions.append({
-                "id": f"inf-{i:03d}",
-                "guildId": "123456789",
-                "targetId": "555555555",
-                "moderatorId": "111111111",
-                "type": "WARN",
-                "reason": f"reason {i}",
-                "active": True,
-                "createdAt": datetime.now(timezone.utc),
-            })
+            infractions.append(
+                {
+                    "id": f"inf-{i:03d}",
+                    "guildId": "123456789",
+                    "targetId": "555555555",
+                    "moderatorId": "111111111",
+                    "type": "WARN",
+                    "reason": f"reason {i}",
+                    "active": True,
+                    "createdAt": datetime.now(UTC),
+                }
+            )
         mock_db.get_infractions = AsyncMock(return_value=infractions)
 
         await sentinel_cog.modlogs.callback(sentinel_cog, sentinel_ctx, target_member, type=None, after=None)
@@ -455,9 +468,7 @@ class TestModlogsPaginator:
 
     def test_prev_button_disabled_at_start(self) -> None:
         """Prev button disabled on page 0."""
-        pages = [
-            discord.Embed(title=f"Page {i}") for i in range(3)
-        ]
+        pages = [discord.Embed(title=f"Page {i}") for i in range(3)]
         view = _ModlogsPaginator(pages)
         children = list(view.children)
         assert children[0].disabled is True
@@ -465,9 +476,7 @@ class TestModlogsPaginator:
 
     async def test_next_button_advances_page(self) -> None:
         """Next button advances to next page and updates embed."""
-        pages = [
-            discord.Embed(title=f"Page {i}") for i in range(3)
-        ]
+        pages = [discord.Embed(title=f"Page {i}") for i in range(3)]
         view = _ModlogsPaginator(pages)
         interaction = MagicMock()
         interaction.response = MagicMock()
@@ -480,9 +489,7 @@ class TestModlogsPaginator:
 
     async def test_prev_button_goes_back(self) -> None:
         """Prev button goes back after advancing."""
-        pages = [
-            discord.Embed(title=f"Page {i}") for i in range(3)
-        ]
+        pages = [discord.Embed(title=f"Page {i}") for i in range(3)]
         view = _ModlogsPaginator(pages)
         interaction = MagicMock()
         interaction.response = MagicMock()
@@ -498,9 +505,7 @@ class TestModlogsPaginator:
 
     def test_next_button_disabled_at_end(self) -> None:
         """Next button disabled on last page."""
-        pages = [
-            discord.Embed(title=f"Page {i}") for i in range(2)
-        ]
+        pages = [discord.Embed(title=f"Page {i}") for i in range(2)]
         view = _ModlogsPaginator(pages)
         view._current = 1
         view._update_buttons()

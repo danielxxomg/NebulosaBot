@@ -47,10 +47,10 @@ jobs:
           uv sync --dev
 
       - name: Ruff check
-        run: uv run ruff check bot/services/economy_service.py bot/config.py tests/conftest.py tests/property/ tests/test_economy_service.py tests/test_guild_service.py tests/test_config.py tests/test_database.py
+        run: uv run ruff check bot/services/economy_service.py bot/config.py tests/conftest.py tests/property/ tests/test_economy_service.py tests/test_guild_service.py tests/test_config.py tests/test_database.py tests/test_sentinel_cog.py tests/test_tickets_cog.py tests/integration/
 
       - name: Ruff format check
-        run: uv run ruff format --check bot/services/economy_service.py bot/config.py tests/conftest.py tests/property/ tests/test_economy_service.py tests/test_guild_service.py tests/test_config.py tests/test_database.py
+        run: uv run ruff format --check bot/services/economy_service.py bot/config.py tests/conftest.py tests/property/ tests/test_economy_service.py tests/test_guild_service.py tests/test_config.py tests/test_database.py tests/test_sentinel_cog.py tests/test_tickets_cog.py tests/integration/
 
       - name: Mypy
         run: uv run mypy bot/services/economy_service.py bot/config.py tests/conftest.py tests/test_guild_service.py tests/test_config.py tests/test_database.py

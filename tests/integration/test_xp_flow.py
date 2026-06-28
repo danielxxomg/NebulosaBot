@@ -9,14 +9,13 @@ TDD cycle: RED → GREEN — tests specify expected behavior of existing code.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock
+from datetime import datetime
+from unittest.mock import AsyncMock
 
 import pytest
 
 from bot.core.cache import TTLCache
 from bot.services.economy_service import EconomyService
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -27,13 +26,15 @@ from bot.services.economy_service import EconomyService
 def xp_db() -> AsyncMock:
     """Return a mock DB configured for XP gain tests."""
     db = AsyncMock()
-    db.get_economy_config = AsyncMock(return_value={
-        "guildId": "123456789",
-        "xpPerMessage": 10,
-        "xpCooldownSeconds": 60,
-        "levelBaseXp": 100,
-        "levelMultiplier": 1.5,
-    })
+    db.get_economy_config = AsyncMock(
+        return_value={
+            "guildId": "123456789",
+            "xpPerMessage": 10,
+            "xpCooldownSeconds": 60,
+            "levelBaseXp": 100,
+            "levelMultiplier": 1.5,
+        }
+    )
     db.get_member = AsyncMock(return_value=None)
     db.update_member_xp = AsyncMock()
     return db
@@ -127,18 +128,20 @@ class TestXpFlow:
         xp_db.get_member = AsyncMock(return_value=None)
         xp_db.update_member_xp = AsyncMock(return_value={"xp": 10, "level": 0})
 
-        new_xp, new_level, leveled_up = await xp_service.gain_xp(guild_id, user_id)
+        new_xp, _new_level, leveled_up = await xp_service.gain_xp(guild_id, user_id)
         assert new_xp == 10
         assert leveled_up is False
 
         # Second call: member exists with lastXpGain = frozen_clock (just gained).
-        xp_db.get_member = AsyncMock(return_value={
-            "guildId": guild_id,
-            "userId": user_id,
-            "xp": 10,
-            "level": 0,
-            "lastXpGain": frozen_clock,  # just gained — within 60s cooldown
-        })
+        xp_db.get_member = AsyncMock(
+            return_value={
+                "guildId": guild_id,
+                "userId": user_id,
+                "xp": 10,
+                "level": 0,
+                "lastXpGain": frozen_clock,  # just gained — within 60s cooldown
+            }
+        )
 
         new_xp2, new_level2, leveled_up2 = await xp_service.gain_xp(guild_id, user_id)
 

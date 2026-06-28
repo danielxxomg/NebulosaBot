@@ -11,7 +11,7 @@ existing code; the implementation already satisfies them.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,7 +20,6 @@ from bot.cogs.sentinel import SentinelCog
 from bot.core.cache import TTLCache
 from bot.services.infraction_service import InfractionService
 from bot.services.logging_service import LoggingService
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -108,7 +107,7 @@ def warn_infraction_row() -> dict:
         "type": "WARN",
         "reason": "Test reason",
         "active": True,
-        "createdAt": datetime.now(timezone.utc),
+        "createdAt": datetime.now(UTC),
     }
 
 
@@ -135,7 +134,6 @@ class TestModerationFlow:
 
     Verifies: command → service → DB mock → log embed.
     """
-
 
     async def test_warn_persists_infraction_and_sends_log_embed(
         self,
