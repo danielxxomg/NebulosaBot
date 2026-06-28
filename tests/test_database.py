@@ -15,15 +15,13 @@ Covers the qa-database-coverage spec scenarios:
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from bot.core.database import Database
 from bot.models.guild import GuildConfig
-
 
 # ---------------------------------------------------------------------------
 # Helpers — fake query builder that supports Supabase chain calls
@@ -45,6 +43,7 @@ class FakeQueryBuilder:
         self._result_data: list[dict] = result_data if result_data is not None else []
         self._result_queue: list[list[dict]] = []
         self._calls: list[tuple[str, Any]] = []
+        self._filters: list[tuple[str, str, Any]] = []  # (method, column, value)
         self._execute_count: int = 0
 
     # Chain methods — all return self
@@ -70,18 +69,23 @@ class FakeQueryBuilder:
         return self
 
     def eq(self, column: str, value: Any) -> FakeQueryBuilder:
+        self._filters.append(("eq", column, value))
         return self
 
     def in_(self, column: str, values: list) -> FakeQueryBuilder:
+        self._filters.append(("in_", column, values))
         return self
 
     def lt(self, column: str, value: Any) -> FakeQueryBuilder:
+        self._filters.append(("lt", column, value))
         return self
 
     def gt(self, column: str, value: Any) -> FakeQueryBuilder:
+        self._filters.append(("gt", column, value))
         return self
 
     def gte(self, column: str, value: Any) -> FakeQueryBuilder:
+        self._filters.append(("gte", column, value))
         return self
 
     def order(self, column: str, desc: bool = False) -> FakeQueryBuilder:
@@ -95,11 +99,7 @@ class FakeQueryBuilder:
 
     def execute(self) -> MagicMock:
         self._execute_count += 1
-        # Queue mode: pop results in order
-        if self._result_queue:
-            data = self._result_queue.pop(0)
-        else:
-            data = self._result_data
+        data = self._result_queue.pop(0) if self._result_queue else self._result_data
 
         response = MagicMock()
         response.data = data
@@ -135,6 +135,10 @@ class FakeSupabaseClient:
     def get_table_calls(self, name: str) -> list[tuple[str, Any]]:
         """Return recorded calls for a table."""
         return self._tables[name]._calls
+
+    def get_table_filters(self, name: str) -> list[tuple[str, str, Any]]:
+        """Return recorded filter calls (eq, in_, lt, gt, gte) for a table."""
+        return self._tables[name]._filters
 
 
 # ---------------------------------------------------------------------------
@@ -357,9 +361,7 @@ class TestGetInfractions:
         assert result[0]["type"] == "WARN"
 
     @pytest.mark.asyncio
-    async def test_get_infractions_returns_empty_when_none(
-        self, db: Database, fake_client: FakeSupabaseClient
-    ) -> None:
+    async def test_get_infractions_returns_empty_when_none(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """get_infractions() MUST return empty list when no records exist."""
         fake_client.set_table_data("infraction", [])
 
@@ -563,9 +565,7 @@ class TestUpdateMemberCoins:
     """Verify Database.update_member_coins() increments coins correctly."""
 
     @pytest.mark.asyncio
-    async def test_update_member_coins_increments_existing(
-        self, db: Database, fake_client: FakeSupabaseClient
-    ) -> None:
+    async def test_update_member_coins_increments_existing(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """update_member_coins() MUST add coin_delta to existing coins."""
         existing = {"guildId": "g1", "userId": "u1", "coins": 200}
         fake_client.set_table_queue("member", [[existing], []])
@@ -575,9 +575,7 @@ class TestUpdateMemberCoins:
         assert result["coins"] == 250
 
     @pytest.mark.asyncio
-    async def test_update_member_coins_creates_new_member(
-        self, db: Database, fake_client: FakeSupabaseClient
-    ) -> None:
+    async def test_update_member_coins_creates_new_member(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """update_member_coins() MUST upsert when member doesn't exist."""
         fake_client.set_table_queue("member", [[], []])
 
@@ -610,9 +608,7 @@ class TestUpdateMemberDaily:
         existing = {"guildId": "g1", "userId": "u1", "coins": 50}
         fake_client.set_table_queue("member", [[existing], []])
 
-        result = await db.update_member_daily(
-            "g1", "u1", 100, 3, "2024-06-15T00:00:00Z", "2024-06-15T12:00:00Z"
-        )
+        result = await db.update_member_daily("g1", "u1", 100, 3, "2024-06-15T00:00:00Z", "2024-06-15T12:00:00Z")
 
         assert result["coins"] == 150
 
@@ -623,15 +619,11 @@ class TestUpdateMemberDaily:
         assert update_ops[0][1]["dailyStreak"] == 3
 
     @pytest.mark.asyncio
-    async def test_update_member_daily_creates_new_member(
-        self, db: Database, fake_client: FakeSupabaseClient
-    ) -> None:
+    async def test_update_member_daily_creates_new_member(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """update_member_daily() MUST upsert when member doesn't exist."""
         fake_client.set_table_queue("member", [[], []])
 
-        result = await db.update_member_daily(
-            "g1", "u1", 50, 1, "2024-06-15T00:00:00Z", "2024-06-15T12:00:00Z"
-        )
+        result = await db.update_member_daily("g1", "u1", 50, 1, "2024-06-15T00:00:00Z", "2024-06-15T12:00:00Z")
 
         assert result["coins"] == 50
 
@@ -804,15 +796,18 @@ class TestGetMemberRank:
         count_response.data = []
         count_response.count = 2
 
-        fake_client.set_table_queue("member", [
-            [member_row],   # get_member
-            [],             # count query (data empty, count set on response)
-        ])
+        fake_client.set_table_queue(
+            "member",
+            [
+                [member_row],  # get_member
+                [],  # count query (data empty, count set on response)
+            ],
+        )
         # Override the second execute to have count attribute
         member_builder = fake_client._tables["member"]
-        original_execute = member_builder.execute
 
         call_count = 0
+
         def patched_execute() -> MagicMock:
             nonlocal call_count
             call_count += 1
@@ -826,7 +821,7 @@ class TestGetMemberRank:
                 resp.count = 2
                 return resp
 
-        member_builder.execute = patched_execute
+        member_builder.execute = patched_execute  # type: ignore[method-assign]
 
         result = await db.get_member_rank("g1", "u1")
 
@@ -893,3 +888,93 @@ class TestGetGreetingConfig:
         """get_greeting_config() MUST raise RuntimeError if connect() wasn't called."""
         with pytest.raises(RuntimeError, match="connect"):
             await disconnected_db.get_greeting_config("g1")
+
+
+# ---------------------------------------------------------------------------
+# Guild-scoped filter assertions — prove guild_id is passed to Supabase
+# ---------------------------------------------------------------------------
+
+
+class TestGuildScopedFilters:
+    """Scenario: guild-scoped query filters correctly.
+
+    Per qa-database-coverage/spec.md, queries that scope by guild_id MUST
+    pass an eq('guildId', ...) filter to the Supabase query builder.
+    These tests assert on captured filter calls to prove the filter is applied.
+    """
+
+    @pytest.mark.asyncio
+    async def test_get_guild_filters_by_id(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_guild() MUST filter by 'id' (guild primary key)."""
+        fake_client.set_table_data("guild", [{"id": "g1"}])
+        await db.get_guild("g1")
+
+        filters = fake_client.get_table_filters("guild")
+        assert ("eq", "id", "g1") in filters
+
+    @pytest.mark.asyncio
+    async def test_get_member_filters_by_guild_and_user(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_member() MUST filter by both guildId and userId."""
+        fake_client.set_table_data("member", [{"guildId": "g1", "userId": "u1"}])
+        await db.get_member("g1", "u1")
+
+        filters = fake_client.get_table_filters("member")
+        assert ("eq", "guildId", "g1") in filters, f"Missing guildId filter, got: {filters}"
+        assert ("eq", "userId", "u1") in filters
+
+    @pytest.mark.asyncio
+    async def test_get_infractions_filters_by_guild(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_infractions() MUST filter by guildId."""
+        fake_client.set_table_data("infraction", [])
+        await db.get_infractions("g99", "u1")
+
+        filters = fake_client.get_table_filters("infraction")
+        assert ("eq", "guildId", "g99") in filters, f"Missing guildId filter, got: {filters}"
+
+    @pytest.mark.asyncio
+    async def test_get_active_warnings_filters_by_guild(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_active_warnings() MUST filter by guildId."""
+        fake_client.set_table_data("infraction", [])
+        await db.get_active_warnings("g42", "u1")
+
+        filters = fake_client.get_table_filters("infraction")
+        assert ("eq", "guildId", "g42") in filters, f"Missing guildId filter, got: {filters}"
+
+    @pytest.mark.asyncio
+    async def test_get_leaderboard_filters_by_guild(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_leaderboard() MUST filter by guildId."""
+        fake_client.set_table_data("member", [])
+        await db.get_leaderboard("g77")
+
+        filters = fake_client.get_table_filters("member")
+        assert ("eq", "guildId", "g77") in filters, f"Missing guildId filter, got: {filters}"
+
+    @pytest.mark.asyncio
+    async def test_get_economy_config_filters_by_guild(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_economy_config() MUST filter by guildId."""
+        fake_client.set_table_data("economy_config", [])
+        await db.get_economy_config("g55")
+
+        filters = fake_client.get_table_filters("economy_config")
+        assert ("eq", "guildId", "g55") in filters, f"Missing guildId filter, got: {filters}"
+
+    @pytest.mark.asyncio
+    async def test_get_greeting_config_filters_by_guild(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_greeting_config() MUST filter by guildId."""
+        fake_client.set_table_data("greeting_config", [])
+        await db.get_greeting_config("g33")
+
+        filters = fake_client.get_table_filters("greeting_config")
+        assert ("eq", "guildId", "g33") in filters, f"Missing guildId filter, got: {filters}"
+
+    @pytest.mark.asyncio
+    async def test_wrong_guild_id_filter_would_fail(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """Test MUST fail if eq() uses wrong column name for guild scoping."""
+        fake_client.set_table_data("member", [{"guildId": "g1", "userId": "u1"}])
+        await db.get_member("g1", "u1")
+
+        filters = fake_client.get_table_filters("member")
+        # Prove that 'guildId' is used, not 'guild_id' or 'guildid'
+        guild_filters = [f for f in filters if f[0] == "eq" and f[1] == "guildId"]
+        assert len(guild_filters) >= 1, f"No guildId eq filter found in: {filters}"
+        assert guild_filters[0][2] == "g1"

@@ -11,10 +11,7 @@ from __future__ import annotations
 import os
 from unittest.mock import patch
 
-import pytest
-
 from bot.config import BotConfig
-
 
 # ---------------------------------------------------------------------------
 # BotConfig dataclass — field defaults
@@ -22,11 +19,11 @@ from bot.config import BotConfig
 
 
 class TestBotConfigDataclass:
-    """Verify BotConfig dataclass fields and _required_vars."""
+    """Verify BotConfig dataclass fields and _env_vars."""
 
-    def test_required_vars_tuple(self) -> None:
-        """_required_vars MUST list DISCORD_TOKEN, SUPABASE_URL, SUPABASE_KEY."""
-        assert BotConfig._required_vars == ("DISCORD_TOKEN", "SUPABASE_URL", "SUPABASE_KEY")
+    def test_env_vars_tuple(self) -> None:
+        """_env_vars MUST list DISCORD_TOKEN, SUPABASE_URL, SUPABASE_KEY."""
+        assert BotConfig._env_vars == ("DISCORD_TOKEN", "SUPABASE_URL", "SUPABASE_KEY")
 
     def test_dataclass_fields_exist(self) -> None:
         """BotConfig MUST have discord_token, supabase_url, supabase_key fields."""
@@ -77,51 +74,59 @@ class TestFromEnvHappyPath:
 
 
 # ---------------------------------------------------------------------------
-# from_env — missing vars raise ValueError
+# from_env — missing vars fall back to defaults (spec: no exception)
 # ---------------------------------------------------------------------------
 
 
-class TestFromEnvMissingVars:
+class TestFromEnvFallback:
     """Scenario: invalid/missing fields fall back to defaults without exception.
 
-    BotConfig.from_env raises ValueError on missing vars — this is the
-    expected behavior (no silent fallback for required credentials).
-    The spec scenario 'invalid/missing fields fall back to defaults without
-    exception' applies to optional fields with defaults, but BotConfig has
-    NO optional fields — all three are required.  The test verifies the
-    correct error is raised.
+    Per qa-config-coverage/spec.md, missing or invalid env vars MUST fall
+    back to defaults rather than raising. BotConfig fields default to
+    empty strings so from_env() always returns a BotConfig instance.
     """
 
-    def test_from_env_missing_all_vars_raises(self) -> None:
-        """from_env MUST raise ValueError when all vars are missing."""
+    def test_from_env_missing_all_vars_returns_defaults(self) -> None:
+        """from_env MUST return a BotConfig with defaults when all vars missing."""
         with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(ValueError, match="Missing required environment variables"):
-                BotConfig.from_env(env_path="/dev/null")
+            config = BotConfig.from_env(env_path="/dev/null")
 
-    def test_from_env_missing_one_var_raises(self) -> None:
-        """from_env MUST raise ValueError listing the missing var name."""
+        assert config.discord_token == ""
+        assert config.supabase_url == ""
+        assert config.supabase_key == ""
+
+    def test_from_env_missing_one_var_uses_default(self) -> None:
+        """from_env MUST use the field default for a single missing var."""
         env = {
             "DISCORD_TOKEN": "tok",
             "SUPABASE_URL": "https://x.supabase.co",
             # SUPABASE_KEY missing
         }
         with patch.dict(os.environ, env, clear=True):
-            with pytest.raises(ValueError, match="SUPABASE_KEY"):
-                BotConfig.from_env(env_path="/dev/null")
+            config = BotConfig.from_env(env_path="/dev/null")
 
-    def test_from_env_empty_string_treated_as_missing(self) -> None:
-        """An empty string for a required var MUST be treated as missing."""
+        assert config.discord_token == "tok"
+        assert config.supabase_url == "https://x.supabase.co"
+        assert config.supabase_key == ""  # falls back to default
+
+    def test_from_env_empty_string_uses_default(self) -> None:
+        """An empty string for a required var MUST fall back to the default."""
         env = {
             "DISCORD_TOKEN": "",
             "SUPABASE_URL": "https://x.supabase.co",
             "SUPABASE_KEY": "key",
         }
         with patch.dict(os.environ, env, clear=True):
-            with pytest.raises(ValueError, match="DISCORD_TOKEN"):
-                BotConfig.from_env(env_path="/dev/null")
+            config = BotConfig.from_env(env_path="/dev/null")
 
-    def test_from_env_multiple_missing_vars_listed(self) -> None:
-        """from_env MUST list ALL missing vars in the error message."""
+        assert config.discord_token == ""  # empty → falls back
+        assert config.supabase_url == "https://x.supabase.co"
+        assert config.supabase_key == "key"
+
+    def test_from_env_no_exception_on_missing_vars(self) -> None:
+        """from_env MUST NOT raise when env vars are missing (spec requirement)."""
         with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(ValueError, match="DISCORD_TOKEN.*SUPABASE_URL.*SUPABASE_KEY"):
-                BotConfig.from_env(env_path="/dev/null")
+            # Must not raise — this is the core spec assertion
+            config = BotConfig.from_env(env_path="/dev/null")
+
+        assert isinstance(config, BotConfig)
