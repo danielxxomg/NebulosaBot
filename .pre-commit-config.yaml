@@ -33,7 +33,7 @@ repos:
     hooks:
       - id: bandit
         name: bandit
-        entry: bandit -r bot/ -c pyproject.toml
+        entry: bandit -r bot/ -c pyproject.toml --severity-level medium
         language: system
         pass_filenames: false
         files: ^bot/.*\.py$

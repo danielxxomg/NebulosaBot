@@ -13,9 +13,8 @@ Strict TDD: these tests are written BEFORE the implementation exists (RED phase)
 
 from __future__ import annotations
 
-import math
 from datetime import timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -197,8 +196,12 @@ class TestGainXp:
 
     @pytest.mark.asyncio
     async def test_gain_xp_cooldown_active(
-        self, service: EconomyService, mock_db: AsyncMock,
-        default_config_row: dict, member_row: dict, frozen_clock,
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
+        default_config_row: dict,
+        member_row: dict,
+        frozen_clock,
     ) -> None:
         """When cooldown is active, no XP should be awarded."""
         guild_id = "123456789"
@@ -218,8 +221,12 @@ class TestGainXp:
 
     @pytest.mark.asyncio
     async def test_gain_xp_cooldown_elapsed(
-        self, service: EconomyService, mock_db: AsyncMock,
-        default_config_row: dict, member_row: dict, frozen_clock,
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
+        default_config_row: dict,
+        member_row: dict,
+        frozen_clock,
     ) -> None:
         """When cooldown has elapsed, XP should be awarded."""
         guild_id = "123456789"
@@ -245,8 +252,12 @@ class TestGainXp:
 
     @pytest.mark.asyncio
     async def test_gain_xp_levels_up(
-        self, service: EconomyService, mock_db: AsyncMock,
-        default_config_row: dict, member_row: dict, frozen_clock,
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
+        default_config_row: dict,
+        member_row: dict,
+        frozen_clock,
     ) -> None:
         """XP gain that crosses a level threshold should trigger level-up."""
         guild_id = "123456789"
@@ -271,7 +282,9 @@ class TestGainXp:
 
     @pytest.mark.asyncio
     async def test_gain_xp_no_config_uses_defaults(
-        self, service: EconomyService, mock_db: AsyncMock,
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
     ) -> None:
         """When no economy_config exists, default values should be used."""
         guild_id = "123456789"
@@ -281,15 +294,18 @@ class TestGainXp:
         mock_db.get_member.return_value = None
         mock_db.update_member_xp.return_value = {"xp": 10, "level": 0}
 
-        new_xp, new_level, leveled_up = await service.gain_xp(guild_id, user_id)
+        new_xp, new_level, _leveled_up = await service.gain_xp(guild_id, user_id)
 
         assert new_xp == 10  # Default xpPerMessage = 10
         assert new_level == 0
 
     @pytest.mark.asyncio
     async def test_gain_xp_invalidates_leaderboard_cache(
-        self, service: EconomyService, mock_db: AsyncMock,
-        default_config_row: dict, cache: TTLCache,
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
+        default_config_row: dict,
+        cache: TTLCache,
     ) -> None:
         """After XP gain, guild leaderboard cache should be invalidated."""
         guild_id = "123456789"
@@ -319,8 +335,11 @@ class TestClaimDaily:
 
     @pytest.mark.asyncio
     async def test_claim_daily_first_time(
-        self, service: EconomyService, mock_db: AsyncMock,
-        default_config_row: dict, member_row: dict,
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
+        default_config_row: dict,
+        member_row: dict,
     ) -> None:
         """First daily claim: streak=1, reward = dailyReward (base 100)."""
         guild_id = "123456789"
@@ -338,8 +357,12 @@ class TestClaimDaily:
 
     @pytest.mark.asyncio
     async def test_claim_daily_consecutive(
-        self, service: EconomyService, mock_db: AsyncMock,
-        default_config_row: dict, member_row: dict, frozen_clock,
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
+        default_config_row: dict,
+        member_row: dict,
+        frozen_clock,
     ) -> None:
         """Consecutive claim: streak increments by 1, reward scales."""
         guild_id = "123456789"
@@ -372,8 +395,12 @@ class TestClaimDaily:
 
     @pytest.mark.asyncio
     async def test_claim_daily_streak_capped_at_7(
-        self, service: EconomyService, mock_db: AsyncMock,
-        default_config_row: dict, member_row: dict, frozen_clock,
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
+        default_config_row: dict,
+        member_row: dict,
+        frozen_clock,
     ) -> None:
         """Streak capped at 7: reward = 100 * (1 + 0.1 * 6) = 160."""
         guild_id = "123456789"
@@ -404,8 +431,12 @@ class TestClaimDaily:
 
     @pytest.mark.asyncio
     async def test_claim_daily_broken_streak(
-        self, service: EconomyService, mock_db: AsyncMock,
-        default_config_row: dict, member_row: dict, frozen_clock,
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
+        default_config_row: dict,
+        member_row: dict,
+        frozen_clock,
     ) -> None:
         """Missed a day: streak resets to 1, base reward."""
         guild_id = "123456789"
@@ -430,8 +461,12 @@ class TestClaimDaily:
 
     @pytest.mark.asyncio
     async def test_claim_daily_cooldown_active(
-        self, service: EconomyService, mock_db: AsyncMock,
-        default_config_row: dict, member_row: dict, frozen_clock,
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
+        default_config_row: dict,
+        member_row: dict,
+        frozen_clock,
     ) -> None:
         """Claim within cooldown window should be rejected."""
         guild_id = "123456789"
@@ -455,7 +490,10 @@ class TestClaimDaily:
 
     @pytest.mark.asyncio
     async def test_claim_daily_custom_reward(
-        self, service: EconomyService, mock_db: AsyncMock, member_row: dict,
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
+        member_row: dict,
     ) -> None:
         """Custom dailyReward from config should be respected."""
         guild_id = "123456789"
@@ -493,7 +531,10 @@ class TestGetBalance:
 
     @pytest.mark.asyncio
     async def test_get_balance_has_coins(
-        self, service: EconomyService, mock_db: AsyncMock, member_row: dict,
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
+        member_row: dict,
     ) -> None:
         """Should return the member's coin balance."""
         mock_db.get_member.return_value = member_row
@@ -504,7 +545,9 @@ class TestGetBalance:
 
     @pytest.mark.asyncio
     async def test_get_balance_no_member(
-        self, service: EconomyService, mock_db: AsyncMock,
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
     ) -> None:
         """New member with no row should have 0 balance."""
         mock_db.get_member.return_value = None
@@ -515,7 +558,10 @@ class TestGetBalance:
 
     @pytest.mark.asyncio
     async def test_get_balance_zero_coins(
-        self, service: EconomyService, mock_db: AsyncMock, member_row: dict,
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
+        member_row: dict,
     ) -> None:
         """Member with 0 coins should return 0."""
         member_no_coins = {**member_row, "coins": 0}
@@ -536,7 +582,10 @@ class TestGetLeaderboard:
 
     @pytest.mark.asyncio
     async def test_get_leaderboard_xp_miss_populates_cache(
-        self, service: EconomyService, mock_db: AsyncMock, cache: TTLCache,
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
+        cache: TTLCache,
     ) -> None:
         """Cache miss triggers DB query and populates cache."""
         guild_id = "123456789"
@@ -556,7 +605,10 @@ class TestGetLeaderboard:
 
     @pytest.mark.asyncio
     async def test_get_leaderboard_xp_cache_hit(
-        self, service: EconomyService, mock_db: AsyncMock, cache: TTLCache,
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
+        cache: TTLCache,
     ) -> None:
         """Cache hit should return cached data without DB query."""
         guild_id = "123456789"
@@ -570,7 +622,9 @@ class TestGetLeaderboard:
 
     @pytest.mark.asyncio
     async def test_get_leaderboard_coins(
-        self, service: EconomyService, mock_db: AsyncMock,
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
     ) -> None:
         """Coins leaderboard should query with sort_by='coins'."""
         guild_id = "123456789"
@@ -584,7 +638,9 @@ class TestGetLeaderboard:
 
     @pytest.mark.asyncio
     async def test_get_leaderboard_empty(
-        self, service: EconomyService, mock_db: AsyncMock,
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
     ) -> None:
         """Empty guild should return empty list."""
         mock_db.get_leaderboard.return_value = []
@@ -595,7 +651,9 @@ class TestGetLeaderboard:
 
     @pytest.mark.asyncio
     async def test_get_leaderboard_with_offset(
-        self, service: EconomyService, mock_db: AsyncMock,
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
     ) -> None:
         """Pagination with offset should pass through correctly."""
         guild_id = "123456789"
@@ -618,8 +676,11 @@ class TestGetRankInfo:
 
     @pytest.mark.asyncio
     async def test_get_rank_info_returns_complete_data(
-        self, service: EconomyService, mock_db: AsyncMock,
-        default_config_row: dict, member_row: dict,
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
+        default_config_row: dict,
+        member_row: dict,
     ) -> None:
         """Should return rank, XP, level, coins, and progress for a member."""
         guild_id = "123456789"
@@ -643,7 +704,9 @@ class TestGetRankInfo:
 
     @pytest.mark.asyncio
     async def test_get_rank_info_no_member(
-        self, service: EconomyService, mock_db: AsyncMock,
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
     ) -> None:
         """Member without a row should return None."""
         mock_db.get_member.return_value = None
@@ -654,7 +717,10 @@ class TestGetRankInfo:
 
     @pytest.mark.asyncio
     async def test_get_rank_info_no_config_uses_defaults(
-        self, service: EconomyService, mock_db: AsyncMock, member_row: dict,
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
+        member_row: dict,
     ) -> None:
         """Missing economy_config should fall back to defaults."""
         mock_db.get_member.return_value = member_row
@@ -668,8 +734,11 @@ class TestGetRankInfo:
 
     @pytest.mark.asyncio
     async def test_get_rank_info_unranked(
-        self, service: EconomyService, mock_db: AsyncMock,
-        default_config_row: dict, member_row: dict,
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
+        default_config_row: dict,
+        member_row: dict,
     ) -> None:
         """Member with 0 XP and no rank should return rank 0."""
         guild_id = "123456789"

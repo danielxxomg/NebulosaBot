@@ -18,7 +18,6 @@ from bot.core.cache import TTLCache
 from bot.models.guild import GuildConfig
 from bot.services.guild_service import GuildService
 
-
 # ---------------------------------------------------------------------------
 # get_config — cache hit
 # ---------------------------------------------------------------------------

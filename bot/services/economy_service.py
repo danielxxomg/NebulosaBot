@@ -7,8 +7,8 @@ the database layer; all caching is delegated to ``TTLCache``.
 from __future__ import annotations
 
 import logging
-import math
-from datetime import datetime, timedelta, timezone
+import sys
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -38,7 +38,7 @@ class EconomyService:
         cache: The bot's :class:`~bot.core.cache.TTLCache` instance.
     """
 
-    __slots__ = ("_db", "_cache")
+    __slots__ = ("_cache", "_db")
 
     def __init__(self, db: Database, cache: TTLCache) -> None:
         self._db = db
@@ -48,6 +48,12 @@ class EconomyService:
     # Level Formula (pure functions — no side effects)
     # ------------------------------------------------------------------
 
+    # Sentinel sentinel value returned when the formula overflows float range
+    # (e.g. level=309 with multiplier=10.0).  In practice this is far beyond
+    # the deterministic domain used by the bot; returning a known sentinel
+    # preserves ``int``/``float`` usability without silently capping the API.
+    _XP_OVERFLOW_SENTINEL: float = sys.float_info.max
+
     @staticmethod
     def compute_xp_for_level(
         level: int, base: int = DEFAULT_LEVEL_BASE_XP, multiplier: float = DEFAULT_LEVEL_MULTIPLIER
@@ -56,16 +62,19 @@ class EconomyService:
 
         Formula: ``base * multiplier ^ level``.
 
-        Level 0 threshold is always 0.
+        Level 0 threshold is always 0.  Values that overflow Python float
+        range return :attr:`_XP_OVERFLOW_SENTINEL` rather than raising
+        ``OverflowError``.
         """
         if level <= 0:
             return 0
-        return base * (multiplier ** level)
+        try:
+            return base * (multiplier**level)
+        except OverflowError:
+            return EconomyService._XP_OVERFLOW_SENTINEL
 
     @staticmethod
-    def compute_level(
-        xp: int, base: int = DEFAULT_LEVEL_BASE_XP, multiplier: float = DEFAULT_LEVEL_MULTIPLIER
-    ) -> int:
+    def compute_level(xp: int, base: int = DEFAULT_LEVEL_BASE_XP, multiplier: float = DEFAULT_LEVEL_MULTIPLIER) -> int:
         """Return the highest level whose XP threshold does not exceed *xp*.
 
         Works by incrementing level while the threshold is ≤ xp.
@@ -101,9 +110,7 @@ class EconomyService:
     # XP Gain
     # ------------------------------------------------------------------
 
-    async def gain_xp(
-        self, guild_id: str, user_id: str
-    ) -> tuple[int, int, bool]:
+    async def gain_xp(self, guild_id: str, user_id: str) -> tuple[int, int, bool]:
         """Award XP for a message, respecting cooldown.
 
         Returns:
@@ -112,7 +119,9 @@ class EconomyService:
         """
         config = await self._db.get_economy_config(guild_id)
         xp_per_message = config.get("xpPerMessage", DEFAULT_XP_PER_MESSAGE) if config else DEFAULT_XP_PER_MESSAGE
-        xp_cooldown_seconds = config.get("xpCooldownSeconds", DEFAULT_XP_COOLDOWN_SECONDS) if config else DEFAULT_XP_COOLDOWN_SECONDS
+        xp_cooldown_seconds = (
+            config.get("xpCooldownSeconds", DEFAULT_XP_COOLDOWN_SECONDS) if config else DEFAULT_XP_COOLDOWN_SECONDS
+        )
         level_base = config.get("levelBaseXp", DEFAULT_LEVEL_BASE_XP) if config else DEFAULT_LEVEL_BASE_XP
         level_mult = config.get("levelMultiplier", DEFAULT_LEVEL_MULTIPLIER) if config else DEFAULT_LEVEL_MULTIPLIER
 
@@ -121,12 +130,15 @@ class EconomyService:
         # Cooldown check — use lastXpGain timestamp.
         if member is not None and member.get("lastXpGain") is not None:
             last_gain = member["lastXpGain"]
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             elapsed = (now - last_gain).total_seconds()
             if elapsed < xp_cooldown_seconds:
                 logger.debug(
                     "gain_xp(%s/%s): on cooldown (%.1fs < %ds)",
-                    guild_id, user_id, elapsed, xp_cooldown_seconds,
+                    guild_id,
+                    user_id,
+                    elapsed,
+                    xp_cooldown_seconds,
                 )
                 return (0, 0, False)
 
@@ -139,9 +151,7 @@ class EconomyService:
         leveled_up = new_level > old_level
 
         # Persist XP, level, and lastXpGain timestamp in one call.
-        updated = await self._db.update_member_xp(
-            guild_id, user_id, xp_per_message, new_level=new_level
-        )
+        updated = await self._db.update_member_xp(guild_id, user_id, xp_per_message, new_level=new_level)
         new_xp = updated["xp"]
 
         # Invalidate leaderboard cache on any XP gain.
@@ -149,7 +159,12 @@ class EconomyService:
 
         logger.debug(
             "gain_xp(%s/%s): +%d XP → %d XP (level %d, leveled_up=%s)",
-            guild_id, user_id, xp_per_message, new_xp, new_level, leveled_up,
+            guild_id,
+            user_id,
+            xp_per_message,
+            new_xp,
+            new_level,
+            leveled_up,
         )
         return (new_xp, new_level, leveled_up)
 
@@ -157,9 +172,7 @@ class EconomyService:
     # Daily Claim
     # ------------------------------------------------------------------
 
-    async def claim_daily(
-        self, guild_id: str, user_id: str
-    ) -> tuple[bool, int, int]:
+    async def claim_daily(self, guild_id: str, user_id: str) -> tuple[bool, int, int]:
         """Attempt a daily coin claim with streak tracking.
 
         Returns:
@@ -168,10 +181,12 @@ class EconomyService:
         """
         config = await self._db.get_economy_config(guild_id)
         daily_reward = config.get("dailyReward", DEFAULT_DAILY_REWARD) if config else DEFAULT_DAILY_REWARD
-        cooldown_hours = config.get("dailyCooldownHours", DEFAULT_DAILY_COOLDOWN_HOURS) if config else DEFAULT_DAILY_COOLDOWN_HOURS
+        cooldown_hours = (
+            config.get("dailyCooldownHours", DEFAULT_DAILY_COOLDOWN_HOURS) if config else DEFAULT_DAILY_COOLDOWN_HOURS
+        )
 
         member = await self._db.get_member(guild_id, user_id)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Helper: parse a DB timestamp (may be str or datetime).
         def _to_datetime(value) -> datetime | None:
@@ -193,7 +208,10 @@ class EconomyService:
                 if elapsed < cooldown_seconds:
                     logger.debug(
                         "claim_daily(%s/%s): on cooldown (%.1fh < %dh)",
-                        guild_id, user_id, elapsed / 3600, cooldown_hours,
+                        guild_id,
+                        user_id,
+                        elapsed / 3600,
+                        cooldown_hours,
                     )
                     streak = member.get("dailyStreak", 0)
                     return (False, 0, streak)
@@ -226,8 +244,9 @@ class EconomyService:
         coins_awarded = int(daily_reward * (1 + STREAK_BONUS_MULTIPLIER * streak_for_bonus))
 
         now_iso = now.isoformat()
-        result = await self._db.update_member_daily(
-            guild_id, user_id,
+        await self._db.update_member_daily(
+            guild_id,
+            user_id,
             coin_delta=coins_awarded,
             streak=new_streak,
             last_daily_reset=now_iso,
@@ -236,7 +255,10 @@ class EconomyService:
 
         logger.info(
             "claim_daily(%s/%s): awarded %d coins, streak=%d",
-            guild_id, user_id, coins_awarded, new_streak,
+            guild_id,
+            user_id,
+            coins_awarded,
+            new_streak,
         )
         return (True, coins_awarded, new_streak)
 
@@ -255,9 +277,7 @@ class EconomyService:
     # Leaderboard
     # ------------------------------------------------------------------
 
-    async def get_leaderboard(
-        self, guild_id: str, sort_by: str = "xp", limit: int = 10, offset: int = 0
-    ) -> list[dict]:
+    async def get_leaderboard(self, guild_id: str, sort_by: str = "xp", limit: int = 10, offset: int = 0) -> list[dict]:
         """Return leaderboard entries for a guild, with caching.
 
         Cache key: ``{guild_id}:leaderboard:{sort_by}`` with 30s TTL.
@@ -278,9 +298,7 @@ class EconomyService:
     # Rank Info
     # ------------------------------------------------------------------
 
-    async def get_rank_info(
-        self, guild_id: str, user_id: str
-    ) -> dict | None:
+    async def get_rank_info(self, guild_id: str, user_id: str) -> dict | None:
         """Return rank card data for a member: xp, level, coins, rank, progress.
 
         Returns ``None`` if the member has no row.
