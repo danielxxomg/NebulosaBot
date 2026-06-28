@@ -24,3 +24,10 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# QA tooling artifacts (rama-c-qa-tooling)
+.coverage
+.pytest_cache/
+htmlcov/
+.mypy_cache/
+.ruff_cache/
