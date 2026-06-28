@@ -11,6 +11,7 @@ Strict TDD: tests written BEFORE implementation (RED phase).
 
 from __future__ import annotations
 
+import io
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -18,7 +19,6 @@ import pytest
 from bot.core.cache import TTLCache
 from bot.models.greeting_config import GreetingConfig
 from bot.services.greeting_service import GreetingService
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -38,13 +38,15 @@ def mock_db() -> AsyncMock:
 def mock_image_service() -> MagicMock:
     """Return a MagicMock for ImageService."""
     img = MagicMock()
-    img.generate_greeting_card = MagicMock()
+    img.generate_greeting_card = MagicMock(side_effect=lambda *_, **__: io.BytesIO(b"fake-image"))
     return img
 
 
 @pytest.fixture
 def service(
-    cache: TTLCache, mock_db: AsyncMock, mock_image_service: MagicMock,
+    cache: TTLCache,
+    mock_db: AsyncMock,
+    mock_image_service: MagicMock,
 ) -> GreetingService:
     """Return a fresh GreetingService with mocked dependencies."""
     return GreetingService(db=mock_db, cache=cache, image_service=mock_image_service)
@@ -102,7 +104,10 @@ class TestGetConfig:
 
     @pytest.mark.asyncio
     async def test_cache_hit_returns_cached_config(
-        self, service: GreetingService, cache: TTLCache, greeting_config_row: dict,
+        self,
+        service: GreetingService,
+        cache: TTLCache,
+        greeting_config_row: dict,
     ) -> None:
         """When config is cached, get_config() must return it without DB call."""
         guild_id = "123456789"
@@ -116,8 +121,11 @@ class TestGetConfig:
 
     @pytest.mark.asyncio
     async def test_cache_miss_db_hit_populates_cache(
-        self, service: GreetingService, mock_db: AsyncMock,
-        cache: TTLCache, greeting_config_row: dict,
+        self,
+        service: GreetingService,
+        mock_db: AsyncMock,
+        cache: TTLCache,
+        greeting_config_row: dict,
     ) -> None:
         """Cache miss must fetch from DB and populate cache."""
         guild_id = "123456789"
@@ -137,7 +145,10 @@ class TestGetConfig:
 
     @pytest.mark.asyncio
     async def test_cache_miss_no_db_row_returns_defaults(
-        self, service: GreetingService, mock_db: AsyncMock, cache: TTLCache,
+        self,
+        service: GreetingService,
+        mock_db: AsyncMock,
+        cache: TTLCache,
     ) -> None:
         """When no DB row exists, get_config() must return defaults."""
         guild_id = "999888777"
@@ -154,7 +165,10 @@ class TestGetConfig:
 
     @pytest.mark.asyncio
     async def test_different_guilds_have_separate_cache_keys(
-        self, service: GreetingService, mock_db: AsyncMock, cache: TTLCache,
+        self,
+        service: GreetingService,
+        mock_db: AsyncMock,
+        cache: TTLCache,
         greeting_config_row: dict,
     ) -> None:
         """Different guilds must use separate cache keys."""
@@ -182,7 +196,10 @@ class TestSaveConfig:
 
     @pytest.mark.asyncio
     async def test_save_config_upserts_and_invalidates(
-        self, service: GreetingService, mock_db: AsyncMock, cache: TTLCache,
+        self,
+        service: GreetingService,
+        mock_db: AsyncMock,
+        cache: TTLCache,
     ) -> None:
         """save_config() must call DB upsert then invalidate the cache entry."""
         guild_id = "123456789"
@@ -217,7 +234,9 @@ class TestDispatchWelcome:
 
     @pytest.mark.asyncio
     async def test_enabled_and_channel_set_resolves_config(
-        self, service: GreetingService, mock_db: AsyncMock,
+        self,
+        service: GreetingService,
+        mock_db: AsyncMock,
         greeting_config_row: dict,
     ) -> None:
         """When welcome is enabled and channel is set, config must be resolved."""
@@ -232,11 +251,12 @@ class TestDispatchWelcome:
 
     @pytest.mark.asyncio
     async def test_disabled_skips_entirely(
-        self, service: GreetingService, mock_db: AsyncMock,
+        self,
+        service: GreetingService,
+        mock_db: AsyncMock,
         greeting_config_row: dict,
     ) -> None:
         """When welcome_enabled is False, resolver returns early."""
-        guild_id = "123456789"
         disabled = {**greeting_config_row, "welcomeEnabled": False}
         mock_db.get_greeting_config.return_value = disabled
         member = make_mock_member(member_id=333, name="NewUser")
@@ -246,11 +266,12 @@ class TestDispatchWelcome:
 
     @pytest.mark.asyncio
     async def test_missing_channel_skips(
-        self, service: GreetingService, mock_db: AsyncMock,
+        self,
+        service: GreetingService,
+        mock_db: AsyncMock,
         greeting_config_row: dict,
     ) -> None:
         """When welcomeChannelId is None, resolver returns early."""
-        guild_id = "123456789"
         no_channel = {**greeting_config_row, "welcomeChannelId": None}
         mock_db.get_greeting_config.return_value = no_channel
         member = make_mock_member(member_id=333, name="NewUser")
@@ -260,7 +281,9 @@ class TestDispatchWelcome:
 
     @pytest.mark.asyncio
     async def test_no_config_row_skips(
-        self, service: GreetingService, mock_db: AsyncMock,
+        self,
+        service: GreetingService,
+        mock_db: AsyncMock,
     ) -> None:
         """When no config row exists (returns defaults), welcome is disabled."""
         mock_db.get_greeting_config.return_value = None
@@ -284,7 +307,9 @@ class TestDispatchGoodbye:
 
     @pytest.mark.asyncio
     async def test_enabled_and_channel_set_resolves_config(
-        self, service: GreetingService, mock_db: AsyncMock,
+        self,
+        service: GreetingService,
+        mock_db: AsyncMock,
         greeting_config_row: dict,
     ) -> None:
         """When goodbye is enabled and channel is set, config must be resolved."""
@@ -298,11 +323,12 @@ class TestDispatchGoodbye:
 
     @pytest.mark.asyncio
     async def test_disabled_skips_entirely(
-        self, service: GreetingService, mock_db: AsyncMock,
+        self,
+        service: GreetingService,
+        mock_db: AsyncMock,
         greeting_config_row: dict,
     ) -> None:
         """When goodbye_enabled is False, resolver returns early."""
-        guild_id = "123456789"
         disabled = {**greeting_config_row, "goodbyeEnabled": False}
         mock_db.get_greeting_config.return_value = disabled
         member = make_mock_member(member_id=444, name="LeavingUser")
@@ -312,11 +338,12 @@ class TestDispatchGoodbye:
 
     @pytest.mark.asyncio
     async def test_missing_channel_skips(
-        self, service: GreetingService, mock_db: AsyncMock,
+        self,
+        service: GreetingService,
+        mock_db: AsyncMock,
         greeting_config_row: dict,
     ) -> None:
         """When goodbyeChannelId is None, resolver returns early."""
-        guild_id = "123456789"
         no_channel = {**greeting_config_row, "goodbyeChannelId": None}
         mock_db.get_greeting_config.return_value = no_channel
         member = make_mock_member(member_id=444, name="LeavingUser")
@@ -326,7 +353,9 @@ class TestDispatchGoodbye:
 
     @pytest.mark.asyncio
     async def test_no_config_row_skips(
-        self, service: GreetingService, mock_db: AsyncMock,
+        self,
+        service: GreetingService,
+        mock_db: AsyncMock,
     ) -> None:
         """When no config row exists (returns defaults), goodbye is disabled."""
         mock_db.get_greeting_config.return_value = None
