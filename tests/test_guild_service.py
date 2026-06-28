@@ -18,7 +18,6 @@ from bot.core.cache import TTLCache
 from bot.models.guild import GuildConfig
 from bot.services.guild_service import GuildService
 
-
 # ---------------------------------------------------------------------------
 # get_config — cache hit
 # ---------------------------------------------------------------------------
@@ -264,3 +263,82 @@ async def test_mod_role_cache_cleared_when_none(
     await service.get_config(guild_id)
 
     assert guild_id_int not in mod_role_cache
+
+
+# ---------------------------------------------------------------------------
+# deactivate_guild / reactivate_guild
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_deactivate_guild_sets_active_false(
+    cache: TTLCache,
+    mock_db: AsyncMock,
+    mod_role_cache: dict[int, str],
+    sample_config: GuildConfig,
+) -> None:
+    """deactivate_guild() MUST set active=False, persist, and invalidate cache."""
+    guild_id = sample_config.id
+    cache_key = f"{guild_id}:config"
+
+    # get_config returns the sample_config.
+    mock_db.get_guild.return_value = {
+        "id": sample_config.id,
+        "prefix": sample_config.prefix,
+        "language": sample_config.language,
+        "modRoleId": sample_config.mod_role_id,
+        "logChannelId": None,
+        "ticketCategoryId": None,
+        "logEnabled": False,
+        "welcomeEnabled": False,
+        "active": True,
+    }
+
+    service = GuildService(db=mock_db, cache=cache, mod_role_cache=mod_role_cache)
+    await service.deactivate_guild(guild_id)
+
+    # active flag was toggled.
+    assert mock_db.upsert_guild.await_count >= 1
+    upserted = mock_db.upsert_guild.call_args[0][0]
+    assert upserted.active is False
+
+    # Cache was re-populated (via save_config → get_config re-read).
+    cached = cache.get(cache_key)
+    assert cached is not None
+
+
+@pytest.mark.asyncio
+async def test_reactivate_guild_sets_active_true(
+    cache: TTLCache,
+    mock_db: AsyncMock,
+    mod_role_cache: dict[int, str],
+    sample_config: GuildConfig,
+) -> None:
+    """reactivate_guild() MUST set active=True, persist, and invalidate cache."""
+    guild_id = sample_config.id
+    cache_key = f"{guild_id}:config"
+
+    # get_config returns the sample_config with active=False.
+    mock_db.get_guild.return_value = {
+        "id": sample_config.id,
+        "prefix": sample_config.prefix,
+        "language": sample_config.language,
+        "modRoleId": sample_config.mod_role_id,
+        "logChannelId": None,
+        "ticketCategoryId": None,
+        "logEnabled": False,
+        "welcomeEnabled": False,
+        "active": False,
+    }
+
+    service = GuildService(db=mock_db, cache=cache, mod_role_cache=mod_role_cache)
+    await service.reactivate_guild(guild_id)
+
+    # active flag was toggled back.
+    assert mock_db.upsert_guild.await_count >= 1
+    upserted = mock_db.upsert_guild.call_args[0][0]
+    assert upserted.active is True
+
+    # Cache was re-populated.
+    cached = cache.get(cache_key)
+    assert cached is not None
