@@ -14,7 +14,7 @@ Strict TDD: these tests are written BEFORE the implementation exists (RED phase)
 from __future__ import annotations
 
 import math
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -198,7 +198,7 @@ class TestGainXp:
     @pytest.mark.asyncio
     async def test_gain_xp_cooldown_active(
         self, service: EconomyService, mock_db: AsyncMock,
-        default_config_row: dict, member_row: dict,
+        default_config_row: dict, member_row: dict, frozen_clock,
     ) -> None:
         """When cooldown is active, no XP should be awarded."""
         guild_id = "123456789"
@@ -206,7 +206,7 @@ class TestGainXp:
 
         mock_db.get_economy_config.return_value = default_config_row
         # Member gained XP 10 seconds ago (cooldown is 60s)
-        member_with_cooldown = {**member_row, "lastXpGain": datetime.now(timezone.utc) - timedelta(seconds=10)}
+        member_with_cooldown = {**member_row, "lastXpGain": frozen_clock - timedelta(seconds=10)}
         mock_db.get_member.return_value = member_with_cooldown
 
         new_xp, new_level, leveled_up = await service.gain_xp(guild_id, user_id)
@@ -219,7 +219,7 @@ class TestGainXp:
     @pytest.mark.asyncio
     async def test_gain_xp_cooldown_elapsed(
         self, service: EconomyService, mock_db: AsyncMock,
-        default_config_row: dict, member_row: dict,
+        default_config_row: dict, member_row: dict, frozen_clock,
     ) -> None:
         """When cooldown has elapsed, XP should be awarded."""
         guild_id = "123456789"
@@ -229,7 +229,7 @@ class TestGainXp:
         # Member gained XP 120 seconds ago (cooldown is 60s)
         member_elapsed = {
             **member_row,
-            "lastXpGain": datetime.now(timezone.utc) - timedelta(seconds=120),
+            "lastXpGain": frozen_clock - timedelta(seconds=120),
             "xp": 250,
             "level": 2,
         }
@@ -246,7 +246,7 @@ class TestGainXp:
     @pytest.mark.asyncio
     async def test_gain_xp_levels_up(
         self, service: EconomyService, mock_db: AsyncMock,
-        default_config_row: dict, member_row: dict,
+        default_config_row: dict, member_row: dict, frozen_clock,
     ) -> None:
         """XP gain that crosses a level threshold should trigger level-up."""
         guild_id = "123456789"
@@ -256,7 +256,7 @@ class TestGainXp:
         # Member at 330 XP (level 2), +10 XP → 340 XP — just over level 3 threshold (337.5).
         member_near_level = {
             **member_row,
-            "lastXpGain": datetime.now(timezone.utc) - timedelta(seconds=120),
+            "lastXpGain": frozen_clock - timedelta(seconds=120),
             "xp": 330,
             "level": 2,
         }
@@ -339,7 +339,7 @@ class TestClaimDaily:
     @pytest.mark.asyncio
     async def test_claim_daily_consecutive(
         self, service: EconomyService, mock_db: AsyncMock,
-        default_config_row: dict, member_row: dict,
+        default_config_row: dict, member_row: dict, frozen_clock,
     ) -> None:
         """Consecutive claim: streak increments by 1, reward scales."""
         guild_id = "123456789"
@@ -348,13 +348,13 @@ class TestClaimDaily:
         mock_db.get_economy_config.return_value = default_config_row
         # lastDaily 26h ago -> passes the 24h cooldown check regardless of
         # time of day (26h > 24h always).
-        yesterday_26h = datetime.now(timezone.utc) - timedelta(hours=26)
+        yesterday_26h = frozen_clock - timedelta(hours=26)
         # lastDailyReset must fall on YESTERDAY's calendar date at any time
         # of day so the "consecutive day" branch fires deterministically.
         # timedelta(hours=20) only equals yesterday before 20:00 UTC; after
         # that, 20h ago is still today and the same-day branch fires
         # (giving new_streak=old_streak instead of old_streak+1).
-        yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+        yesterday = frozen_clock - timedelta(days=1)
         member_with_streak = {
             **member_row,
             "dailyStreak": 3,
@@ -373,7 +373,7 @@ class TestClaimDaily:
     @pytest.mark.asyncio
     async def test_claim_daily_streak_capped_at_7(
         self, service: EconomyService, mock_db: AsyncMock,
-        default_config_row: dict, member_row: dict,
+        default_config_row: dict, member_row: dict, frozen_clock,
     ) -> None:
         """Streak capped at 7: reward = 100 * (1 + 0.1 * 6) = 160."""
         guild_id = "123456789"
@@ -385,8 +385,8 @@ class TestClaimDaily:
         # via the same-day branch after 20:00 UTC instead of actually
         # exercising the consecutive-day cap path — masking the same
         # latent flake.
-        yesterday_26h = datetime.now(timezone.utc) - timedelta(hours=26)
-        yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+        yesterday_26h = frozen_clock - timedelta(hours=26)
+        yesterday = frozen_clock - timedelta(days=1)
         member_max_streak = {
             **member_row,
             "dailyStreak": 7,
@@ -405,14 +405,14 @@ class TestClaimDaily:
     @pytest.mark.asyncio
     async def test_claim_daily_broken_streak(
         self, service: EconomyService, mock_db: AsyncMock,
-        default_config_row: dict, member_row: dict,
+        default_config_row: dict, member_row: dict, frozen_clock,
     ) -> None:
         """Missed a day: streak resets to 1, base reward."""
         guild_id = "123456789"
         user_id = "111111111"
 
         mock_db.get_economy_config.return_value = default_config_row
-        two_days_ago = datetime.now(timezone.utc) - timedelta(hours=48)
+        two_days_ago = frozen_clock - timedelta(hours=48)
         member_broken = {
             **member_row,
             "dailyStreak": 5,
@@ -431,14 +431,14 @@ class TestClaimDaily:
     @pytest.mark.asyncio
     async def test_claim_daily_cooldown_active(
         self, service: EconomyService, mock_db: AsyncMock,
-        default_config_row: dict, member_row: dict,
+        default_config_row: dict, member_row: dict, frozen_clock,
     ) -> None:
         """Claim within cooldown window should be rejected."""
         guild_id = "123456789"
         user_id = "111111111"
 
         mock_db.get_economy_config.return_value = default_config_row
-        two_hours_ago = datetime.now(timezone.utc) - timedelta(hours=2)
+        two_hours_ago = frozen_clock - timedelta(hours=2)
         member_recent = {
             **member_row,
             "dailyStreak": 3,
