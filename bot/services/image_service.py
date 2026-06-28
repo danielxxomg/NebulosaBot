@@ -362,7 +362,7 @@ class ImageService:
                 avatar_url,
                 headers={"User-Agent": "NebulosaBot/1.0 (rank card)"},
             )
-            with urllib.request.urlopen(req, timeout=AVATAR_FETCH_TIMEOUT) as resp:  # noqa: S310 — user-supplied URL is expected
+            with urllib.request.urlopen(req, timeout=AVATAR_FETCH_TIMEOUT) as resp:  # nosec B310 — user-supplied avatar URL is expected
                 data = resp.read()
             return Image.open(io.BytesIO(data)).convert("RGBA")
         except Exception:

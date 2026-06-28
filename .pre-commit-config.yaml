@@ -1,0 +1,45 @@
+# .pre-commit-config.yaml — rama-c-qa-tooling
+# Order: fast → slow. SKIP=<hook-id> to bypass per-commit.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^(bot/services/economy_service\.py|bot/config\.py|tests/conftest\.py|tests/property/.*\.py|tests/test_economy_service\.py|tests/test_guild_service\.py|tests/test_config\.py|tests/test_database\.py|tests/test_sentinel_cog\.py|tests/test_tickets_cog\.py|tests/test_greeting_service\.py|tests/integration/.*\.py)$
+      - id: ruff-format
+        args: [--check]
+        files: ^(bot/services/economy_service\.py|bot/config\.py|tests/conftest\.py|tests/property/.*\.py|tests/test_economy_service\.py|tests/test_guild_service\.py|tests/test_config\.py|tests/test_database\.py|tests/test_sentinel_cog\.py|tests/test_tickets_cog\.py|tests/test_greeting_service\.py|tests/integration/.*\.py)$
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: uv run mypy bot/services/economy_service.py bot/config.py tests/conftest.py tests/test_guild_service.py tests/test_config.py tests/test_database.py
+        language: system
+        pass_filenames: false
+        files: ^(bot/services/economy_service\.py|bot/config\.py|tests/conftest\.py|tests/test_guild_service\.py|tests/test_config\.py|tests/test_database\.py)$
+
+      - id: bandit
+        name: bandit
+        entry: bandit -r bot/ -c pyproject.toml --severity-level medium
+        language: system
+        pass_filenames: false
+        files: ^bot/.*\.py$
+
+      - id: gga
+        name: gga
+        entry: ./.gga
+        language: script
+        always_run: true
+        verbose: true
+        pass_filenames: false

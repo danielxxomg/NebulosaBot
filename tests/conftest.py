@@ -2,20 +2,28 @@
 
 Provides mocked Database, real TTLCache, sample GuildConfig, and Discord
 mock objects that avoid hitting the real Discord API or Supabase.
+
+Also provides ``frozen_clock`` — a deterministic ``datetime.now()`` fixture
+using ``freezegun`` to eliminate date-time flake risk under ``pytest-randomly``.
 """
 
 from __future__ import annotations
 
 import asyncio
 import selectors
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
+from freezegun import freeze_time
 
 from bot.core.cache import TTLCache
 from bot.core.database import Database
 from bot.models.guild import GuildConfig
+
+# Frozen deterministic timestamp: 2024-06-15 12:00:00 UTC
+_FROZEN_NOW = datetime(2024, 6, 15, 12, 0, 0, tzinfo=UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -145,3 +153,27 @@ def mock_interaction(mock_guild: MagicMock, mock_member: MagicMock) -> MagicMock
     interaction.client = MagicMock()
     interaction.guild_id = mock_guild.id
     return interaction
+
+
+# ---------------------------------------------------------------------------
+# frozen_clock — deterministic datetime.now() fixture
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def frozen_clock():
+    """Freeze ``datetime.now()`` to a deterministic value for the test duration.
+
+    Uses ``freezegun.freeze_time`` to globally patch ``datetime.now`` so
+    that BOTH test-side direct calls (``datetime.now(timezone.utc)``) AND
+    service-side datetime access return the frozen value.  The clock is
+    automatically restored when the fixture tears down.
+
+    Usage::
+
+        async def test_cooldown(frozen_clock):
+            assert frozen_clock == datetime(2024, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+            # both test code and economy_service.gain_xp() see frozen time
+    """
+    with freeze_time(_FROZEN_NOW):
+        yield _FROZEN_NOW
