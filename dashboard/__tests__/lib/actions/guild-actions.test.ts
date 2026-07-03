@@ -16,6 +16,7 @@ const mockGetSession = vi.fn();
 const mockRevalidatePath = vi.fn();
 const mockFetchUserGuilds = vi.fn();
 const mockHasAdministratorPerm = vi.fn();
+const mockNotifyWebhookSync = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("@/lib/supabase", () => ({
   createServerSupabaseClient: vi.fn(() =>
@@ -33,6 +34,10 @@ vi.mock("@/lib/discord", () => ({
 
 vi.mock("next/cache", () => ({
   revalidatePath: (...args: unknown[]) => mockRevalidatePath(...args),
+}));
+
+vi.mock("@/lib/webhook-sync", () => ({
+  notifyWebhookSync: (...args: unknown[]) => mockNotifyWebhookSync(...args),
 }));
 
 import { updateGuildConfig } from "@/lib/actions/guild-actions";
@@ -92,6 +97,8 @@ describe("updateGuildConfig — auth rejection", () => {
     const fd = buildFormData({ prefix: "!", language: "en" });
     const result = await updateGuildConfig(GUILD_ID, fd);
     assertAuthError(result);
+    // A rejected request must never trigger the cache-sync webhook.
+    expect(mockNotifyWebhookSync).not.toHaveBeenCalled();
   });
 
   it("returns error when provider token is missing", async () => {
@@ -234,12 +241,23 @@ describe("updateGuildConfig — successful update", () => {
 
     assertSuccess(result);
     expect(mockRevalidatePath).toHaveBeenCalledWith(`/guilds/${GUILD_ID}`, "layout");
+    // Webhook cache-sync is fired after a successful Supabase write, with the
+    // guild_id as a string (the wire contract the bot expects).
+    expect(mockNotifyWebhookSync).toHaveBeenCalledWith(GUILD_ID);
   });
 
   it("passes logEnabled=false when switch is off", async () => {
     setupAuth();
     // Without the "on" value for logEnabled, the field should be treated as false.
     const fd = buildFormData({ prefix: "?", language: "de" });
+    const result = await updateGuildConfig(GUILD_ID, fd);
+    assertSuccess(result);
+  });
+
+  it("returns success even when notifyWebhookSync rejects (fire-and-forget at the action boundary)", async () => {
+    setupAuth();
+    mockNotifyWebhookSync.mockRejectedValueOnce(new Error("webhook down"));
+    const fd = buildFormData({ prefix: "!", language: "en" });
     const result = await updateGuildConfig(GUILD_ID, fd);
     assertSuccess(result);
   });
