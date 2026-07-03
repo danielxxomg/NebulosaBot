@@ -15,6 +15,7 @@ import {
 const mockGetSession = vi.fn();
 const mockRevalidatePath = vi.fn();
 const mockFetchUserGuilds = vi.fn();
+const mockNotifyWebhookSync = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("@/lib/supabase", () => ({
   createServerSupabaseClient: vi.fn(() =>
@@ -36,6 +37,10 @@ vi.mock("@/lib/discord", () => ({
 
 vi.mock("next/cache", () => ({
   revalidatePath: (...args: unknown[]) => mockRevalidatePath(...args),
+}));
+
+vi.mock("@/lib/webhook-sync", () => ({
+  notifyWebhookSync: (...args: unknown[]) => mockNotifyWebhookSync(...args),
 }));
 
 import { updateEconomyConfig } from "@/lib/actions/economy-actions";
@@ -96,6 +101,8 @@ describe("updateEconomyConfig — auth rejection", () => {
     });
     const result = await updateEconomyConfig(GUILD_ID, fd);
     assertAuthError(result);
+    // A rejected request must never trigger the cache-sync webhook.
+    expect(mockNotifyWebhookSync).not.toHaveBeenCalled();
   });
 
   it("returns error when user is not admin", async () => {
@@ -306,6 +313,8 @@ describe("updateEconomyConfig — successful update", () => {
     const result = await updateEconomyConfig(GUILD_ID, fd);
     assertSuccess(result);
     expect(mockRevalidatePath).toHaveBeenCalledWith(`/guilds/${GUILD_ID}`, "layout");
+    // Webhook cache-sync is fired after a successful Supabase write.
+    expect(mockNotifyWebhookSync).toHaveBeenCalledWith(GUILD_ID);
   });
 
   it("accepts boundary values", async () => {
@@ -331,6 +340,21 @@ describe("updateEconomyConfig — successful update", () => {
       xpCooldownSeconds: "1",
       levelBaseXp: "1",
       levelMultiplier: "1.0",
+    });
+    const result = await updateEconomyConfig(GUILD_ID, fd);
+    assertSuccess(result);
+  });
+
+  it("returns success even when notifyWebhookSync rejects (fire-and-forget at the action boundary)", async () => {
+    setupAuth();
+    mockNotifyWebhookSync.mockRejectedValueOnce(new Error("webhook down"));
+    const fd = buildFormData({
+      dailyReward: "100",
+      dailyCooldownHours: "24",
+      xpPerMessage: "10",
+      xpCooldownSeconds: "60",
+      levelBaseXp: "100",
+      levelMultiplier: "1.5",
     });
     const result = await updateEconomyConfig(GUILD_ID, fd);
     assertSuccess(result);

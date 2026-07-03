@@ -258,3 +258,146 @@ Post-4R fix complete. 429/429 tests green; lint/type/security clean; coverage
 77.65%. **Ready for commit/push/PR1** (deferred per instructions — left in
 working tree, NOT committed).
 
+---
+
+## PR2 (dashboard-side slice) — corrective re-run batch
+
+**Trigger**: PR2 re-run. The previous apply attempt returned an EMPTY result
+and did nothing (clean tree, no files). This batch is the single corrective
+re-run and it SUCCEEDED. Dashboard structure was known up-front (precise
+paths used, no blind search).
+
+**Mode**: Strict TDD (Red-Green-Refactor). Dashboard runner: vitest.
+**Slice**: PR2 — dashboard ONLY. Does NOT touch `bot/` (PR1 done on
+`feat/webhook-sync-pr1`, PR #9).
+
+### Completed Tasks (PR2)
+
+- [x] 4.1 **Webhook helper** (`dashboard/lib/webhook-sync.ts` + vitest)
+- [x] 4.2 **Wire guild-actions** — `await notifyWebhookSync(guildId)` after write
+- [x] 4.3 **Wire economy-actions** — `await notifyWebhookSync(guildId)` after write
+- [x] 4.4 **Wire greeting-actions** — `await notifyWebhookSync(guildId)` after write
+- [x] 5.2 **Update dashboard env examples** — `WEBHOOK_URL` + `WEBHOOK_SECRET`
+- [x] 6.1 **Full suite** — bot pytest 429 + dashboard vitest 85, bot cov 77.65%
+
+### TDD Cycle Evidence (Strict TDD)
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 4.1 | `dashboard/__tests__/lib/webhook-sync.test.ts` | Unit | N/A (new) | ✅ 8 tests fail: module `@/lib/webhook-sync` not found (import unresolvable, 0 collected) | ✅ 8/8 pass | ✅ sign+POST / str guild_id / hexdigest / trailing-slash / fetch-reject no-throw / non-ok no-throw / no-op URL / no-op SECRET | ✅ clean |
+| 4.2 | `dashboard/__tests__/lib/actions/guild-actions.test.ts` | Unit | 16/17 pre-existing pass | ✅ 1 fail: `mockNotifyWebhookSync` Number of calls: 0 | ✅ 17/17 pass | ✅ assert called with GUILD_ID after successful write | ✅ clean |
+| 4.3 | `dashboard/__tests__/lib/actions/economy-actions.test.ts` | Unit | 24/25 pre-existing pass | ✅ 1 fail: `mockNotifyWebhookSync` Number of calls: 0 | ✅ 25/25 pass | ✅ assert called with GUILD_ID after successful write | ✅ clean |
+| 4.4 | `dashboard/__tests__/lib/actions/greeting-actions.test.ts` | Unit | 17/18 pre-existing pass | ✅ 1 fail: `mockNotifyWebhookSync` Number of calls: 0 | ✅ 18/18 pass | ✅ assert called with GUILD_ID after successful write | ✅ clean |
+| 5.2 | `dashboard/.env.local.example` + `.env.example` | Config | N/A | N/A (config — TDD exception) | N/A | N/A | ✅ clean |
+| 6.1 | full suite | Verification | bot 429 + dash 85 | N/A | ✅ both green | N/A | N/A |
+
+**TDD detail:**
+- **Cycle 1 (helper)**: RED — wrote `webhook-sync.test.ts` (8 tests) first; ran
+  → FAILED for the right reason (`Failed to resolve import "@/lib/webhook-sync"`,
+  0 tests collected). GREEN — created `webhook-sync.ts` (`notifyWebhookSync`
+  signs `JSON.stringify({guild_id})` with
+  `createHmac('sha256', secret).update(body).digest('hex')`, POSTs to
+  `${WEBHOOK_URL}/webhook/sync`, try/catch+`console.error` fire-and-forget,
+  no-op when env unset); ran → 8/8 pass.
+- **Cycle 2 (action wiring)**: RED — extended the 3 action tests with a
+  `vi.mock("@/lib/webhook-sync")` + `expect(mockNotifyWebhookSync).toHaveBeenCalledWith(GUILD_ID)`
+  on the success path; ran → 3 FAILED for the right reason (Number of calls: 0;
+  the other 57 tests still passed, proving the mock didn't break existing
+  tests). GREEN — added `import { notifyWebhookSync }` +
+  `await notifyWebhookSync(guildId)` after the successful Supabase write
+  (before `revalidatePath`) in all 3 actions; ran → 85/85 pass.
+
+### Wire Contract (matches PR1 bot)
+
+- Endpoint: `POST ${WEBHOOK_URL}/webhook/sync`
+- Body: `{"guild_id":"<str>"}` — guild_id is a STRING (DB TEXT convention;
+  matches `bot/webhook/models.py` which accepts str|int, coerces to str, and
+  treats `entity` as OPTIONAL with default `""`). The helper sends guild_id
+  only (entity omitted) — bot-compatible and matches the spec's "Valid payload
+  processed" scenario `{"guild_id": "12345"}`.
+- Header: `X-Webhook-Signature: <hex hmac-sha256(rawBody, WEBHOOK_SECRET)>`
+- Fire-and-forget: try/catch + `console.error`; never re-throws.
+- No-op: `WEBHOOK_URL`/`WEBHOOK_SECRET` unset → `console.debug`, no fetch.
+- Server-side env only: `process.env.WEBHOOK_URL`/`WEBHOOK_SECRET` (never `NEXT_PUBLIC_`).
+
+### Verification Results (PR2)
+
+| Gate | Command | Result |
+|------|---------|--------|
+| Dashboard unit suite | `cd dashboard && npx vitest run` | ✅ 85 passed (6 files), 0 fail |
+| Dashboard types | `cd dashboard && npx tsc --noEmit` | ✅ EXIT 0 (no issues) |
+| Dashboard lint | `cd dashboard && npm run lint` | ⚠ `next lint` unconfigured (pre-existing interactive ESLint setup prompt; not a regression). tsc is the type gate. |
+| Bot suite + coverage | `uv run pytest -q` | ✅ 429 passed, 77.65% cov (bot untouched by PR2) |
+
+### Files Changed (PR2)
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `dashboard/lib/webhook-sync.ts` | Created | `notifyWebhookSync(guildId)`: HMAC-SHA256 sign + fire-and-forget POST to `${WEBHOOK_URL}/webhook/sync`; no-op when env unset; server-side env only. |
+| `dashboard/__tests__/lib/webhook-sync.test.ts` | Created | 8 tests: sign+POST, str guild_id, hexdigest, trailing-slash, fetch-reject no-throw, non-ok no-throw, no-op URL/SECRET. Mocks `fetch` (`vi.stubGlobal`) + `console.*`; uses `node:crypto` to assert the exact hexdigest. |
+| `dashboard/lib/actions/guild-actions.ts` | Modified | +import `notifyWebhookSync`; `await notifyWebhookSync(guildId)` after successful `.update()`, before `revalidatePath`. |
+| `dashboard/lib/actions/economy-actions.ts` | Modified | +import `notifyWebhookSync`; `await notifyWebhookSync(guildId)` after successful `.upsert()`, before `revalidatePath`. |
+| `dashboard/lib/actions/greeting-actions.ts` | Modified | +import `notifyWebhookSync`; `await notifyWebhookSync(guildId)` after successful `.upsert()`, before `revalidatePath`. |
+| `dashboard/__tests__/lib/actions/guild-actions.test.ts` | Modified | +`vi.mock("@/lib/webhook-sync")` + assert `notifyWebhookSync` called with GUILD_ID on the success path. |
+| `dashboard/__tests__/lib/actions/economy-actions.test.ts` | Modified | Same mock + assertion on the success path. |
+| `dashboard/__tests__/lib/actions/greeting-actions.test.ts` | Modified | Same mock + assertion on the success path. |
+| `dashboard/.env.local.example` | Modified | +`WEBHOOK_URL`/`WEBHOOK_SECRET` (server-side only, with comments). |
+| `dashboard/.env.example` | Modified | Same as `.env.local.example`. |
+| `openspec/changes/webhook-sync/tasks.md` | Modified | Marked 4.1, 4.2, 4.3, 4.4, 5.2, 6.1 `[x]`. |
+
+### Deviations from Design (PR2)
+
+1. **Env var name `WEBHOOK_URL` vs design's `BOT_WEBHOOK_URL`** — the re-run
+   instructions explicitly named `WEBHOOK_URL` (and `process.env.WEBHOOK_URL`),
+   superseding `design.md:63` / `tasks.md:71` which used `BOT_WEBHOOK_URL`.
+   Followed the operative instruction (`WEBHOOK_URL`); both env files and the
+   helper use `WEBHOOK_URL`. `WEBHOOK_SECRET` matches design/bot exactly. Flag
+   for design.md reconciliation (rename `BOT_WEBHOOK_URL`→`WEBHOOK_URL` in
+   design.md / tasks.md, or rename the helper — currently consistent with the
+   instruction).
+2. **Helper omits the optional `entity` field** — `design.md:53` /
+   `tasks.md:64-66` mention `sendWebhookSync(gid, "guild_config")` with an
+   entity. The re-run instruction specified `notifyWebhookSync(guildId: string)`
+   with body `{"guild_id": guildId}` (guild_id only). The bot's
+   `WebhookSyncPayload` treats `entity` as OPTIONAL (`data.get("entity","")`)
+   and "does not alter invalidation behaviour" (full-guild evict), so a
+   guild_id-only body is bot-compatible and matches the spec's "Valid payload
+   processed" scenario `{"guild_id":"12345"}`. Followed the instruction
+   (single-param, guild_id-only). Flag for design.md reconciliation if the
+   entity hint is later desired for logging/metrics.
+
+### Issues Found
+
+- The previous PR2 apply attempt returned an EMPTY result and wrote nothing
+  (clean tree). This corrective re-run succeeded: 2 new files + 8 modified,
+  85 dashboard tests green, tsc clean.
+- `next lint` is unconfigured in the dashboard (interactive ESLint setup
+  prompt). Pre-existing tooling gap, not a PR2 regression. tsc is the type
+  gate and is clean.
+- Dashboard has no coverage measurement configured
+  (`vitest.config.ts` has no coverage settings), so PR2 dashboard coverage is
+  unmeasured. Bot coverage 77.65% ≥ 70% (6.1 threshold met on the bot side).
+  Pre-existing dashboard tooling gap.
+
+### Workload / PR Boundary
+
+- **Mode**: chained PR slice — PR2 (dashboard), autonomous and verifiable.
+- **Current work unit**: PR2 — dashboard helper + 3 action wirings + env + tests.
+- **Boundary**: dashboard ONLY. Does NOT touch `bot/` (PR1 done on
+  `feat/webhook-sync-pr1`, PR #9). All changes are additive to the dashboard.
+- **Chain strategy**: two-PR split — PR1 (bot, `feat/webhook-sync-pr1`, PR #9)
+  → PR2 (dashboard, this batch). PR2 depends on PR1's wire contract (HMAC
+  hexdigest + str guild_id) but is independently deployable (the helper is a
+  graceful no-op until `WEBHOOK_URL`/`WEBHOOK_SECRET` are set).
+- **Estimated review budget impact**: ~246 dashboard lines (190 new files
+  [68 helper + 122 test] + 56 insertions / 3 deletions across 8 modified
+  files). Slightly over the ~150-line PR2 estimate due to a thorough 8-test
+  helper suite; well within the single-PR review budget.
+
+### Status
+
+PR2 (dashboard) complete. 85/85 dashboard vitest green; tsc EXIT 0; bot 429
+pytest green (untouched). All Phase 4 + 5.2 + 6.1 tasks marked `[x]`. **Ready
+for review PR2 → commit/push/PR2 → sdd-verify → sdd-archive** (deferred per
+instructions — left in working tree, NOT committed).
+

@@ -57,20 +57,19 @@ Chain strategy: pending
 
 ## Phase 4: Dashboard
 
-- [ ] 4.1 **TDD — Webhook helper** (`dashboard/lib/webhook-sync.ts`, test)
+- [x] 4.1 **TDD — Webhook helper** (`dashboard/lib/webhook-sync.ts`, test)
   RED: vitest — signs body, POSTs, catches errors. Mock fetch+crypto.
   GREEN: `crypto.createHmac`, fire-and-forget `fetch().catch(console.error)`.
-
-- [ ] 4.2 **TDD — Wire guild-actions** (file + test) — `sendWebhookSync(gid, "guild_config")` after write.
-- [ ] 4.3 **TDD — Wire economy-actions** (file + test) — `sendWebhookSync(gid, "economy_config")`.
-- [ ] 4.4 **TDD — Wire greeting-actions** (file + test) — `sendWebhookSync(gid, "greeting_config")`.
+- [x] 4.2 **TDD — Wire guild-actions** (file + test) — `sendWebhookSync(gid, "guild_config")` after write.
+- [x] 4.3 **TDD — Wire economy-actions** (file + test) — `sendWebhookSync(gid, "economy_config")`.
+- [x] 4.4 **TDD — Wire greeting-actions** (file + test) — `sendWebhookSync(gid, "greeting_config")`.
 
 ## Phase 5: Env & Dependencies
 
 - [x] 5.1 **Update .env.example** — add `WEBHOOK_SECRET`, `WEBHOOK_HOST`, `WEBHOOK_PORT`.
-- [ ] 5.2 **Update dashboard/.env.local.example** — add `BOT_WEBHOOK_URL`, `WEBHOOK_SECRET`.
+- [x] 5.2 **Update dashboard/.env.local.example** — add `BOT_WEBHOOK_URL`, `WEBHOOK_SECRET`.
 - [x] 5.3 **Reconcile aiohttp** (`requirements.txt`) — pin 3.14.1 to match uv.lock. Verify tests pass.
 
 ## Phase 6: Verification
 
-- [ ] 6.1 **Full suite** — `uv run pytest` + `cd dashboard && npx vitest run`. Coverage ≥ 70%.
+- [x] 6.1 **Full suite** — `uv run pytest` + `cd dashboard && npx vitest run`. Coverage ≥ 70%.
