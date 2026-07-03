@@ -79,3 +79,19 @@ The system MUST store the deployed ticket panel message ID and channel ID in the
 - GIVEN stored panel IDs point to a deleted message
 - WHEN the bot starts
 - THEN the stale IDs are cleared and a warning is logged
+
+### Requirement: Dashboard webhook notification
+
+The dashboard `updateGuildConfig()` Server Action MUST fire an asynchronous POST to the bot's webhook endpoint after a successful Supabase write. The webhook call MUST NOT block or fail the Supabase write.
+
+#### Scenario: Webhook fired after config write
+
+- GIVEN the dashboard writes a guild config change to Supabase
+- WHEN the Supabase write succeeds
+- THEN a signed POST is sent to the webhook endpoint with `{"guild_id": G}` (guild_id only; the optional `entity` field is omitted because the bot performs a full `invalidate_guild`)
+
+#### Scenario: Webhook failure does not fail write
+
+- GIVEN the webhook endpoint is unreachable or returns an error
+- WHEN `updateGuildConfig()` completes the Supabase write
+- THEN the Server Action returns success (fire-and-forget)
