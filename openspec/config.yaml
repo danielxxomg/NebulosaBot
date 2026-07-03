@@ -5,7 +5,7 @@ context: |
   Stack: Python (bot), Next.js (dashboard), Supabase/PostgreSQL (DB)
   Architecture: Cache-first with webhook invalidation, modular command system
   Modules: Core, Tickets, Moderation (Sentinel), Economy (Stellar), Utility
-  Status: Pre-code / Design phase — no source code yet
+  Status: Implemented — 7 cogs, 8 services, 2 listeners, 24 hybrid commands, 384 tests, 74.59% coverage
   Diagrams: 4 Mermaid/PlantUML design docs in /Diagramas
   Language: Spanish (design docs), English (code artifacts)
 
@@ -13,19 +13,20 @@ strict_tdd: true
 
 testing:
   runner: pytest
-  command: "python -m pytest -v"
+  command: "uv run pytest"
   framework: pytest-asyncio
   layers:
     unit: true
-    integration: false
+    integration: true
     e2e: false
   coverage:
-    available: false
-    command: ""
+    available: true
+    command: "uv run pytest --cov=bot --cov-report=term"
+    current: 0.7459
   quality:
-    linter: false
-    type_checker: false
-    formatter: false
+    linter: ruff
+    type_checker: mypy
+    formatter: ruff
 
 rules:
   proposal:
@@ -45,11 +46,11 @@ rules:
     - Follow existing code patterns
     - Strict TDD: write tests FIRST, then implement
     tdd: true
-    test_command: "python -m pytest -v"
+    test_command: "uv run pytest"
   verify:
-    test_command: "python -m pytest -v"
+    test_command: "uv run pytest"
     build_command: "python -m py_compile bot/__main__.py"
-    coverage_threshold: 0
+    coverage_threshold: 0.70
   archive:
     - Warn before merging destructive deltas
 
