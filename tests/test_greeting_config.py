@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from bot.models.greeting_config import GreetingConfig
 
-
 # ---------------------------------------------------------------------------
 # Default values
 # ---------------------------------------------------------------------------

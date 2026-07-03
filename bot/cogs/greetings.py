@@ -16,7 +16,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from bot.utils.embeds import error_embed, success_embed
+from bot.utils.embeds import error_embed
 
 if TYPE_CHECKING:
     from bot.bot import NebulosaBot

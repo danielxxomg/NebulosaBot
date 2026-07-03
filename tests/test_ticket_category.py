@@ -8,10 +8,9 @@ Covers:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from bot.models.ticket_category import TicketCategory
-
 
 # ---------------------------------------------------------------------------
 # from_db_row
@@ -71,7 +70,7 @@ def test_from_db_row_minimal() -> None:
 
 def test_to_db_dict_full() -> None:
     """to_db_dict MUST produce a camelCase dict with all fields."""
-    now = datetime(2026, 6, 16, 15, 30, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 6, 16, 15, 30, 0, tzinfo=UTC)
     cat = TicketCategory(
         id="cat-003",
         guild_id="111222333",

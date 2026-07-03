@@ -9,7 +9,6 @@ Strict TDD: RED phase — tests written BEFORE the implementation exists.
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -17,7 +16,6 @@ import pytest
 from discord.ext import commands
 
 from bot.cogs.ocio import OcioCog
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

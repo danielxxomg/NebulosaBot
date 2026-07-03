@@ -18,10 +18,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.utils.embeds import (
-    COLOR_ERROR,
     COLOR_INFO,
-    COLOR_SUCCESS,
-    COLOR_WARNING,
     error_embed,
     info_embed,
     success_embed,

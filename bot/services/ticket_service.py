@@ -7,7 +7,7 @@ and a cached set of ticket channel IDs for fast O(1) ``on_message`` queries.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from bot.models.ticket import Ticket
@@ -29,7 +29,7 @@ class TicketService:
         cache: The bot's :class:`~bot.core.cache.TTLCache` instance.
     """
 
-    __slots__ = ("_db", "_cache", "_ticket_channel_cache")
+    __slots__ = ("_cache", "_db", "_ticket_channel_cache")
 
     def __init__(self, db: Database, cache: TTLCache) -> None:
         self._db = db
@@ -134,7 +134,7 @@ class TicketService:
         Raises:
             ValueError: If the ticket does not exist after the update.
         """
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         update_kwargs: dict[str, str | None] = {
             "status": "closed",
             "closedAt": now,

@@ -7,7 +7,7 @@ database, cache, guild config, and the bot itself.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import discord
@@ -36,7 +36,7 @@ class _HelpPaginator(discord.ui.View):
     first/last page.
     """
 
-    __slots__ = ("_pages", "_current")
+    __slots__ = ("_current", "_pages")
 
     def __init__(self, pages: list[discord.Embed]) -> None:
         super().__init__(timeout=120)  # auto-remove after 2 min idle
@@ -129,7 +129,7 @@ class CoreCog(commands.Cog, name="Core"):
         embed = discord.Embed(
             title="📊 NebulosaBot Status",
             color=COLOR_INFO,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
         )
 
         embed.add_field(
@@ -285,7 +285,7 @@ def _build_cog_help_embed(
             f"Prefix: `{prefix}`  •  Slash: `/`"
         ),
         color=COLOR_INFO,
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
     )
 
     for cmd in visible:

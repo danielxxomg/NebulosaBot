@@ -38,7 +38,7 @@ class GuildService:
             keeps it in sync with the database.
     """
 
-    __slots__ = ("_db", "_cache", "_mod_role_cache")
+    __slots__ = ("_cache", "_db", "_mod_role_cache")
 
     def __init__(
         self,

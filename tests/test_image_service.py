@@ -12,10 +12,8 @@ Strict TDD: RED phase — tests written BEFORE the implementation exists.
 from __future__ import annotations
 
 import io
-import struct
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers

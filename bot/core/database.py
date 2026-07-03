@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from supabase import ClientOptions, create_client
@@ -46,7 +46,7 @@ class Database:
     Call ``connect()`` before any data-access methods.
     """
 
-    __slots__ = ("_url", "_key", "_client")
+    __slots__ = ("_client", "_key", "_url")
 
     def __init__(self, url: str, key: str) -> None:
         self._url = url
@@ -248,7 +248,7 @@ class Database:
             raise RuntimeError("Database.connect() must be called first")
 
         ticket_id = str(uuid.uuid4())
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         row = {
             "id": ticket_id,
             "ticketNumber": ticket_number,
@@ -316,7 +316,7 @@ class Database:
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
 
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        cutoff = datetime.now(UTC) - timedelta(hours=hours)
         logger.debug(
             "DB get_stale_tickets(guild=%s, cutoff=%s)", guild_id, cutoff.isoformat()
         )
@@ -468,7 +468,7 @@ class Database:
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         logger.debug("DB update_ticket_last_activity(ch=%s)", channel_id)
         self._client.table("ticket").update(
             {"lastActivity": now}
@@ -601,7 +601,7 @@ class Database:
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         existing = await self.get_member(guild_id, user_id)
         if existing is not None:
             new_xp_val = max(existing.get("xp", 0) + xp_delta, 0)
