@@ -21,14 +21,14 @@ Bot startup -> setup_hook() initializes cache/services
 
 Dashboard Server Action
   -> write Supabase successfully
-  -> body = { guild_id, entity }
+  -> body = { guild_id }  # entity omitted; bot does full invalidate_guild
   -> X-Webhook-Signature = HMAC_SHA256(body, WEBHOOK_SECRET).hexdigest()
-  -> POST BOT_WEBHOOK_URL/webhook/sync (fire-and-forget)
+  -> POST ${WEBHOOK_URL}/webhook/sync (fire-and-forget)
   -> swallow/log POST failures
 
 Bot webhook
   -> read raw body -> verify HMAC with compare_digest
-  -> validate guild_id/entity -> cache.invalidate_guild(guild_id)
+  -> validate guild_id -> cache.invalidate_guild(guild_id)  # entity optional/ignored
   -> 200 { ok: true }
 ```
 
@@ -38,7 +38,7 @@ Bot webhook
 |---|---|---|
 | `bot/webhook/__init__.py` | Create | Package export for webhook server helpers. |
 | `bot/webhook/auth.py` | Create | Signature calculation/verification using `X-Webhook-Signature`. |
-| `bot/webhook/models.py` | Create | `WebhookSyncPayload` dataclass with `guild_id: str` and `entity: str`. |
+| `bot/webhook/models.py` | Create | `WebhookSyncPayload` dataclass with `guild_id: str` (accepts str\|int, coerces to str, rejects bool; `entity` optional/ignored — full invalidate_guild). |
 | `bot/webhook/server.py` | Create | aiohttp app factory, route handler, runner/site lifecycle. |
 | `bot/config.py` | Modify | Add `webhook_secret`, `webhook_host`, `webhook_port`; env vars: `WEBHOOK_SECRET`, `WEBHOOK_HOST` default `127.0.0.1`, `WEBHOOK_PORT` default `8080`. Pterodactyl uses `0.0.0.0`. |
 | `bot/bot.py` | Modify | Start webhook in `setup_hook()` after cache init; store runner/site; cleanup during bot close/shutdown. |
@@ -50,8 +50,8 @@ Bot webhook
 
 - Endpoint: `POST /webhook/sync`
 - Header: `X-Webhook-Signature: <hex hmac-sha256(raw_body, WEBHOOK_SECRET)>`
-- Request JSON: `{ "guild_id": "123", "entity": "guild|economy|greeting" }`
-- Responses: `200` valid and invalidated; `400` malformed payload; `401` missing/invalid signature; `503` if cache unavailable.
+- Request JSON: `{ "guild_id": "123" }` (`entity` optional, ignored — full guild invalidation)
+- Responses: `200` valid and invalidated; `400` malformed payload; `401` missing/invalid signature. (`503` is not emitted — cache-unavailable is handled structurally via degraded mode.)
 - Logging: use `logging.getLogger(__name__)`; never `print()`.
 
 ## Lifecycle / Failure Modes
@@ -60,7 +60,7 @@ Use `web.AppRunner(app)` and `web.TCPSite(runner, config.webhook_host, config.we
 
 ## Deployment / TLS
 
-Run `cloudflared` beside the Pterodactyl allocation or on the host, forwarding `https://bot-webhook.example.com` to `http://127.0.0.1:<WEBHOOK_PORT>` or the mapped local port. Configure Vercel `BOT_WEBHOOK_URL=https://bot-webhook.example.com` and the same `WEBHOOK_SECRET` as the bot. Pterodactyl binds `WEBHOOK_HOST=0.0.0.0`; Cloudflare controls public ingress, so the raw port does not need public exposure.
+Run `cloudflared` beside the Pterodactyl allocation or on the host, forwarding `https://bot-webhook.example.com` to `http://127.0.0.1:<WEBHOOK_PORT>` or the mapped local port. Configure Vercel `WEBHOOK_URL=https://bot-webhook.example.com` and the same `WEBHOOK_SECRET` as the bot. Pterodactyl binds `WEBHOOK_HOST=0.0.0.0`; Cloudflare controls public ingress, so the raw port does not need public exposure.
 
 ## Testing Strategy
 
