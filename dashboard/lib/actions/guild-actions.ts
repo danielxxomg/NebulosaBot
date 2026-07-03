@@ -2,6 +2,7 @@
 
 import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase";
 import { fetchUserGuilds, hasAdministratorPerm } from "@/lib/discord";
+import { notifyWebhookSync } from "@/lib/webhook-sync";
 import { revalidatePath } from "next/cache";
 import type { ActionResult } from "@/lib/types";
 
@@ -125,7 +126,16 @@ export async function updateGuildConfig(
     return { success: false, error: `Database error: ${error.message}` };
   }
 
-  // 5. Revalidate guild-scoped pages.
+  // 5. Notify the bot to drop its RAM cache for this guild (fire-and-forget).
+  //    Defense-in-depth: wrap in try/catch so a helper regression can never
+  //    fail the config write (Supabase is the source of truth).
+  try {
+    await notifyWebhookSync(guildId);
+  } catch {
+    // Swallowed: webhook failure must not fail the write.
+  }
+
+  // 6. Revalidate guild-scoped pages.
   revalidatePath(`/guilds/${guildId}`, "layout");
 
   return { success: true, message: "Configuration saved." };
