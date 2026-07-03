@@ -1,0 +1,10 @@
+change: webhook-sync
+phase: explore
+status: complete
+created: "2026-07-03"
+updated: "2026-07-03"
+artifacts:
+  - path: openspec/changes/webhook-sync/exploration.md
+    type: exploration
+    status: complete
+next_phase: propose
