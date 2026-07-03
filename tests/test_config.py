@@ -130,3 +130,71 @@ class TestFromEnvFallback:
             config = BotConfig.from_env(env_path="/dev/null")
 
         assert isinstance(config, BotConfig)
+
+
+# ---------------------------------------------------------------------------
+# Webhook configuration — WEBHOOK_SECRET / WEBHOOK_HOST / WEBHOOK_PORT
+# ---------------------------------------------------------------------------
+
+
+class TestWebhookConfig:
+    """Spec: cache-sync-webhook — Environment configuration.
+
+    Missing fields MUST fall back to defaults WITHOUT exception.
+    WEBHOOK_SECRET absent -> empty string (server won't start).
+    WEBHOOK_HOST absent -> default 127.0.0.1.
+    WEBHOOK_PORT absent -> default 8080.
+    """
+
+    def test_webhook_secret_defaults_empty_when_missing(self) -> None:
+        """WEBHOOK_SECRET absent MUST default to empty string (no exception)."""
+        with patch.dict(os.environ, {}, clear=True):
+            config = BotConfig.from_env(env_path="/dev/null")
+
+        assert config.webhook_secret == ""
+
+    def test_webhook_host_defaults_to_loopback_when_missing(self) -> None:
+        """WEBHOOK_HOST absent MUST fall back to 127.0.0.1."""
+        with patch.dict(os.environ, {}, clear=True):
+            config = BotConfig.from_env(env_path="/dev/null")
+
+        assert config.webhook_host == "127.0.0.1"
+
+    def test_webhook_port_defaults_to_8080_when_missing(self) -> None:
+        """WEBHOOK_PORT absent MUST fall back to 8080."""
+        with patch.dict(os.environ, {}, clear=True):
+            config = BotConfig.from_env(env_path="/dev/null")
+
+        assert config.webhook_port == 8080
+
+    def test_webhook_secret_loaded_from_env(self) -> None:
+        """WEBHOOK_SECRET set MUST populate webhook_secret."""
+        env = {"WEBHOOK_SECRET": "super-secret-key"}
+        with patch.dict(os.environ, env, clear=True):
+            config = BotConfig.from_env(env_path="/dev/null")
+
+        assert config.webhook_secret == "super-secret-key"
+
+    def test_webhook_host_loaded_from_env(self) -> None:
+        """WEBHOOK_HOST set MUST override the default (e.g. 0.0.0.0 for Pterodactyl)."""
+        env = {"WEBHOOK_SECRET": "k", "WEBHOOK_HOST": "0.0.0.0"}
+        with patch.dict(os.environ, env, clear=True):
+            config = BotConfig.from_env(env_path="/dev/null")
+
+        assert config.webhook_host == "0.0.0.0"
+
+    def test_webhook_port_loaded_from_env(self) -> None:
+        """WEBHOOK_PORT set to a valid integer MUST override the default."""
+        env = {"WEBHOOK_SECRET": "k", "WEBHOOK_PORT": "9090"}
+        with patch.dict(os.environ, env, clear=True):
+            config = BotConfig.from_env(env_path="/dev/null")
+
+        assert config.webhook_port == 9090
+
+    def test_webhook_port_invalid_falls_back_to_default(self) -> None:
+        """An invalid WEBHOOK_PORT MUST fall back to 8080 without raising."""
+        env = {"WEBHOOK_SECRET": "k", "WEBHOOK_PORT": "not-a-number"}
+        with patch.dict(os.environ, env, clear=True):
+            config = BotConfig.from_env(env_path="/dev/null")
+
+        assert config.webhook_port == 8080

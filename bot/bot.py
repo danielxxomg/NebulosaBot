@@ -7,15 +7,16 @@ Wires together the database, cache, services, and cogs during
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import discord
 from discord.ext import commands
 
+from bot.cogs.tickets import TicketActionsView, TicketPanelView
 from bot.core.cache import TTLCache
 from bot.core.context import NebulosaContext
 from bot.core.database import Database
-from bot.cogs.tickets import TicketActionsView, TicketPanelView
 from bot.services.economy_service import EconomyService
 from bot.services.greeting_service import GreetingService
 from bot.services.guild_service import GuildService
@@ -25,8 +26,11 @@ from bot.services.logging_service import LoggingService
 from bot.services.ticket_service import TicketService
 from bot.services.transcript_service import TranscriptService
 from bot.utils.embeds import error_embed
+from bot.webhook.server import start_webhook_server, stop_webhook_server
 
 if TYPE_CHECKING:
+    from aiohttp.web import AppRunner
+
     from bot.config import BotConfig
 
 logger = logging.getLogger(__name__)
@@ -85,18 +89,19 @@ class NebulosaBot(commands.Bot):
     """
 
     __slots__ = (
+        "_guild_mod_role_cache",
+        "_webhook_runner",
+        "cache",
         "config",
         "db",
-        "cache",
-        "guild_service",
-        "infraction_service",
-        "ticket_service",
-        "transcript_service",
         "economy_service",
         "greeting_service",
+        "guild_service",
         "image_service",
+        "infraction_service",
         "logging_service",
-        "_guild_mod_role_cache",
+        "ticket_service",
+        "transcript_service",
     )
 
     def __init__(
@@ -122,6 +127,10 @@ class NebulosaBot(commands.Bot):
         # Used by bot/utils/checks.py is_mod() to resolve the moderator
         # role without a DB query.  Populated by GuildService.
         self._guild_mod_role_cache: dict[int, str] = {}
+
+        # Webhook cache-sync server (AppRunner) started in setup_hook() and
+        # stopped in close().  None in degraded mode (port in use / no secret).
+        self._webhook_runner: AppRunner | None = None
 
         # Build the prefix callable.  We pass `self` by reference so the
         # closure calls back into guild_service at message time.
@@ -232,7 +241,49 @@ class NebulosaBot(commands.Bot):
         await self.tree.sync()
         logger.info("Command tree synced")
 
+        # --- 6. Webhook cache-sync server (degraded-safe) ---
+        await self._start_webhook()
+
         logger.info("NebulosaBot.setup_hook() complete")
+
+    # ==================================================================
+    # Webhook cache-sync server lifecycle
+    # ==================================================================
+
+    async def _start_webhook(self) -> None:
+        """Start the webhook cache-sync server in degraded-safe mode.
+
+        Delegates to :func:`bot.webhook.server.start_webhook_server`, which
+        catches ``OSError`` (port in use) and the empty-secret case
+        internally and returns ``None`` — the bot keeps running with a
+        stale cache until TTL expiry rather than crashing the gateway.
+        """
+        if self.cache is None:  # Webhook has nothing to invalidate without a cache.
+            return
+        self._webhook_runner = await start_webhook_server(
+            self.config.webhook_host,
+            self.config.webhook_port,
+            self.cache,
+            self.config.webhook_secret,
+        )
+
+    async def _stop_webhook(self) -> None:
+        """Stop the webhook server if it was started.
+
+        Idempotent and safe in degraded mode (``_webhook_runner`` is
+        ``None`` when the server never started).
+        """
+        await stop_webhook_server(self._webhook_runner)
+        self._webhook_runner = None
+
+    async def close(self) -> None:
+        """Stop the webhook server, then close the Discord gateway.
+
+        The webhook runner is torn down BEFORE the gateway so the aiohttp
+        site stops accepting cache-invalidation requests cleanly.
+        """
+        await self._stop_webhook()
+        await super().close()
 
     # ==================================================================
     # Context
