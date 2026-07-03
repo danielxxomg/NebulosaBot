@@ -15,6 +15,7 @@ import {
 const mockGetSession = vi.fn();
 const mockRevalidatePath = vi.fn();
 const mockFetchUserGuilds = vi.fn();
+const mockNotifyWebhookSync = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("@/lib/supabase", () => ({
   createServerSupabaseClient: vi.fn(() =>
@@ -36,6 +37,10 @@ vi.mock("@/lib/discord", () => ({
 
 vi.mock("next/cache", () => ({
   revalidatePath: (...args: unknown[]) => mockRevalidatePath(...args),
+}));
+
+vi.mock("@/lib/webhook-sync", () => ({
+  notifyWebhookSync: (...args: unknown[]) => mockNotifyWebhookSync(...args),
 }));
 
 import { updateGreetingConfig } from "@/lib/actions/greeting-actions";
@@ -89,6 +94,8 @@ describe("updateGreetingConfig — auth rejection", () => {
     const fd = buildFormData({ welcomeChannelId: "123456789012345678" });
     const result = await updateGreetingConfig(GUILD_ID, fd);
     assertAuthError(result);
+    // A rejected request must never trigger the cache-sync webhook.
+    expect(mockNotifyWebhookSync).not.toHaveBeenCalled();
   });
 
   it("returns error for non-admin user", async () => {
@@ -240,6 +247,8 @@ describe("updateGreetingConfig — successful update", () => {
     const result = await updateGreetingConfig(GUILD_ID, fd);
     assertSuccess(result);
     expect(mockRevalidatePath).toHaveBeenCalledWith(`/guilds/${GUILD_ID}`, "layout");
+    // Webhook cache-sync is fired after a successful Supabase write.
+    expect(mockNotifyWebhookSync).toHaveBeenCalledWith(GUILD_ID);
   });
 
   it("saves welcome-only config (goodbye disabled)", async () => {
@@ -259,6 +268,17 @@ describe("updateGreetingConfig — successful update", () => {
       goodbyeEnabled: "on",
       goodbyeChannelId: "987654321098765432",
       goodbyeMessage: "See ya {user}.",
+    });
+    const result = await updateGreetingConfig(GUILD_ID, fd);
+    assertSuccess(result);
+  });
+
+  it("returns success even when notifyWebhookSync rejects (fire-and-forget at the action boundary)", async () => {
+    setupAuth();
+    mockNotifyWebhookSync.mockRejectedValueOnce(new Error("webhook down"));
+    const fd = buildFormData({
+      welcomeEnabled: "on",
+      welcomeChannelId: "123456789012345678",
     });
     const result = await updateGreetingConfig(GUILD_ID, fd);
     assertSuccess(result);

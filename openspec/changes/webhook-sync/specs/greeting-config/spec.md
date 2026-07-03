@@ -10,7 +10,7 @@ The dashboard `updateGreetingConfig()` Server Action MUST fire an asynchronous P
 
 - GIVEN the dashboard writes a greeting config change to Supabase
 - WHEN the Supabase write succeeds
-- THEN a signed POST is sent to the webhook endpoint with `{"guild_id": G, "entity": "greeting_config"}`
+- THEN a signed POST is sent to the webhook endpoint with `{"guild_id": G}` (guild_id only; the optional `entity` field is omitted because the bot performs a full `invalidate_guild`)
 
 #### Scenario: Webhook failure does not fail write
 

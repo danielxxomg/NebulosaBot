@@ -10,7 +10,7 @@ The dashboard `updateGuildConfig()` Server Action MUST fire an asynchronous POST
 
 - GIVEN the dashboard writes a guild config change to Supabase
 - WHEN the Supabase write succeeds
-- THEN a signed POST is sent to the webhook endpoint with `{"guild_id": G, "entity": "guild_config"}`
+- THEN a signed POST is sent to the webhook endpoint with `{"guild_id": G}` (guild_id only; the optional `entity` field is omitted because the bot performs a full `invalidate_guild`)
 
 #### Scenario: Webhook failure does not fail write
 

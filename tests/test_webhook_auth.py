@@ -89,3 +89,28 @@ class TestVerifySignature:
         result = verify_signature(_BODY, sig, _SECRET)
         assert result is True
         assert isinstance(result, bool)
+
+
+# ---------------------------------------------------------------------------
+# Cross-side Known-Answer Test (KAT)
+# ---------------------------------------------------------------------------
+# The dashboard (dashboard/lib/webhook-sync.ts) and the bot MUST produce the
+# identical HMAC-SHA256 hexdigest for a canonical body + secret. This is the
+# single-source-of-truth fixture mirrored on the dashboard side in
+# dashboard/__tests__/lib/webhook-sync.test.ts ("cross-side KAT"). If either
+# side changes its signing, BOTH tests fail.
+_KAT_BODY = '{"guild_id":"123456789"}'
+_KAT_SECRET = "nebulosabot-kat-secret"
+_KAT_EXPECTED_DIGEST = (
+    "37bf65a01696b7f45c61411ecf3c7d516cd1bfcc460505d36c2cde9859cddcc1"
+)
+
+
+class TestCrossSideKat:
+    def test_compute_signature_matches_canonical_digest(self) -> None:
+        """The bot's signature for the KAT fixture equals the hardcoded digest
+        the dashboard test also asserts (cross-side wire-format agreement)."""
+        assert (
+            compute_signature(_KAT_BODY.encode(), _KAT_SECRET)
+            == _KAT_EXPECTED_DIGEST
+        )
