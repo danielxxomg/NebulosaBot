@@ -11,14 +11,13 @@ Strict TDD: tests written BEFORE implementation (RED phase).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
 
 from bot.services.logging_service import LoggingService
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -82,7 +81,7 @@ def make_mock_member(
     member.mention = f"<@{member_id}>"
     member.guild = MagicMock()
     member.guild.member_count = member_number
-    member.created_at = created_at or datetime(2024, 1, 1, tzinfo=timezone.utc)
+    member.created_at = created_at or datetime(2024, 1, 1, tzinfo=UTC)
 
     if roles is not None:
         member.roles = [MagicMock() for _ in roles]

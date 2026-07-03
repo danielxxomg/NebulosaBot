@@ -36,7 +36,7 @@ class GreetingService:
             instance for generating welcome/goodbye cards.
     """
 
-    __slots__ = ("_db", "_cache", "_image_service")
+    __slots__ = ("_cache", "_db", "_image_service")
 
     def __init__(
         self,

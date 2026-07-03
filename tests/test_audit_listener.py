@@ -19,7 +19,6 @@ from discord.ext import commands
 
 from bot.cogs.sentinel import SentinelCog
 
-
 # ---------------------------------------------------------------------------
 # AuditListener helpers
 # ---------------------------------------------------------------------------

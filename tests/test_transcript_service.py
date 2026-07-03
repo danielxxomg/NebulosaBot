@@ -11,14 +11,13 @@ Covers:
 from __future__ import annotations
 
 import io
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
 
 from bot.services.transcript_service import MAX_MESSAGES, TranscriptService
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -38,7 +37,7 @@ def _make_mock_message(
 
     msg = MagicMock(spec=discord.Message)
     msg.author = author
-    msg.created_at = created_at or datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+    msg.created_at = created_at or datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
     msg.content = content
     return msg
 

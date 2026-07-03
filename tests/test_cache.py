@@ -11,13 +11,11 @@ Covers the cache-layer spec scenarios:
 
 from __future__ import annotations
 
-import time
 from unittest.mock import patch
 
 import pytest
 
 from bot.core.cache import DEFAULT_TTL, TTLCache
-
 
 # ---------------------------------------------------------------------------
 # get / set round-trip

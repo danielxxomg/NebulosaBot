@@ -6,7 +6,7 @@ with the NebulosaBot color scheme and footer.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import discord
 
@@ -32,11 +32,11 @@ def _make_embed(
         title=title,
         description=description,
         color=color,
-        timestamp=timestamp or datetime.now(timezone.utc),
+        timestamp=timestamp or datetime.now(UTC),
     )
     embed.set_footer(
         text=FOOTER_TEXT.format(
-            timestamp=(timestamp or datetime.now(timezone.utc)).strftime("%Y-%m-%d %H:%M UTC"),
+            timestamp=(timestamp or datetime.now(UTC)).strftime("%Y-%m-%d %H:%M UTC"),
         ),
         icon_url=FOOTER_ICON,
     )

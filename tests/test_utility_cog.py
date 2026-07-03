@@ -10,7 +10,7 @@ Strict TDD: RED phase — tests written BEFORE the implementation exists.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -18,7 +18,6 @@ import pytest
 from discord.ext import commands
 
 from bot.cogs.utility import UtilityCog
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -60,11 +59,11 @@ def _make_ctx(
         ctx.author.display_avatar = MagicMock()
         ctx.author.display_avatar.url = f"https://cdn.discord.com/avatars/{user_id}/default.png"
         ctx.author.default_avatar = MagicMock()
-        ctx.author.default_avatar.url = f"https://cdn.discord.com/embed/avatars/0.png"
+        ctx.author.default_avatar.url = "https://cdn.discord.com/embed/avatars/0.png"
         ctx.author.color = discord.Color.default()
         ctx.author.roles = []
-        ctx.author.joined_at = datetime(2024, 1, 15, tzinfo=timezone.utc)
-        ctx.author.created_at = datetime(2023, 6, 1, tzinfo=timezone.utc)
+        ctx.author.joined_at = datetime(2024, 1, 15, tzinfo=UTC)
+        ctx.author.created_at = datetime(2023, 6, 1, tzinfo=UTC)
         ctx.author.mention = f"<@{user_id}>"
         ctx.author.__str__ = MagicMock(return_value=user_display_name)
 
@@ -78,7 +77,7 @@ def _make_ctx(
     ctx.guild.channels = [MagicMock() for _ in range(15)]
     ctx.guild.roles = [MagicMock() for _ in range(8)]
     ctx.guild.premium_subscription_count = 3
-    ctx.guild.created_at = datetime(2020, 3, 10, tzinfo=timezone.utc)
+    ctx.guild.created_at = datetime(2020, 3, 10, tzinfo=UTC)
 
     return ctx
 
@@ -97,8 +96,8 @@ def _make_member(
     member.color = discord.Color.blue()
     member.mention = f"<@{user_id}>"
     member.roles = roles or []
-    member.joined_at = datetime(2024, 5, 1, tzinfo=timezone.utc)
-    member.created_at = datetime(2023, 1, 1, tzinfo=timezone.utc)
+    member.joined_at = datetime(2024, 5, 1, tzinfo=UTC)
+    member.created_at = datetime(2023, 1, 1, tzinfo=UTC)
     member.bot = False
     member.__str__ = MagicMock(return_value=f"{display_name}#1234")
     return member

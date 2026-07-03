@@ -19,7 +19,6 @@ from discord.ext import commands
 
 from bot.listeners.xp_listener import XPListener
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

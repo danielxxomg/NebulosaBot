@@ -18,7 +18,6 @@ from bot.core.cache import TTLCache
 from bot.models.ticket import Ticket
 from bot.services.ticket_service import MAX_RETRIES, TicketService
 
-
 # ---------------------------------------------------------------------------
 # Helper fixtures
 # ---------------------------------------------------------------------------

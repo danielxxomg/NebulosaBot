@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import discord
@@ -551,7 +551,7 @@ def _build_ticket_embed(
         title=title,
         description=description,
         color=color,
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
     )
     embed.add_field(name="Author", value=f"<@{author_id}>", inline=True)
     embed.set_footer(text="NebulosaBot • Tickets")
@@ -816,7 +816,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             title=title,
             description=description_text,
             color=COLOR_INFO,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
         )
         embed.set_footer(text="NebulosaBot • Tickets")
 
@@ -1005,7 +1005,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             title="📋 Ticket Categories",
             description="\n".join(lines),
             color=COLOR_INFO,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
         )
         embed.set_footer(text="NebulosaBot • Tickets")
         await ctx.send(embed=embed)

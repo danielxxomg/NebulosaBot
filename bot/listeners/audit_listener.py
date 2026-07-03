@@ -30,7 +30,7 @@ class AuditListener(commands.Cog):
     ``can_log_in_channel``, and role-diff detection.
     """
 
-    __slots__ = ("bot", "_logging")
+    __slots__ = ("_logging", "bot")
 
     def __init__(self, bot: NebulosaBot) -> None:
         self.bot = bot

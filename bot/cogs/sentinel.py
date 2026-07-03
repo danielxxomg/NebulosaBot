@@ -9,7 +9,7 @@ mod-log channel when enabled.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import discord
@@ -45,7 +45,7 @@ class _ModlogsPaginator(discord.ui.View):
     :class:`discord.Embed` pages.
     """
 
-    __slots__ = ("_pages", "_current")
+    __slots__ = ("_current", "_pages")
 
     def __init__(self, pages: list[discord.Embed]) -> None:
         super().__init__(timeout=120)
@@ -603,7 +603,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                 )
             )
             return
-        except Exception as exc:
+        except Exception:
             logger.exception("Unexpected error during lock")
             await ctx.send(
                 embed=error_embed(
@@ -667,7 +667,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                 )
             )
             return
-        except Exception as exc:
+        except Exception:
             logger.exception("Unexpected error during unlock")
             await ctx.send(
                 embed=error_embed(
@@ -799,7 +799,7 @@ def _build_modlog_pages(
             title=f"📋 Modlogs for {member.display_name}",
             description=description,
             color=COLOR_INFO,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
         )
         embed.set_thumbnail(url=member.display_avatar.url)
 

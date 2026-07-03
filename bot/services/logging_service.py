@@ -7,7 +7,7 @@ consumed by both ``SentinelCog`` and ``AuditListener``.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import discord
@@ -71,7 +71,7 @@ class LoggingService:
         embed = discord.Embed(
             title=f"🛡️ Moderation: {action}",
             color=LOG_COLOR,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
         )
         embed.add_field(name="Target", value=f"{target.mention} ({target.name})", inline=True)
         embed.add_field(name="Moderator", value=f"{moderator.mention} ({moderator.name})", inline=True)
@@ -100,7 +100,7 @@ class LoggingService:
         embed = discord.Embed(
             title=f"📝 Message Edited in #{channel_name}",
             color=LOG_COLOR,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
         )
         embed.add_field(
             name="Before",
@@ -136,7 +136,7 @@ class LoggingService:
         embed = discord.Embed(
             title=f"🗑️ Message Deleted in #{channel_name}",
             color=LOG_COLOR,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
         )
         embed.add_field(name="Author", value=f"{message.author.mention} ({message.author.name})", inline=True)
         embed.add_field(name="Content", value=_truncate(content), inline=False)
@@ -162,7 +162,7 @@ class LoggingService:
             title=f"📥 {member.mention} joined",
             description=f"Account created: {created}",
             color=LOG_COLOR,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
         )
         if member_count:
             embed.set_footer(text=f"Member #{member_count}")
@@ -187,7 +187,7 @@ class LoggingService:
         embed = discord.Embed(
             title=f"📤 {member.mention} left",
             color=LOG_COLOR,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
         )
         embed.add_field(name="Roles", value=roles_text, inline=False)
 
@@ -218,7 +218,7 @@ class LoggingService:
         embed = discord.Embed(
             title=f"🔄 {after.mention} roles changed",
             color=LOG_COLOR,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
         )
         if added:
             embed.add_field(name="Added", value=", ".join(f"@{r}" for r in sorted(added)), inline=True)
@@ -239,7 +239,7 @@ class LoggingService:
         embed = discord.Embed(
             title=f"📁 #{channel.name} created",
             color=LOG_COLOR,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
         )
 
         await self._send_log(guild_id, embed)
@@ -256,7 +256,7 @@ class LoggingService:
         embed = discord.Embed(
             title=f"📤 #{channel.name} deleted",
             color=LOG_COLOR,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
         )
 
         await self._send_log(guild_id, embed)

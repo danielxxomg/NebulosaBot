@@ -16,7 +16,6 @@ import pytest
 
 from bot.models.infraction import Infraction
 from bot.services.infraction_service import (
-    EscalationAction,
     InfractionService,
 )
 
