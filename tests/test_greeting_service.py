@@ -292,6 +292,94 @@ class TestDispatchWelcome:
         await service.dispatch_welcome(member)
         # Defaults have welcome_enabled=False — no action taken.
 
+    @pytest.mark.asyncio
+    async def test_card_enabled_sends_welcome_card(
+        self,
+        service: GreetingService,
+        mock_db: AsyncMock,
+        mock_image_service: MagicMock,
+        greeting_config_row: dict,
+    ) -> None:
+        """When welcome_card_enabled is True, a card is generated and sent with a file."""
+        mock_db.get_greeting_config.return_value = greeting_config_row
+        member = make_mock_member(member_id=333, name="NewUser")
+
+        await service.dispatch_welcome(member)
+
+        channel = member.guild.get_channel.return_value
+        mock_image_service.generate_greeting_card.assert_called_once()
+        channel.send.assert_called_once()
+        assert "file" in channel.send.call_args.kwargs
+
+    @pytest.mark.asyncio
+    async def test_card_disabled_with_message_sends_text_only(
+        self,
+        service: GreetingService,
+        mock_db: AsyncMock,
+        mock_image_service: MagicMock,
+        greeting_config_row: dict,
+    ) -> None:
+        """When welcome_card_enabled is False and a message is set, send text only (no file)."""
+        disabled_card = {**greeting_config_row, "welcomeCardEnabled": False}
+        mock_db.get_greeting_config.return_value = disabled_card
+        member = make_mock_member(member_id=333, name="NewUser")
+
+        await service.dispatch_welcome(member)
+
+        channel = member.guild.get_channel.return_value
+        mock_image_service.generate_greeting_card.assert_not_called()
+        channel.send.assert_called_once()
+        assert "file" not in channel.send.call_args.kwargs
+        content = channel.send.call_args.kwargs.get("content", "")
+        assert "<@333>" in content  # {mention} substituted, not literal
+        assert "TestServer" in content  # {server} substituted, not literal
+
+    @pytest.mark.asyncio
+    async def test_card_disabled_without_message_sends_nothing(
+        self,
+        service: GreetingService,
+        mock_db: AsyncMock,
+        mock_image_service: MagicMock,
+        greeting_config_row: dict,
+    ) -> None:
+        """When welcome_card_enabled is False and no message is set, send nothing."""
+        disabled_card = {
+            **greeting_config_row,
+            "welcomeCardEnabled": False,
+            "welcomeMessage": None,
+        }
+        mock_db.get_greeting_config.return_value = disabled_card
+        member = make_mock_member(member_id=333, name="NewUser")
+
+        await service.dispatch_welcome(member)
+
+        channel = member.guild.get_channel.return_value
+        mock_image_service.generate_greeting_card.assert_not_called()
+        channel.send.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_disabled_skips_before_card_toggle(
+        self,
+        service: GreetingService,
+        mock_db: AsyncMock,
+        mock_image_service: MagicMock,
+        greeting_config_row: dict,
+    ) -> None:
+        """Top-level welcome_enabled guard MUST short-circuit before the card toggle.
+
+        Regression guard: even with welcome_card_enabled=True, when
+        welcome_enabled is False nothing is sent and no card is generated.
+        """
+        disabled = {**greeting_config_row, "welcomeEnabled": False}
+        mock_db.get_greeting_config.return_value = disabled
+        member = make_mock_member(member_id=333, name="NewUser")
+
+        await service.dispatch_welcome(member)
+
+        channel = member.guild.get_channel.return_value
+        mock_image_service.generate_greeting_card.assert_not_called()
+        channel.send.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # dispatch_goodbye — config guard logic
@@ -363,3 +451,90 @@ class TestDispatchGoodbye:
 
         await service.dispatch_goodbye(member)
         # Defaults have goodbye_enabled=False — no action taken.
+
+    @pytest.mark.asyncio
+    async def test_card_enabled_sends_goodbye_card(
+        self,
+        service: GreetingService,
+        mock_db: AsyncMock,
+        mock_image_service: MagicMock,
+        greeting_config_row: dict,
+    ) -> None:
+        """When goodbye_card_enabled is True, a card is generated and sent with a file."""
+        mock_db.get_greeting_config.return_value = greeting_config_row
+        member = make_mock_member(member_id=444, name="LeavingUser")
+
+        await service.dispatch_goodbye(member)
+
+        channel = member.guild.get_channel.return_value
+        mock_image_service.generate_greeting_card.assert_called_once()
+        channel.send.assert_called_once()
+        assert "file" in channel.send.call_args.kwargs
+
+    @pytest.mark.asyncio
+    async def test_card_disabled_with_message_sends_text_only(
+        self,
+        service: GreetingService,
+        mock_db: AsyncMock,
+        mock_image_service: MagicMock,
+        greeting_config_row: dict,
+    ) -> None:
+        """When goodbye_card_enabled is False and a message is set, send text only (no file)."""
+        disabled_card = {**greeting_config_row, "goodbyeCardEnabled": False}
+        mock_db.get_greeting_config.return_value = disabled_card
+        member = make_mock_member(member_id=444, name="LeavingUser")
+
+        await service.dispatch_goodbye(member)
+
+        channel = member.guild.get_channel.return_value
+        mock_image_service.generate_greeting_card.assert_not_called()
+        channel.send.assert_called_once()
+        assert "file" not in channel.send.call_args.kwargs
+        content = channel.send.call_args.kwargs.get("content", "")
+        assert "<@444>" in content  # {mention} substituted, not literal
+
+    @pytest.mark.asyncio
+    async def test_card_disabled_without_message_sends_nothing(
+        self,
+        service: GreetingService,
+        mock_db: AsyncMock,
+        mock_image_service: MagicMock,
+        greeting_config_row: dict,
+    ) -> None:
+        """When goodbye_card_enabled is False and no message is set, send nothing."""
+        disabled_card = {
+            **greeting_config_row,
+            "goodbyeCardEnabled": False,
+            "goodbyeMessage": None,
+        }
+        mock_db.get_greeting_config.return_value = disabled_card
+        member = make_mock_member(member_id=444, name="LeavingUser")
+
+        await service.dispatch_goodbye(member)
+
+        channel = member.guild.get_channel.return_value
+        mock_image_service.generate_greeting_card.assert_not_called()
+        channel.send.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_disabled_skips_before_card_toggle(
+        self,
+        service: GreetingService,
+        mock_db: AsyncMock,
+        mock_image_service: MagicMock,
+        greeting_config_row: dict,
+    ) -> None:
+        """Top-level goodbye_enabled guard MUST short-circuit before the card toggle.
+
+        Regression guard: even with goodbye_card_enabled=True, when
+        goodbye_enabled is False nothing is sent and no card is generated.
+        """
+        disabled = {**greeting_config_row, "goodbyeEnabled": False}
+        mock_db.get_greeting_config.return_value = disabled
+        member = make_mock_member(member_id=444, name="LeavingUser")
+
+        await service.dispatch_goodbye(member)
+
+        channel = member.guild.get_channel.return_value
+        mock_image_service.generate_greeting_card.assert_not_called()
+        channel.send.assert_not_called()
