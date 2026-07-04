@@ -256,11 +256,14 @@ class Database:
         channel_id: str,
         category_id: str | None,
         ticket_number: int,
+        parent_id: str | None = None,
     ) -> dict:
         """Insert a new ticket row and return the persisted row.
 
         Generates a v4 UUID for the primary key. The ``created_at`` and
-        ``last_activity`` timestamps are set by database defaults.
+        ``last_activity`` timestamps are set by database defaults. When
+        *parent_id* is provided the row is stored as a sub-ticket of that
+        parent (one level deep — service-layer validation enforces this).
         """
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
@@ -276,11 +279,98 @@ class Database:
             "categoryId": category_id,
             "status": "open",
             "lastActivity": now,
+            "parentId": parent_id,
         }
-        logger.debug("DB insert_ticket(%s) number=%d", ticket_id, ticket_number)
+        logger.debug(
+            "DB insert_ticket(%s) number=%d parent=%s", ticket_id, ticket_number, parent_id
+        )
         response = self._client.table("ticket").insert(row).execute()
         rows = _unwrap(response)
         return rows[0] if rows else {}
+
+    async def get_tickets_by_parent(self, parent_id: str) -> list[dict]:
+        """Return all tickets whose ``parentId`` equals *parent_id*.
+
+        Used to render a parent's sub-ticket children. Results are ordered
+        newest-first by ``createdAt`` to match the project's list-query
+        convention. Returns an empty list when the parent has no children.
+        """
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        logger.debug("DB get_tickets_by_parent(%r)", parent_id)
+        response = (
+            self._client.table("ticket")
+            .select("*")
+            .eq("parentId", parent_id)
+            .order("createdAt", desc=True)
+            .execute()
+        )
+        return _unwrap(response)
+
+    # -- ticket_note ---------------------------------------------------
+
+    async def insert_ticket_note(
+        self,
+        ticket_id: str,
+        author_id: str,
+        content: str,
+    ) -> dict:
+        """Insert a staff note on a ticket and return the persisted row.
+
+        Generates a v4 UUID for the primary key. The ``createdAt`` timestamp
+        is set by the database default clause (``NOW()``) — it is not set
+        client-side. Notes are staff-only (not visible to the ticket opener).
+        """
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        note_id = str(uuid.uuid4())
+        row = {
+            "id": note_id,
+            "ticketId": ticket_id,
+            "authorId": author_id,
+            "content": content,
+        }
+        logger.debug(
+            "DB insert_ticket_note(%s) ticket=%s author=%s", note_id, ticket_id, author_id
+        )
+        response = self._client.table("ticket_note").insert(row).execute()
+        rows = _unwrap(response)
+        return rows[0] if rows else {}
+
+    async def get_ticket_notes(self, ticket_id: str, limit: int = 50) -> list[dict]:
+        """Return notes for a ticket, newest-first, capped by *limit*.
+
+        The caller controls the cap (default 50, the v1 per-ticket note limit
+        enforced in the service layer). Results are ordered by ``createdAt``
+        descending.
+        """
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        logger.debug("DB get_ticket_notes(ticket=%s, limit=%d)", ticket_id, limit)
+        response = (
+            self._client.table("ticket_note")
+            .select("*")
+            .eq("ticketId", ticket_id)
+            .order("createdAt", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return _unwrap(response)
+
+    async def delete_ticket_note(self, note_id: str) -> None:
+        """Delete a staff note by its UUID primary key.
+
+        Ownership authorization is enforced in the service layer before this
+        call — the database layer performs the delete only.
+        """
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        logger.debug("DB delete_ticket_note(%s)", note_id)
+        self._client.table("ticket_note").delete().eq("id", note_id).execute()
 
     async def get_ticket(self, ticket_id: str) -> dict | None:
         """Fetch a ticket by its UUID primary key."""
