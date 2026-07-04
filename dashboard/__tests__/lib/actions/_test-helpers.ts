@@ -6,16 +6,37 @@ import type { ActionResult } from "@/lib/types";
 // ---------------------------------------------------------------------------
 
 /**
+ * Spies for the read-only `ticket` query chain
+ * `.from("ticket").select("*").eq("guildId", ...).order("createdAt", ...).limit(50)`.
+ *
+ * Exposed on the returned mock client as `client.ticket` so tests can assert
+ * the exact query shape (guild filter, ordering, hard limit) in addition to
+ * the resolved data/error payload.
+ */
+export interface TicketChainSpies {
+  select: ReturnType<typeof vi.fn>;
+  eq: ReturnType<typeof vi.fn>;
+  order: ReturnType<typeof vi.fn>;
+  limit: ReturnType<typeof vi.fn>;
+}
+
+/**
  * Builds a fake Supabase client whose `.from().select().eq().single()`
  * (and similar chains) return the supplied `data` / `error`.
  *
  * Also supports `.from().update().eq()` and `.from().upsert().eq()`.
+ *
+ * For the read-only ticket view, `.from("ticket").select().eq().order().limit()`
+ * returns `overrides.ticketSelectResult` (defaulting to an empty success),
+ * and the individual chain steps are exposed as spies on `client.ticket` for
+ * query-shape assertions.
  */
 export function buildMockServiceClient(overrides: {
   guildSelectResult?: { data: unknown; error: null } | { data: null; error: Error };
   guildUpdateError?: Error | null;
   economyUpsertError?: Error | null;
   greetingUpsertError?: Error | null;
+  ticketSelectResult?: { data: unknown; error: null } | { data: null; error: Error };
 }) {
   const eqChain = {
     single: vi.fn().mockResolvedValue(overrides.guildSelectResult ?? { data: null, error: null }),
@@ -53,6 +74,15 @@ export function buildMockServiceClient(overrides: {
     writable: true,
   });
 
+  // Ticket read chain: select -> eq -> order -> limit (terminal, thenable).
+  // Each step is a stable spy so tests can assert call args after the action runs.
+  const ticketLimit = vi
+    .fn()
+    .mockResolvedValue(overrides.ticketSelectResult ?? { data: [], error: null });
+  const ticketOrder = vi.fn().mockReturnValue({ limit: ticketLimit });
+  const ticketEq = vi.fn().mockReturnValue({ order: ticketOrder });
+  const ticketSelect = vi.fn().mockReturnValue({ eq: ticketEq });
+
   return {
     from: vi.fn((table: string) => {
       if (table === "guild") {
@@ -79,8 +109,18 @@ export function buildMockServiceClient(overrides: {
           }),
         };
       }
+      if (table === "ticket") {
+        return { select: ticketSelect };
+      }
       return {};
     }),
+    // Test-only handle exposing the stable ticket-chain spies for assertions.
+    ticket: {
+      select: ticketSelect,
+      eq: ticketEq,
+      order: ticketOrder,
+      limit: ticketLimit,
+    } satisfies TicketChainSpies,
   };
 }
 
