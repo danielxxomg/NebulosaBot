@@ -37,10 +37,15 @@ export async function middleware(request: NextRequest) {
  * Match every route EXCEPT:
  *  - API routes (handled by route.ts files)
  *  - Next.js static files (_next/static, _next/image)
- *  - favicon.ico
+ *  - favicon.ico and favicon.png (served as static assets, never auth-guarded)
+ *
+ * `runtime: "nodejs"` runs the middleware on the Node.js runtime so that
+ * @supabase/supabase-js (which references `process.version`) does not trigger
+ * an Edge Runtime compatibility warning during `next build`.
  *
  * This ensures middleware runs for pages but not internal Next.js requests.
  */
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+  runtime: "nodejs",
+  matcher: ["/((?!api|_next/static|_next/image|favicon\\.(?:ico|png)).*)"],
 };
