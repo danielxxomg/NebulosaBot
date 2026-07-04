@@ -25,6 +25,7 @@ class Ticket:
     claimed_by: str | None = None
     transcript_url: str | None = None
     closed_at: datetime | None = None
+    parent_id: str | None = None  # self-referential; one level deep (sub-tickets)
 
     @classmethod
     def from_db_row(cls, row: dict) -> Ticket:
@@ -42,6 +43,7 @@ class Ticket:
             created_at=row["createdAt"],
             closed_at=row.get("closedAt"),
             last_activity=row["lastActivity"],
+            parent_id=row.get("parentId"),
         )
 
     def to_db_dict(self) -> dict:
@@ -59,4 +61,5 @@ class Ticket:
             "createdAt": self.created_at.isoformat() if self.created_at else None,
             "closedAt": self.closed_at.isoformat() if self.closed_at else None,
             "lastActivity": self.last_activity.isoformat() if self.last_activity else None,
+            "parentId": self.parent_id,
         }

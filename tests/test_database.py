@@ -44,6 +44,8 @@ class FakeQueryBuilder:
         self._result_queue: list[list[dict]] = []
         self._calls: list[tuple[str, Any]] = []
         self._filters: list[tuple[str, str, Any]] = []  # (method, column, value)
+        self._orders: list[tuple[str, bool]] = []  # (column, desc)
+        self._limits: list[int] = []
         self._execute_count: int = 0
 
     # Chain methods — all return self
@@ -89,9 +91,11 @@ class FakeQueryBuilder:
         return self
 
     def order(self, column: str, desc: bool = False) -> FakeQueryBuilder:
+        self._orders.append((column, desc))
         return self
 
     def limit(self, n: int) -> FakeQueryBuilder:
+        self._limits.append(n)
         return self
 
     def offset(self, n: int) -> FakeQueryBuilder:
@@ -139,6 +143,14 @@ class FakeSupabaseClient:
     def get_table_filters(self, name: str) -> list[tuple[str, str, Any]]:
         """Return recorded filter calls (eq, in_, lt, gt, gte) for a table."""
         return self._tables[name]._filters
+
+    def get_table_orders(self, name: str) -> list[tuple[str, bool]]:
+        """Return recorded order calls (column, desc) for a table."""
+        return self._tables[name]._orders
+
+    def get_table_limits(self, name: str) -> list[int]:
+        """Return recorded limit() values for a table."""
+        return self._tables[name]._limits
 
 
 # ---------------------------------------------------------------------------
@@ -438,10 +450,96 @@ class TestInsertTicket:
         assert result["status"] == "open"
 
     @pytest.mark.asyncio
+    async def test_insert_ticket_with_parent_id_stores_parent(
+        self, db: Database, fake_client: FakeSupabaseClient
+    ) -> None:
+        """insert_ticket(parent_id=...) MUST include 'parentId' in the inserted row."""
+        fake_client.set_table_data("ticket", [{"id": "t-child", "parentId": "p-uuid"}])
+
+        await db.insert_ticket("g1", "u1", "ch1", None, 1, parent_id="p-uuid")
+
+        insert_calls = fake_client.get_table_calls("ticket")
+        assert len(insert_calls) == 1
+        assert insert_calls[0][0] == "insert"
+        inserted_row = insert_calls[0][1]
+        assert inserted_row["parentId"] == "p-uuid"
+
+    @pytest.mark.asyncio
+    async def test_insert_ticket_without_parent_id_defaults_none(
+        self, db: Database, fake_client: FakeSupabaseClient
+    ) -> None:
+        """insert_ticket() without parent_id MUST insert parentId=None (backward compat)."""
+        fake_client.set_table_data("ticket", [{"id": "t-plain", "parentId": None}])
+
+        await db.insert_ticket("g1", "u1", "ch1", None, 1)
+
+        insert_calls = fake_client.get_table_calls("ticket")
+        inserted_row = insert_calls[0][1]
+        assert inserted_row["parentId"] is None
+
+    @pytest.mark.asyncio
     async def test_insert_ticket_raises_without_connect(self, disconnected_db: Database) -> None:
         """insert_ticket() MUST raise RuntimeError if connect() wasn't called."""
         with pytest.raises(RuntimeError, match="connect"):
             await disconnected_db.insert_ticket("g1", "u1", "ch1", None, 1)
+
+
+# ---------------------------------------------------------------------------
+# get_tickets_by_parent — children of a parent ticket
+# ---------------------------------------------------------------------------
+
+
+class TestGetTicketsByParent:
+    """Verify Database.get_tickets_by_parent() returns a parent's children."""
+
+    @pytest.mark.asyncio
+    async def test_returns_children_of_parent(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_tickets_by_parent() MUST return rows filtered by parentId."""
+        children = [
+            {"id": "c1", "parentId": "p1", "status": "open"},
+            {"id": "c2", "parentId": "p1", "status": "open"},
+        ]
+        fake_client.set_table_data("ticket", children)
+
+        result = await db.get_tickets_by_parent("p1")
+
+        assert result == children
+        assert len(result) == 2
+
+    @pytest.mark.asyncio
+    async def test_filters_by_parent_id_column(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_tickets_by_parent() MUST apply an eq('parentId', ...) filter."""
+        fake_client.set_table_data("ticket", [])
+
+        await db.get_tickets_by_parent("p1")
+
+        filters = fake_client.get_table_filters("ticket")
+        assert ("eq", "parentId", "p1") in filters, f"Missing parentId filter, got: {filters}"
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_no_children(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_tickets_by_parent() MUST return [] when the parent has no children."""
+        fake_client.set_table_data("ticket", [])
+
+        result = await db.get_tickets_by_parent("orphan-parent")
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_orders_newest_first(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_tickets_by_parent() MUST order by createdAt DESC (newest-first)."""
+        fake_client.set_table_data("ticket", [])
+
+        await db.get_tickets_by_parent("p-0001")
+
+        orders = fake_client.get_table_orders("ticket")
+        assert ("createdAt", True) in orders, f"Expected order('createdAt', desc=True), got: {orders}"
+
+    @pytest.mark.asyncio
+    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
+        """get_tickets_by_parent() MUST raise RuntimeError if connect() wasn't called."""
+        with pytest.raises(RuntimeError, match="connect"):
+            await disconnected_db.get_tickets_by_parent("p1")
 
 
 # ---------------------------------------------------------------------------
@@ -978,3 +1076,154 @@ class TestGuildScopedFilters:
         guild_filters = [f for f in filters if f[0] == "eq" and f[1] == "guildId"]
         assert len(guild_filters) >= 1, f"No guildId eq filter found in: {filters}"
         assert guild_filters[0][2] == "g1"
+
+
+# ===========================================================================
+# ticket_note CRUD — insert / get (newest-first, capped) / delete
+# (tickets-subsidiados, Migration 003)
+# ===========================================================================
+
+
+def _note_row_db(**overrides: object) -> dict:
+    """Return a camelCase ticket_note row as Supabase would return it."""
+    row: dict = {
+        "id": "n-uuid-1",
+        "ticketId": "t-0001",
+        "authorId": "staff-001",
+        "content": "Escalated.",
+        "createdAt": "2026-07-01T12:30:00+00:00",
+    }
+    row.update(overrides)
+    return row
+
+
+class TestInsertTicketNote:
+    """Verify Database.insert_ticket_note() persists a staff note row."""
+
+    @pytest.mark.asyncio
+    async def test_insert_ticket_note_returns_persisted_row(
+        self, db: Database, fake_client: FakeSupabaseClient
+    ) -> None:
+        """insert_ticket_note() MUST return the persisted note row."""
+        fake_client.set_table_data("ticket_note", [_note_row_db()])
+
+        result = await db.insert_ticket_note("t-0001", "staff-001", "Escalated.")
+
+        assert result["id"] == "n-uuid-1"
+        assert result["ticketId"] == "t-0001"
+
+    @pytest.mark.asyncio
+    async def test_insert_ticket_note_stores_camelcase_columns(
+        self, db: Database, fake_client: FakeSupabaseClient
+    ) -> None:
+        """insert_ticket_note() MUST insert a row with camelCase columns + a UUID id."""
+        fake_client.set_table_data("ticket_note", [_note_row_db()])
+
+        await db.insert_ticket_note("t-0001", "staff-001", "Escalated.")
+
+        insert_calls = fake_client.get_table_calls("ticket_note")
+        assert len(insert_calls) == 1
+        assert insert_calls[0][0] == "insert"
+        row = insert_calls[0][1]
+        assert row["ticketId"] == "t-0001"
+        assert row["authorId"] == "staff-001"
+        assert row["content"] == "Escalated."
+        # id is a generated v4 UUID string (not null/empty).
+        assert isinstance(row["id"], str) and len(row["id"]) > 0
+        # createdAt is left to the DB default (NOW()) — not set client-side.
+        assert "createdAt" not in row
+
+    @pytest.mark.asyncio
+    async def test_insert_ticket_note_raises_without_connect(self, disconnected_db: Database) -> None:
+        """insert_ticket_note() MUST raise RuntimeError if connect() wasn't called."""
+        with pytest.raises(RuntimeError, match="connect"):
+            await disconnected_db.insert_ticket_note("t-0001", "staff-001", "text")
+
+
+class TestGetTicketNotes:
+    """Verify Database.get_ticket_notes() returns a ticket's notes, newest-first."""
+
+    @pytest.mark.asyncio
+    async def test_returns_notes_for_ticket(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_ticket_notes() MUST return rows filtered by ticketId."""
+        notes = [_note_row_db(id="n1"), _note_row_db(id="n2", content="Second.")]
+        fake_client.set_table_data("ticket_note", notes)
+
+        result = await db.get_ticket_notes("t-0001")
+
+        assert result == notes
+        assert len(result) == 2
+
+    @pytest.mark.asyncio
+    async def test_filters_by_ticket_id(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_ticket_notes() MUST apply an eq('ticketId', ...) filter."""
+        fake_client.set_table_data("ticket_note", [])
+
+        await db.get_ticket_notes("t-0001")
+
+        filters = fake_client.get_table_filters("ticket_note")
+        assert ("eq", "ticketId", "t-0001") in filters, f"Missing ticketId filter, got: {filters}"
+
+    @pytest.mark.asyncio
+    async def test_orders_newest_first(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_ticket_notes() MUST order by createdAt DESC (newest-first)."""
+        fake_client.set_table_data("ticket_note", [])
+
+        await db.get_ticket_notes("t-0001")
+
+        orders = fake_client.get_table_orders("ticket_note")
+        assert ("createdAt", True) in orders, f"Expected order('createdAt', desc=True), got: {orders}"
+
+    @pytest.mark.asyncio
+    async def test_applies_default_cap_limit(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_ticket_notes() MUST apply a default limit (cap by caller)."""
+        fake_client.set_table_data("ticket_note", [])
+
+        await db.get_ticket_notes("t-0001")
+
+        limits = fake_client.get_table_limits("ticket_note")
+        assert limits, f"Expected a limit() call, got: {limits}"
+        assert limits[0] == 50
+
+    @pytest.mark.asyncio
+    async def test_applies_explicit_limit(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_ticket_notes(limit=...) MUST pass the caller's cap through."""
+        fake_client.set_table_data("ticket_note", [])
+
+        await db.get_ticket_notes("t-0001", limit=10)
+
+        limits = fake_client.get_table_limits("ticket_note")
+        assert 10 in limits
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_no_notes(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_ticket_notes() MUST return [] when the ticket has no notes."""
+        fake_client.set_table_data("ticket_note", [])
+
+        result = await db.get_ticket_notes("t-empty")
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
+        """get_ticket_notes() MUST raise RuntimeError if connect() wasn't called."""
+        with pytest.raises(RuntimeError, match="connect"):
+            await disconnected_db.get_ticket_notes("t-0001")
+
+
+class TestDeleteTicketNote:
+    """Verify Database.delete_ticket_note() targets a single note by id."""
+
+    @pytest.mark.asyncio
+    async def test_delete_targets_note_by_id(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """delete_ticket_note() MUST delete the row matching the given id."""
+        await db.delete_ticket_note("n-uuid-1")
+
+        filters = fake_client.get_table_filters("ticket_note")
+        assert ("eq", "id", "n-uuid-1") in filters, f"delete_ticket_note MUST filter by id, got: {filters}"
+
+    @pytest.mark.asyncio
+    async def test_delete_raises_without_connect(self, disconnected_db: Database) -> None:
+        """delete_ticket_note() MUST raise RuntimeError if connect() wasn't called."""
+        with pytest.raises(RuntimeError, match="connect"):
+            await disconnected_db.delete_ticket_note("n-uuid-1")
