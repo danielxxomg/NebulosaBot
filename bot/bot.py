@@ -387,3 +387,9 @@ class NebulosaBot(commands.Bot):
     async def on_ready(self) -> None:
         """Called once when the bot has connected to the Discord gateway."""
         logger.info("NebulosaBot is online — logged in as %s", self.user)
+        # Backfill guild config for guilds the bot was already a member of at
+        # startup (on_guild_join only fires for joins during the session).
+        if self.guild_service is not None:
+            for guild in self.guilds:
+                await self.guild_service.ensure_guild_exists(str(guild.id))
+            logger.info("Backfilled guild config for %d guild(s)", len(self.guilds))
