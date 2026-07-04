@@ -1,18 +1,42 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
-import type { Ticket, TicketStatus } from "@/lib/types";
+import {
+  render,
+  screen,
+  within,
+  fireEvent,
+  waitFor,
+} from "@testing-library/react";
+import type { Ticket, TicketNote, TicketStatus } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
 
 const mockGetTicketsForGuild = vi.fn();
+const mockReopenTicket = vi.fn();
+const mockTransferTicket = vi.fn();
+const mockGetTicketNotes = vi.fn();
+const mockAddTicketNote = vi.fn();
+const mockDeleteTicketNote = vi.fn();
+const mockRouterRefresh = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: mockRouterRefresh }),
+}));
 
 vi.mock("@/lib/actions/ticket-actions", () => ({
   getTicketsForGuild: (...args: unknown[]) => mockGetTicketsForGuild(...args),
+  reopenTicket: (...args: unknown[]) => mockReopenTicket(...args),
+  transferTicket: (...args: unknown[]) => mockTransferTicket(...args),
+  getTicketNotes: (...args: unknown[]) => mockGetTicketNotes(...args),
+  addTicketNote: (...args: unknown[]) => mockAddTicketNote(...args),
+  deleteTicketNote: (...args: unknown[]) => mockDeleteTicketNote(...args),
 }));
 
 import TicketsPage from "@/app/(authenticated)/guilds/[guildId]/tickets/page";
+import { buildTicketTree } from "@/app/(authenticated)/guilds/[guildId]/tickets/_lib/build-ticket-tree";
+import { TicketRowActions } from "@/app/(authenticated)/guilds/[guildId]/tickets/_components/TicketRowActions";
+import { NotesPanel } from "@/app/(authenticated)/guilds/[guildId]/tickets/_components/NotesPanel";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -34,6 +58,18 @@ function buildTicket(overrides: Partial<Ticket> = {}): Ticket {
     claimedBy: null,
     transcriptUrl: null,
     closedAt: null,
+    parentId: null,
+    ...overrides,
+  };
+}
+
+function buildNote(overrides: Partial<TicketNote> = {}): TicketNote {
+  return {
+    id: crypto.randomUUID(),
+    ticketId: "t1",
+    authorId: "111",
+    content: "Sample note",
+    createdAt: "2025-03-01T12:00:00.000Z",
     ...overrides,
   };
 }
@@ -51,6 +87,13 @@ async function renderPage() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Defaults: mutation/read actions succeed; notes start empty. Tests that
+  // need different shapes override these after clearAllMocks.
+  mockReopenTicket.mockResolvedValue({ data: null, error: null });
+  mockTransferTicket.mockResolvedValue({ data: null, error: null });
+  mockGetTicketNotes.mockResolvedValue({ data: [], error: null });
+  mockAddTicketNote.mockResolvedValue({ data: null, error: null });
+  mockDeleteTicketNote.mockResolvedValue({ data: null, error: null });
 });
 
 // ---------------------------------------------------------------------------
@@ -224,5 +267,329 @@ describe("TicketsPage — error state", () => {
 
     // The happy-path table must NOT render on the error branch.
     expect(screen.queryByRole("table")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sub-ticket tree — pure builder
+// ---------------------------------------------------------------------------
+
+describe("buildTicketTree — parent/child grouping", () => {
+  it("groups children under their parent and keeps the parent as the only root", () => {
+    const parent = buildTicket({ id: "p1", ticketNumber: 5 });
+    const childA = buildTicket({ id: "c1", ticketNumber: 6, parentId: "p1" });
+    const childB = buildTicket({ id: "c2", ticketNumber: 7, parentId: "p1" });
+
+    const tree = buildTicketTree([parent, childA, childB]);
+
+    expect(tree).toHaveLength(1);
+    expect(tree[0].ticket.id).toBe("p1");
+    expect(tree[0].children.map((c) => c.id)).toEqual(["c1", "c2"]);
+  });
+
+  it("degrades an orphan child (parent not in the set) to a top-level root", () => {
+    const orphan = buildTicket({
+      id: "o1",
+      ticketNumber: 9,
+      parentId: "missing-parent",
+    });
+
+    const tree = buildTicketTree([orphan]);
+
+    expect(tree).toHaveLength(1);
+    expect(tree[0].ticket.id).toBe("o1");
+    expect(tree[0].children).toEqual([]);
+  });
+
+  it("treats flat tickets (no parentId) as independent top-level roots", () => {
+    const a = buildTicket({ id: "a", ticketNumber: 1 });
+    const b = buildTicket({ id: "b", ticketNumber: 2 });
+
+    const tree = buildTicketTree([a, b]);
+
+    expect(tree).toHaveLength(2);
+    expect(tree[0].children).toEqual([]);
+    expect(tree[1].children).toEqual([]);
+  });
+
+  it("still attaches a child to its parent when the child appears first in the input", () => {
+    const parent = buildTicket({ id: "p1", ticketNumber: 5 });
+    const child = buildTicket({ id: "c1", ticketNumber: 6, parentId: "p1" });
+
+    const tree = buildTicketTree([child, parent]);
+
+    expect(tree).toHaveLength(1);
+    expect(tree[0].ticket.id).toBe("p1");
+    expect(tree[0].children.map((c) => c.id)).toEqual(["c1"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sub-ticket tree — page rendering
+// ---------------------------------------------------------------------------
+
+describe("TicketsPage — sub-ticket tree rendering", () => {
+  it("renders children indented under their parent with a sub-ticket label", async () => {
+    const parent = buildTicket({ id: "p1", ticketNumber: 5, status: "open" });
+    const childA = buildTicket({
+      id: "c1",
+      ticketNumber: 6,
+      parentId: "p1",
+      status: "open",
+    });
+    const childB = buildTicket({
+      id: "c2",
+      ticketNumber: 7,
+      parentId: "p1",
+      status: "open",
+    });
+
+    mockGetTicketsForGuild.mockResolvedValue({
+      data: [parent, childA, childB],
+      error: null,
+    });
+
+    await renderPage();
+
+    // Parent + both children render their ticket numbers.
+    expect(screen.getByText("#5")).toBeTruthy();
+    expect(screen.getByText("#6")).toBeTruthy();
+    expect(screen.getByText("#7")).toBeTruthy();
+
+    // Each child carries an accessible label naming its parent (two children
+    // → two labels). This is the semantic signal that the row is a sub-ticket;
+    // the visual indentation/connector is a non-asserted enhancement.
+    expect(screen.getAllByText("Sub-ticket of #5")).toHaveLength(2);
+  });
+
+  it("renders an orphan child as a top-level row with no sub-ticket label", async () => {
+    const orphan = buildTicket({
+      id: "o1",
+      ticketNumber: 9,
+      parentId: "missing",
+      status: "open",
+    });
+
+    mockGetTicketsForGuild.mockResolvedValue({
+      data: [orphan],
+      error: null,
+    });
+
+    await renderPage();
+
+    expect(screen.getByText("#9")).toBeTruthy();
+    expect(screen.queryAllByText(/Sub-ticket of/)).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Non-admin / error branch — no action buttons leak
+// ---------------------------------------------------------------------------
+
+describe("TicketsPage — action buttons gated by auth", () => {
+  it("renders no Reopen/Transfer/Notes buttons when the action rejects the caller", async () => {
+    // A non-admin or unauthenticated caller gets an error and no data, so the
+    // table never renders and no action UI is reachable.
+    mockGetTicketsForGuild.mockResolvedValue({
+      data: null,
+      error: "You must be a server administrator to view tickets.",
+    });
+
+    await renderPage();
+
+    expect(screen.queryByRole("button", { name: "Reopen" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Transfer" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Notes" })).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TicketRowActions — visibility + action calls
+// ---------------------------------------------------------------------------
+
+describe("TicketRowActions — visibility and action calls", () => {
+  it("shows Reopen only for a closed ticket and hides it for an open one", () => {
+    const closed = buildTicket({
+      id: "t1",
+      ticketNumber: 3,
+      status: "closed",
+      closedAt: "2025-02-01T00:00:00.000Z",
+    });
+    const { rerender } = render(<TicketRowActions ticket={closed} />);
+    expect(screen.queryByRole("button", { name: "Reopen" })).not.toBeNull();
+
+    const open = buildTicket({ id: "t2", ticketNumber: 4, status: "open" });
+    rerender(<TicketRowActions ticket={open} />);
+    expect(screen.queryByRole("button", { name: "Reopen" })).toBeNull();
+  });
+
+  it("shows a Transfer button for a claimed ticket", () => {
+    const claimed = buildTicket({
+      id: "t1",
+      ticketNumber: 5,
+      status: "claimed",
+      claimedBy: "777",
+    });
+    render(<TicketRowActions ticket={claimed} />);
+    expect(
+      screen.queryByRole("button", { name: "Transfer" })
+    ).not.toBeNull();
+  });
+
+  it("calls reopenTicket with the ticket id when Reopen is clicked", async () => {
+    mockReopenTicket.mockResolvedValue({ data: null, error: null });
+    const ticket = buildTicket({
+      id: "t1",
+      ticketNumber: 3,
+      status: "closed",
+      closedAt: "2025-02-01T00:00:00.000Z",
+    });
+
+    render(<TicketRowActions ticket={ticket} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reopen" }));
+
+    await waitFor(() => {
+      expect(mockReopenTicket).toHaveBeenCalledWith("t1");
+    });
+  });
+
+  it("calls transferTicket with the ticket id and entered staff id", async () => {
+    mockTransferTicket.mockResolvedValue({ data: null, error: null });
+    const ticket = buildTicket({
+      id: "t1",
+      ticketNumber: 5,
+      status: "claimed",
+      claimedBy: "777",
+    });
+
+    render(<TicketRowActions ticket={ticket} />);
+    fireEvent.click(screen.getByRole("button", { name: "Transfer" }));
+
+    const input = await screen.findByLabelText("New staff member ID");
+    fireEvent.change(input, { target: { value: "999" } });
+
+    // Wait for the confirm button to be enabled (it is disabled while the
+    // staff-id field is empty) before submitting the form.
+    await waitFor(() => {
+      const confirm = screen.getByRole("button", {
+        name: "Confirm transfer",
+      });
+      expect(confirm.hasAttribute("disabled")).toBe(false);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm transfer" }));
+
+    await waitFor(() => {
+      expect(mockTransferTicket).toHaveBeenCalledWith("t1", "999");
+    });
+  });
+
+  it("always renders a Notes button that toggles the notes panel open", async () => {
+    mockGetTicketNotes.mockResolvedValue({ data: [], error: null });
+    const ticket = buildTicket({ id: "t1", ticketNumber: 1, status: "open" });
+
+    render(<TicketRowActions ticket={ticket} />);
+
+    // Panel is not mounted before the toggle.
+    expect(screen.queryByText(/No staff notes yet/)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Notes" }));
+
+    // Panel mounts → notes are fetched → empty state renders.
+    expect(await screen.findByText(/No staff notes yet/)).toBeTruthy();
+    expect(mockGetTicketNotes).toHaveBeenCalledWith("t1");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// NotesPanel — empty / list / add / delete
+// ---------------------------------------------------------------------------
+
+describe("NotesPanel — empty / list / add / delete", () => {
+  it("shows the empty state and fetches notes on mount", async () => {
+    mockGetTicketNotes.mockResolvedValue({ data: [], error: null });
+
+    render(<NotesPanel ticketId="t1" />);
+
+    expect(await screen.findByText(/No staff notes yet/)).toBeTruthy();
+    expect(mockGetTicketNotes).toHaveBeenCalledWith("t1");
+  });
+
+  it("lists existing notes with author, content, and timestamp", async () => {
+    const note = buildNote({
+      id: "n1",
+      ticketId: "t1",
+      authorId: "111",
+      content: "Escalating to the dev team",
+      createdAt: "2025-03-01T12:00:00.000Z",
+    });
+    mockGetTicketNotes.mockResolvedValue({ data: [note], error: null });
+
+    render(<NotesPanel ticketId="t1" />);
+
+    expect(
+      await screen.findByText("Escalating to the dev team")
+    ).toBeTruthy();
+    expect(screen.getByText("111")).toBeTruthy();
+  });
+
+  it("adds a note by calling addTicketNote and refreshing the list", async () => {
+    const added = buildNote({
+      id: "n1",
+      ticketId: "t1",
+      authorId: "111",
+      content: "Looks stale",
+      createdAt: "2025-03-02T12:00:00.000Z",
+    });
+    mockGetTicketNotes
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({ data: [added], error: null });
+    mockAddTicketNote.mockResolvedValue({ data: null, error: null });
+
+    render(<NotesPanel ticketId="t1" />);
+
+    await screen.findByText(/No staff notes yet/);
+
+    fireEvent.change(screen.getByLabelText("Note content"), {
+      target: { value: "Looks stale" },
+    });
+    // Confirm the submit button is enabled (empty draft disables it) before
+    // clicking, then submit.
+    await waitFor(() => {
+      const addBtn = screen.getByRole("button", { name: "Add note" });
+      expect(addBtn.hasAttribute("disabled")).toBe(false);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add note" }));
+
+    await waitFor(() => {
+      expect(mockAddTicketNote).toHaveBeenCalledWith("t1", "Looks stale");
+    });
+    expect(await screen.findByText("Looks stale")).toBeTruthy();
+  });
+
+  it("deletes a note by calling deleteTicketNote and refreshing the list", async () => {
+    const note = buildNote({
+      id: "n1",
+      ticketId: "t1",
+      authorId: "111",
+      content: "Old note",
+      createdAt: "2025-03-01T12:00:00.000Z",
+    });
+    mockGetTicketNotes
+      .mockResolvedValueOnce({ data: [note], error: null })
+      .mockResolvedValueOnce({ data: [], error: null });
+    mockDeleteTicketNote.mockResolvedValue({ data: null, error: null });
+
+    render(<NotesPanel ticketId="t1" />);
+
+    await screen.findByText("Old note");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Delete note by/ })
+    );
+
+    await waitFor(() => {
+      expect(mockDeleteTicketNote).toHaveBeenCalledWith("n1");
+    });
+    expect(await screen.findByText(/No staff notes yet/)).toBeTruthy();
   });
 });

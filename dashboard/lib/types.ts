@@ -132,6 +132,23 @@ export interface Ticket {
   transcriptUrl: string | null;
   /** ISO 8601 timestamp when the ticket was closed. */
   closedAt: string | null;
+  /** UUID of the parent ticket for subsidiary/sub-tickets (null for top-level). */
+  parentId: string | null;
+}
+
+// ── Ticket Note ───────────────────────────────────────────────────────────
+
+export interface TicketNote {
+  /** UUID primary key. */
+  id: string;
+  /** UUID of the ticket the note belongs to (FK → ticket.id). */
+  ticketId: string;
+  /** Discord user ID of the staff member who authored the note. */
+  authorId: string;
+  /** Note body text. */
+  content: string;
+  /** ISO 8601 timestamp of creation. */
+  createdAt: string;
 }
 
 // ── Ticket Category ──────────────────────────────────────────────────────

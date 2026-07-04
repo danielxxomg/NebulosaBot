@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { Ticket as TicketIcon } from "lucide-react";
 import {
   Card,
@@ -7,7 +8,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { getTicketsForGuild } from "@/lib/actions/ticket-actions";
-import type { TicketStatus } from "@/lib/types";
+import type { Ticket, TicketStatus } from "@/lib/types";
+import { buildTicketTree } from "./_lib/build-ticket-tree";
+import { TicketRowActions } from "./_components/TicketRowActions";
 
 export const metadata = {
   title: "Tickets — NebulosaBot Dashboard",
@@ -90,6 +93,65 @@ function PageHeader() {
         Monitor support tickets for this guild.
       </p>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sub-ticket tree
+// ---------------------------------------------------------------------------
+
+/**
+ * One table row for a ticket. Children render with a leading connector glyph
+ * and an accessible "Sub-ticket of #N" label (visually hidden) so the
+ * hierarchy is conveyed by text, not by indentation alone. The Actions cell
+ * holds the client {@link TicketRowActions} leaf.
+ */
+function TicketRow({
+  ticket,
+  isChild,
+  parentNumber,
+}: {
+  ticket: Ticket;
+  isChild: boolean;
+  parentNumber?: number;
+}) {
+  return (
+    <tr className="border-b border-border last:border-0">
+      <td className="px-3 py-2 font-medium text-foreground">
+        <div
+          className={
+            isChild
+              ? "flex items-center gap-1.5 pl-6"
+              : "flex items-center gap-1.5"
+          }
+        >
+          {isChild && (
+            <span aria-hidden="true" className="text-muted-foreground">
+              ↳
+            </span>
+          )}
+          <span>#{ticket.ticketNumber}</span>
+          {isChild && parentNumber != null && (
+            <span className="sr-only">Sub-ticket of #{parentNumber}</span>
+          )}
+        </div>
+      </td>
+      <td className="px-3 py-2">
+        <StatusBadge status={ticket.status} />
+      </td>
+      <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
+        {ticket.authorId}
+      </td>
+      <td className="px-3 py-2 text-muted-foreground">
+        {new Date(ticket.createdAt).toLocaleString()}
+      </td>
+      <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
+        {ticket.claimedBy ?? "—"}
+      </td>
+      <td className="px-3 py-2 align-top">
+        <TicketRowActions ticket={ticket} />
+      </td>
+    </tr>
   );
 }
 
@@ -186,30 +248,24 @@ export default async function TicketsPage({ params }: TicketsPageProps) {
                     <th scope="col" className="px-3 py-2 font-medium">
                       Claimed By
                     </th>
+                    <th scope="col" className="px-3 py-2 font-medium">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {tickets.map((ticket) => (
-                    <tr
-                      key={ticket.id}
-                      className="border-b border-border last:border-0"
-                    >
-                      <td className="px-3 py-2 font-medium text-foreground">
-                        #{ticket.ticketNumber}
-                      </td>
-                      <td className="px-3 py-2">
-                        <StatusBadge status={ticket.status} />
-                      </td>
-                      <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
-                        {ticket.authorId}
-                      </td>
-                      <td className="px-3 py-2 text-muted-foreground">
-                        {new Date(ticket.createdAt).toLocaleString()}
-                      </td>
-                      <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
-                        {ticket.claimedBy ?? "—"}
-                      </td>
-                    </tr>
+                  {buildTicketTree(tickets).map((node) => (
+                    <Fragment key={node.ticket.id}>
+                      <TicketRow ticket={node.ticket} isChild={false} />
+                      {node.children.map((child) => (
+                        <TicketRow
+                          key={child.id}
+                          ticket={child}
+                          isChild
+                          parentNumber={node.ticket.ticketNumber}
+                        />
+                      ))}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
