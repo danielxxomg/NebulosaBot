@@ -14,6 +14,7 @@ Provides the full ticket lifecycle exposed to Discord users:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -78,6 +79,7 @@ class TicketPanelView(discord.ui.View):
             )
             return
 
+        assert bot.db is not None
         # Fetch active ticket categories for this guild.
         rows = await bot.db.get_ticket_categories(str(guild.id))
         categories = [
@@ -133,6 +135,7 @@ class TicketActionsView(discord.ui.View):
 
         Returns ``(row, error_message)`` — exactly one is non-None.
         """
+        assert bot.db is not None
         row = await bot.db.get_ticket_by_channel(str(channel_id))
         if row is None:
             return None, "This channel is not an active ticket channel."
@@ -164,6 +167,7 @@ class TicketActionsView(discord.ui.View):
             )
             return
 
+        assert ticket_row is not None
         # Check if already claimed.
         claimed_by_id = ticket_row.get("claimedBy")
         if claimed_by_id:
@@ -178,6 +182,7 @@ class TicketActionsView(discord.ui.View):
 
         ticket_id = ticket_row["id"]
         staff_id = str(interaction.user.id)
+        assert bot.ticket_service is not None
 
         try:
             ticket = await bot.ticket_service.claim_ticket(ticket_id, staff_id)
@@ -222,6 +227,7 @@ class TicketActionsView(discord.ui.View):
             )
             return
 
+        assert ticket_row is not None
         ticket_id = ticket_row["id"]
         channel = interaction.channel
         if not isinstance(channel, discord.TextChannel):
@@ -230,6 +236,9 @@ class TicketActionsView(discord.ui.View):
         await interaction.response.defer(ephemeral=True)
 
         # 1. Generate transcript.
+        assert bot.transcript_service is not None
+        assert bot.guild_service is not None
+        assert bot.ticket_service is not None
         transcript_url: str | None = None
         try:
             transcript_file = await bot.transcript_service.generate(channel)
@@ -339,6 +348,9 @@ class _CategorySelect(discord.ui.Select):
         category_id = self.values[0]
         bot: NebulosaBot = interaction.client  # type: ignore[assignment]
         guild = self._guild
+        assert bot.db is not None
+        assert bot.guild_service is not None
+        assert bot.ticket_service is not None
 
         await interaction.response.defer(ephemeral=True)
 
@@ -387,12 +399,11 @@ class _CategorySelect(discord.ui.Select):
         # Resolve mod role for channel permission overwrites.
         mod_role: discord.Role | None = None
         if config.mod_role_id:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 mod_role = guild.get_role(int(config.mod_role_id))
-            except (ValueError, TypeError):
-                pass
 
         author = interaction.user
+        assert isinstance(author, discord.Member)
 
         # --- Get tentative ticket number for channel naming. ---
         tentative_max = await bot.db.get_max_ticket_number(str(guild.id))
@@ -401,7 +412,8 @@ class _CategorySelect(discord.ui.Select):
 
         # --- Build permission overwrites. ---
         overwrites: dict[
-            discord.Role | discord.Member, discord.PermissionOverwrite
+            discord.Role | discord.Member | discord.Object,
+            discord.PermissionOverwrite,
         ] = {
             guild.default_role: discord.PermissionOverwrite(
                 read_messages=False
@@ -457,10 +469,8 @@ class _CategorySelect(discord.ui.Select):
         except Exception:
             logger.exception("Failed to create ticket in DB")
             # Clean up the orphan channel.
-            try:
+            with contextlib.suppress(discord.HTTPException):
                 await channel.delete(reason="Ticket creation failed — cleanup")
-            except discord.HTTPException:
-                pass
             await interaction.followup.send(
                 embed=error_embed(
                     "Ticket Creation Failed",
@@ -600,16 +610,16 @@ class TicketsCog(commands.Cog, name="Tickets"):
         channel IDs.
         """
         all_channel_ids: set[int] = set()
+        assert self.bot.db is not None
+        assert self.bot.ticket_service is not None
         for guild in self.bot.guilds:
             try:
                 ids = await self.bot.db.get_open_ticket_channel_ids(
                     str(guild.id)
                 )
                 for cid in ids:
-                    try:
+                    with contextlib.suppress(ValueError, TypeError):
                         all_channel_ids.add(int(cid))
-                    except (ValueError, TypeError):
-                        pass
             except Exception:
                 logger.exception(
                     "Failed to load open ticket channel IDs for guild %s",
@@ -633,6 +643,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
         """
         logger.info("Auto-close task: checking for stale tickets ...")
         closed_count = 0
+        assert self.bot.guild_service is not None
+        assert self.bot.ticket_service is not None
+        assert self.bot.transcript_service is not None
 
         for guild in self.bot.guilds:
             guild_id = str(guild.id)
@@ -697,6 +710,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
         reason: str,
     ) -> None:
         """Close a single ticket: transcript → upload → DB update → delete channel."""
+        assert self.bot.ticket_service is not None
+        assert self.bot.transcript_service is not None
         channel = self.bot.get_channel(int(ticket.channel_id))
         if channel is None or not isinstance(channel, discord.TextChannel):
             # Channel was deleted externally — just close the DB record.
@@ -759,6 +774,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         if not ticket_service.is_ticket_channel(message.channel.id):
             return
 
+        assert self.bot.db is not None
         try:
             await self.bot.db.update_ticket_last_activity(
                 str(message.channel.id)
@@ -811,6 +827,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             )
             return
 
+        assert self.bot.db is not None
         # Build the panel embed.
         embed = discord.Embed(
             title=title,
@@ -888,6 +905,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         if ctx.guild is None:
             return
 
+        assert self.bot.db is not None
         guild_id = str(ctx.guild.id)
 
         # Validate emoji (discord.py doesn't enforce this on str params).
@@ -962,6 +980,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         if ctx.guild is None:
             return
 
+        assert self.bot.db is not None
         guild_id = str(ctx.guild.id)
 
         try:
@@ -1030,6 +1049,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         if ctx.guild is None:
             return
 
+        assert self.bot.db is not None
         # Verify the category exists and belongs to this guild.
         try:
             row = await self.bot.db.get_ticket_category(category_id)
@@ -1104,6 +1124,450 @@ class TicketsCog(commands.Cog, name="Tickets"):
             embed=success_embed(
                 "Category Deleted",
                 f"Ticket category **{cat_name}** has been deleted.",
+            )
+        )
+
+    # ==================================================================
+    # Subsidiados commands (slice 2): subticket, reopen, transfer, note
+    # ==================================================================
+
+    # -- /subticket create ----------------------------------------------
+
+    @commands.hybrid_group(name="subticket", fallback="help")
+    @is_mod()
+    async def subticket(self, ctx: commands.Context) -> None:
+        """Sub-ticket commands (staff-only).
+
+        With ``fallback="help"`` the group callback is bound as the
+        ``help`` subcommand — both ``/subticket`` and ``/subticket help``
+        show this message (discord.py requires ``fallback`` for slash
+        groups to be directly invokable).
+        """
+        await ctx.send(
+            embed=info_embed(
+                "Sub-tickets",
+                "Use `/subticket create` to create a sub-ticket from "
+                "the current ticket channel.",
+            )
+        )
+
+    @subticket.command(name="create")
+    @app_commands.describe(
+        parent_id="The UUID of the parent ticket (omitted: uses current channel)",
+    )
+    @is_mod()
+    async def subticket_create(
+        self, ctx: commands.Context, parent_id: str | None = None
+    ) -> None:
+        """Create a sub-ticket linked to the current ticket channel's ticket.
+
+        The parent is resolved from the current channel unless an explicit
+        ``parent_id`` is given. A new Discord channel is created and the
+        sub-ticket is inserted via :meth:`TicketService.create_subticket`,
+        which performs the four ``parentId`` FK validations.
+        """
+        if ctx.guild is None:
+            await ctx.send(
+                embed=error_embed(
+                    "Server Only", "Sub-tickets can only be created in a server."
+                )
+            )
+            return
+
+        guild = ctx.guild
+        author = ctx.author
+        assert isinstance(author, discord.Member)
+        assert self.bot.db is not None
+        assert self.bot.guild_service is not None
+        assert self.bot.ticket_service is not None
+
+        # Resolve guild config + Discord ticket category.
+        try:
+            config = await self.bot.guild_service.get_config(str(guild.id))
+        except Exception:
+            logger.exception(
+                "Failed to fetch guild config for sub-ticket (guild=%s)", guild.id
+            )
+            await ctx.send(
+                embed=error_embed(
+                    "Config Error", "Could not load guild configuration."
+                )
+            )
+            return
+
+        if not config.ticket_category_id:
+            await ctx.send(
+                embed=error_embed(
+                    "Not Configured",
+                    "The ticket category channel has not been configured.",
+                )
+            )
+            return
+
+        try:
+            category_channel = guild.get_channel(int(config.ticket_category_id))
+        except (ValueError, TypeError):
+            category_channel = None
+        if not isinstance(category_channel, discord.CategoryChannel):
+            await ctx.send(
+                embed=error_embed(
+                    "Invalid Category",
+                    "The configured Discord category for tickets no longer exists.",
+                )
+            )
+            return
+
+        # Resolve the parent ticket (explicit id or current channel).
+        if parent_id is None:
+            parent_row = await self.bot.db.get_ticket_by_channel(
+                str(ctx.channel.id)
+            )
+        else:
+            parent_row = await self.bot.db.get_ticket(parent_id)
+        if parent_row is None or parent_row.get("status") == "closed":
+            await ctx.send(
+                embed=error_embed(
+                    "Not a Ticket",
+                    "This command must be used in an open ticket channel.",
+                )
+            )
+            return
+        parent_id = parent_row["id"]
+        parent_author_id = parent_row.get("authorId", str(author.id))
+
+        # Build permission overwrites.
+        overwrites: dict[
+            discord.Role | discord.Member | discord.Object,
+            discord.PermissionOverwrite,
+        ] = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            author: discord.PermissionOverwrite(
+                read_messages=True, send_messages=True
+            ),
+            guild.me: discord.PermissionOverwrite(
+                read_messages=True, send_messages=True
+            ),
+        }
+        if config.mod_role_id:
+            try:
+                mod_role = guild.get_role(int(config.mod_role_id))
+                if mod_role is not None:
+                    overwrites[mod_role] = discord.PermissionOverwrite(
+                        read_messages=True, send_messages=True
+                    )
+            except (ValueError, TypeError):
+                pass
+
+        # Tentative channel name (renamed after the real number is known).
+        tentative_max = await self.bot.db.get_max_ticket_number(str(guild.id))
+        channel_name = f"ticket-{tentative_max + 1:04d}"
+
+        try:
+            channel = await guild.create_text_channel(
+                name=channel_name,
+                category=category_channel,
+                overwrites=overwrites,
+                reason=f"Sub-ticket opened by {author} (parent={parent_id})",
+            )
+        except discord.HTTPException:
+            logger.exception("Failed to create sub-ticket channel")
+            await ctx.send(
+                embed=error_embed(
+                    "Channel Creation Failed",
+                    "Could not create the sub-ticket channel.",
+                )
+            )
+            return
+
+        # Create the sub-ticket in the DB (4 FK validations live in the service).
+        try:
+            ticket = await self.bot.ticket_service.create_subticket(
+                parent_id=parent_id,
+                author_id=parent_author_id,
+                category_id=None,
+                channel_id=str(channel.id),
+                guild_id=str(guild.id),
+            )
+        except Exception:
+            logger.exception(
+                "Failed to create sub-ticket in DB (parent=%s)", parent_id
+            )
+            # Clean up the orphan channel.
+            with contextlib.suppress(discord.HTTPException):
+                await channel.delete(reason="Sub-ticket creation failed — cleanup")
+            await ctx.send(
+                embed=error_embed(
+                    "Sub-ticket Creation Failed",
+                    "Could not create the sub-ticket. Please try again.",
+                )
+            )
+            return
+
+        # Rename if the actual number differs from the tentative one.
+        actual_name = f"ticket-{ticket.ticket_number:04d}"
+        if channel.name != actual_name:
+            try:
+                await channel.edit(name=actual_name)
+            except discord.HTTPException:
+                logger.warning(
+                    "Failed to rename sub-ticket channel %s → %s",
+                    channel.id, actual_name,
+                )
+
+        await channel.send(
+            content=author.mention, embed=_build_ticket_embed(ticket)
+        )
+        await ctx.send(
+            embed=success_embed(
+                "Sub-ticket Created",
+                f"Sub-ticket has been created: {channel.mention}",
+            )
+        )
+        logger.info(
+            "Sub-ticket #%d created (parent=%s, guild=%s, author=%s)",
+            ticket.ticket_number, parent_id, guild.id, author.id,
+        )
+
+    # -- /reopen -------------------------------------------------------
+
+    @commands.hybrid_command(name="reopen")
+    @is_mod()
+    async def reopen(self, ctx: commands.Context) -> None:
+        """Reopen the closed ticket in the current channel.
+
+        A new Discord channel is created and the ticket's ``channelId`` /
+        ``status`` / ``closedAt`` are updated by
+        :meth:`TicketService.reopen_ticket`.
+        """
+        if ctx.guild is None:
+            await ctx.send(
+                embed=error_embed(
+                    "Server Only", "Tickets can only be reopened in a server."
+                ),
+            )
+            return
+
+        assert self.bot.db is not None
+        assert self.bot.ticket_service is not None
+        ticket_row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id))
+        if ticket_row is None:
+            await ctx.send(
+                embed=error_embed(
+                    "Not a Ticket",
+                    "This command must be used in a ticket channel.",
+                )
+            )
+            return
+
+        ticket_id = ticket_row["id"]
+        try:
+            await self.bot.ticket_service.reopen_ticket(ticket_id, guild=ctx.guild)
+        except Exception:
+            logger.exception("Failed to reopen ticket %s", ticket_id)
+            await ctx.send(
+                embed=error_embed(
+                    "Reopen Failed",
+                    "Could not reopen the ticket. Please try again.",
+                )
+            )
+            return
+
+        await ctx.send(
+            embed=success_embed(
+                "Ticket Reopened",
+                "The ticket has been reopened in a new channel.",
+            )
+        )
+
+    # -- /transfer -----------------------------------------------------
+
+    @commands.hybrid_command(name="transfer")
+    @app_commands.describe(member="The staff member to transfer the ticket to")
+    @is_mod()
+    async def transfer(
+        self, ctx: commands.Context, member: discord.Member
+    ) -> None:
+        """Transfer the current ticket's claim to another staff member.
+
+        Mutates ``claimedBy`` and emits a :class:`LoggingService` audit
+        embed (no DB audit table — see design.md decision).
+        """
+        if ctx.guild is None:
+            await ctx.send(
+                embed=error_embed(
+                    "Server Only", "Tickets can only be transferred in a server."
+                ),
+            )
+            return
+
+        assert self.bot.db is not None
+        assert self.bot.ticket_service is not None
+        ticket_row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id))
+        if ticket_row is None:
+            await ctx.send(
+                embed=error_embed(
+                    "Not a Ticket",
+                    "This command must be used in a ticket channel.",
+                )
+            )
+            return
+
+        ticket_id = ticket_row["id"]
+        try:
+            await self.bot.ticket_service.transfer_ticket(
+                ticket_id,
+                new_claimed_by=str(member.id),
+                actor_id=str(ctx.author.id),
+                guild=ctx.guild,
+                logging_service=self.bot.logging_service,
+            )
+        except Exception:
+            logger.exception("Failed to transfer ticket %s", ticket_id)
+            await ctx.send(
+                embed=error_embed(
+                    "Transfer Failed",
+                    "Could not transfer the ticket. Please try again.",
+                )
+            )
+            return
+
+        await ctx.send(
+            embed=success_embed(
+                "Ticket Transferred",
+                f"The ticket has been transferred to {member.mention}.",
+            )
+        )
+
+    # -- /note add | list | delete -------------------------------------
+
+    @commands.hybrid_group(name="note", fallback="help")
+    @is_mod()
+    async def note(self, ctx: commands.Context) -> None:
+        """Staff note commands (staff-only).
+
+        With ``fallback="help"`` the group callback is bound as the
+        ``help`` subcommand — both ``/note`` and ``/note help`` show this
+        message (discord.py requires ``fallback`` for slash groups to be
+        directly invokable).
+        """
+        await ctx.send(
+            embed=info_embed(
+                "Staff Notes",
+                "Use `/note add`, `/note list`, or `/note delete`.",
+            )
+        )
+
+    @note.command(name="add")
+    @app_commands.describe(content="The note text")
+    @is_mod()
+    async def note_add(self, ctx: commands.Context, content: str) -> None:
+        """Add a staff note to the current ticket (not visible to the opener)."""
+        assert self.bot.db is not None
+        assert self.bot.ticket_service is not None
+        ticket_row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id))
+        if ticket_row is None:
+            await ctx.send(
+                embed=error_embed(
+                    "Not a Ticket",
+                    "This command must be used in a ticket channel.",
+                )
+            )
+            return
+
+        ticket_id = ticket_row["id"]
+        try:
+            note = await self.bot.ticket_service.create_note(
+                ticket_id, str(ctx.author.id), content
+            )
+        except Exception:
+            logger.exception("Failed to add note to ticket %s", ticket_id)
+            await ctx.send(
+                embed=error_embed(
+                    "Note Failed", "Could not add the note. Please try again."
+                )
+            )
+            return
+
+        await ctx.send(
+            embed=success_embed(
+                "Note Added", f"Note `{note.id}` has been added to the ticket."
+            )
+        )
+
+    @note.command(name="list")
+    @is_mod()
+    async def note_list(self, ctx: commands.Context) -> None:
+        """List all staff notes on the current ticket (newest-first)."""
+        assert self.bot.db is not None
+        assert self.bot.ticket_service is not None
+        ticket_row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id))
+        if ticket_row is None:
+            await ctx.send(
+                embed=error_embed(
+                    "Not a Ticket",
+                    "This command must be used in a ticket channel.",
+                )
+            )
+            return
+
+        ticket_id = ticket_row["id"]
+        notes = await self.bot.ticket_service.get_notes(ticket_id)
+        if not notes:
+            await ctx.send(
+                embed=info_embed("No Notes", "No staff notes yet.")
+            )
+            return
+
+        lines = [
+            f"`{n.id}` <@{n.author_id}> — {n.content}" for n in notes
+        ]
+        embed = discord.Embed(
+            title="📋 Staff Notes",
+            description="\n".join(lines),
+            color=COLOR_INFO,
+            timestamp=datetime.now(UTC),
+        )
+        embed.set_footer(text="NebulosaBot • Tickets")
+        await ctx.send(embed=embed)
+
+    @note.command(name="delete")
+    @app_commands.describe(note_id="The UUID of the note to delete")
+    @is_mod()
+    async def note_delete(
+        self, ctx: commands.Context, note_id: str
+    ) -> None:
+        """Delete a staff note (author-only — enforced by the service)."""
+        assert self.bot.db is not None
+        assert self.bot.ticket_service is not None
+        ticket_row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id))
+        if ticket_row is None:
+            await ctx.send(
+                embed=error_embed(
+                    "Not a Ticket",
+                    "This command must be used in a ticket channel.",
+                )
+            )
+            return
+
+        ticket_id = ticket_row["id"]
+        try:
+            await self.bot.ticket_service.delete_note(
+                note_id=note_id,
+                author_id=str(ctx.author.id),
+                ticket_id=ticket_id,
+            )
+        except Exception:
+            logger.exception("Failed to delete note %s", note_id)
+            await ctx.send(
+                embed=error_embed(
+                    "Delete Failed", "Could not delete the note."
+                )
+            )
+            return
+
+        await ctx.send(
+            embed=success_embed(
+                "Note Deleted", f"Note `{note_id}` has been deleted."
             )
         )
 

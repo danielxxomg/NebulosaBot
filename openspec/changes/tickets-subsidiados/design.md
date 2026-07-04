@@ -100,3 +100,4 @@ No multi-level sub-tickets, Discord threads, ticket system rewrite, notification
 ## Open Questions
 
 - [ ] Spec says transfer inserts an audit log row, but the current schema has no audit table. Confirm whether existing `LoggingService` audit embeds satisfy this, or add a future `ticket_audit_log` table.
+- [ ] reopen default-category fallback deferred to a future change (v1 uses guild-configured ticketCategoryId only).
