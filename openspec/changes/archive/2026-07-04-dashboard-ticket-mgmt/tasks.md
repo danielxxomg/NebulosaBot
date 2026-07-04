@@ -77,4 +77,4 @@ Chain strategy: size-exception
 
 ## Phase 8: Commit Preparation
 
-- [ ] 8.1 Single work unit — NO commit yet. Orchestrator runs review-reliability then handles commit.
+- [x] 8.1 Single work unit — committed as df43d09 + a51ca7f (archive-time stale-checkbox reconciliation: verify-report PASS WITH WARNINGS confirms all 15/15 scenarios compliant, full suite 118/118 green).
