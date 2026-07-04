@@ -8,6 +8,5 @@
     "reactive-resume": { "enabled": false },
     "scrapling": { "enabled": false },
     "telegram": { "enabled": false },
-    "vercel": { "enabled": false }
   }
 }
