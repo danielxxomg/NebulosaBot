@@ -10,6 +10,7 @@ import {
   Settings,
   Coins,
   MessageSquareHeart,
+  Ticket,
   Menu,
   X,
   LogOut,
@@ -48,6 +49,11 @@ export function Sidebar({ guildId }: SidebarProps) {
           href: `/guilds/${guildId}/greeting`,
           label: "Greeting",
           icon: MessageSquareHeart,
+        },
+        {
+          href: `/guilds/${guildId}/tickets`,
+          label: "Tickets",
+          icon: Ticket,
         },
       ]
     : [{ href: "/", label: "Guilds", icon: LayoutDashboard }];
