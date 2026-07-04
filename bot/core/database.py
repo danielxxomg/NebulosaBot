@@ -120,6 +120,24 @@ class Database:
         logger.debug("DB upsert_guild(%r)", config.id)
         self._client.table("guild").upsert(config.to_db_dict()).execute()
 
+    async def ensure_guild_exists(self, guild_id: str) -> None:
+        """Insert default guild config only if the row doesn't exist.
+
+        Uses ``ignore_duplicates=True`` (ON CONFLICT DO NOTHING) so existing
+        custom config is preserved — unlike :meth:`upsert_guild` which
+        overwrites. Used at startup to backfill guilds the bot was already a
+        member of (``on_guild_join`` only fires for joins during the session).
+        """
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        logger.debug("DB ensure_guild_exists(%r)", guild_id)
+        self._client.table("guild").upsert(
+            {"id": guild_id, "prefix": "nb!", "language": "es", "active": True},
+            on_conflict="id",
+            ignore_duplicates=True,
+        ).execute()
+
     # -- infraction ---------------------------------------------------
 
     async def insert_infraction(

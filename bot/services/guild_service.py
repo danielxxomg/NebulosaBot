@@ -148,6 +148,16 @@ class GuildService:
         )
         return config
 
+    async def ensure_guild_exists(self, guild_id: str) -> None:
+        """Ensure a guild config row exists without overwriting custom config.
+
+        Idempotent backfill used at startup (``on_ready``) for guilds the bot
+        was already a member of — ``on_guild_join`` only fires for joins that
+        happen during the running session. Delegates to
+        :meth:`Database.ensure_guild_exists` (INSERT ... ON CONFLICT DO NOTHING).
+        """
+        await self._db.ensure_guild_exists(guild_id)
+
     # ----------------------------------------------------------------
     # Internal
     # ----------------------------------------------------------------
