@@ -183,6 +183,23 @@ describe("TicketsPage — status badges render text labels", () => {
     expect(within(table).getByText("Claimed")).toBeTruthy();
     expect(within(table).getByText("Closed")).toBeTruthy();
   });
+
+  it("renders the Unknown fallback badge for an unrecognized status without crashing", async () => {
+    // page.tsx:49 — `STATUS_BADGES[status] ?? NEUTRAL_BADGE`. A runtime value
+    // outside the typed union (e.g. a future "deleted" status) must fall back
+    // to the neutral "Unknown" pill, not crash. Spec: Unknown status fallback.
+    const ticket = buildTicket({
+      ticketNumber: 42,
+      status: "deleted" as Ticket["status"],
+    });
+
+    mockGetTicketsForGuild.mockResolvedValue({ data: [ticket], error: null });
+
+    await renderPage();
+
+    const table = screen.getByRole("table");
+    expect(within(table).getByText("Unknown")).toBeTruthy();
+  });
 });
 
 // ---------------------------------------------------------------------------
