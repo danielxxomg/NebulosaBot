@@ -166,3 +166,18 @@ class XPListener(commands.Cog):
                 "Failed to assign role %s to %s in guild %s",
                 role.name, message.author, guild.id,
             )
+
+
+# ----------------------------------------------------------------------
+# cog load / unload (discord.py v2.x requirement)
+# ----------------------------------------------------------------------
+
+
+async def setup(bot: NebulosaBot) -> None:
+    """Register XPListener with the bot."""
+    await bot.add_cog(XPListener(bot))
+
+
+async def teardown(bot: NebulosaBot) -> None:
+    """Remove XPListener from the bot."""
+    await bot.remove_cog("XPListener")
