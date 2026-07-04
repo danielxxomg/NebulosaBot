@@ -58,4 +58,4 @@ Chain strategy: single-pr
 
 ## Phase 6: Commit (orchestrator-managed)
 
-- [ ] 6.1 Orchestrator runs review-reliability then handles commit. Do NOT commit from apply agent.
+- [x] 6.1 Orchestrator runs review-reliability then handles commit. Do NOT commit from apply agent. *(Reconciled at archive time: commit f61e986 exists at HEAD; verify-report confirms completion.)*
