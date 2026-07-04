@@ -47,13 +47,13 @@ jobs:
           uv sync --extra dev
 
       - name: Ruff check
-        run: uv run --extra dev ruff check bot/services/economy_service.py bot/config.py tests/conftest.py tests/property/ tests/test_economy_service.py tests/test_guild_service.py tests/test_config.py tests/test_database.py tests/test_sentinel_cog.py tests/test_tickets_cog.py tests/test_greeting_service.py bot/core/database.py bot/models/ticket.py bot/models/ticket_note.py tests/test_migrations.py tests/test_ticket_model.py tests/integration/
+        run: uv run --extra dev ruff check bot/services/economy_service.py bot/config.py tests/conftest.py tests/property/ tests/test_economy_service.py tests/test_guild_service.py tests/test_config.py tests/test_database.py tests/test_sentinel_cog.py tests/test_tickets_cog.py tests/test_greeting_service.py bot/core/database.py bot/models/ticket.py bot/models/ticket_note.py tests/test_migrations.py tests/test_ticket_model.py tests/integration/ bot/services/ticket_service.py bot/cogs/tickets.py tests/test_ticket_service.py
 
       - name: Ruff format check
-        run: uv run --extra dev ruff format --check bot/services/economy_service.py bot/config.py tests/conftest.py tests/property/ tests/test_economy_service.py tests/test_guild_service.py tests/test_config.py tests/test_database.py tests/test_sentinel_cog.py tests/test_tickets_cog.py tests/test_greeting_service.py bot/models/ticket.py bot/models/ticket_note.py tests/test_migrations.py tests/test_ticket_model.py tests/integration/
+        run: uv run --extra dev ruff format --check bot/services/economy_service.py bot/config.py tests/conftest.py tests/property/ tests/test_economy_service.py tests/test_guild_service.py tests/test_config.py tests/test_database.py tests/test_sentinel_cog.py tests/test_tickets_cog.py tests/test_greeting_service.py bot/models/ticket.py bot/models/ticket_note.py tests/test_migrations.py tests/test_ticket_model.py tests/integration/ bot/services/ticket_service.py tests/test_ticket_service.py
 
       - name: Mypy
-        run: uv run --extra dev mypy bot/services/economy_service.py bot/config.py tests/conftest.py tests/test_guild_service.py tests/test_config.py tests/test_database.py bot/core/database.py bot/models/ticket.py bot/models/ticket_note.py tests/test_migrations.py tests/test_ticket_model.py
+        run: uv run --extra dev mypy --follow-imports=silent bot/services/economy_service.py bot/config.py tests/conftest.py tests/test_guild_service.py tests/test_config.py tests/test_database.py bot/core/database.py bot/models/ticket.py bot/models/ticket_note.py tests/test_migrations.py tests/test_ticket_model.py bot/services/ticket_service.py bot/cogs/tickets.py tests/test_ticket_service.py
 
       - name: Bandit
         run: uv run --extra dev bandit -r bot/ -c pyproject.toml --severity-level medium

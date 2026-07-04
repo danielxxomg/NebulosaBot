@@ -779,3 +779,391 @@ class TestSlashCommands:
         ctx.send.assert_awaited_once()
         embed = ctx.send.call_args.kwargs.get("embed")
         assert "Deleted" in embed.title
+
+
+# ===========================================================================
+# Subsidiados commands — /subticket create, /reopen, /transfer, /note * (slice 2)
+# ===========================================================================
+#
+# All six commands MUST be gated by @is_mod(). They resolve the target ticket
+# from the current channel (ctx.channel) via db.get_ticket_by_channel, then
+# delegate to the matching TicketService method.
+
+
+def _note_row_cog(note_id: str = "note-uuid-001", author_id: str = "111111111") -> dict:
+    """Return a sample ticket_note DB row for cog tests."""
+    return {
+        "id": note_id,
+        "ticketId": "ticket-uuid-003",
+        "authorId": author_id,
+        "content": "Customer escalated",
+        "createdAt": "2026-07-04T12:00:00+00:00",
+    }
+
+
+@pytest.fixture
+def slash_ctx(ticket_bot: MagicMock, mock_member: MagicMock, mock_ticket_channel: MagicMock) -> MagicMock:
+    """Return a mock commands.Context wired to the ticket bot + a guild."""
+    ctx = MagicMock()
+    guild = MagicMock(spec=discord.Guild)
+    guild.id = 123456789
+    guild.default_role = MagicMock()
+    guild.me = MagicMock()
+    guild.get_channel = MagicMock(return_value=None)
+    guild.get_role = MagicMock(return_value=None)
+    guild.get_member = MagicMock(return_value=None)
+    guild.create_text_channel = AsyncMock(return_value=mock_ticket_channel)
+    ctx.bot = ticket_bot
+    ctx.guild = guild
+    mock_member.id = 111111111
+    ctx.author = mock_member
+    ctx.channel = mock_ticket_channel
+    ctx.channel.id = 444444444
+    ctx.send = AsyncMock()
+    ctx.subcommand_passed = None
+    return ctx
+
+
+class TestSubticketCreate:
+    """Tests for /subticket create."""
+
+    async def test_subticket_create_calls_service(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """Valid invocation → create_subticket called with the parent id."""
+        parent_row = _ticket_row(ticket_number=5)
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=parent_row)
+        mock_db.get_max_ticket_number = AsyncMock(return_value=5)
+
+        config = MagicMock()
+        config.ticket_category_id = "100000000"
+        config.mod_role_id = None
+        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
+
+        category_channel = MagicMock(spec=discord.CategoryChannel)
+        slash_ctx.guild.get_channel = MagicMock(return_value=category_channel)
+
+        subticket = Ticket.from_db_row({**_ticket_row(ticket_number=6), "parentId": parent_row["id"]})
+        ticket_bot.ticket_service.create_subticket = AsyncMock(return_value=subticket)
+
+        await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
+
+        ticket_bot.ticket_service.create_subticket.assert_awaited_once()
+        call_kwargs = ticket_bot.ticket_service.create_subticket.call_args.kwargs
+        assert call_kwargs["parent_id"] == parent_row["id"]
+        assert call_kwargs["guild_id"] == "123456789"
+        slash_ctx.send.assert_awaited()
+
+    async def test_subticket_create_no_guild(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+    ) -> None:
+        """/subticket create in DM → error embed."""
+        slash_ctx.guild = None
+        await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
+        slash_ctx.send.assert_awaited_once()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert "Server Only" in embed.title
+
+    async def test_subticket_create_not_a_ticket_channel(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """Current channel is not a ticket → error embed."""
+        config = MagicMock()
+        config.ticket_category_id = "100000000"
+        config.mod_role_id = None
+        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
+        category_channel = MagicMock(spec=discord.CategoryChannel)
+        slash_ctx.guild.get_channel = MagicMock(return_value=category_channel)
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=None)
+        ticket_bot.ticket_service.create_subticket = AsyncMock()
+
+        await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
+
+        ticket_bot.ticket_service.create_subticket.assert_not_awaited()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert "Ticket" in embed.title  # "Not a Ticket" style message
+
+    async def test_subticket_create_service_error_cleans_up(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """When create_subticket raises, the orphan channel is deleted."""
+        parent_row = _ticket_row(ticket_number=5)
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=parent_row)
+        mock_db.get_max_ticket_number = AsyncMock(return_value=0)
+        config = MagicMock()
+        config.ticket_category_id = "100000000"
+        config.mod_role_id = None
+        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
+        category_channel = MagicMock(spec=discord.CategoryChannel)
+        slash_ctx.guild.get_channel = MagicMock(return_value=category_channel)
+        ticket_bot.ticket_service.create_subticket = AsyncMock(side_effect=ValueError("Parent ticket not found"))
+
+        await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
+
+        # Orphan channel deleted.
+        slash_ctx.guild.create_text_channel.assert_awaited_once()
+        mock_ticket_channel = slash_ctx.guild.create_text_channel.return_value
+        mock_ticket_channel.delete.assert_awaited_once()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert "Failed" in embed.title
+
+
+class TestReopenCommand:
+    """Tests for /reopen."""
+
+    async def test_reopen_calls_service(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """/reopen → reopen_ticket called with the channel's ticket id."""
+        closed_row = _ticket_row(status="closed")
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=closed_row)
+        reopened = Ticket.from_db_row({**closed_row, "status": "open"})
+        ticket_bot.ticket_service.reopen_ticket = AsyncMock(return_value=reopened)
+
+        await tickets_cog.reopen.callback(tickets_cog, slash_ctx)
+
+        ticket_bot.ticket_service.reopen_ticket.assert_awaited_once()
+        call_args = ticket_bot.ticket_service.reopen_ticket.call_args
+        assert call_args.args[0] == closed_row["id"]
+        assert call_args.kwargs["guild"] is slash_ctx.guild
+        slash_ctx.send.assert_awaited()
+
+    async def test_reopen_no_guild(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+    ) -> None:
+        """/reopen in DM → error embed."""
+        slash_ctx.guild = None
+        await tickets_cog.reopen.callback(tickets_cog, slash_ctx)
+        slash_ctx.send.assert_awaited_once()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert "Server Only" in embed.title
+
+    async def test_reopen_not_a_ticket_channel(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        mock_db,
+    ) -> None:
+        """Current channel is not a ticket → error embed."""
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=None)
+        await tickets_cog.reopen.callback(tickets_cog, slash_ctx)
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert "Ticket" in embed.title
+
+    async def test_reopen_service_error(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """reopen_ticket raises → error embed."""
+        closed_row = _ticket_row(status="closed")
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=closed_row)
+        ticket_bot.ticket_service.reopen_ticket = AsyncMock(side_effect=ValueError("No ticket category configured"))
+        await tickets_cog.reopen.callback(tickets_cog, slash_ctx)
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert "Failed" in embed.title
+
+
+class TestTransferCommand:
+    """Tests for /transfer @staff."""
+
+    async def test_transfer_calls_service(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """/transfer @user → transfer_ticket called with new claimedBy."""
+        claimed_row = _ticket_row(status="claimed")
+        claimed_row["claimedBy"] = "999999999"
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=claimed_row)
+
+        target = MagicMock(spec=discord.Member)
+        target.id = 222222222
+        slash_ctx.guild.get_member = MagicMock(return_value=MagicMock())
+        ticket_bot.logging_service = MagicMock()
+        transferred = Ticket.from_db_row({**claimed_row, "claimedBy": "222222222"})
+        ticket_bot.ticket_service.transfer_ticket = AsyncMock(return_value=transferred)
+
+        await tickets_cog.transfer.callback(tickets_cog, slash_ctx, member=target)
+
+        ticket_bot.ticket_service.transfer_ticket.assert_awaited_once()
+        call_kwargs = ticket_bot.ticket_service.transfer_ticket.call_args.kwargs
+        assert call_kwargs["new_claimed_by"] == "222222222"
+        assert call_kwargs["actor_id"] == "111111111"
+        assert call_kwargs["guild"] is slash_ctx.guild
+        slash_ctx.send.assert_awaited()
+
+    async def test_transfer_no_guild(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+    ) -> None:
+        """/transfer in DM → error embed."""
+        slash_ctx.guild = None
+        target = MagicMock(spec=discord.Member)
+        await tickets_cog.transfer.callback(tickets_cog, slash_ctx, member=target)
+        slash_ctx.send.assert_awaited_once()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert "Server Only" in embed.title
+
+
+class TestNoteCommands:
+    """Tests for /note add, /note list, /note delete."""
+
+    async def test_note_add_calls_service(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """/note add → create_note called with author + content."""
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
+        from bot.models.ticket_note import TicketNote
+
+        note = TicketNote.from_db_row(_note_row_cog())
+        ticket_bot.ticket_service.create_note = AsyncMock(return_value=note)
+
+        await tickets_cog.note_add.callback(tickets_cog, slash_ctx, content="Customer escalated")
+
+        ticket_bot.ticket_service.create_note.assert_awaited_once()
+        call_args = ticket_bot.ticket_service.create_note.call_args.args
+        assert call_args[1] == "111111111"  # author_id = ctx.author.id
+        assert call_args[2] == "Customer escalated"
+        slash_ctx.send.assert_awaited()
+
+    async def test_note_add_cap_error(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """create_note raises (cap) → error embed."""
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
+        ticket_bot.ticket_service.create_note = AsyncMock(side_effect=ValueError("Note limit reached"))
+        await tickets_cog.note_add.callback(tickets_cog, slash_ctx, content="one too many")
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert "Failed" in embed.title or "limit" in (embed.description or "").lower()
+
+    async def test_note_list_shows_notes(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """/note list → embed with notes."""
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
+        from bot.models.ticket_note import TicketNote
+
+        notes = [TicketNote.from_db_row(_note_row_cog(note_id=f"n-{i}")) for i in range(3)]
+        ticket_bot.ticket_service.get_notes = AsyncMock(return_value=notes)
+
+        await tickets_cog.note_list.callback(tickets_cog, slash_ctx)
+
+        ticket_bot.ticket_service.get_notes.assert_awaited_once()
+        slash_ctx.send.assert_awaited_once()
+
+    async def test_note_list_empty(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """/note list with no notes → info embed."""
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
+        ticket_bot.ticket_service.get_notes = AsyncMock(return_value=[])
+        await tickets_cog.note_list.callback(tickets_cog, slash_ctx)
+        slash_ctx.send.assert_awaited_once()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert "No" in embed.title or "no" in (embed.description or "").lower()
+
+    async def test_note_delete_calls_service(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """/note delete → delete_note called with note id + author."""
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
+        ticket_bot.ticket_service.delete_note = AsyncMock()
+        await tickets_cog.note_delete.callback(tickets_cog, slash_ctx, note_id="note-uuid-001")
+        ticket_bot.ticket_service.delete_note.assert_awaited_once()
+        call_kwargs = ticket_bot.ticket_service.delete_note.call_args.kwargs
+        assert call_kwargs["note_id"] == "note-uuid-001"
+        assert call_kwargs["author_id"] == "111111111"
+
+    async def test_note_delete_not_owner(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """delete_note raises (ownership) → error embed."""
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
+        ticket_bot.ticket_service.delete_note = AsyncMock(
+            side_effect=ValueError("Only the note author may delete this note")
+        )
+        await tickets_cog.note_delete.callback(tickets_cog, slash_ctx, note_id="note-uuid-001")
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert "Failed" in embed.title or "author" in (embed.description or "").lower()
+
+
+class TestSubsidiadosPermissions:
+    """Verify every subsidiaries command is gated by @is_mod().
+
+    For discord.py hybrid commands, ``@is_mod()`` (an ``app_commands.check``)
+    registers on ``app_command.checks`` — the same place the existing
+    ``ticket_panel`` / ``create_category`` commands carry their check
+    (verified empirically: ``checks=[]``, ``app_command.checks=[1]``).
+    """
+
+    @staticmethod
+    def _is_mod_gated(cmd) -> bool:
+        return bool(cmd.checks) or (hasattr(cmd, "app_command") and bool(cmd.app_command.checks))
+
+    def test_subticket_create_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
+        assert self._is_mod_gated(tickets_cog.subticket_create), "/subticket create MUST be gated by @is_mod()"
+
+    def test_reopen_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
+        assert self._is_mod_gated(tickets_cog.reopen), "/reopen MUST be gated by @is_mod()"
+
+    def test_transfer_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
+        assert self._is_mod_gated(tickets_cog.transfer), "/transfer MUST be gated by @is_mod()"
+
+    def test_note_add_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
+        assert self._is_mod_gated(tickets_cog.note_add), "/note add MUST be gated by @is_mod()"
+
+    def test_note_list_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
+        assert self._is_mod_gated(tickets_cog.note_list), "/note list MUST be gated by @is_mod()"
+
+    def test_note_delete_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
+        assert self._is_mod_gated(tickets_cog.note_delete), "/note delete MUST be gated by @is_mod()"
