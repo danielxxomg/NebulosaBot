@@ -1271,6 +1271,77 @@ class TestNoteListPrivacy:
         assert "Secret staff note" not in (chan_embed.description or "")
         mock_exc.assert_called_once()
 
+    async def test_note_list_empty_slash_is_ephemeral(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """B1: empty notes via slash → ephemeral 'No Notes' embed (no channel leak).
+
+        The empty-state ('ticket has no staff notes') is private state and
+        MUST NOT be broadcast to the channel. Slash replies ephemerally.
+        """
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
+        ticket_bot.ticket_service.get_notes = AsyncMock(return_value=[])
+
+        slash_ctx.interaction = MagicMock()
+        slash_ctx.author.send = AsyncMock()
+
+        await tickets_cog.note_list.callback(tickets_cog, slash_ctx)
+
+        # Slash MUST reply ephemerally — the empty-state is private.
+        slash_ctx.send.assert_awaited_once()
+        call_kwargs = slash_ctx.send.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
+        embed = call_kwargs.get("embed")
+        assert embed is not None
+        assert "No" in (embed.title or "") or "no staff notes" in (
+            embed.description or ""
+        ).lower()
+        # No DM needed for slash — the ephemeral reply suffices.
+        slash_ctx.author.send.assert_not_awaited()
+
+    async def test_note_list_empty_prefix_dms_author(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """B1: empty notes via prefix → DM 'No Notes' to author, channel gets confirmation-only.
+
+        The channel confirmation MUST NOT disclose that the ticket has no
+        staff notes (that state leak is the B1 bug). The author receives
+        the empty-state privately via DM; the channel sees only the same
+        generic 'Notes Sent' confirmation used by the non-empty path.
+        """
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
+        ticket_bot.ticket_service.get_notes = AsyncMock(return_value=[])
+
+        slash_ctx.interaction = None
+        slash_ctx.author.send = AsyncMock()
+
+        await tickets_cog.note_list.callback(tickets_cog, slash_ctx)
+
+        # The empty-state ('No Notes') is DM'd privately to the author.
+        slash_ctx.author.send.assert_awaited_once()
+        dm_embed = slash_ctx.author.send.call_args.kwargs.get("embed")
+        assert dm_embed is not None
+        assert "No" in (dm_embed.title or "") or "no staff notes" in (
+            dm_embed.description or ""
+        ).lower()
+
+        # Channel gets a confirmation-only embed — MUST NOT leak the
+        # empty-state wording ('No Notes' / 'no staff notes yet').
+        slash_ctx.send.assert_awaited_once()
+        chan_embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert chan_embed is not None
+        chan_text = f"{chan_embed.title or ''} {chan_embed.description or ''}".lower()
+        assert "no staff notes yet" not in chan_text
+        assert "no notes" not in chan_text
+
 
 # ===========================================================================
 # B2 — /reopen status guard (service ValueError + cog error embed)

@@ -1634,6 +1634,41 @@ class TicketsCog(commands.Cog, name="Tickets"):
             )
         )
 
+    async def _send_notes_private(
+        self, ctx: commands.Context, embed: discord.Embed
+    ) -> None:
+        """Route a notes embed privately (B1).
+
+        Slash invocations reply ephemerally. Prefix invocations DM the
+        embed to the author and post a confirmation-only embed in the
+        channel — the embed content (notes OR the empty-state) MUST NOT
+        appear in a non-ephemeral channel message. On DM failure, log and
+        send a user-safe error embed without leaking the embed content.
+        """
+        if ctx.interaction is not None:
+            await ctx.send(embed=embed, ephemeral=True)
+            return
+        try:
+            await ctx.author.send(embed=embed)
+        except (discord.Forbidden, discord.HTTPException):
+            logger.exception(
+                "Failed to DM staff notes to %s", ctx.author.id
+            )
+            await ctx.send(
+                embed=error_embed(
+                    "DM Failed",
+                    "Could not send the notes to your DMs. "
+                    "Please enable DMs from server members.",
+                )
+            )
+            return
+        await ctx.send(
+            embed=success_embed(
+                "Notes Sent",
+                "Staff notes were sent to your DMs.",
+            )
+        )
+
     @note.command(name="list")
     @is_mod()
     async def note_list(self, ctx: commands.Context) -> None:
@@ -1685,8 +1720,11 @@ class TicketsCog(commands.Cog, name="Tickets"):
             )
             return
         if not notes:
-            await ctx.send(
-                embed=info_embed("No Notes", "No staff notes yet.")
+            # B1: the empty-state ('ticket has no staff notes') is private
+            # state — route it through the same privacy path as the notes
+            # themselves so it never leaks to the channel.
+            await self._send_notes_private(
+                ctx, info_embed("No Notes", "No staff notes yet.")
             )
             return
 
@@ -1702,29 +1740,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         embed.set_footer(text="NebulosaBot • Tickets")
 
         # B1: route by invocation type to keep note content private.
-        if ctx.interaction is not None:
-            await ctx.send(embed=embed, ephemeral=True)
-        else:
-            try:
-                await ctx.author.send(embed=embed)
-            except (discord.Forbidden, discord.HTTPException):
-                logger.exception(
-                    "Failed to DM staff notes to %s", ctx.author.id
-                )
-                await ctx.send(
-                    embed=error_embed(
-                        "DM Failed",
-                        "Could not send the notes to your DMs. "
-                        "Please enable DMs from server members.",
-                    )
-                )
-                return
-            await ctx.send(
-                embed=success_embed(
-                    "Notes Sent",
-                    "Staff notes were sent to your DMs.",
-                )
-            )
+        await self._send_notes_private(ctx, embed)
 
     @note.command(name="delete")
     @app_commands.describe(note_id="The UUID of the note to delete")
