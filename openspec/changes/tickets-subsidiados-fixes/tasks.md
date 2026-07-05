@@ -60,9 +60,9 @@ Chain strategy: stacked-to-main
 
 ## Phase 5: Final Verification
 
-- [ ] 5.1 `uv run pytest --cov=bot --cov-report=term-missing` — all tests pass, coverage ≥ 0.70
-- [ ] 5.2 Manual review: no raw tracebacks possible on DB failure paths
-- [ ] 5.3 Git: 4 work-unit commits (B1→B2→B3→B4), each independently revertable
+- [x] 5.1 `uv run pytest --cov=bot --cov-report=term-missing` — all tests pass, coverage ≥ 0.70
+- [x] 5.2 Manual review: no raw tracebacks possible on DB failure paths
+- [x] 5.3 Git: 4 work-unit commits (B1→B2→B3→B4), each independently revertable
 
 ## Dependencies
 
