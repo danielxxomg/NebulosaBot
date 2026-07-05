@@ -62,7 +62,7 @@ jobs:
         run: uv run --extra dev --with pip-audit pip-audit -l --strict
 
       - name: Tests with coverage
-        run: uv run --extra dev pytest
+        run: uv run --extra dev pytest --cov-fail-under=70
 
       - name: Upload coverage
         if: matrix.python-version == '3.12'
