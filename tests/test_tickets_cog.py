@@ -1469,3 +1469,167 @@ class TestSubticketParentOwnerAccess:
         embed = slash_ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
         assert "Failed" in embed.title or "Not Found" in embed.title
+
+
+# ===========================================================================
+# B4 — scoped DB error handling in the new commands
+# ===========================================================================
+
+
+class TestDBErrorHandling:
+    """B4: critical DB/service failures MUST NOT surface raw tracebacks.
+
+    Spec (ticket-subsidiados): "On exception: error_embed() +
+    logging.exception(). No raw tracebacks." Each critical DB call is
+    wrapped in a tight try/except — never a bare ``except:``.
+    """
+
+    async def test_note_list_get_notes_failure_sends_error(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """B4.1: get_notes raises → error_embed + logger.exception, no leak."""
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
+        ticket_bot.ticket_service.get_notes = AsyncMock(
+            side_effect=Exception("DB down")
+        )
+
+        with patch("bot.cogs.tickets.logger.exception") as mock_exc:
+            await tickets_cog.note_list.callback(tickets_cog, slash_ctx)
+
+        slash_ctx.send.assert_awaited_once()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+        assert "DB down" not in (embed.description or "")
+        assert "Traceback" not in (embed.description or "")
+        mock_exc.assert_called_once()
+
+    async def test_subticket_create_db_failure_sends_error(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """B4.2: get_ticket_by_channel raises in /subticket create → error_embed."""
+        config = MagicMock()
+        config.ticket_category_id = "100000000"
+        config.mod_role_id = None
+        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
+        category_channel = MagicMock(spec=discord.CategoryChannel)
+        slash_ctx.guild.get_channel = MagicMock(return_value=category_channel)
+        mock_db.get_ticket_by_channel = AsyncMock(
+            side_effect=Exception("DB down")
+        )
+
+        with patch("bot.cogs.tickets.logger.exception") as mock_exc:
+            await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
+
+        # Channel not created when the parent lookup fails.
+        slash_ctx.guild.create_text_channel.assert_not_awaited()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+        assert "DB down" not in (embed.description or "")
+        mock_exc.assert_called_once()
+
+    async def test_reopen_db_failure_sends_error(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """B4.3: get_ticket_by_channel raises in /reopen → error_embed."""
+        mock_db.get_ticket_by_channel = AsyncMock(
+            side_effect=Exception("DB down")
+        )
+        ticket_bot.ticket_service.reopen_ticket = AsyncMock()
+
+        with patch("bot.cogs.tickets.logger.exception") as mock_exc:
+            await tickets_cog.reopen.callback(tickets_cog, slash_ctx)
+
+        ticket_bot.ticket_service.reopen_ticket.assert_not_awaited()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+        assert "DB down" not in (embed.description or "")
+        mock_exc.assert_called_once()
+
+    async def test_transfer_db_failure_sends_error(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """B4 triangulation: get_ticket_by_channel raises in /transfer → error_embed."""
+        mock_db.get_ticket_by_channel = AsyncMock(
+            side_effect=Exception("DB down")
+        )
+        ticket_bot.ticket_service.transfer_ticket = AsyncMock()
+
+        with patch("bot.cogs.tickets.logger.exception") as mock_exc:
+            await tickets_cog.transfer.callback(
+                tickets_cog, slash_ctx, member=MagicMock(spec=discord.Member)
+            )
+
+        ticket_bot.ticket_service.transfer_ticket.assert_not_awaited()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+        assert "DB down" not in (embed.description or "")
+        mock_exc.assert_called_once()
+
+    async def test_note_add_db_failure_sends_error(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """B4 triangulation: get_ticket_by_channel raises in /note add → error_embed."""
+        mock_db.get_ticket_by_channel = AsyncMock(
+            side_effect=Exception("DB down")
+        )
+        ticket_bot.ticket_service.create_note = AsyncMock()
+
+        with patch("bot.cogs.tickets.logger.exception") as mock_exc:
+            await tickets_cog.note_add.callback(
+                tickets_cog, slash_ctx, content="a note"
+            )
+
+        ticket_bot.ticket_service.create_note.assert_not_awaited()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+        assert "DB down" not in (embed.description or "")
+        mock_exc.assert_called_once()
+
+    async def test_subticket_create_max_number_failure_sends_error(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """B4 triangulation: get_max_ticket_number raises in /subticket create → error_embed."""
+        config = MagicMock()
+        config.ticket_category_id = "100000000"
+        config.mod_role_id = None
+        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
+        category_channel = MagicMock(spec=discord.CategoryChannel)
+        slash_ctx.guild.get_channel = MagicMock(return_value=category_channel)
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row(ticket_number=5))
+        mock_db.get_max_ticket_number = AsyncMock(side_effect=Exception("DB down"))
+        slash_ctx.guild.get_member = MagicMock(
+            return_value=_parent_owner_member(111111111)
+        )
+
+        with patch("bot.cogs.tickets.logger.exception") as mock_exc:
+            await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
+
+        slash_ctx.guild.create_text_channel.assert_not_awaited()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+        assert "DB down" not in (embed.description or "")
+        mock_exc.assert_called_once()

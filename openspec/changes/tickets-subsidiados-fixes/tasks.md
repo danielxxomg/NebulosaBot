@@ -52,11 +52,11 @@ Chain strategy: stacked-to-main
 
 ## Phase 4: B4 — DB Error Handling
 
-- [ ] 4.1 **RED** `tests/test_tickets_cog.py`: test `get_notes` raises → `error_embed` returned, `logger.exception` called, no raw traceback
-- [ ] 4.2 **RED** `tests/test_tickets_cog.py`: test critical DB call in `/subticket create` raises → `error_embed` + `logger.exception`
-- [ ] 4.3 **RED** `tests/test_tickets_cog.py`: test critical DB call in `/reopen` raises → `error_embed` + `logger.exception`
-- [ ] 4.4 **GREEN** `bot/cogs/tickets.py`: wrap `get_notes`, `get_ticket_by_channel`, `create_subticket`, `reopen_ticket`, `transfer_ticket`, `create_note`, `delete_note` calls in tight `try/except Exception` → `logger.exception` + `error_embed` + `return`
-- [ ] 4.5 **VERIFY** `uv run pytest tests/test_tickets_cog.py -v` — all B4 tests pass
+- [x] 4.1 **RED** `tests/test_tickets_cog.py`: test `get_notes` raises → `error_embed` returned, `logger.exception` called, no raw traceback
+- [x] 4.2 **RED** `tests/test_tickets_cog.py`: test critical DB call in `/subticket create` raises → `error_embed` + `logger.exception`
+- [x] 4.3 **RED** `tests/test_tickets_cog.py`: test critical DB call in `/reopen` raises → `error_embed` + `logger.exception`
+- [x] 4.4 **GREEN** `bot/cogs/tickets.py`: wrap `get_notes`, `get_ticket_by_channel`, `create_subticket`, `reopen_ticket`, `transfer_ticket`, `create_note`, `delete_note` calls in tight `try/except Exception` → `logger.exception` + `error_embed` + `return`
+- [x] 4.5 **VERIFY** `uv run pytest tests/test_tickets_cog.py -v` — all B4 tests pass
 
 ## Phase 5: Final Verification
 

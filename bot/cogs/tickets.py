@@ -1258,12 +1258,27 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
 
         # Resolve the parent ticket (explicit id or current channel).
-        if parent_id is None:
-            parent_row = await self.bot.db.get_ticket_by_channel(
-                str(ctx.channel.id)
+        # B4: wrap the parent lookup so a DB failure does not surface a
+        # raw traceback.
+        try:
+            if parent_id is None:
+                parent_row = await self.bot.db.get_ticket_by_channel(
+                    str(ctx.channel.id)
+                )
+            else:
+                parent_row = await self.bot.db.get_ticket(parent_id)
+        except Exception:
+            logger.exception(
+                "Failed to look up parent ticket (channel=%s, parent_id=%s)",
+                ctx.channel.id, parent_id,
             )
-        else:
-            parent_row = await self.bot.db.get_ticket(parent_id)
+            await ctx.send(
+                embed=error_embed(
+                    "Lookup Failed",
+                    "Could not look up the parent ticket. Please try again.",
+                )
+            )
+            return
         if parent_row is None or parent_row.get("status") == "closed":
             await ctx.send(
                 embed=error_embed(
@@ -1313,7 +1328,23 @@ class TicketsCog(commands.Cog, name="Tickets"):
                 pass
 
         # Tentative channel name (renamed after the real number is known).
-        tentative_max = await self.bot.db.get_max_ticket_number(str(guild.id))
+        # B4: wrap the max-number lookup so a DB failure is user-safe.
+        try:
+            tentative_max = await self.bot.db.get_max_ticket_number(
+                str(guild.id)
+            )
+        except Exception:
+            logger.exception(
+                "Failed to fetch max ticket number (guild=%s)", guild.id
+            )
+            await ctx.send(
+                embed=error_embed(
+                    "Lookup Failed",
+                    "Could not determine the next ticket number. "
+                    "Please try again.",
+                )
+            )
+            return
         channel_name = f"ticket-{tentative_max + 1:04d}"
 
         try:
@@ -1403,7 +1434,21 @@ class TicketsCog(commands.Cog, name="Tickets"):
 
         assert self.bot.db is not None
         assert self.bot.ticket_service is not None
-        ticket_row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id))
+        try:
+            ticket_row = await self.bot.db.get_ticket_by_channel(
+                str(ctx.channel.id)
+            )
+        except Exception:
+            logger.exception(
+                "Failed to look up ticket by channel %s", ctx.channel.id
+            )
+            await ctx.send(
+                embed=error_embed(
+                    "Lookup Failed",
+                    "Could not look up the ticket. Please try again.",
+                )
+            )
+            return
         if ticket_row is None:
             await ctx.send(
                 embed=error_embed(
@@ -1469,7 +1514,21 @@ class TicketsCog(commands.Cog, name="Tickets"):
 
         assert self.bot.db is not None
         assert self.bot.ticket_service is not None
-        ticket_row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id))
+        try:
+            ticket_row = await self.bot.db.get_ticket_by_channel(
+                str(ctx.channel.id)
+            )
+        except Exception:
+            logger.exception(
+                "Failed to look up ticket by channel %s", ctx.channel.id
+            )
+            await ctx.send(
+                embed=error_embed(
+                    "Lookup Failed",
+                    "Could not look up the ticket. Please try again.",
+                )
+            )
+            return
         if ticket_row is None:
             await ctx.send(
                 embed=error_embed(
@@ -1531,7 +1590,21 @@ class TicketsCog(commands.Cog, name="Tickets"):
         """Add a staff note to the current ticket (not visible to the opener)."""
         assert self.bot.db is not None
         assert self.bot.ticket_service is not None
-        ticket_row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id))
+        try:
+            ticket_row = await self.bot.db.get_ticket_by_channel(
+                str(ctx.channel.id)
+            )
+        except Exception:
+            logger.exception(
+                "Failed to look up ticket by channel %s", ctx.channel.id
+            )
+            await ctx.send(
+                embed=error_embed(
+                    "Lookup Failed",
+                    "Could not look up the ticket. Please try again.",
+                )
+            )
+            return
         if ticket_row is None:
             await ctx.send(
                 embed=error_embed(
@@ -1572,7 +1645,23 @@ class TicketsCog(commands.Cog, name="Tickets"):
         """
         assert self.bot.db is not None
         assert self.bot.ticket_service is not None
-        ticket_row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id))
+        # B4: wrap the channel-ticket lookup so a DB failure does not
+        # surface a raw traceback.
+        try:
+            ticket_row = await self.bot.db.get_ticket_by_channel(
+                str(ctx.channel.id)
+            )
+        except Exception:
+            logger.exception(
+                "Failed to look up ticket by channel %s", ctx.channel.id
+            )
+            await ctx.send(
+                embed=error_embed(
+                    "Lookup Failed",
+                    "Could not look up the ticket. Please try again.",
+                )
+            )
+            return
         if ticket_row is None:
             await ctx.send(
                 embed=error_embed(
@@ -1583,7 +1672,18 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
 
         ticket_id = ticket_row["id"]
-        notes = await self.bot.ticket_service.get_notes(ticket_id)
+        # B4: wrap get_notes so a DB failure yields a user-safe error embed.
+        try:
+            notes = await self.bot.ticket_service.get_notes(ticket_id)
+        except Exception:
+            logger.exception("Failed to fetch notes for ticket %s", ticket_id)
+            await ctx.send(
+                embed=error_embed(
+                    "Notes Failed",
+                    "Could not retrieve the notes. Please try again.",
+                )
+            )
+            return
         if not notes:
             await ctx.send(
                 embed=info_embed("No Notes", "No staff notes yet.")
@@ -1635,7 +1735,21 @@ class TicketsCog(commands.Cog, name="Tickets"):
         """Delete a staff note (author-only — enforced by the service)."""
         assert self.bot.db is not None
         assert self.bot.ticket_service is not None
-        ticket_row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id))
+        try:
+            ticket_row = await self.bot.db.get_ticket_by_channel(
+                str(ctx.channel.id)
+            )
+        except Exception:
+            logger.exception(
+                "Failed to look up ticket by channel %s", ctx.channel.id
+            )
+            await ctx.send(
+                embed=error_embed(
+                    "Lookup Failed",
+                    "Could not look up the ticket. Please try again.",
+                )
+            )
+            return
         if ticket_row is None:
             await ctx.send(
                 embed=error_embed(
