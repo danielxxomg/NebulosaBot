@@ -790,13 +790,17 @@ class TestSlashCommands:
 # delegate to the matching TicketService method.
 
 
-def _note_row_cog(note_id: str = "note-uuid-001", author_id: str = "111111111") -> dict:
+def _note_row_cog(
+    note_id: str = "note-uuid-001",
+    author_id: str = "111111111",
+    content: str = "Customer escalated",
+) -> dict:
     """Return a sample ticket_note DB row for cog tests."""
     return {
         "id": note_id,
         "ticketId": "ticket-uuid-003",
         "authorId": author_id,
-        "content": "Customer escalated",
+        "content": content,
         "createdAt": "2026-07-04T12:00:00+00:00",
     }
 
@@ -1167,3 +1171,102 @@ class TestSubsidiadosPermissions:
 
     def test_note_delete_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
         assert self._is_mod_gated(tickets_cog.note_delete), "/note delete MUST be gated by @is_mod()"
+
+
+# ===========================================================================
+# B1 — /note list privacy (slash ephemeral + prefix DM)
+# ===========================================================================
+
+
+class TestNoteListPrivacy:
+    """B1: /note list MUST be private — slash ephemeral, prefix DM to author.
+
+    Spec (ticket-subsidiados): "Note content MUST NOT appear in channel
+    ctx.send()". Slash → ephemeral reply. Prefix → DM notes to author +
+    channel confirmation-only embed.
+    """
+
+    @staticmethod
+    def _notes_with(content: str = "Secret staff note") -> list:
+        from bot.models.ticket_note import TicketNote
+
+        return [TicketNote.from_db_row(_note_row_cog(note_id="n-1", content=content))]
+
+    async def test_note_list_slash_is_ephemeral(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """Slash invocation → ctx.send(embed=..., ephemeral=True) with notes."""
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
+        ticket_bot.ticket_service.get_notes = AsyncMock(return_value=self._notes_with())
+
+        # Slash: ctx.interaction is not None.
+        slash_ctx.interaction = MagicMock()
+
+        await tickets_cog.note_list.callback(tickets_cog, slash_ctx)
+
+        slash_ctx.send.assert_awaited_once()
+        call_kwargs = slash_ctx.send.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
+        embed = call_kwargs.get("embed")
+        assert embed is not None
+        # Notes content present in the ephemeral embed.
+        assert "Secret staff note" in (embed.description or "")
+
+    async def test_note_list_prefix_dms_author(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """Prefix invocation → notes DM'd to author, channel gets confirmation only."""
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
+        ticket_bot.ticket_service.get_notes = AsyncMock(return_value=self._notes_with())
+
+        # Prefix: ctx.interaction is None.
+        slash_ctx.interaction = None
+        slash_ctx.author.send = AsyncMock()
+
+        await tickets_cog.note_list.callback(tickets_cog, slash_ctx)
+
+        # Notes DM'd to author.
+        slash_ctx.author.send.assert_awaited_once()
+        dm_embed = slash_ctx.author.send.call_args.kwargs.get("embed")
+        assert dm_embed is not None
+        assert "Secret staff note" in (dm_embed.description or "")
+
+        # Channel confirmation does NOT contain note content.
+        slash_ctx.send.assert_awaited_once()
+        chan_embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert chan_embed is not None
+        assert "Secret staff note" not in (chan_embed.description or "")
+
+    async def test_note_list_prefix_dm_failure_sends_error(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """Prefix DM failure (discord.Forbidden) → error embed to channel, no leak."""
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
+        ticket_bot.ticket_service.get_notes = AsyncMock(return_value=self._notes_with())
+
+        slash_ctx.interaction = None
+        slash_ctx.author.send = AsyncMock(
+            side_effect=discord.Forbidden(MagicMock(), "Cannot DM user")
+        )
+
+        with patch("bot.cogs.tickets.logger.exception") as mock_exc:
+            await tickets_cog.note_list.callback(tickets_cog, slash_ctx)
+
+        # Error embed to channel — no note content leaked.
+        slash_ctx.send.assert_awaited_once()
+        chan_embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert chan_embed is not None
+        assert "Secret staff note" not in (chan_embed.description or "")
+        mock_exc.assert_called_once()

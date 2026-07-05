@@ -1497,7 +1497,12 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @note.command(name="list")
     @is_mod()
     async def note_list(self, ctx: commands.Context) -> None:
-        """List all staff notes on the current ticket (newest-first)."""
+        """List all staff notes on the current ticket (newest-first).
+
+        Privacy (B1): slash replies ephemerally; prefix DMs the notes to
+        the author and posts a confirmation-only embed in the channel.
+        Note content MUST NOT appear in a non-ephemeral channel message.
+        """
         assert self.bot.db is not None
         assert self.bot.ticket_service is not None
         ticket_row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id))
@@ -1528,7 +1533,31 @@ class TicketsCog(commands.Cog, name="Tickets"):
             timestamp=datetime.now(UTC),
         )
         embed.set_footer(text="NebulosaBot • Tickets")
-        await ctx.send(embed=embed)
+
+        # B1: route by invocation type to keep note content private.
+        if ctx.interaction is not None:
+            await ctx.send(embed=embed, ephemeral=True)
+        else:
+            try:
+                await ctx.author.send(embed=embed)
+            except (discord.Forbidden, discord.HTTPException):
+                logger.exception(
+                    "Failed to DM staff notes to %s", ctx.author.id
+                )
+                await ctx.send(
+                    embed=error_embed(
+                        "DM Failed",
+                        "Could not send the notes to your DMs. "
+                        "Please enable DMs from server members.",
+                    )
+                )
+                return
+            await ctx.send(
+                embed=success_embed(
+                    "Notes Sent",
+                    "Staff notes were sent to your DMs.",
+                )
+            )
 
     @note.command(name="delete")
     @app_commands.describe(note_id="The UUID of the note to delete")
