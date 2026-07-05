@@ -44,11 +44,11 @@ Chain strategy: stacked-to-main
 
 ## Phase 3: B3 — Sub-ticket Parent-Owner Access
 
-- [ ] 3.1 **RED** `tests/test_tickets_cog.py`: test `/subticket create` overwrites include parent owner (not invoker) with `read_messages=True, send_messages=True`
-- [ ] 3.2 **RED** `tests/test_tickets_cog.py`: test channel `send` mentions parent owner, not invoker
-- [ ] 3.3 **RED** `tests/test_tickets_cog.py`: test invoker IS parent owner — access already granted, no duplicate overwrite
-- [ ] 3.4 **GREEN** `bot/cogs/tickets.py:~1154-1329`: resolve `parent_author_id` from `parent_row["authorId"]`, build overwrite for parent author, remove invoker overwrite, mention parent_author
-- [ ] 3.5 **VERIFY** `uv run pytest tests/test_tickets_cog.py -k subticket -v` — all B3 tests pass
+- [x] 3.1 **RED** `tests/test_tickets_cog.py`: test `/subticket create` overwrites include parent owner (not invoker) with `read_messages=True, send_messages=True`
+- [x] 3.2 **RED** `tests/test_tickets_cog.py`: test channel `send` mentions parent owner, not invoker
+- [x] 3.3 **RED** `tests/test_tickets_cog.py`: test invoker IS parent owner — access already granted, no duplicate overwrite
+- [x] 3.4 **GREEN** `bot/cogs/tickets.py:~1154-1329`: resolve `parent_author_id` from `parent_row["authorId"]`, build overwrite for parent author, remove invoker overwrite, mention parent_author
+- [x] 3.5 **VERIFY** `uv run pytest tests/test_tickets_cog.py -k subticket -v` — all B3 tests pass
 
 ## Phase 4: B4 — DB Error Handling
 

@@ -1151,6 +1151,46 @@ class TicketsCog(commands.Cog, name="Tickets"):
             )
         )
 
+    @staticmethod
+    async def _resolve_parent_owner(
+        guild: discord.Guild,
+        parent_author_id: str,
+        ctx: commands.Context,
+    ) -> discord.Member | None:
+        """Resolve the parent ticket author as a guild Member (B3).
+
+        Uses the guild member cache first, then ``fetch_member`` for
+        offline members. On resolution failure, logs the exception and
+        sends a user-safe ``error_embed`` to *ctx*; the caller MUST
+        return early when this returns ``None``.
+        """
+        if not parent_author_id:
+            await ctx.send(
+                embed=error_embed(
+                    "Owner Not Found",
+                    "The parent ticket has no recorded author.",
+                )
+            )
+            return None
+        try:
+            member = guild.get_member(int(parent_author_id))
+            if member is not None:
+                return member
+            return await guild.fetch_member(int(parent_author_id))
+        except (discord.NotFound, discord.HTTPException, ValueError, TypeError):
+            logger.exception(
+                "Failed to resolve parent ticket owner %s", parent_author_id
+            )
+            await ctx.send(
+                embed=error_embed(
+                    "Owner Not Found",
+                    "Could not resolve the parent ticket owner. "
+                    "Please verify the parent ticket author is still "
+                    "in this server.",
+                )
+            )
+            return None
+
     @subticket.command(name="create")
     @app_commands.describe(
         parent_id="The UUID of the parent ticket (omitted: uses current channel)",
@@ -1235,13 +1275,27 @@ class TicketsCog(commands.Cog, name="Tickets"):
         parent_id = parent_row["id"]
         parent_author_id = parent_row.get("authorId", str(author.id))
 
+        # B3: resolve the parent ticket author as a Member for overwrites +
+        # mention. The sub-ticket belongs to the parent owner, not the
+        # invoker (staff). If the invoker IS the parent owner, reuse the
+        # author object directly; otherwise resolve via the guild cache
+        # and fall back to fetch_member for offline members.
+        if str(author.id) == parent_author_id:
+            parent_owner: discord.Member = author
+        else:
+            parent_owner = await self._resolve_parent_owner(
+                guild, parent_author_id, ctx
+            )
+            if parent_owner is None:
+                return
+
         # Build permission overwrites.
         overwrites: dict[
             discord.Role | discord.Member | discord.Object,
             discord.PermissionOverwrite,
         ] = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            author: discord.PermissionOverwrite(
+            parent_owner: discord.PermissionOverwrite(
                 read_messages=True, send_messages=True
             ),
             guild.me: discord.PermissionOverwrite(
@@ -1315,7 +1369,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
                 )
 
         await channel.send(
-            content=author.mention, embed=_build_ticket_embed(ticket)
+            content=parent_owner.mention, embed=_build_ticket_embed(ticket)
         )
         await ctx.send(
             embed=success_embed(
