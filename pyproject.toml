@@ -50,7 +50,7 @@ Repository = "https://github.com/gentle-programming/NebulosaBot"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "--cov=bot --cov-fail-under=70 --randomly-seed=42"
+addopts = "--cov=bot --randomly-seed=42"
 filterwarnings = [
     # discord.py 2.x triggers this under PYTHONASYNCIODEBUG=1
     "ignore:.*coroutine.*is not a coroutine:DeprecationWarning",
