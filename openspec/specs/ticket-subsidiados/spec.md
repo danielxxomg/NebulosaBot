@@ -8,19 +8,39 @@ Sub-ticket derivation, reopen, transfer, and staff notes.
 
 ### Requirement: Sub-ticket creation
 
-The system MUST allow staff (`@is_mod()`) to create a child ticket via `/subticket create`. Child SHALL have own channel, `parentId` set, own `ticketNumber`, independent lifecycle.
+Staff (`@is_mod()`) create child tickets via `/subticket create`. Child: own channel, `parentId`, `ticketNumber`, independent lifecycle. Parent author (parent_owner) MUST get `read_messages`+`send_messages` overwrites and be mentioned. Invoker MUST NOT get extra overwrites — mod role suffices. If invoker IS parent_owner, access already granted.
 
-#### Scenario: Successful sub-ticket creation
+(Previously: invoker got overwrites; parent_owner got nothing)
+
+#### Scenario: Successful creation
 
 - GIVEN open ticket #5 (id=abc)
-- WHEN staff invokes `/subticket create` targeting #5
-- THEN ticket #6 is created with `parentId=abc`, new channel, status `open`
+- WHEN staff `/subticket create` on #5
+- THEN ticket #6 created, parentId=abc, status `open`
 
-#### Scenario: Sub-ticket inherits guild
+#### Scenario: Inherits guild
 
-- GIVEN a parent ticket in guild G
-- WHEN a sub-ticket is created
-- THEN the sub-ticket's `guildId` MUST equal the parent's `guildId`
+- GIVEN parent in guild G
+- WHEN sub-ticket created
+- THEN guildId = G
+
+#### Scenario: Parent owner gets access
+
+- GIVEN parent owned by user U (not invoker)
+- WHEN staff `/subticket create`
+- THEN U gets read+send overwrites, U mentioned, invoker NO extra overwrites
+
+#### Scenario: Owner creates own sub-ticket
+
+- GIVEN parent owned by user U (staff)
+- WHEN U `/subticket create` on own ticket
+- THEN U keeps access, is mentioned
+
+#### Scenario: Parent owner offline
+
+- GIVEN parent owner offline
+- WHEN `/subticket create`
+- THEN overwrite applies
 
 ### Requirement: Parent ID validation
 
@@ -62,25 +82,39 @@ The system MUST exempt sub-tickets from the "one open ticket per user per catego
 
 ### Requirement: Ticket reopen
 
-The system MUST allow staff to reopen a closed ticket via `/reopen`. A NEW channel is created, `channelId` updated, `status` → `open`, `closedAt` cleared.
+Staff MAY reopen closed tickets via `/reopen`. MUST reject non-`closed` with error embed showing actual status. On success: new channel, `channelId` updated, `status` → `open`, `closedAt` cleared.
+
+(Previously: no status guard — duplicates on open/claimed)
 
 #### Scenario: Successful reopen
 
 - GIVEN closed ticket #3
-- WHEN `/reopen` is invoked
-- THEN new channel created, status → `open`, `channelId` updated, `closedAt` = null
+- WHEN `/reopen`
+- THEN new channel, status → `open`, channelId updated, closedAt = null
+
+#### Scenario: Rejected on open ticket
+
+- GIVEN status `open`
+- WHEN `/reopen`
+- THEN error embed: "Solo se pueden reabrir tickets cerrados. Estado actual: open"
+
+#### Scenario: Rejected on claimed ticket
+
+- GIVEN status `claimed`
+- WHEN `/reopen`
+- THEN error embed: "Solo se pueden reabrir tickets cerrados. Estado actual: claimed"
 
 #### Scenario: Category deleted fallback
 
-- GIVEN closed ticket whose original category was deleted
-- WHEN `/reopen` is invoked
-- THEN guild's default category is used; if none, raise error
+- GIVEN closed ticket, category deleted
+- WHEN `/reopen`
+- THEN default category used; if none, error
 
-#### Scenario: Cache updated on reopen
+#### Scenario: Cache updated
 
-- GIVEN ticket being reopened
-- WHEN new channel is created
-- THEN `_ticket_channel_cache` includes the new channel ID
+- GIVEN ticket reopened
+- WHEN new channel created
+- THEN `_ticket_channel_cache` updated
 
 ### Requirement: Ticket transfer
 
@@ -100,34 +134,72 @@ The system MUST allow `/transfer @staff`. `claimedBy` mutated, audit log row ins
 
 ### Requirement: Staff notes
 
-The system MUST provide `/note add`, `/note list`, `/note delete` (staff-only via `@is_mod()`). Notes in `ticket_note` table. NOT visible to opener. Cap: 50/ticket.
+Staff-only (`@is_mod()`) `/note add`, `/note list`, `/note delete`. Notes in `ticket_note`, NOT visible to opener, cap 50/ticket. `/note list` MUST be private: slash = ephemeral; prefix = DM to author + channel confirmation. Note content MUST NOT appear in channel `ctx.send()`.
+
+(Previously: notes sent to shared channel)
 
 #### Scenario: Add note
 
 - GIVEN staff on open ticket
 - WHEN `/note add "Customer escalated"`
-- THEN `ticket_note` row inserted with authorId, content, createdAt
+- THEN row inserted with authorId, content, createdAt
 
-#### Scenario: List notes
+#### Scenario: List notes — slash
 
-- GIVEN ticket with 3 notes
-- WHEN `/note list` by staff
-- THEN all 3 returned with author and timestamp
+- GIVEN ticket with notes
+- WHEN staff `/note list` slash
+- THEN ephemeral reply with all notes (author + timestamp)
+
+#### Scenario: List notes — prefix
+
+- GIVEN ticket with notes
+- WHEN staff `/note list` prefix
+- THEN notes DM'd to author, channel gets confirmation-only
+
+#### Scenario: Note content never leaks
+
+- GIVEN any `/note list`
+- WHEN handler runs
+- THEN channel `ctx.send()` MUST NOT contain note content
 
 #### Scenario: Delete own note
 
 - GIVEN note owned by staffA
-- WHEN staffA `/note delete {noteId}`
-- THEN note row deleted
+- WHEN staffA `/note delete {id}`
+- THEN row deleted
 
 #### Scenario: Non-staff rejected
 
 - GIVEN non-mod user
 - WHEN `/note add`
-- THEN rejected with permission error
+- THEN permission error
 
-#### Scenario: Notes cap enforced
+#### Scenario: Cap enforced
 
-- GIVEN ticket with 50 notes
+- GIVEN 50 notes on ticket
 - WHEN `/note add`
-- THEN rejected with limit error
+- THEN limit error
+
+### Requirement: Error handling in new commands
+
+Critical DB calls in subticket, reopen, transfer, note commands MUST NOT surface raw tracebacks. On exception: `error_embed()` + `logging.exception()`.
+
+(Previously: no try/except on critical DB calls)
+
+#### Scenario: get_notes failure
+
+- GIVEN `get_notes()` raises DB exception
+- WHEN `/note list`
+- THEN `error_embed()`, traceback logged, no raw traceback
+
+#### Scenario: Other critical DB calls
+
+- GIVEN critical DB call raises in any of 4 commands
+- WHEN exception occurs
+- THEN `error_embed()` + `logging.exception()`
+
+#### Scenario: Non-DB paths excluded
+
+- GIVEN help fallbacks or arg parsing errors
+- WHEN they occur
+- THEN normal handling (not DB try/except)
