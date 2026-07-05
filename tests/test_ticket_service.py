@@ -725,7 +725,7 @@ async def test_reopen_rejects_non_closed_ticket(
     mock_db.get_ticket.return_value = non_closed_row
     guild = _mock_guild_for_reopen(category_channel=None)
 
-    with pytest.raises(ValueError, match=r"not closed"):
+    with pytest.raises(ValueError, match=r"Solo se pueden reabrir tickets cerrados"):
         await service.reopen_ticket(ticket_id, guild=guild)
 
     # No duplicate channel created; no DB mutation.

@@ -1458,22 +1458,22 @@ class TicketsCog(commands.Cog, name="Tickets"):
             )
             return
 
-        # B2: status guard — only closed tickets can be reopened. Prevents
-        # duplicate channel creation for open/claimed tickets.
-        status = ticket_row.get("status")
-        if status != "closed":
-            await ctx.send(
-                embed=error_embed(
-                    "Reopen Failed",
-                    f"Solo se pueden reabrir tickets cerrados. "
-                    f"Estado actual: {status}",
-                )
-            )
-            return
-
+        # B2: the cog has NO pre-service status guard — it delegates to the
+        # service, which raises ValueError (with the actual status) for
+        # non-closed tickets. The cog catches that ValueError and surfaces
+        # the message verbatim. This keeps the service as the single source
+        # of truth for the reopen invariant and prevents duplicate channel
+        # creation for any caller that bypasses the cog.
         ticket_id = ticket_row["id"]
         try:
             await self.bot.ticket_service.reopen_ticket(ticket_id, guild=ctx.guild)
+        except ValueError as e:
+            # Expected business-rule violation (non-closed, no category
+            # configured, ticket not found) — surface the service message
+            # verbatim. No logger.exception: this is a handled case, not an
+            # unexpected failure.
+            await ctx.send(embed=error_embed("Reopen Failed", str(e)))
+            return
         except Exception:
             logger.exception("Failed to reopen ticket %s", ticket_id)
             await ctx.send(
