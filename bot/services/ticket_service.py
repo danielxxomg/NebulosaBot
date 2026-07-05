@@ -376,11 +376,13 @@ class TicketService:
 
         # B2: defense-in-depth status guard — only closed tickets can be
         # reopened. Prevents duplicate channel creation for open/claimed
-        # tickets even if a caller bypasses the cog-layer guard.
+        # tickets even if a caller bypasses the cog-layer guard. The cog
+        # surfaces this message verbatim, so it MUST contain the actual
+        # status and the user-facing Spanish wording.
         status = closed_row.get("status")
         if status != "closed":
             raise ValueError(
-                f"Ticket {ticket_id} is not closed (status={status}) — cannot reopen"
+                f"Solo se pueden reabrir tickets cerrados. Estado actual: {status}"
             )
 
         guild_row = await self._db.get_guild(str(guild.id))

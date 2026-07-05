@@ -1352,8 +1352,11 @@ class TestReopenStatusGuard:
     """B2: /reopen MUST reject non-closed tickets with the actual status.
 
     Spec (ticket-subsidiados): "MUST reject non-closed with error embed
-    showing actual status." The cog checks the channel's ticket row before
-    calling the service; the service raises ValueError as defense-in-depth.
+    showing actual status." Defense-in-depth: the cog has NO pre-service
+    status guard — it delegates to the service, which raises ValueError
+    with the actual status. The cog catches that ValueError and surfaces
+    the message verbatim. The service guard prevents duplicate channel
+    creation for any caller that bypasses the cog.
     """
 
     @pytest.mark.parametrize("status", ["open", "claimed"])
@@ -1365,21 +1368,28 @@ class TestReopenStatusGuard:
         mock_db,
         status: str,
     ) -> None:
-        """/reopen on an open/claimed ticket → error embed with exact Spanish text."""
+        """/reopen on an open/claimed ticket → cog catches service ValueError, surfaces exact status."""
         non_closed_row = {**_ticket_row(status=status)}
         mock_db.get_ticket_by_channel = AsyncMock(return_value=non_closed_row)
-        ticket_bot.ticket_service.reopen_ticket = AsyncMock()
+        # The service guard raises ValueError with the actual status; the
+        # cog catches it and surfaces the message verbatim.
+        ticket_bot.ticket_service.reopen_ticket = AsyncMock(
+            side_effect=ValueError(
+                f"Solo se pueden reabrir tickets cerrados. Estado actual: {status}"
+            )
+        )
 
         await tickets_cog.reopen.callback(tickets_cog, slash_ctx)
 
-        # Service MUST NOT be called — guard stops before it.
-        ticket_bot.ticket_service.reopen_ticket.assert_not_awaited()
-        # Error embed with the exact Spanish text and the actual status.
+        # Service IS called — the cog relies on the service guard, not a
+        # redundant pre-service status check.
+        ticket_bot.ticket_service.reopen_ticket.assert_awaited_once()
+        # Error embed surfaces the service's ValueError message verbatim.
         slash_ctx.send.assert_awaited_once()
         embed = slash_ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
-        assert "Solo se pueden reabrir tickets cerrados" in embed.description
-        assert f"Estado actual: {status}" in embed.description
+        assert "Solo se pueden reabrir tickets cerrados" in (embed.description or "")
+        assert f"Estado actual: {status}" in (embed.description or "")
 
 
 # ===========================================================================
