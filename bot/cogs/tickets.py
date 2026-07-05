@@ -1359,6 +1359,19 @@ class TicketsCog(commands.Cog, name="Tickets"):
             )
             return
 
+        # B2: status guard — only closed tickets can be reopened. Prevents
+        # duplicate channel creation for open/claimed tickets.
+        status = ticket_row.get("status")
+        if status != "closed":
+            await ctx.send(
+                embed=error_embed(
+                    "Reopen Failed",
+                    f"Solo se pueden reabrir tickets cerrados. "
+                    f"Estado actual: {status}",
+                )
+            )
+            return
+
         ticket_id = ticket_row["id"]
         try:
             await self.bot.ticket_service.reopen_ticket(ticket_id, guild=ctx.guild)
