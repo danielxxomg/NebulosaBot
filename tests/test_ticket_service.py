@@ -708,6 +708,31 @@ async def test_reopen_ticket_not_found(
     guild.create_text_channel.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["open", "claimed"])
+async def test_reopen_rejects_non_closed_ticket(
+    service: TicketService,
+    mock_db: AsyncMock,
+    status: str,
+) -> None:
+    """B2: reopen_ticket MUST raise ValueError when status is not 'closed'.
+
+    Defense-in-depth: even if a caller bypasses the cog guard, the service
+    refuses to create a duplicate channel for an open/claimed ticket.
+    """
+    ticket_id = "ticket-uuid-003"
+    non_closed_row = {**_closed_ticket_row(), "status": status}
+    mock_db.get_ticket.return_value = non_closed_row
+    guild = _mock_guild_for_reopen(category_channel=None)
+
+    with pytest.raises(ValueError, match=r"not closed"):
+        await service.reopen_ticket(ticket_id, guild=guild)
+
+    # No duplicate channel created; no DB mutation.
+    guild.create_text_channel.assert_not_awaited()
+    mock_db.update_ticket.assert_not_awaited()
+
+
 # ===========================================================================
 # transfer_ticket — claimedBy mutation + LoggingService audit (slice 2)
 # ===========================================================================

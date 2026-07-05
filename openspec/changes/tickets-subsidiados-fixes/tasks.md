@@ -35,12 +35,12 @@ Chain strategy: stacked-to-main
 
 ## Phase 2: B2 — `/reopen` Status Guard
 
-- [ ] 2.1 **RED** `tests/test_ticket_service.py`: test `reopen_ticket` raises `ValueError` when status is `open`
-- [ ] 2.2 **RED** `tests/test_ticket_service.py`: test `reopen_ticket` raises `ValueError` when status is `claimed`
-- [ ] 2.3 **RED** `tests/test_tickets_cog.py`: test `/reopen` on non-closed sends error embed with exact Spanish text: "Solo se pueden reabrir tickets cerrados. Estado actual: {status}"
-- [ ] 2.4 **GREEN** `bot/services/ticket_service.py:~348-437`: add status guard after `get_ticket` — raise `ValueError` if `status != "closed"`
-- [ ] 2.5 **GREEN** `bot/cogs/tickets.py:~1333-1380`: catch `ValueError` from service, send error embed with actual status
-- [ ] 2.6 **VERIFY** `uv run pytest tests/test_ticket_service.py tests/test_tickets_cog.py -k reopen -v` — all B2 tests pass
+- [x] 2.1 **RED** `tests/test_ticket_service.py`: test `reopen_ticket` raises `ValueError` when status is `open`
+- [x] 2.2 **RED** `tests/test_ticket_service.py`: test `reopen_ticket` raises `ValueError` when status is `claimed`
+- [x] 2.3 **RED** `tests/test_tickets_cog.py`: test `/reopen` on non-closed sends error embed with exact Spanish text: "Solo se pueden reabrir tickets cerrados. Estado actual: {status}"
+- [x] 2.4 **GREEN** `bot/services/ticket_service.py:~348-437`: add status guard after `get_ticket` — raise `ValueError` if `status != "closed"`
+- [x] 2.5 **GREEN** `bot/cogs/tickets.py:~1333-1380`: catch `ValueError` from service, send error embed with actual status
+- [x] 2.6 **VERIFY** `uv run pytest tests/test_ticket_service.py tests/test_tickets_cog.py -k reopen -v` — all B2 tests pass
 
 ## Phase 3: B3 — Sub-ticket Parent-Owner Access
 

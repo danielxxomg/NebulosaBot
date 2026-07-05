@@ -374,6 +374,15 @@ class TicketService:
         if closed_row is None:
             raise ValueError(f"Ticket {ticket_id} not found")
 
+        # B2: defense-in-depth status guard — only closed tickets can be
+        # reopened. Prevents duplicate channel creation for open/claimed
+        # tickets even if a caller bypasses the cog-layer guard.
+        status = closed_row.get("status")
+        if status != "closed":
+            raise ValueError(
+                f"Ticket {ticket_id} is not closed (status={status}) — cannot reopen"
+            )
+
         guild_row = await self._db.get_guild(str(guild.id))
         category_channel = self._resolve_ticket_category(guild, guild_row)
         if category_channel is None:

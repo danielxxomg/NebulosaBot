@@ -1270,3 +1270,42 @@ class TestNoteListPrivacy:
         assert chan_embed is not None
         assert "Secret staff note" not in (chan_embed.description or "")
         mock_exc.assert_called_once()
+
+
+# ===========================================================================
+# B2 — /reopen status guard (service ValueError + cog error embed)
+# ===========================================================================
+
+
+class TestReopenStatusGuard:
+    """B2: /reopen MUST reject non-closed tickets with the actual status.
+
+    Spec (ticket-subsidiados): "MUST reject non-closed with error embed
+    showing actual status." The cog checks the channel's ticket row before
+    calling the service; the service raises ValueError as defense-in-depth.
+    """
+
+    @pytest.mark.parametrize("status", ["open", "claimed"])
+    async def test_reopen_non_closed_sends_spanish_error(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+        status: str,
+    ) -> None:
+        """/reopen on an open/claimed ticket → error embed with exact Spanish text."""
+        non_closed_row = {**_ticket_row(status=status)}
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=non_closed_row)
+        ticket_bot.ticket_service.reopen_ticket = AsyncMock()
+
+        await tickets_cog.reopen.callback(tickets_cog, slash_ctx)
+
+        # Service MUST NOT be called — guard stops before it.
+        ticket_bot.ticket_service.reopen_ticket.assert_not_awaited()
+        # Error embed with the exact Spanish text and the actual status.
+        slash_ctx.send.assert_awaited_once()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+        assert "Solo se pueden reabrir tickets cerrados" in embed.description
+        assert f"Estado actual: {status}" in embed.description
