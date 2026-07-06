@@ -38,15 +38,49 @@ def is_admin():
     return app_commands.check(predicate)
 
 
+async def is_mod_check(interaction: discord.Interaction) -> bool:
+    """Bool predicate form of the mod-permission check.
+
+    Returns ``True`` when *interaction* originates in a guild and the user
+    is an administrator OR holds the guild's configured moderator role;
+    ``False`` otherwise (including DM channels). NEVER raises — this is the
+    inline-callable form used directly inside ``discord.ui.button`` callbacks
+    where raising from a decorator is unavailable (the design decision in
+    ``openspec/changes/ticket-invariant-layer/design.md`` — button gates use
+    an inline ``if not await is_mod_check(...): ephemeral deny; return``).
+
+    ``is_mod()`` (the app-command decorator) wraps this predicate and
+    converts the ``False`` branch into the appropriate discord.py exception
+    (``NoPrivateMessage`` / ``CheckFailure`` / ``MissingRole``).
+    """
+    if interaction.guild is None:
+        return False
+
+    # Admin always passes — per spec: admin fallback.
+    if interaction.user.guild_permissions.administrator:  # type: ignore[union-attr]
+        return True
+
+    mod_role_id = _resolve_mod_role_id(interaction)
+    if mod_role_id is None:
+        # No mod role configured — only admins pass (spec: unconfigured mod role).
+        return False
+
+    return _user_has_role(interaction.user, mod_role_id)
+
+
 def is_mod():
     """Require the configured Moderator role or Administrator permission.
 
-    Check order:
-        1. Administrator permission → pass
-        2. Guild has a configured mod role AND user has it → pass
-        3. Otherwise → deny
+    Decorator form of :func:`is_mod_check` for ``@app_commands.check()`` on
+    hybrid commands. Raises the appropriate discord.py exception when
+    :func:`is_mod_check` returns ``False``; returns ``True`` otherwise.
 
-    When no guild config is wired yet (Phase 1–2), only administrators pass.
+    Check order (mirrors :func:`is_mod_check`):
+        1. DM → ``NoPrivateMessage``
+        2. Administrator → pass
+        3. Configured mod role and user has it → pass
+        4. Mod role unconfigured → ``CheckFailure``
+        5. Mod role configured but user lacks it → ``MissingRole``
 
     Usage:
         @commands.hybrid_command(name="warn")
@@ -60,11 +94,10 @@ def is_mod():
                 "This command can only be used in a server."
             )
 
-        # Admin always passes — per spec: admin fallback.
         if interaction.user.guild_permissions.administrator:  # type: ignore[union-attr]
             return True
 
-        mod_role_id = await _resolve_mod_role_id(interaction)
+        mod_role_id = _resolve_mod_role_id(interaction)
 
         if mod_role_id is None:
             # No mod role configured — only admins pass (spec: unconfigured mod role).
@@ -73,7 +106,7 @@ def is_mod():
                 "Only administrators can use this command."
             )
 
-        if not _user_has_role(interaction.user, mod_role_id):  # type: ignore[arg-type]
+        if not _user_has_role(interaction.user, mod_role_id):
             raise app_commands.MissingRole(mod_role_id)
 
         return True
@@ -81,12 +114,15 @@ def is_mod():
     return app_commands.check(predicate)
 
 
-async def _resolve_mod_role_id(interaction: discord.Interaction) -> int | None:
-    """Resolve the configured moderator role ID for the guild.
+def _resolve_mod_role_id(interaction: discord.Interaction) -> int | None:
+    """Resolve the configured moderator role ID for the guild (non-async).
 
-    Tries the following sources in order:
-        1. Bot's `_guild_mod_role_cache` dict (set by GuildService in Phase 3+).
-        2. Returns None if no source is wired yet (Phase 1–2 safe).
+    Non-async sibling of the previous ``_resolve_mod_role_id`` coroutine —
+    inlined by :func:`is_mod_check` since the predicate is called from both
+    the decorator (which can await) and inline button callbacks (which also
+    await, but the resolution itself is a sync dict lookup, so awaiting is
+    unnecessary). Tries the bot's ``_guild_mod_role_cache`` dict and returns
+    ``None`` when unconfigured (Phase 1-2 safe).
     """
     bot: Any = interaction.client
     guild_id = interaction.guild_id
