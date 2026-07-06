@@ -330,6 +330,10 @@ class TicketService:
         """
         parent_row = await self._db.get_ticket(parent_id)
         if parent_row is None:
+            await self._db.insert_audit_row(
+                guild_id, parent_id, "subticket_create", author_id, "denied",
+                f"Parent ticket {parent_id} not found",
+            )
             raise ValueError(f"Parent ticket {parent_id} not found")
         parent = Ticket.from_db_row(parent_row)
         parent_guild_id = parent_row.get("guildId", "")
@@ -340,7 +344,7 @@ class TicketService:
         #    because parentId is non-None, which is less actionable).
         if parent.parent_id is not None and parent.parent_id == parent.id:
             await self._db.insert_audit_row(
-                parent_guild_id, parent_id, "subticket_create", author_id, "denied",
+                guild_id, parent_id, "subticket_create", author_id, "denied",
                 f"Parent ticket {parent_id} is self-referential",
             )
             raise ValueError(f"Parent ticket {parent_id} is self-referential")
@@ -352,8 +356,12 @@ class TicketService:
         try:
             check_subticket_parent(parent_row, parent_guild_id, guild_id, current_id=None)
         except ValueError as exc:
+            # CRITICAL 4: audit the denial scoped to the CALLER's guild (the
+            # operation origin), not the parent's guild — a cross-guild
+            # attempt's denial must land in the caller's audit trail, not the
+            # parent guild's.
             await self._db.insert_audit_row(
-                parent_guild_id, parent_id, "subticket_create", author_id, "denied", str(exc)
+                guild_id, parent_id, "subticket_create", author_id, "denied", str(exc)
             )
             raise
 
@@ -687,7 +695,10 @@ class TicketService:
         """Return all staff notes for a ticket, newest-first.
 
         Delegates to :meth:`Database.get_ticket_notes` which orders by
-        ``createdAt`` descending and caps at :data:`NOTE_CAP`.
+        ``createdAt`` descending and caps at :data:`NOTE_CAP`. Per the
+        ``ticket-service`` audit requirement, the list operation writes a
+        ``note_list`` audit row (outcome=success) scoped to the ticket's
+        guild (resolved via a pre-read of the ticket row).
 
         Args:
             ticket_id: UUID of the ticket.
@@ -697,6 +708,11 @@ class TicketService:
         """
         rows = await self._db.get_ticket_notes(ticket_id, limit=NOTE_CAP)
         notes = [TicketNote.from_db_row(r) for r in rows]
+        ticket_row = await self._db.get_ticket(ticket_id)
+        guild_id = (ticket_row or {}).get("guildId", "")
+        await self._db.insert_audit_row(
+            guild_id, ticket_id, "note_list", None, "success", None
+        )
         logger.debug("get_notes(ticket=%s): %d notes", ticket_id, len(notes))
         return notes
 
