@@ -16,7 +16,8 @@ from discord.ext import commands
 from bot.cogs.tickets import TicketActionsView, TicketPanelView
 from bot.core.cache import TTLCache
 from bot.core.context import NebulosaContext
-from bot.core.database import Database
+from bot.core.database import Database, create_realtime_client
+from bot.core.realtime import RealtimeCacheSubscriber
 from bot.services.economy_service import EconomyService
 from bot.services.greeting_service import GreetingService
 from bot.services.guild_service import GuildService
@@ -90,6 +91,7 @@ class NebulosaBot(commands.Bot):
 
     __slots__ = (
         "_guild_mod_role_cache",
+        "_realtime_subscriber",
         "_webhook_runner",
         "cache",
         "config",
@@ -132,6 +134,10 @@ class NebulosaBot(commands.Bot):
         # stopped in close().  None in degraded mode (port in use / no secret).
         self._webhook_runner: AppRunner | None = None
 
+        # Realtime CDC subscriber (replaces the webhook in PR 2).  Started in
+        # setup_hook() and stopped in close(); None in degraded mode.
+        self._realtime_subscriber: RealtimeCacheSubscriber | None = None
+
         # Build the prefix callable.  We pass `self` by reference so the
         # closure calls back into guild_service at message time.
         prefix_callable = _build_prefix_callable(self)
@@ -166,6 +172,9 @@ class NebulosaBot(commands.Bot):
 
         # --- 2. Cache ---
         self.cache = TTLCache()
+
+        # --- 2b. Realtime cache-sync subscriber ---
+        await self._start_realtime()
 
         # --- 3. GuildService ---
         self.guild_service = GuildService(
@@ -247,6 +256,42 @@ class NebulosaBot(commands.Bot):
         logger.info("NebulosaBot.setup_hook() complete")
 
     # ==================================================================
+    # Realtime cache-sync subscriber lifecycle
+    # ==================================================================
+
+    async def _start_realtime(self) -> None:
+        """Start the Realtime CDC subscriber in degraded-safe mode.
+
+        Mirrors the webhook's degraded-safe pattern: if the subscriber
+        cannot start (network error, missing publication, etc.) the bot
+        keeps running with a TTL-only cache rather than crashing the
+        gateway.
+        """
+        if self.cache is None:
+            return
+        try:
+            self._realtime_subscriber = RealtimeCacheSubscriber(
+                supabase_url=self.config.supabase_url,
+                supabase_key=self.config.supabase_key,
+                cache=self.cache,
+                client_factory=create_realtime_client,
+            )
+            await self._realtime_subscriber.start()
+        except Exception:
+            logger.exception("Failed to start Realtime subscriber — continuing with TTL-only cache invalidation")
+            self._realtime_subscriber = None
+
+    async def _stop_realtime(self) -> None:
+        """Stop the Realtime subscriber if it was started (idempotent)."""
+        if self._realtime_subscriber is None:
+            return
+        try:
+            await self._realtime_subscriber.stop()
+        except Exception:
+            logger.exception("Realtime subscriber stop() failed during shutdown")
+        self._realtime_subscriber = None
+
+    # ==================================================================
     # Webhook cache-sync server lifecycle
     # ==================================================================
 
@@ -277,11 +322,13 @@ class NebulosaBot(commands.Bot):
         self._webhook_runner = None
 
     async def close(self) -> None:
-        """Stop the webhook server, then close the Discord gateway.
+        """Stop the subscriber + webhook server, then close the Discord gateway.
 
-        The webhook runner is torn down BEFORE the gateway so the aiohttp
-        site stops accepting cache-invalidation requests cleanly.
+        The Realtime subscriber and webhook runner are torn down BEFORE the
+        gateway so cache-invalidation paths stop accepting/stripping events
+        cleanly.
         """
+        await self._stop_realtime()
         await self._stop_webhook()
         await super().close()
 

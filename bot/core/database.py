@@ -18,6 +18,24 @@ from bot.models.guild import GuildConfig
 
 logger = logging.getLogger(__name__)
 
+
+async def create_realtime_client(supabase_url: str, supabase_key: str) -> Any:
+    """Create the async Supabase client used by the Realtime subscriber.
+
+    Realtime requires ``acreate_client`` (async) rather than the sync
+    ``create_client`` used by :class:`Database` for data access.  Kept as a
+    standalone coroutine so it can be injected as the subscriber's
+    ``client_factory`` without binding to a ``Database`` instance.
+    """
+    from supabase import AsyncClientOptions, acreate_client
+
+    return await acreate_client(
+        supabase_url,
+        supabase_key,
+        AsyncClientOptions(schema="public"),
+    )
+
+
 # ------------------------------------------------------------------
 # Postgrest response wrapper — adapts sync API for async callers
 # ------------------------------------------------------------------

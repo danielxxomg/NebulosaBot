@@ -248,11 +248,13 @@ class TestSetupHookWebhookWiring:
 
         with (
             patch("bot.bot.start_webhook_server", new=AsyncMock(return_value=fake_runner)) as mock_start,
+            patch("bot.bot.RealtimeCacheSubscriber") as mock_sub_cls,
             patch("bot.bot.Database") as mock_db_cls,
             patch.object(bot, "load_extension", new=AsyncMock()),
             patch.object(bot.tree, "sync", new=AsyncMock()),
         ):
             mock_db_cls.return_value.connect = AsyncMock()
+            mock_sub_cls.return_value.start = AsyncMock()
             await bot.setup_hook()
 
         mock_start.assert_awaited_once()
@@ -262,3 +264,59 @@ class TestSetupHookWebhookWiring:
         assert args[2] is bot.cache  # cache initialised BEFORE webhook start
         assert args[3] == bot.config.webhook_secret
         assert bot._webhook_runner is fake_runner
+
+
+# ---------------------------------------------------------------------------
+# Realtime subscriber lifecycle wiring — cache-sync-realtime spec
+# ---------------------------------------------------------------------------
+
+
+class TestStartRealtimeSubscriber:
+    """setup_hook — starts the Realtime subscriber AFTER cache initialization."""
+
+    @pytest.mark.asyncio
+    async def test_starts_subscriber_after_cache(self) -> None:
+        """Spec: subscriber start() called after cache is initialized."""
+        bot = _make_bot()
+        with (
+            patch("bot.bot.RealtimeCacheSubscriber") as mock_sub_cls,
+            patch("bot.bot.start_webhook_server", new=AsyncMock(return_value=None)),
+            patch("bot.bot.Database") as mock_db_cls,
+            patch.object(bot, "load_extension", new=AsyncMock()),
+            patch.object(bot.tree, "sync", new=AsyncMock()),
+        ):
+            mock_db_cls.return_value.connect = AsyncMock()
+            mock_sub_cls.return_value.start = AsyncMock()
+            await bot.setup_hook()
+
+        mock_sub_cls.assert_called_once()
+        mock_sub_cls.return_value.start.assert_awaited_once()
+        assert bot._realtime_subscriber is mock_sub_cls.return_value
+
+
+class TestCloseRealtimeSubscriber:
+    """close() — subscriber stopped BEFORE the Discord gateway closes."""
+
+    @pytest.mark.asyncio
+    async def test_stops_subscriber_before_closing_gateway(self) -> None:
+        """Spec: graceful shutdown stops the subscriber, then closes gateway."""
+        bot = _make_bot()
+        order: list[str] = []
+
+        async def fake_sub_stop() -> None:
+            order.append("sub_stop")
+
+        sub = MagicMock()
+        sub.stop = fake_sub_stop
+        bot._realtime_subscriber = sub
+
+        async def fake_super_close(*_args: object, **_kwargs: object) -> None:
+            order.append("super_close")
+
+        with (
+            patch("bot.bot.stop_webhook_server", new=AsyncMock()),
+            patch("discord.ext.commands.Bot.close", new=fake_super_close),
+        ):
+            await bot.close()
+
+        assert order == ["sub_stop", "super_close"]
