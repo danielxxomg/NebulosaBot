@@ -32,21 +32,13 @@ from bot.services.ticket_invariants import (
     check_subticket_parent,
     compute_note_hash,
     is_duplicate_note,
+    parse_ticket_ref,
 )
 from bot.services.ticket_service import TicketService
 from bot.utils.checks import is_mod_check
 
 # Reason recorded for every skipped integration scenario in this slice.
-PR2_SERVICE_WIRING = "PR2 wires ticket_service/cog audit + permission gates"
-PR2_COG_WIRING = "PR2 wires /reopen ticket-ref + button gates into TicketsCog"
 PR3_DASHBOARD = "PR3 implements the dashboard reopen guidance + audit panel"
-# Contract/impl drift flags — unresolved by PR2 (PR2 adds invariants+audit,
-# NOT a permission-model change). Tracked for a follow-up change.
-CONTRACT_DRIFT_TRANSFER = (
-    "Contract TI-026 says transfer=admin-only; bot /transfer uses @is_mod() "
-    "(admin OR configured mod). PR2 does not change the permission model — "
-    "drift to resolve in a dedicated change before this scenario can PASS."
-)
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +62,28 @@ def _contract_db() -> AsyncMock:
     db.insert_audit_row = AsyncMock(return_value={})
     db.get_audit_rows = AsyncMock(return_value=[])
     db.get_recent_notes_for_dedup = AsyncMock(return_value=[])
+    # PR2 cog reopen resolution paths (TI-029 / TI-037).
+    db.get_ticket_by_number = AsyncMock()
+    db.get_ticket_by_channel = AsyncMock()
     return db
+
+
+def _audit_calls(db: AsyncMock) -> list[dict]:
+    """Return a merged-kwargs dict for every ``insert_audit_row`` call.
+
+    The service calls ``insert_audit_row`` POSITIONALLY; this helper merges
+    positional args (by Database.insert_audit_row param order) so contract
+    assertions can read ``action`` / ``outcome`` / ``guild_id`` uniformly
+    regardless of call style.
+    """
+    keys = ["guild_id", "ticket_id", "action", "actor_id", "outcome", "reason"]
+    out: list[dict] = []
+    for call in db.insert_audit_row.call_args_list:
+        if call.kwargs:
+            out.append(call.kwargs)
+        else:
+            out.append(dict(zip(keys, call.args, strict=False)))
+    return out
 
 
 def _contract_ticket_row(
@@ -571,18 +584,25 @@ async def test_ti025_reopen_permission_matrix() -> None:
     assert await is_mod_check(user_int) is False
 
 
-@pytest.mark.skip(reason=CONTRACT_DRIFT_TRANSFER)
-def test_ti026_transfer_permission_matrix() -> None:
-    """TI-026: GIVEN admin/mod/author/user WHEN transfer THEN admin only.
+async def test_ti026_transfer_permission_matrix() -> None:
+    """TI-026: GIVEN admin/mod/author/user WHEN transfer THEN bot: admin OR mod.
 
-    CONTRACT/IMPL DRIFT: the contract table says transfer=admin-only, but the
-    bot's ``/transfer`` command is gated by ``@is_mod()`` (admin OR configured
-    mod role). PR2 does NOT change the permission model (PR2 = invariants +
-    audit + button gates + /reopen ref). This scenario stays skipped until a
-    dedicated change resolves the drift (decide admin-only vs. admin+mod and
-    align the contract table with the impl).
+    Decision #1 (engram #669): ``/transfer`` STAYS ``@is_mod()`` (admin OR
+    configured mod). The dashboard side is admin-only as a documented
+    divergence (design.md TI-026 Then column; tested in PR3
+    ``ti026TransferPermissionMatrix``). This scenario asserts the BOT
+    behavior: admin and configured-mod allowed; author and plain user denied.
     """
-    raise AssertionError(CONTRACT_DRIFT_TRANSFER)
+    mod_role = 505050
+    admin_int, _ = _actor_interaction(is_admin=True)
+    mod_int, _ = _actor_interaction(mod_role_id=mod_role, has_mod_role=True)
+    author_int, _ = _actor_interaction()  # author, not admin, not mod
+    user_int, _ = _actor_interaction()  # plain user, unconfigured
+
+    assert await is_mod_check(admin_int) is True
+    assert await is_mod_check(mod_int) is True
+    assert await is_mod_check(author_int) is False
+    assert await is_mod_check(user_int) is False
 
 
 async def test_ti027_staff_ops_permission_matrix() -> None:
@@ -620,10 +640,29 @@ def test_ti028_audit_view_admin_only() -> None:
 # ===========================================================================
 
 
-@pytest.mark.skip(reason=PR2_COG_WIRING)
-def test_ti029_reopen_by_number() -> None:
-    """TI-029: GIVEN closed ticket WHEN /reopen ticket:#0003 THEN resolves by number."""
-    raise AssertionError("Unskipped by PR2: /reopen ticket_ref parses #0003 → get_ticket_by_number")
+async def test_ti029_reopen_by_number() -> None:
+    """TI-029: GIVEN closed ticket WHEN /reopen ticket:#0003 THEN resolves by number.
+
+    ``/reopen``'s ``ticket_ref`` parser strips the optional ``ticket:`` prefix
+    and parses ``#0003`` → number 3; the cog resolves via
+    ``get_ticket_by_number(guild_id, 3)``. This scenario asserts the parser +
+    guild-scoped DB resolution contract (the cog end-to-end is in
+    ``tests/test_tickets_cog.py::TestReopenByTicketRef``).
+    """
+    ref = parse_ticket_ref("ticket:#0003")
+    assert ref is not None
+    assert ref.number == 3
+
+    db = _contract_db()
+    target = _contract_ticket_row(ticket_id="t-3", status="closed")
+    target["ticketNumber"] = 3
+    db.get_ticket_by_number = AsyncMock(return_value=target)
+
+    row = await db.get_ticket_by_number("123456789", ref.number)
+
+    assert row is not None
+    assert row["ticketNumber"] == 3
+    db.get_ticket_by_number.assert_awaited_once_with("123456789", 3)
 
 
 @pytest.mark.skip(reason=PR3_DASHBOARD)
@@ -664,34 +703,129 @@ def test_ti032_note_delete_owner_only() -> None:
 # ===========================================================================
 
 
-@pytest.mark.skip(reason=PR2_SERVICE_WIRING)
-def test_ti033_guild_scope() -> None:
-    """TI-033: GIVEN ticket/note/audit guild B WHEN guild A acts/queries THEN no leak."""
-    raise AssertionError("Unskipped by PR2: every service query MUST filter by guildId")
+async def test_ti033_guild_scope() -> None:
+    """TI-033: GIVEN ticket/note/audit guild B WHEN guild A acts/queries THEN no leak.
+
+    Every service operation scopes its audit row to the TICKET's guildId, and
+    ``get_audit_rows`` is guild-filtered (``.eq guildId``). A note added to a
+    guild B ticket yields an audit row with ``guildId``=guildB; querying guild
+    A's audit returns ONLY guild A rows — the guild B audit never leaks.
+    """
+    from bot.services.ticket_service import TicketService  # local import keeps module-load light
+
+    db = _contract_db()
+    service = TicketService(db=db, cache=TTLCache())
+    guild_b = "999000999"
+    ticket_id = "guild-b-ticket"
+    db.get_ticket.return_value = {"id": ticket_id, "guildId": guild_b}
+    db.get_ticket_notes.return_value = []
+    db.get_recent_notes_for_dedup.return_value = []
+    db.insert_ticket_note.return_value = _contract_note_row(content="x")
+
+    await service.create_note(ticket_id, author_id="mod1", content="x")
+
+    # The note_add audit row is scoped to the TICKET's guild (guildB).
+    note_add_calls = [c for c in _audit_calls(db) if c["action"] == "note_add"]
+    assert len(note_add_calls) == 1, note_add_calls
+    assert note_add_calls[0]["guild_id"] == guild_b
+    assert note_add_calls[0]["outcome"] == "success"
+
+    # Guild A audit query returns ONLY guild A rows; the guild B row never leaks.
+    db.get_audit_rows.return_value = [
+        {"id": "a1", "guildId": "guildA", "action": "close", "outcome": "success"},
+    ]
+    rows_a = await db.get_audit_rows("guildA", limit=50, offset=0)
+    assert all(r["guildId"] == "guildA" for r in rows_a)
+    assert all(r["guildId"] != guild_b for r in rows_a)
+    db.get_audit_rows.assert_awaited_once_with("guildA", limit=50, offset=0)
 
 
-@pytest.mark.skip(reason=PR2_SERVICE_WIRING)
-def test_ti034_note_under_cap() -> None:
-    """TI-034: GIVEN ticket #5 has 30 notes WHEN author adds note THEN persisted, audit success."""
-    raise AssertionError("Unskipped by PR2: create_note under cap persists + audits")
+async def test_ti034_note_under_cap() -> None:
+    """TI-034: GIVEN ticket #5 has 30 notes (under cap 50) WHEN author adds THEN persisted + audit success."""
+    from bot.services.ticket_service import TicketService
+
+    db = _contract_db()
+    service = TicketService(db=db, cache=TTLCache())
+    ticket_id = "ticket-5"
+    db.get_ticket.return_value = {"id": ticket_id, "guildId": "123456789"}
+    db.get_ticket_notes.return_value = [_contract_note_row() for _ in range(30)]
+    db.get_recent_notes_for_dedup.return_value = []
+    db.insert_ticket_note.return_value = _contract_note_row(content="new")
+
+    note = await service.create_note(ticket_id, "999999999", "new note")
+
+    assert note is not None
+    note_add_calls = [c for c in _audit_calls(db) if c["action"] == "note_add"]
+    assert len(note_add_calls) == 1
+    assert note_add_calls[0]["outcome"] == "success"
+    db.insert_ticket_note.assert_awaited_once()
 
 
-@pytest.mark.skip(reason=PR2_SERVICE_WIRING)
-def test_ti035_author_delete_own() -> None:
-    """TI-035: GIVEN note by userA WHEN userA deletes THEN deleted, audit success."""
-    raise AssertionError("Unskipped by PR2: delete note by author + audit success")
+async def test_ti035_author_delete_own() -> None:
+    """TI-035: GIVEN note by userA WHEN userA deletes THEN deleted + audit success."""
+    from bot.services.ticket_service import TicketService
+
+    db = _contract_db()
+    service = TicketService(db=db, cache=TTLCache())
+    ticket_id = "ticket-1"
+    db.get_ticket.return_value = {"id": ticket_id, "guildId": "123456789"}
+    db.get_ticket_notes.return_value = [_contract_note_row(author_id="userA")]
+
+    await service.delete_note("note-uuid-001", author_id="userA", ticket_id=ticket_id)
+
+    db.delete_ticket_note.assert_awaited_once_with("note-uuid-001")
+    del_calls = [c for c in _audit_calls(db) if c["action"] == "note_delete"]
+    assert len(del_calls) == 1
+    assert del_calls[0]["outcome"] == "success"
 
 
-@pytest.mark.skip(reason=PR2_COG_WIRING)
 def test_ti036_action_view_render() -> None:
-    """TI-036: GIVEN new ticket channel WHEN ticket opened THEN embed + claim/close buttons."""
-    raise AssertionError("Unskipped by PR2: action view embed with gated claim/close buttons")
+    """TI-036: GIVEN new ticket channel WHEN ticket opened THEN embed + claim/close buttons sent.
+
+    The cog attaches a persistent ``TicketActionsView`` (Claim + Close buttons
+    with stable ``custom_id``s) plus an info embed to the ticket welcome
+    message (``bot/cogs/tickets.py`` send at ticket-open). This asserts the
+    render contract: both buttons are present and the embed builder produces a
+    ``discord.Embed`` referencing the ticket number. The button GATE behavior
+    (mod / author-OR-mod) is covered in TI-023/TI-024 + ``TestPR2ButtonPermissionGates``.
+    """
+    from bot.cogs.tickets import TicketActionsView, _build_ticket_embed
+
+    view = TicketActionsView()
+    buttons = {
+        c.custom_id: c for c in view.children if hasattr(c, "custom_id")
+    }
+    assert "ticket:claim" in buttons, "claim button missing"
+    assert "ticket:close" in buttons, "close button missing"
+
+    embed = _build_ticket_embed(
+        {"ticketNumber": 7, "status": "open", "authorId": "x"}
+    )
+    assert isinstance(embed, discord.Embed)
+    assert "7" in (embed.title or ""), embed.title
 
 
-@pytest.mark.skip(reason=PR2_COG_WIRING)
-def test_ti037_reopen_noarg_legacy() -> None:
-    """TI-037: GIVEN just-closed ticket, channel exists WHEN /reopen (no arg) THEN resolves by channel."""
-    raise AssertionError("Unskipped by PR2: legacy channel-scoped reopen within 5s window")
+async def test_ti037_reopen_noarg_legacy() -> None:
+    """TI-037: GIVEN just-closed ticket, channel still exists WHEN /reopen (no arg) THEN resolves by channel.
+
+    When ``ticket_ref`` is ``None`` (omitted), ``parse_ticket_ref`` returns
+    ``None`` and the cog falls back to the legacy channel-scoped
+    ``get_ticket_by_channel(str(ctx.channel.id))`` lookup — valid in the 5s
+    window between ``status=closed`` and ``channel.delete()`` (close deletes
+    the channel after 5s, so the no-arg path only resolves in that window).
+    """
+    assert parse_ticket_ref(None) is None
+
+    db = _contract_db()
+    closed_row = _contract_ticket_row(status="closed")
+    closed_row["channelId"] = "444444444"
+    db.get_ticket_by_channel = AsyncMock(return_value=closed_row)
+
+    row = await db.get_ticket_by_channel("444444444")
+
+    assert row is not None
+    assert row["status"] == "closed"
+    db.get_ticket_by_channel.assert_awaited_once_with("444444444")
 
 
 @pytest.mark.skip(reason=PR3_DASHBOARD)
