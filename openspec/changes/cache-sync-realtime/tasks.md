@@ -54,6 +54,10 @@ Chain strategy: pending
 - [x] 3.9 GREEN: implement `stop()` — cancel health/poll/watchdog tasks, `remove_channel`, `remove_all_channels`, best-effort `close()`.
 - [x] 3.10 GREEN: implement `mark_recent_write(table, identifier)` — public API for database.py integration.
 - [x] 3.11 Verify GREEN: `uv run pytest tests/test_realtime.py -v` — all pass.
+- [x] 3.12 FIXUP (PR 1 scope, batched into PR 2 apply): poll loop must STOP on WebSocket recovery, not stay dormant per spec R4 (`spec.md:106-110`) and verify-report CRITICAL #2.
+  (a) RED: strengthen `test_poll_stops_on_recovery` in `tests/test_realtime.py:716-727` to assert `subscriber._poll_task.done()` or `.cancelled()` is True after `_on_subscribe("SUBSCRIBED", None)` — currently only asserts `_poll_fallback_enabled is False` and `_last_check` reset. Add a companion test: after recovery + simulated unhealthy (>60s via `_health_check_once`), `_poll_task` is recreated (not None, not done).
+  (b) GREEN: in `_on_subscribe` SUBSCRIBED branch (`bot/core/realtime.py:506-513`), cancel `_poll_task` if alive and set to None — suppress the cancelled task's "Task exception was never retrieved" via `add_done_callback(lambda t: t.exception() if not t.cancelled() else None)`. In `_health_check_once` (`bot/core/realtime.py:528-542`), when enabling fallback (`_poll_fallback_enabled = True`), recreate `_poll_task` if None/done via `asyncio.create_task(self._poll_loop())`. Confirm `stop()` (`bot/core/realtime.py:345-368`) already handles None `_poll_task` (it does: `if task is not None`).
+  (c) Verify: `uv run pytest tests/test_realtime.py -v --no-cov` all pass.
 
 ## Phase 4: Wire subscriber (`bot/core/database.py` + `bot/bot.py`)
 
