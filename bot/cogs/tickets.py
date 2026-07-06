@@ -24,7 +24,8 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 from bot.models.ticket_category import TicketCategory
-from bot.utils.checks import is_mod
+from bot.services.ticket_invariants import parse_ticket_ref
+from bot.utils.checks import is_mod, is_mod_check
 from bot.utils.embeds import (
     COLOR_INFO,
     COLOR_SUCCESS,
@@ -154,10 +155,26 @@ class TicketActionsView(discord.ui.View):
     async def claim_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
-        """Claim the ticket, assigning it to the clicking staff member."""
+        """Claim the ticket, assigning it to the clicking staff member.
+
+        Permission gate (design.md L33-38): Claim is mod-only — the clicking
+        user MUST be an admin OR hold the configured moderator role. Non-mods
+        receive an ephemeral rejection.
+        """
         bot: NebulosaBot = interaction.client  # type: ignore[assignment]
         channel_id = interaction.channel_id
         if channel_id is None:
+            return
+
+        # Inline mod gate — @is_mod() cannot decorate discord.ui.button callbacks.
+        if not await is_mod_check(interaction):
+            await interaction.response.send_message(
+                embed=error_embed(
+                    "Mods Only",
+                    "Only moderators can claim tickets.",
+                ),
+                ephemeral=True,
+            )
             return
 
         ticket_row, error = await self._get_ticket(bot, channel_id)
@@ -213,7 +230,12 @@ class TicketActionsView(discord.ui.View):
     async def close_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
-        """Close the ticket: generate transcript, upload, delete channel."""
+        """Close the ticket: generate transcript, upload, delete channel.
+
+        Permission gate (design.md L40-44): Close is author OR mod — the
+        clicking user MUST be the ticket author OR an admin / configured mod.
+        Non-author non-mod users receive an ephemeral rejection.
+        """
         bot: NebulosaBot = interaction.client  # type: ignore[assignment]
         channel_id = interaction.channel_id
         guild = interaction.guild
@@ -228,6 +250,19 @@ class TicketActionsView(discord.ui.View):
             return
 
         assert ticket_row is not None
+        # Inline author-or-mod gate — @is_mod() cannot decorate button callbacks.
+        author_id = ticket_row.get("authorId")
+        is_author = author_id is not None and interaction.user.id == int(author_id)
+        if not is_author and not await is_mod_check(interaction):
+            await interaction.response.send_message(
+                embed=error_embed(
+                    "Author or Mod Only",
+                    "Only the ticket author or a moderator can close this ticket.",
+                ),
+                ephemeral=True,
+            )
+            return
+
         ticket_id = ticket_row["id"]
         channel = interaction.channel
         if not isinstance(channel, discord.TextChannel):
@@ -1416,13 +1451,25 @@ class TicketsCog(commands.Cog, name="Tickets"):
     # -- /reopen -------------------------------------------------------
 
     @commands.hybrid_command(name="reopen")
+    @app_commands.describe(
+        ticket_ref=(
+            "Optional ticket reference: '#0003', '0003', a UUID, or "
+            "'ticket:#0003' (the dashboard-guidance form). Omit to reopen "
+            "the ticket in the current channel (5-second close window only)."
+        ),
+    )
     @is_mod()
-    async def reopen(self, ctx: commands.Context) -> None:
-        """Reopen the closed ticket in the current channel.
+    async def reopen(
+        self, ctx: commands.Context, *, ticket_ref: str | None = None
+    ) -> None:
+        """Reopen a closed ticket, creating a new Discord channel.
 
-        A new Discord channel is created and the ticket's ``channelId`` /
-        ``status`` / ``closedAt`` are updated by
-        :meth:`TicketService.reopen_ticket`.
+        With *ticket_ref* the ticket is resolved by guild+number (``#0003`` /
+        ``0003`` / ``ticket:#0003``) or by UUID (with a guild-scope check) —
+        usable from any channel since the original ticket channel is deleted
+        on close. Without *ticket_ref* the legacy channel-scoped lookup is
+        preserved for the 5-second window between ``status=closed`` and
+        ``channel.delete()``. The service owns the status guard.
         """
         if ctx.guild is None:
             await ctx.send(
@@ -1434,36 +1481,12 @@ class TicketsCog(commands.Cog, name="Tickets"):
 
         assert self.bot.db is not None
         assert self.bot.ticket_service is not None
-        try:
-            ticket_row = await self.bot.db.get_ticket_by_channel(
-                str(ctx.channel.id)
-            )
-        except Exception:
-            logger.exception(
-                "Failed to look up ticket by channel %s", ctx.channel.id
-            )
-            await ctx.send(
-                embed=error_embed(
-                    "Lookup Failed",
-                    "Could not look up the ticket. Please try again.",
-                )
-            )
-            return
-        if ticket_row is None:
-            await ctx.send(
-                embed=error_embed(
-                    "Not a Ticket",
-                    "This command must be used in a ticket channel.",
-                )
-            )
-            return
+        guild_id = str(ctx.guild.id)
 
-        # B2: the cog has NO pre-service status guard — it delegates to the
-        # service, which raises ValueError (with the actual status) for
-        # non-closed tickets. The cog catches that ValueError and surfaces
-        # the message verbatim. This keeps the service as the single source
-        # of truth for the reopen invariant and prevents duplicate channel
-        # creation for any caller that bypasses the cog.
+        ticket_row = await self._resolve_ticket_for_reopen(ctx, ticket_ref, guild_id)
+        if ticket_row is None:
+            return  # _resolve_ticket_for_reopen already sent an error_embed
+
         ticket_id = ticket_row["id"]
         try:
             await self.bot.ticket_service.reopen_ticket(ticket_id, guild=ctx.guild)
@@ -1490,6 +1513,123 @@ class TicketsCog(commands.Cog, name="Tickets"):
                 "The ticket has been reopened in a new channel.",
             )
         )
+
+    async def _resolve_ticket_for_reopen(
+        self,
+        ctx: commands.Context,
+        ticket_ref: str | None,
+        guild_id: str,
+    ) -> dict | None:
+        """Resolve the ticket row for ``/reopen`` by ref or channel (legacy).
+
+        Returns the ticket row dict on success (caller proceeds to
+        :meth:`TicketService.reopen_ticket`) or ``None`` after sending an
+        ``error_embed`` for missing/wrong-guild/non-closed refs.
+
+        Resolution order:
+            1. *ticket_ref* parses to a number → ``get_ticket_by_number(guild_id, n)``
+            2. *ticket_ref* parses to a UUID → ``get_ticket(uuid)`` + guild-scope check
+            3. *ticket_ref* is ``None`` (omit) → legacy
+               ``get_ticket_by_channel(str(ctx.channel.id))`` for the 5s close window
+            4. *ticket_ref* is unparseable → bad-ref ``error_embed``
+        """
+        assert self.bot.db is not None
+        ref = parse_ticket_ref(ticket_ref)
+
+        if ticket_ref is not None and ref is None:
+            # Caller supplied an arg we could not parse — surface a clear error.
+            await ctx.send(
+                embed=error_embed(
+                    "Invalid Ticket Reference",
+                    f"Could not parse `{ticket_ref}`. Use `#0003`, `0003`, "
+                    f"or a UUID (optionally with a `ticket:` prefix).",
+                )
+            )
+            return None
+
+        if ref is not None and ref.number is not None:
+            try:
+                row = await self.bot.db.get_ticket_by_number(guild_id, ref.number)
+            except Exception:
+                logger.exception(
+                    "Failed to look up ticket by number %d", ref.number
+                )
+                await ctx.send(
+                    embed=error_embed(
+                        "Lookup Failed",
+                        "Could not look up the ticket. Please try again.",
+                    )
+                )
+                return None
+            if row is None:
+                await ctx.send(
+                    embed=error_embed(
+                        "Not Found",
+                        f"No ticket #{ref.number} found in this server.",
+                    )
+                )
+                return None
+            return row
+
+        if ref is not None and ref.uuid is not None:
+            try:
+                row = await self.bot.db.get_ticket(ref.uuid)
+            except Exception:
+                logger.exception(
+                    "Failed to look up ticket by UUID %s", ref.uuid
+                )
+                await ctx.send(
+                    embed=error_embed(
+                        "Lookup Failed",
+                        "Could not look up the ticket. Please try again.",
+                    )
+                )
+                return None
+            if row is None:
+                await ctx.send(
+                    embed=error_embed(
+                        "Not Found",
+                        f"No ticket found with ID `{ref.uuid}`.",
+                    )
+                )
+                return None
+            if row.get("guildId") != guild_id:
+                await ctx.send(
+                    embed=error_embed(
+                        "Wrong Guild",
+                        "That ticket belongs to a different server.",
+                    )
+                )
+                return None
+            return row
+
+        # ref is None and ticket_ref is None → legacy channel-scoped lookup.
+        try:
+            ticket_row = await self.bot.db.get_ticket_by_channel(
+                str(ctx.channel.id)
+            )
+        except Exception:
+            logger.exception(
+                "Failed to look up ticket by channel %s", ctx.channel.id
+            )
+            await ctx.send(
+                embed=error_embed(
+                    "Lookup Failed",
+                    "Could not look up the ticket. Please try again.",
+                )
+            )
+            return None
+        if ticket_row is None:
+            await ctx.send(
+                embed=error_embed(
+                    "Not a Ticket",
+                    "This command must be used in a ticket channel.",
+                )
+            )
+            return None
+        # Caller (``reopen()``) owns the reopen_ticket call + success/failure
+        # sends; the resolver only resolves the row.
+        return ticket_row
 
     # -- /transfer -----------------------------------------------------
 
