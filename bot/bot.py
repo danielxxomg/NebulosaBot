@@ -277,6 +277,10 @@ class NebulosaBot(commands.Bot):
                 client_factory=create_realtime_client,
             )
             await self._realtime_subscriber.start()
+            # Wire self-echo filtering: database writes mark recent entries
+            # so the Realtime CDC handler suppresses the echo.
+            if self.db is not None:
+                self.db._on_write = self._realtime_subscriber.mark_recent_write
         except Exception:
             logger.exception("Failed to start Realtime subscriber — continuing with TTL-only cache invalidation")
             self._realtime_subscriber = None
@@ -286,6 +290,9 @@ class NebulosaBot(commands.Bot):
         if self._realtime_subscriber is None:
             return
         try:
+            # Disconnect the write callback before stopping.
+            if self.db is not None:
+                self.db._on_write = None
             await self._realtime_subscriber.stop()
         except Exception:
             logger.exception("Realtime subscriber stop() failed during shutdown")

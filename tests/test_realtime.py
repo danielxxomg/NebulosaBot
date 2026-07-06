@@ -17,6 +17,7 @@ matching the established test_cache.py pattern (freezegun does not advance
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -638,16 +639,19 @@ class TestPollFallback:
             if name == "ticket":
                 r = MagicMock()
                 r.data = []
+                r.select = MagicMock(return_value=r)
                 responses.append(r)
                 return r
             if name == "guild":
                 r = MagicMock()
                 r.data = [{"id": "G-scan1"}, {"id": "G-scan2"}]
+                r.select = MagicMock(return_value=r)
                 responses.append(r)
                 return r
             if name == "greeting_config":
                 r = MagicMock()
                 r.data = [{"guildId": "G-scan1"}]
+                r.select = MagicMock(return_value=r)
                 responses.append(r)
                 return r
             return client
@@ -674,7 +678,9 @@ class TestPollFallback:
         sub = _make_subscriber(cache, client)
         old = sub._last_check
 
-        with patch("bot.core.realtime.time.monotonic", return_value=5000.0):
+        with patch("bot.core.realtime.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2025, 1, 15, 12, 0, 0, tzinfo=UTC)
+            mock_dt.UTC = UTC
             await sub._poll_once()
 
         assert sub._last_check > old
@@ -744,3 +750,164 @@ class TestMigrationWatchdog:
                 await sub._watchdog_check_once()
 
         assert not any("publication" in r.message for r in caplog.records)
+
+
+# ===========================================================================
+# Ticket / ticket_note self-echo (Round 2 — row id, not guild_id)
+# ===========================================================================
+
+
+class TestTicketSelfEcho:
+    """Self-echo MUST use the ticket row's own id, not guild_id."""
+
+    @pytest.mark.asyncio
+    async def test_ticket_self_echo_skips_invalidation(self, cache: TTLCache) -> None:
+        """Mark ticket row id -> CDC event with same row id MUST be skipped."""
+        client = _make_client_mock()
+        sub = _make_subscriber(cache, client)
+        cache.set("G-tkt:config", "v")
+        # Mark using the ticket's own row id (what database.insert_ticket passes).
+        await sub.mark_recent_write("ticket", "ticket-uuid-001")
+
+        await sub._handle_cdc(
+            _cdc_payload(
+                table="ticket",
+                record={"id": "ticket-uuid-001", "guildId": "G-tkt"},
+            )
+        )
+
+        assert cache.get("G-tkt:config") == "v"  # NOT invalidated
+
+    @pytest.mark.asyncio
+    async def test_ticket_note_self_echo_skips_invalidation(self, cache: TTLCache) -> None:
+        """Mark ticket_note row id -> CDC event with same row id MUST be skipped."""
+        client = _make_client_mock()
+        sub = _make_subscriber(cache, client)
+        await sub.ticket_guild_cache.store("T1", "G-note")
+        cache.set("G-note:config", "v")
+        # Mark using the note's own row id (what database.insert_ticket_note passes).
+        await sub.mark_recent_write("ticket_note", "note-uuid-001")
+
+        await sub._handle_cdc(
+            _cdc_payload(
+                table="ticket_note",
+                record={"id": "note-uuid-001", "ticketId": "T1"},
+            )
+        )
+
+        assert cache.get("G-note:config") == "v"  # NOT invalidated
+
+    @pytest.mark.asyncio
+    async def test_ticket_guild_id_mismatch_does_not_filter(self, cache: TTLCache) -> None:
+        """Marking ticket by one id MUST NOT suppress a different ticket row."""
+        client = _make_client_mock()
+        sub = _make_subscriber(cache, client)
+        cache.set("G-tkt2:config", "v")
+        await sub.mark_recent_write("ticket", "other-ticket-uuid")
+
+        await sub._handle_cdc(
+            _cdc_payload(
+                table="ticket",
+                record={"id": "ticket-uuid-002", "guildId": "G-tkt2"},
+            )
+        )
+
+        assert cache.get("G-tkt2:config") is None  # invalidated (different row id)
+
+
+# ===========================================================================
+# Poll .select() enforcement + ISO timestamp boundary
+# ===========================================================================
+
+
+class TestPollSelectEnforcement:
+    """Poll fallback MUST call .select() on config table queries."""
+
+    @pytest.mark.asyncio
+    async def test_poll_calls_select_on_config_tables(self, cache: TTLCache) -> None:
+        """guild and greeting_config full-scans MUST use .select()."""
+        client = _make_client_mock()
+        select_calls: list[str] = []
+
+        def _table(name: str) -> MagicMock:
+            r = MagicMock()
+            r.data = []
+            # Wire .select() on the per-table mock so the chain works.
+            def _inner_select(col: str) -> MagicMock:
+                select_calls.append(col)
+                return r
+            r.select = MagicMock(side_effect=_inner_select)
+            return r
+
+        client.table = MagicMock(side_effect=_table)
+        client.select = MagicMock(return_value=client)
+        client.gt = MagicMock(return_value=client)
+        client.lte = MagicMock(return_value=client)
+        client.execute = AsyncMock(return_value=MagicMock(data=[]))
+        sub = _make_subscriber(cache, client)
+
+        await sub._poll_once()
+
+        # .select() must have been called with "guildId" (ticket), "id" (guild),
+        # and "guildId" (greeting_config).
+        assert "id" in select_calls
+        assert "guildId" in select_calls
+
+    @pytest.mark.asyncio
+    async def test_poll_uses_iso_timestamp_not_monotonic(self, cache: TTLCache) -> None:
+        """Poll boundary MUST be an ISO-8601 string, compatible with timestamptz."""
+        client = _make_client_mock()
+        lte_values: list[str] = []
+
+        def _table(name: str) -> MagicMock:
+            r = MagicMock()
+            r.data = []
+            r.select = MagicMock(return_value=r)
+            # Wire .gt/.lte back to client so the ticket chain reaches
+            # the patched gt/lte mocks that record values.
+            r.gt = MagicMock(return_value=r)
+            r.lte = MagicMock(side_effect=lambda col, val: (lte_values.append(val), r)[-1])
+            return r
+
+        client.table = MagicMock(side_effect=_table)
+        client.select = MagicMock(return_value=client)
+        client.gt = MagicMock(return_value=client)
+        client.lte = MagicMock(return_value=client)
+        client.execute = AsyncMock(return_value=MagicMock(data=[]))
+        sub = _make_subscriber(cache, client)
+
+        fixed_now = datetime(2025, 6, 15, 10, 30, 0, tzinfo=UTC)
+        with patch("bot.core.realtime.datetime") as mock_dt:
+            mock_dt.now.return_value = fixed_now
+            mock_dt.UTC = UTC
+            await sub._poll_once()
+
+        expected_iso = fixed_now.isoformat()
+        # The .lte("lastActivity", window_end) call should contain a valid ISO string.
+        assert lte_values, "Expected lte() to be called with a timestamp boundary"
+        assert lte_values[-1] == expected_iso
+        # Also verify the stored _last_check is an ISO string.
+        assert sub._last_check == expected_iso
+
+
+# ===========================================================================
+# Database on_write callback wiring
+# ===========================================================================
+
+
+class TestDatabaseOnWriteCallback:
+    """Database._on_write callback -- wired to mark_recent_write."""
+
+    @pytest.mark.asyncio
+    async def test_database_on_write_set(self) -> None:
+        """Setting _on_write callback stores it on the Database instance."""
+        from bot.core.database import Database
+
+        db = Database("https://x.supabase.co", "anon-key")
+        assert db._on_write is None
+
+        async def fake_callback(table: str, identifier: str) -> None:
+            pass
+
+        db._on_write = fake_callback
+        assert db._on_write is fake_callback
