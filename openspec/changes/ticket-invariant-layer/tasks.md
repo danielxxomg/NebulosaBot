@@ -28,11 +28,11 @@ Chain strategy: pending
 
 ## Phase 1: Audit Infrastructure (PR 1)
 
-- [ ] 1.1 RED: write failing test `test_ti019_audit_success_insert` in `tests/contract/test_ticket_invariants.py` asserting `insert_audit_row()` persists a row with outcome=success
-- [ ] 1.2 GREEN: create `migrations/005_ticket_audit.sql` — `ticket_audit` table (id UUID PK, guildId TEXT, ticketId UUID, action TEXT, actorId TEXT, outcome TEXT CHECK, reason TEXT, createdAt TIMESTAMPTZ), indexes (ticket_history, guild_created, guild_action), `ticket_note` author+created index, RLS enabled, transfer normalization UPDATE with idempotent backup
-- [ ] 1.3 RED: write failing tests for `get_ticket_by_number`, `insert_audit_row`, `get_audit_rows` in `tests/test_database.py`
-- [ ] 1.4 GREEN: add to `bot/core/database.py` — `get_ticket_by_number(guild_id, ticket_number)` using `.eq("guildId").eq("ticketNumber")`; `insert_audit_row(guild_id, ticket_id, action, actor_id, outcome, reason)`; `get_audit_rows(guild_id, limit, offset)` ordered by createdAt DESC; `get_recent_notes_for_dedup(ticket_id, author_id, since_iso)` filtered by authorId+createdAt>=since
-- [ ] 1.5 REFACTOR: extract `_AUDIT_COLUMNS` constant if repeated across audit methods
+- [x] 1.1 RED: write failing test `test_ti019_audit_success_insert` in `tests/contract/test_ticket_invariants.py` asserting `insert_audit_row()` persists a row with outcome=success
+- [x] 1.2 GREEN: create `migrations/005_ticket_audit.sql` — `ticket_audit` table (id UUID PK, guildId TEXT, ticketId UUID, action TEXT, actorId TEXT, outcome TEXT CHECK, reason TEXT, createdAt TIMESTAMPTZ), indexes (ticket_history, guild_created, guild_action), `ticket_note` author+created index, RLS enabled, transfer normalization UPDATE with idempotent backup
+- [x] 1.3 RED: write failing tests for `get_ticket_by_number`, `insert_audit_row`, `get_audit_rows` in `tests/test_database.py`
+- [x] 1.4 GREEN: add to `bot/core/database.py` — `get_ticket_by_number(guild_id, ticket_number)` using `.eq("guildId").eq("ticketNumber")`; `insert_audit_row(guild_id, ticket_id, action, actor_id, outcome, reason)`; `get_audit_rows(guild_id, limit, offset)` ordered by createdAt DESC; `get_recent_notes_for_dedup(ticket_id, author_id, since_iso)` filtered by authorId+createdAt>=since
+- [x] 1.5 REFACTOR: extract `_AUDIT_COLUMNS` constant if repeated across audit methods
 
 ## Phase 2: Invariant Module + Contract Tests (PR 1)
 
