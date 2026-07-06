@@ -36,22 +36,22 @@ Chain strategy: pending
 
 ## Phase 2: Invariant Module + Contract Tests (PR 1)
 
-- [ ] 2.1 RED: write failing tests TI-001→TI-007 (status state machine + claim no-overwrite) in `tests/contract/test_ticket_invariants.py`
-- [ ] 2.2 GREEN: create `bot/services/ticket_invariants.py` — `validate_status_transition(current, action)` raises ValueError on invalid; `validate_claim(ticket_row)` raises if claimedBy set; `check_actor_permission(actor_roles, action)` returns bool per permission matrix
-- [ ] 2.3 RED: write failing tests TI-008→TI-010 (transfer invariants: open→claimed, reassign, same-user denied)
-- [ ] 2.4 GREEN: add `validate_transfer(ticket_row, new_claimed_by)` raises if same user
-- [ ] 2.5 RED: write failing tests TI-011→TI-015 (parentId invariants: valid, missing, self, depth, cross-guild)
-- [ ] 2.6 GREEN: add `validate_parent_id(parent_row, child_guild_id, child_id)` raises ValueError with reason
-- [ ] 2.7 RED: write failing tests TI-016→TI-018 (note dedup: exact hash denied, outside window allowed, different author allowed)
-- [ ] 2.8 GREEN: add `compute_dedup_hash(content)` returning SHA256 of normalized content; `check_note_dedup(recent_notes, content, author_id)` raises ValueError on duplicate within 2s
+- [x] 2.1 RED: write failing tests TI-001→TI-007 (status state machine + claim no-overwrite) in `tests/contract/test_ticket_invariants.py`
+- [x] 2.2 GREEN: create `bot/services/ticket_invariants.py` — `validate_status_transition(current, action)` raises ValueError on invalid; `validate_claim(ticket_row)` raises if claimedBy set; `check_actor_permission(actor_roles, action)` returns bool per permission matrix
+- [x] 2.3 RED: write failing tests TI-008→TI-010 (transfer invariants: open→claimed, reassign, same-user denied)
+- [x] 2.4 GREEN: add `validate_transfer(ticket_row, new_claimed_by)` raises if same user
+- [x] 2.5 RED: write failing tests TI-011→TI-015 (parentId invariants: valid, missing, self, depth, cross-guild)
+- [x] 2.6 GREEN: add `validate_parent_id(parent_row, child_guild_id, child_id)` raises ValueError with reason
+- [x] 2.7 RED: write failing tests TI-016→TI-018 (note dedup: exact hash denied, outside window allowed, different author allowed)
+- [x] 2.8 GREEN: add `compute_dedup_hash(content)` returning SHA256 of normalized content; `check_note_dedup(recent_notes, content, author_id)` raises ValueError on duplicate within 2s
 - [ ] 2.9 RED: write failing tests TI-020→TI-021 (audit violations + guild scope)
 - [ ] 2.10 GREEN: add `build_audit_reason(action, outcome, detail)` helper; ensure guild scope via `.eq("guildId")` in database methods
 - [ ] 2.11 RED: write failing tests TI-022→TI-028 (permission matrix: create any, claim mod, close author+mod, reopen mod, transfer admin, notes/staff admin+mod, audit view admin)
 - [ ] 2.12 GREEN: add `PERMISSION_MATRIX` dict mapping action→allowed roles; update `check_actor_permission` to consult it
 - [ ] 2.13 RED: write failing tests TI-029→TI-030 (drift: reopen by number, no category error)
 - [ ] 2.14 GREEN: add `parse_ticket_ref(ref_str)` parsing `#0003`, `0003`, UUID, stripping `ticket:` prefix
-- [ ] 2.15 RED: write failing tests TI-031→TI-035 (note cap, delete ownership, under cap, author delete own)
-- [ ] 2.16 GREEN: add `validate_note_cap(note_count)` raises at 50; `validate_note_delete(note_row, actor_id)` raises if not owner
+- [x] 2.15 RED: write failing tests TI-031→TI-035 (note cap, delete ownership, under cap, author delete own)
+- [x] 2.16 GREEN: add `validate_note_cap(note_count)` raises at 50; `validate_note_delete(note_row, actor_id)` raises if not owner
 - [ ] 2.17 RED: write failing test TI-033 (guild scope — ticket/note/audit from guild B not leakable from guild A)
 - [ ] 2.18 RED: write failing tests TI-036→TI-038 (action view render, no-arg legacy reopen, audit paginated)
 - [ ] 2.19 GREEN: stub dashboard-side assertions as vitest `describe.skip` blocks in `dashboard/__tests__/contract/ticket-invariants.test.ts` — one test per ScenarioID with correct function name (e.g. `ti001OpenToClaimed`), asserting the pure TS invariant or marking as bot-only
