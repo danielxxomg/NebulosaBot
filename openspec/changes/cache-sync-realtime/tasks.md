@@ -68,13 +68,13 @@ Chain strategy: pending
 
 ## Phase 5: Remove webhook code
 
-- [ ] 5.1 RED: `test_webhook_config_removed` — assert `BotConfig` has no `webhook_secret`, `webhook_host`, `webhook_port`, `WEBHOOK_DEFAULT_HOST`, `WEBHOOK_DEFAULT_PORT` attributes.
-- [ ] 5.2 RED: `test_no_webhook_server_in_setup` — assert `setup_hook` does not start aiohttp runner.
-- [ ] 5.3 GREEN: delete `bot/webhook/server.py`, `bot/webhook/auth.py`, `bot/webhook/models.py`, `bot/webhook/__init__.py`.
-- [ ] 5.4 GREEN: remove webhook fields and defaults from `bot/config.py`.
-- [ ] 5.5 GREEN: remove webhook server start/stop from `bot/bot.py` (if not already removed in Phase 4).
-- [ ] 5.6 GREEN: delete `tests/test_webhook_server.py`, `tests/test_webhook_auth.py`, `tests/test_webhook_models.py`.
-- [ ] 5.7 Verify: `uv run pytest -v` — no webhook tests exist, all remaining pass.
+- [x] 5.1 RED: `test_webhook_config_removed` — assert `BotConfig` has no `webhook_secret`, `webhook_host`, `webhook_port`, `WEBHOOK_DEFAULT_HOST`, `WEBHOOK_DEFAULT_PORT` attributes.
+- [x] 5.2 RED: `test_no_webhook_server_in_setup` — assert `setup_hook` does not start aiohttp runner.
+- [x] 5.3 GREEN: delete `bot/webhook/server.py`, `bot/webhook/auth.py`, `bot/webhook/models.py`, `bot/webhook/__init__.py`.
+- [x] 5.4 GREEN: remove webhook fields and defaults from `bot/config.py`.
+- [x] 5.5 GREEN: remove webhook server start/stop from `bot/bot.py` (if not already removed in Phase 4).
+- [x] 5.6 GREEN: delete `tests/test_webhook_server.py`, `tests/test_webhook_auth.py`, `tests/test_webhook_models.py`.
+- [x] 5.7 Verify: `uv run pytest -v` — no webhook tests exist, all remaining pass.
 
 ## Phase 6: Dashboard cleanup
 
