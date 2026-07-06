@@ -72,13 +72,16 @@ def is_mod():
     """Require the configured Moderator role or Administrator permission.
 
     Decorator form of :func:`is_mod_check` for ``@app_commands.check()`` on
-    hybrid commands. Raises the appropriate discord.py exception when
-    :func:`is_mod_check` returns ``False``; returns ``True`` otherwise.
+    hybrid commands. The admin-OR-mod-role DECISION is delegated to
+    :func:`is_mod_check` (DRY — single source of truth for the permission
+    logic shared with the inline button-callback predicate). The decorator
+    translates ``is_mod_check``'s ``False`` into the appropriate discord.py
+    exception (``NoPrivateMessage`` / ``CheckFailure`` / ``MissingRole``).
 
     Check order (mirrors :func:`is_mod_check`):
         1. DM → ``NoPrivateMessage``
-        2. Administrator → pass
-        3. Configured mod role and user has it → pass
+        2. Administrator → pass (via is_mod_check)
+        3. Configured mod role and user has it → pass (via is_mod_check)
         4. Mod role unconfigured → ``CheckFailure``
         5. Mod role configured but user lacks it → ``MissingRole``
 
@@ -89,14 +92,18 @@ def is_mod():
     """
 
     async def predicate(interaction: discord.Interaction) -> bool:
+        # DM guard surfaces the specific NoPrivateMessage exception —
+        # is_mod_check only returns False for DMs (never raises).
         if not interaction.guild:
             raise app_commands.NoPrivateMessage(
                 "This command can only be used in a server."
             )
 
-        if interaction.user.guild_permissions.administrator:  # type: ignore[union-attr]
+        if await is_mod_check(interaction):
             return True
 
+        # is_mod_check returned False → translate into the precise discord.py
+        # exception by consulting the SAME shared role resolver (one source).
         mod_role_id = _resolve_mod_role_id(interaction)
 
         if mod_role_id is None:
@@ -106,10 +113,7 @@ def is_mod():
                 "Only administrators can use this command."
             )
 
-        if not _user_has_role(interaction.user, mod_role_id):
-            raise app_commands.MissingRole(mod_role_id)
-
-        return True
+        raise app_commands.MissingRole(mod_role_id)
 
     return app_commands.check(predicate)
 

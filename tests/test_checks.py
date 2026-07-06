@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
@@ -303,3 +303,37 @@ async def test_is_mod_wraps_is_mod_check_for_denied_user(
     # is_mod() raises (CheckFailure/MissingRole) when the predicate is False.
     with pytest.raises((app_commands.CheckFailure, app_commands.MissingRole)):
         await predicate(mock_interaction)
+
+
+@pytest.mark.asyncio
+async def test_is_mod_predicate_delegates_to_is_mod_check(
+    mock_interaction: MagicMock,
+) -> None:
+    """CRITICAL 6: is_mod()'s predicate MUST delegate the admin-OR-mod decision
+    to ``is_mod_check`` (DRY) rather than re-implementing the role logic.
+
+    Patching the module-level ``is_mod_check`` and asserting it was awaited
+    proves the delegation — the decorator reuses the inline predicate's
+    decision logic instead of duplicating it. The existing
+    ``test_is_mod_wraps_is_mod_check_*`` behavior tests assert the observable
+    outcome; this test asserts the structural (no-duplication) contract.
+    """
+    predicate = _unwrap_predicate(is_mod)
+
+    guild_id = 123456789
+    mod_role_id = 555555
+    mock_interaction.guild = MagicMock(spec=discord.Guild)
+    mock_interaction.guild_id = guild_id
+    mock_interaction.user.guild_permissions.administrator = False
+    mod_role = MagicMock(spec=discord.Role)
+    mod_role.id = mod_role_id
+    mock_interaction.user.roles = [mod_role]
+    mock_interaction.client._guild_mod_role_cache = {guild_id: str(mod_role_id)}
+
+    with patch(
+        "bot.utils.checks.is_mod_check", new=AsyncMock(return_value=True)
+    ) as spy:
+        result = await predicate(mock_interaction)
+
+    assert result is True
+    spy.assert_awaited_once_with(mock_interaction)
