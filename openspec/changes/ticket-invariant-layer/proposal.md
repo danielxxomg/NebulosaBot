@@ -40,7 +40,7 @@ Bot and dashboard enforce ticket invariants independently → 6 concrete drifts 
 - **Dashboard**: Mirror invariant checks in `ticket-actions.ts` (spec-mirrored, not code-shared). Reopen becomes deeplink.
 - **Spec doc**: Single source-of-truth — both sides implement against it.
 - **Contract tests**: pytest + vitest asserting same scenarios. Drift caught at build time.
-- **Migration**: `004_ticket_audit.sql` (new table) + transfer-status normalization UPDATE (backup + review count first).
+- **Migration**: `005_ticket_audit.sql` (new table) + transfer-status normalization UPDATE (backup + review count first).
 
 ## Affected Areas
 
@@ -53,7 +53,7 @@ Bot and dashboard enforce ticket invariants independently → 6 concrete drifts 
 | `dashboard/app/.../TicketRowActions.tsx` | Modified | Reopen button UX change |
 | `dashboard/app/.../NotesPanel.tsx` | Modified | Cap enforcement, delete ownership |
 | `openspec/specs/ticket-invariants/spec.md` | New | Shared invariant specification |
-| `migrations/004_ticket_audit.sql` | New | Audit table + transfer normalization |
+| `migrations/005_ticket_audit.sql` | New | Audit table + transfer normalization |
 
 ## Risks
 
