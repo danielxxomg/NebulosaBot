@@ -207,6 +207,22 @@ async def _default_client_factory(supabase_url: str, supabase_key: str) -> Any:
     )
 
 
+def _silence_cancelled_task(task: asyncio.Task[None]) -> None:
+    """``add_done_callback`` sink that retrieves a task's exception.
+
+    Cancelling a poll/health task that is mid-``_poll_once`` can surface an
+    exception asyncio would otherwise log as "Task exception was never
+    retrieved".  This sink marks the exception retrieved for non-cancelled
+    completions and is a no-op for cancelled tasks (where ``exception()``
+    would itself raise ``CancelledError``).
+    """
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.debug("Background task ended with exception: %r", exc)
+
+
 # ------------------------------------------------------------------
 # RealtimeCacheSubscriber
 # ------------------------------------------------------------------
@@ -384,6 +400,35 @@ class RealtimeCacheSubscriber:
             return
 
     # ------------------------------------------------------------------
+    # Poll task lifecycle helpers
+    # ------------------------------------------------------------------
+
+    def _cancel_poll_task(self) -> None:
+        """Cancel the poll fallback task and clear the slot.
+
+        Called on WebSocket recovery (``SUBSCRIBED``) so the poll loop stops
+        per spec R4.  Sync-safe: ``Task.cancel`` only schedules cancellation;
+        the done-callback sink retrieves any exception so asyncio does not
+        log "Task exception was never retrieved".  ``stop()`` already guards
+        a ``None`` ``_poll_task``.
+        """
+        task = self._poll_task
+        if task is not None and not task.done():
+            task.cancel()
+            task.add_done_callback(_silence_cancelled_task)
+        self._poll_task = None
+
+    def _ensure_poll_task(self) -> None:
+        """Recreate the poll fallback task if it is missing or finished.
+
+        Called when the health check enables the fallback — handles the case
+        where a prior recovery cancelled the task (``_poll_task is None``) so
+        the poll loop actually runs again instead of being flagged dormant.
+        """
+        if self._poll_task is None or self._poll_task.done():
+            self._poll_task = asyncio.create_task(self._poll_loop())
+
+    # ------------------------------------------------------------------
     # Public integration hook
     # ------------------------------------------------------------------
 
@@ -511,6 +556,11 @@ class RealtimeCacheSubscriber:
             # Reset poll timestamp so the next fallback cycle covers
             # the full history window if the WS drops again.
             self._last_check = "1970-01-01T00:00:00+00:00"
+            # Spec R4: the poll loop MUST stop on WebSocket recovery — not
+            # merely stay dormant behind a flag.  Cancel the running task
+            # and clear the slot; ``_health_check_once`` recreates it if the
+            # socket goes unhealthy again.
+            self._cancel_poll_task()
             logger.info("Realtime channel SUBSCRIBED")
         elif status == "CHANNEL_ERROR":
             self._status_since = now
@@ -538,6 +588,10 @@ class RealtimeCacheSubscriber:
                     now - self._status_since,
                 )
                 self._poll_fallback_enabled = True
+                # Spec R4 symmetry: recovery cancels the poll task, so a later
+                # unhealthy spell MUST recreate it — otherwise the fallback
+                # would never run again after the first recovery.
+                self._ensure_poll_task()
         else:
             logger.debug("Realtime status=%s", self._status)
 

@@ -603,9 +603,14 @@ class TestHealthCheck:
         with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
             sub._status_since = 930.0  # 70s ago
 
-        await sub._health_check_once()
+        try:
+            await sub._health_check_once()
 
-        assert sub._poll_fallback_enabled is True
+            assert sub._poll_fallback_enabled is True
+        finally:
+            # _health_check_once now recreates the poll task when enabling the
+            # fallback — clean it up so no background task leaks past the test.
+            await sub.stop()
 
     @pytest.mark.asyncio
     async def test_recovery_disables_fallback(self, cache: TTLCache) -> None:
@@ -714,17 +719,71 @@ class TestPollFallback:
 
     @pytest.mark.asyncio
     async def test_poll_stops_on_recovery(self, cache: TTLCache) -> None:
-        """When status returns to SUBSCRIBED, poll fallback MUST deactivate and reset."""
+        """Spec R4: when status returns to SUBSCRIBED the poll loop MUST stop
+        and ``last_check`` reset — not merely flagged dormant behind a flag.
+
+        A permanently-running dormant task violates the spec clause "the poll
+        loop stops" (``spec.md:106-110``); this regression test asserts the
+        task itself is cancelled/cleared, not just the fallback flag.
+        """
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
-        sub._poll_fallback_enabled = True
-        sub._last_check = "2025-06-01T10:00:00+00:00"
+        await sub.start()
+        try:
+            poll_task_before = sub._poll_task
+            assert poll_task_before is not None  # start() spawns the poll task
+            sub._poll_fallback_enabled = True
+            sub._last_check = "2025-06-01T10:00:00+00:00"
 
-        # Sync callback — no await.
-        sub._on_subscribe("SUBSCRIBED", None)
+            # Sync callback — no await.
+            sub._on_subscribe("SUBSCRIBED", None)
 
-        assert sub._poll_fallback_enabled is False
-        assert sub._last_check == "1970-01-01T00:00:00+00:00"
+            assert sub._poll_fallback_enabled is False
+            assert sub._last_check == "1970-01-01T00:00:00+00:00"
+            # The poll task MUST be stopped — cleared to None, or done/cancelled.
+            # A live dormant task (the prior bug) fails this assertion.
+            assert (
+                sub._poll_task is None
+                or sub._poll_task.done()
+                or sub._poll_task.cancelled()
+            )
+        finally:
+            await sub.stop()
+
+    @pytest.mark.asyncio
+    async def test_poll_task_recreated_when_unhealthy_after_recovery(
+        self, cache: TTLCache
+    ) -> None:
+        """After recovery cancels the poll task, a subsequent unhealthy spell
+        (>60s) MUST recreate the poll task so the fallback can run again.
+
+        Symmetric to ``test_poll_stops_on_recovery``: stop-on-recover is only
+        correct if a later unhealthy period restarts the loop.
+        """
+        client = _make_client_mock()
+        sub = _make_subscriber(cache, client)
+        await sub.start()
+        try:
+            # Recover — cancels and clears the poll task.
+            sub._on_subscribe("SUBSCRIBED", None)
+            assert (
+                sub._poll_task is None
+                or sub._poll_task.done()
+                or sub._poll_task.cancelled()
+            )
+
+            # Now go unhealthy for >60s and run a health check.
+            sub._status = "CHANNEL_ERROR"
+            with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
+                sub._status_since = 930.0  # 70s ago
+                await sub._health_check_once()
+
+            assert sub._poll_fallback_enabled is True
+            # The poll task MUST have been recreated — not None, not done.
+            assert sub._poll_task is not None
+            assert not sub._poll_task.done()
+        finally:
+            await sub.stop()
 
 
 # ===========================================================================
