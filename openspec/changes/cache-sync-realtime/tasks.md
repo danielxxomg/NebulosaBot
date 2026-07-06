@@ -78,10 +78,10 @@ Chain strategy: pending
 
 ## Phase 6: Dashboard cleanup
 
-- [ ] 6.1 RED: assert `notifyWebhookSync` import removed from `dashboard/lib/actions/guild-actions.ts`, `economy-actions.ts`, `greeting-actions.ts`. Assert actions still succeed.
-- [ ] 6.2 GREEN: delete `dashboard/lib/webhook-sync.ts` and `dashboard/__tests__/lib/webhook-sync.test.ts`.
-- [ ] 6.3 GREEN: remove `notifyWebhookSync()` calls and imports from 3 action files.
-- [ ] 6.4 Verify: `npm run test` — dashboard tests pass.
+- [x] 6.1 RED: assert `notifyWebhookSync` import removed from `dashboard/lib/actions/guild-actions.ts`, `economy-actions.ts`, `greeting-actions.ts`. Assert actions still succeed.
+- [x] 6.2 GREEN: delete `dashboard/lib/webhook-sync.ts` and `dashboard/__tests__/lib/webhook-sync.test.ts`.
+- [x] 6.3 GREEN: remove `notifyWebhookSync()` calls and imports from 3 action files.
+- [x] 6.4 Verify: `npm run test` — dashboard tests pass.
 
 ## Phase 7: Env + app.py cleanup
 
