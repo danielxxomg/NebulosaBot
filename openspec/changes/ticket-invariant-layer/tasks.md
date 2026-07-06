@@ -79,18 +79,18 @@ Chain strategy: pending
 
 ## Phase 4: Dashboard Changes (PR 3)
 
-- [ ] 4.1 RED: write failing vitest `ti001OpenToClaimed` asserting TS `validateStatusTransition("open", "claim")` returns success
-- [ ] 4.2 GREEN: create `dashboard/lib/ticket-invariants.ts` — TS mirror of Python invariants (status transitions, permission matrix, parentId validation, dedup hash, note cap)
-- [ ] 4.3 RED: write failing vitest `ti029DashboardReopenNoMutation` asserting `getReopenGuidance()` returns command string without DB update
-- [ ] 4.4 GREEN: in `dashboard/lib/actions/ticket-actions.ts` — replace `reopenTicket()` with `getReopenGuidance(ticketId)` loading ticket+guild, checking `ticketCategoryId`, returning `{ ticketNumber, command }`; add `transferTicket` status='claimed' update; add note dedup+cap to `addTicketNote`; add author-only check to `deleteTicketNote`; add `getAuditRows(guildId, limit, offset)`; add `getTicketByNumber` query
-- [ ] 4.5 RED: write failing vitest `ti030ReopenNoCategoryError` asserting missing ticketCategoryId returns error
-- [ ] 4.6 GREEN: in `getReopenGuidance()` — check guild.ticketCategoryId; return error if missing
-- [ ] 4.7 RED: write failing vitest for TI-031 (note cap), TI-032 (delete ownership), TI-034 (under cap), TI-035 (author delete own)
-- [ ] 4.8 GREEN: enforce cap=50 + dedup in `addTicketNote`; enforce authorId match in `deleteTicketNote`
-- [ ] 4.9 RED: write failing vitest `ti038AuditPaginated` asserting paginated audit rows returned
+- [x] 4.1 RED: write failing vitest `ti001OpenToClaimed` asserting TS `validateStatusTransition("open", "claim")` returns success
+- [x] 4.2 GREEN: create `dashboard/lib/ticket-invariants.ts` — TS mirror of Python invariants (status transitions, permission matrix, parentId validation, dedup hash, note cap)
+- [x] 4.3 RED: write failing vitest `ti029DashboardReopenNoMutation` asserting `getReopenGuidance()` returns command string without DB update
+- [x] 4.4 GREEN: in `dashboard/lib/actions/ticket-actions.ts` — replace `reopenTicket()` with `getReopenGuidance(ticketId)` loading ticket+guild, checking `ticketCategoryId`, returning `{ ticketNumber, command }`; add `transferTicket` status='claimed' update; add note dedup+cap to `addTicketNote`; add author-only check to `deleteTicketNote`; add `getAuditRows(guildId, limit, offset)`; add `getTicketByNumber` query
+- [x] 4.5 RED: write failing vitest `ti030ReopenNoCategoryError` asserting missing ticketCategoryId returns error
+- [x] 4.6 GREEN: in `getReopenGuidance()` — check guild.ticketCategoryId; return error if missing
+- [x] 4.7 RED: write failing vitest for TI-031 (note cap), TI-032 (delete ownership), TI-034 (under cap), TI-035 (author delete own)
+- [x] 4.8 GREEN: enforce cap=50 + dedup in `addTicketNote`; enforce authorId match in `deleteTicketNote`
+- [x] 4.9 RED: write failing vitest `ti038AuditPaginated` asserting paginated audit rows returned
 - [ ] 4.10 GREEN: create `ReopenTicketDialog` component in `dashboard/app/.../tickets/_components/ReopenTicketDialog.tsx` — shows ticket number (copyable) + `/reopen ticket:#XXXX` command; update `TicketRowActions.tsx` to call `getReopenGuidance` and show dialog instead of direct mutation
 - [ ] 4.11 RED: write failing vitest for TI-019→TI-021 (audit every success, every denied, guild scope) — dashboard-side assertions
 - [ ] 4.12 GREEN: add `TicketAudit` type to `dashboard/lib/types.ts` (id, guildId, ticketId, action, actorId, outcome, reason, createdAt); create audit panel component in `dashboard/app/.../tickets/_components/AuditPanel.tsx` with pagination
-- [ ] 4.13 GREEN: update `NotesPanel.tsx` — disable add-note form at cap=50 with message; show delete button only for own notes (compare authorId to session user)
+- [x] 4.13 GREEN: update `NotesPanel.tsx` — disable add-note form at cap=50 with message; show delete button only for own notes (compare authorId to session user)
 - [ ] 4.14 GREEN: enable all 38 vitest contract tests (remove `describe.skip`) — verify each ScenarioID passes against TS invariant logic + server actions
 - [ ] 4.15 REFACTOR: extract shared mock factories for ticket/guild/note across dashboard contract tests
