@@ -491,8 +491,13 @@ class RealtimeCacheSubscriber:
     # on_subscribe callback
     # ------------------------------------------------------------------
 
-    async def _on_subscribe(self, status: str, err: object) -> None:
-        """Track subscription status, log, and toggle the poll fallback."""
+    def _on_subscribe(self, status: str, err: object) -> None:
+        """Synchronous callback for channel.subscribe().
+
+        The Supabase Realtime SDK invokes this callback synchronously;
+        all operations are non-blocking attribute updates and logging so
+        no ``asyncio.create_task`` wrapper is needed.
+        """
         self._status = status
         now = time.monotonic()
         if self._status_since == 0.0:
@@ -503,6 +508,9 @@ class RealtimeCacheSubscriber:
                 self._subscribed_at = now
             self._status_since = now
             self._poll_fallback_enabled = False
+            # Reset poll timestamp so the next fallback cycle covers
+            # the full history window if the WS drops again.
+            self._last_check = "1970-01-01T00:00:00+00:00"
             logger.info("Realtime channel SUBSCRIBED")
         elif status == "CHANNEL_ERROR":
             self._status_since = now
