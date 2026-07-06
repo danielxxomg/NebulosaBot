@@ -946,6 +946,10 @@ async def test_get_notes_returns_list(
     mock_db: AsyncMock,
 ) -> None:
     """get_notes MUST delegate to the DB and return TicketNote models."""
+    mock_db.get_ticket.return_value = {
+        "id": "ticket-uuid-003",
+        "guildId": "123456789",
+    }
     mock_db.get_ticket_notes.return_value = [_note_row(note_id=f"n-{i}") for i in range(3)]
 
     notes = await service.get_notes("ticket-uuid-003")
@@ -961,11 +965,44 @@ async def test_get_notes_empty(
     mock_db: AsyncMock,
 ) -> None:
     """get_notes on a ticket with no notes MUST return an empty list."""
+    mock_db.get_ticket.return_value = {
+        "id": "ticket-uuid-003",
+        "guildId": "123456789",
+    }
     mock_db.get_ticket_notes.return_value = []
 
     notes = await service.get_notes("ticket-uuid-003")
 
     assert notes == []
+
+
+@pytest.mark.asyncio
+async def test_get_notes_audits_success(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """CRITICAL 5: get_notes (the list op) MUST write a note_list audit row.
+
+    Spec ``ticket-service/spec.md``: "Every ticket operation (claim, close,
+    reopen, transfer, subticket create, note add, note list, note delete)
+    MUST write a ``ticket_audit`` row" — note LIST is in that list. The audit
+    row is scoped to the ticket's guild (resolved via a get_ticket pre-read)
+    with action=``note_list`` and outcome=``success``.
+    """
+    ticket_id = "ticket-uuid-003"
+    guild_id = "123456789"
+    mock_db.get_ticket.return_value = {"id": ticket_id, "guildId": guild_id}
+    mock_db.get_ticket_notes.return_value = []
+
+    await service.get_notes(ticket_id)
+
+    calls = mock_db.insert_audit_row.call_args_list
+    assert len(calls) == 1, calls
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "note_list"
+    assert kwargs["outcome"] == "success"
+    assert kwargs["guild_id"] == guild_id
+    assert kwargs["ticket_id"] == ticket_id
 
 
 @pytest.mark.asyncio
@@ -1355,21 +1392,81 @@ async def test_subticket_create_audits_success(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "case, parent_row_kwargs, parent_id, match",
+    [
+        # CRITICAL 3: parent-missing MUST audit (spec: every denial audits).
+        ("parent_missing", None, "missing-parent", r"[Pp]arent"),
+        # CRITICAL 3: self-reference denial MUST audit. _parent_row hardcodes
+        # id="parent-uuid-001", so the calling parent_id MUST equal that for
+        # the parentId==id self-reference guard to trigger.
+        (
+            "self_reference",
+            {"parent_id": "parent-uuid-001"},
+            "parent-uuid-001",
+            r"self-referential",
+        ),
+        # CRITICAL 3: depth-max-2 denial MUST audit (parent already a child).
+        (
+            "depth",
+            {"parent_id": "grandparent-uuid"},
+            "parent-uuid-001",
+            r"depth|subticket|sub",
+        ),
+        # CRITICAL 4: cross-guild denial MUST audit scoped to CALLER guild.
+        (
+            "cross_guild",
+            {"parent_id": None, "guild_id": "111000111"},
+            "parent-other-guild",
+            r"guild|same",
+        ),
+    ],
+)
 async def test_subticket_create_denied_audited(
-    service: TicketService, mock_db: AsyncMock
+    service: TicketService,
+    mock_db: AsyncMock,
+    case: str,
+    parent_row_kwargs: dict | None,
+    parent_id: str,
+    match: str,
 ) -> None:
-    """Subticket with a missing parent MUST audit denied + re-raise."""
-    mock_db.get_ticket.return_value = None
+    """CRITICAL 3+4: EVERY create_subticket invariant denial MUST write a
+    ``ticket_audit`` row (action=subticket_create, outcome=denied, non-empty
+    reason) scoped to the CALLER's ``guild_id`` (the guild the operation was
+    attempted FROM), then re-raise ``ValueError``.
 
-    with pytest.raises(ValueError, match=r"[Pp]arent"):
+    Spec ``ticket-service/spec.md``: audit logging on ticket operations lists
+    "subticket create" and requires an audit row on every operation,
+    including denials (the Invariant-violation-audited scenario). The audit
+    guild scope is the caller's guild (the operation origin), NOT the
+    parent's guild — for cross-guild attempts the parent's guild is a
+    different guild and auditing under it would leak the denial into the
+    wrong guild's audit trail.
+    """
+    caller_guild = "123456789"
+    if parent_row_kwargs is None:
+        mock_db.get_ticket.return_value = None
+    else:
+        mock_db.get_ticket.return_value = _parent_row(**parent_row_kwargs)
+
+    with pytest.raises(ValueError, match=match):
         await service.create_subticket(
-            parent_id="missing", author_id="111111111", category_id=None,
-            channel_id="666666666", guild_id="123456789",
+            parent_id=parent_id,
+            author_id="111111111",
+            category_id=None,
+            channel_id="666666666",
+            guild_id=caller_guild,
         )
 
     mock_db.insert_ticket.assert_not_awaited()
-    # No ticket row → no guildId known → audit skipped (cannot scope).
-    mock_db.insert_audit_row.assert_not_awaited()
+    mock_db.insert_audit_row.assert_awaited_once()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "subticket_create", case
+    assert kwargs["outcome"] == "denied", case
+    assert kwargs["reason"], f"{case}: reason MUST be non-empty"
+    # CRITICAL 4: audit scoped to the CALLER's guild, never the parent's.
+    assert kwargs["guild_id"] == caller_guild, case
+    assert kwargs["ticket_id"] == parent_id, case
 
 
 @pytest.mark.asyncio

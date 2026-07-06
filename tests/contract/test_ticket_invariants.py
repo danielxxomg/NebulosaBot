@@ -352,6 +352,11 @@ async def test_ti019_audit_every_success() -> None:
     db.get_ticket_notes.return_value = [_contract_note_row(author_id="999999999")]
     await service.delete_note("note-uuid-001", author_id="999999999", ticket_id=ticket_id)
 
+    # --- get_notes → success (note_list audited per spec) ------------------
+    db.get_ticket.return_value = {"id": ticket_id, "guildId": "123456789"}
+    db.get_ticket_notes.return_value = []
+    await service.get_notes(ticket_id)
+
     # --- create_subticket → success ---------------------------------------
     parent = _contract_ticket_row(ticket_id="parent-uuid-001", status="open")
     parent["guildId"] = "123456789"
@@ -385,7 +390,11 @@ async def test_ti019_audit_every_success() -> None:
     actions = [r[0] for r in rows]
     assert rows, "no audit rows written"
     assert all(r[1] == "success" for r in rows), rows
-    expected_actions = {"claim", "close", "transfer", "note_add", "note_delete", "subticket_create", "reopen"}
+    expected_actions = {
+        "claim", "close", "transfer",
+        "note_add", "note_list", "note_delete",
+        "subticket_create", "reopen",
+    }
     assert set(actions) == expected_actions, actions
     assert len(rows) == len(expected_actions), (actions, rows)
 
