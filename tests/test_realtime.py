@@ -600,13 +600,12 @@ class TestHealthCheck:
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
         sub._status = "CHANNEL_ERROR"
-        with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
-            sub._status_since = 930.0  # 70s ago
-
         try:
-            await sub._health_check_once()
+            with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
+                sub._status_since = 930.0  # 70s ago
+                await sub._health_check_once()
 
-            assert sub._poll_fallback_enabled is True
+                assert sub._poll_fallback_enabled is True
         finally:
             # _health_check_once now recreates the poll task when enabling the
             # fallback — clean it up so no background task leaks past the test.
