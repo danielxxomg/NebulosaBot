@@ -85,9 +85,9 @@ Chain strategy: pending
 
 ## Phase 7: Env + app.py cleanup
 
-- [ ] 7.1 GREEN: simplify `app.py` to bot-only (<20 lines): dotenv, logging, import `bot.__main__.main`, `asyncio.run()`. Remove cloudflared, aiohttp imports.
-- [ ] 7.2 GREEN: remove `WEBHOOK_SECRET`, `WEBHOOK_HOST`, `WEBHOOK_PORT`, `TUNNEL_TOKEN` from `.env.example`.
-- [ ] 7.3 GREEN: remove `WEBHOOK_URL`, `WEBHOOK_SECRET` from `dashboard/.env.local.example`.
+- [x] 7.1 GREEN: simplify `app.py` to bot-only (<20 lines): dotenv, logging, import `bot.__main__.main`, `asyncio.run()`. Remove cloudflared, aiohttp imports.
+- [x] 7.2 GREEN: remove `WEBHOOK_SECRET`, `WEBHOOK_HOST`, `WEBHOOK_PORT`, `TUNNEL_TOKEN` from `.env.example`.
+- [x] 7.3 GREEN: remove `WEBHOOK_URL`, `WEBHOOK_SECRET` from `dashboard/.env.local.example`.
 - [ ] 7.4 Verify: `uv run pytest --cov=bot --cov-report=term --cov-fail-under=70` + `npm run test`. Zero webhook references in `rg -l webhook bot/ dashboard/lib/`.
 
 ## Phase 8: Final verification
