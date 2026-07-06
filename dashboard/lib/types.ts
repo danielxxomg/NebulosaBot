@@ -151,6 +151,35 @@ export interface TicketNote {
   createdAt: string;
 }
 
+// ── Ticket Audit ─────────────────────────────────────────────────────────
+
+/** Outcome of an audited ticket operation. */
+export type AuditOutcome = "success" | "denied" | "error";
+
+/**
+ * Audit log row for a ticket operation (mirrors the `ticket_audit` table from
+ * migration 005). Guild-scoped — every row belongs to a guild; queries MUST
+ * filter by `guildId` so audit rows never leak across guilds.
+ */
+export interface TicketAudit {
+  /** UUID primary key. */
+  id: string;
+  /** Discord guild ID (the guild the audited operation targeted). */
+  guildId: string;
+  /** UUID of the ticket the operation touched (denied ops still record the target id). */
+  ticketId: string;
+  /** The audited action: claim | close | reopen | transfer | subticket_create | note_add | note_list | note_delete. */
+  action: string;
+  /** Discord user ID of the actor (null for system/unknown). */
+  actorId: string | null;
+  /** Operation outcome: success (op completed), denied (invariant/permission vetoed), error (unexpected). */
+  outcome: AuditOutcome;
+  /** Human-readable reason (non-empty for denied/error rows; null for success). */
+  reason: string | null;
+  /** ISO 8601 timestamp of the audit entry. */
+  createdAt: string;
+}
+
 // ── Ticket Category ──────────────────────────────────────────────────────
 
 export interface TicketCategory {
