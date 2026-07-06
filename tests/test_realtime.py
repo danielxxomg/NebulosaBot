@@ -529,25 +529,52 @@ class TestSelfEchoFiltering:
 
 
 class TestOnSubscribe:
-    """on_subscribe(status, err) — tracks status/timestamp, logs, toggles fallback."""
+    """on_subscribe(status, err) — synchronous callback, tracks status, resets poll."""
 
-    @pytest.mark.asyncio
-    async def test_subscribed_status_stored(self, cache: TTLCache) -> None:
+    def test_on_subscribe_is_synchronous(self, cache: TTLCache) -> None:
+        """Spec: subscribe callback MUST be synchronous (SDK invokes it directly)."""
+        import inspect
+
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
 
-        await sub._on_subscribe("SUBSCRIBED", None)
+        assert not inspect.iscoroutinefunction(sub._on_subscribe)
+
+    def test_subscribed_status_stored(self, cache: TTLCache) -> None:
+        client = _make_client_mock()
+        sub = _make_subscriber(cache, client)
+
+        sub._on_subscribe("SUBSCRIBED", None)
 
         assert sub._status == "SUBSCRIBED"
 
-    @pytest.mark.asyncio
-    async def test_channel_error_status_stored(self, cache: TTLCache) -> None:
+    def test_channel_error_status_stored(self, cache: TTLCache) -> None:
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
 
-        await sub._on_subscribe("CHANNEL_ERROR", Exception("boom"))
+        sub._on_subscribe("CHANNEL_ERROR", Exception("boom"))
 
         assert sub._status == "CHANNEL_ERROR"
+
+    def test_subscribed_disables_poll_fallback(self, cache: TTLCache) -> None:
+        """SUBSCRIBED status MUST set _poll_fallback_enabled to False."""
+        client = _make_client_mock()
+        sub = _make_subscriber(cache, client)
+        sub._poll_fallback_enabled = True
+
+        sub._on_subscribe("SUBSCRIBED", None)
+
+        assert sub._poll_fallback_enabled is False
+
+    def test_subscribed_resets_last_check(self, cache: TTLCache) -> None:
+        """SUBSCRIBED status MUST reset _last_check so next poll starts fresh."""
+        client = _make_client_mock()
+        sub = _make_subscriber(cache, client)
+        sub._last_check = "2025-06-01T10:00:00+00:00"
+
+        sub._on_subscribe("SUBSCRIBED", None)
+
+        assert sub._last_check == "1970-01-01T00:00:00+00:00"
 
 
 # ===========================================================================
@@ -589,8 +616,8 @@ class TestHealthCheck:
         with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
             sub._status_since = 930.0
 
-        # Recover.
-        await sub._on_subscribe("SUBSCRIBED", None)
+        # Recover — sync callback, no await.
+        sub._on_subscribe("SUBSCRIBED", None)
         await sub._health_check_once()
 
         assert sub._poll_fallback_enabled is False
@@ -687,15 +714,17 @@ class TestPollFallback:
 
     @pytest.mark.asyncio
     async def test_poll_stops_on_recovery(self, cache: TTLCache) -> None:
-        """When status returns to SUBSCRIBED, _poll_loop MUST cancel and reset."""
+        """When status returns to SUBSCRIBED, poll fallback MUST deactivate and reset."""
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
         sub._poll_fallback_enabled = True
+        sub._last_check = "2025-06-01T10:00:00+00:00"
 
-        await sub._on_subscribe("SUBSCRIBED", None)
-        await sub._health_check_once()
+        # Sync callback — no await.
+        sub._on_subscribe("SUBSCRIBED", None)
 
         assert sub._poll_fallback_enabled is False
+        assert sub._last_check == "1970-01-01T00:00:00+00:00"
 
 
 # ===========================================================================
