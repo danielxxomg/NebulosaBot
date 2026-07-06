@@ -26,6 +26,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Any
 
 from bot.core.cache import TTLCache
@@ -271,7 +272,7 @@ class RealtimeCacheSubscriber:
         self._event_count: int = 0
         self._poll_fallback_enabled: bool = False
         # Poll from epoch zero so the first cycle covers the full history.
-        self._last_check: float = 0.0
+        self._last_check: str = "1970-01-01T00:00:00+00:00"
 
         # Self-echo + ticket resolver.
         self.recent_writes = RecentWriteSet()
@@ -430,7 +431,14 @@ class RealtimeCacheSubscriber:
             return
 
         # Self-echo filter: suppress events for rows the bot just wrote.
-        echo_identifier = _extract_ticket_id(record) if table == "ticket_note" else guild_id
+        # Key by the row's own primary-key id for every table so
+        # mark_recent_write("{table}", row_id) matches reliably.
+        if table in ("ticket", "ticket_note"):
+            echo_identifier = record.get("id")
+            if echo_identifier is not None:
+                echo_identifier = str(echo_identifier)
+        else:
+            echo_identifier = guild_id
         if echo_identifier is not None and await self.recent_writes.contains(table, echo_identifier):
             logger.debug(
                 "Self-echo detected for %s:%s — skipping invalidation",
@@ -542,7 +550,7 @@ class RealtimeCacheSubscriber:
         full-scanned.  ``last_check`` advances only after the cycle runs.
         """
         client = await self._ensure_client()
-        now = time.monotonic()
+        now = datetime.now(UTC).isoformat()
         window_end = now
 
         # Incremental ticket query — only tickets touched since last_check.
@@ -559,7 +567,7 @@ class RealtimeCacheSubscriber:
 
         # Config tables have no updated_at — invalidate every guild row.
         for table, key in (("guild", "id"), ("greeting_config", "guildId")):
-            builder = client.table(table)
+            builder = client.table(table).select(key)
             for row in await self._safe_rows(builder):
                 guild_id = _row_value(row, key)
                 if guild_id is not None:
@@ -582,7 +590,7 @@ class RealtimeCacheSubscriber:
                 if isinstance(data, list):
                     return data
             except Exception:
-                logger.debug("poll execute() failed — falling back to .data")
+                logger.exception("poll execute() failed — falling back to .data")
 
         data = getattr(builder, "data", None)
         return data if isinstance(data, list) else []

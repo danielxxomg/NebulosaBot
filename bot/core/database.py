@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -64,12 +65,15 @@ class Database:
     Call ``connect()`` before any data-access methods.
     """
 
-    __slots__ = ("_client", "_key", "_url")
+    __slots__ = ("_client", "_key", "_on_write", "_url")
 
     def __init__(self, url: str, key: str) -> None:
         self._url = url
         self._key = key
         self._client: Any = None
+        # Optional callback wired by RealtimeCacheSubscriber for self-echo
+        # filtering.  Signature: async (table: str, identifier: str) -> None
+        self._on_write: Callable[[str, str], Awaitable[None]] | None = None
 
     # -- lifecycle ----------------------------------------------------
 
@@ -137,6 +141,8 @@ class Database:
 
         logger.debug("DB upsert_guild(%r)", config.id)
         self._client.table("guild").upsert(config.to_db_dict()).execute()
+        if self._on_write is not None:
+            await self._on_write("guild", str(config.id))
 
     async def ensure_guild_exists(self, guild_id: str) -> None:
         """Insert default guild config only if the row doesn't exist.
@@ -304,6 +310,8 @@ class Database:
         )
         response = self._client.table("ticket").insert(row).execute()
         rows = _unwrap(response)
+        if self._on_write is not None:
+            await self._on_write("ticket", ticket_id)
         return rows[0] if rows else {}
 
     async def get_tickets_by_parent(self, parent_id: str) -> list[dict]:
@@ -355,6 +363,8 @@ class Database:
         )
         response = self._client.table("ticket_note").insert(row).execute()
         rows = _unwrap(response)
+        if self._on_write is not None:
+            await self._on_write("ticket_note", note_id)
         return rows[0] if rows else {}
 
     async def get_ticket_notes(self, ticket_id: str, limit: int = 50) -> list[dict]:
@@ -908,6 +918,8 @@ class Database:
 
         logger.debug("DB upsert_greeting_config(%r)", config.guild_id)
         self._client.table("greeting_config").upsert(config.to_db_dict()).execute()
+        if self._on_write is not None:
+            await self._on_write("greeting_config", str(config.guild_id))
 
     async def get_member_rank(
         self, guild_id: str, user_id: str, sort_by: str = "xp"
