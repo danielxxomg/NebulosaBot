@@ -563,3 +563,145 @@ def test_migration_006_is_idempotent() -> None:
         assert "IF EXISTS" in stmt.upper(), (
             "Non-idempotent DROP TABLE — MUST use IF EXISTS"
         )
+
+
+# ===========================================================================
+# Migration sequence -- final state (user table removed after 001-006)
+# ===========================================================================
+
+
+def _read_all_migrations_in_order() -> list[str]:
+    """Return SQL text for each migration file in numeric order."""
+    migration_files = sorted(MIGRATIONS_DIR.glob("*.sql"))
+    texts: list[str] = []
+    for f in migration_files:
+        assert f.is_file(), f"Migration file missing: {f}"
+        texts.append(f.read_text())
+    return texts
+
+
+def test_final_state_has_no_user_table_after_all_migrations() -> None:
+    """GIVEN all migrations 001-006 run in order, WHEN the final state is
+    checked, THEN the user table does not exist (Migration 006 DROP cancels
+    Migration 001 CREATE).
+
+    This is a static analysis test: verify that 006_drop_user_table.sql
+    contains the DROP TABLE that counters the CREATE TABLE in 001.
+    """
+    create_sql = (MIGRATIONS_DIR / "001_initial_schema.sql").read_text()
+    drop_sql = (MIGRATIONS_DIR / "006_drop_user_table.sql").read_text()
+
+    # Migration 001 creates the user table (even though the final state won't have it)
+    assert re.search(
+        r'CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+"user"',
+        create_sql,
+        re.IGNORECASE,
+    ), "Migration 001 should CREATE the user table (it will be dropped by 006)"
+
+    # Migration 006 drops the user table — this is what ensures the final state
+    assert re.search(
+        r'DROP\s+TABLE\s+IF\s+EXISTS\s+"user"',
+        drop_sql,
+        re.IGNORECASE,
+    ), "Migration 006 MUST DROP the user table to achieve the final state"
+
+    # Migration 006 also drops all 4 FK constraints referencing user(id)
+    expected_constraints = [
+        "member_userId_fkey",
+        "infraction_targetId_fkey",
+        "infraction_moderatorId_fkey",
+        "ticket_authorId_fkey",
+    ]
+    for constraint in expected_constraints:
+        assert re.search(
+            rf'DROP\s+CONSTRAINT\s+IF\s+EXISTS\s+"?{re.escape(constraint)}"?',
+            drop_sql,
+            re.IGNORECASE,
+        ), f"Migration 006 MUST DROP CONSTRAINT {constraint}"
+
+
+def test_no_fk_references_to_user_table_in_final_schema() -> None:
+    """After all migrations through 006, no active FK references user(id).
+
+    Static analysis: scan all migration SQL and verify that any
+    REFERENCES "user"(id) from 001 are countered by DROP CONSTRAINT in 006.
+    """
+    create_sql = (MIGRATIONS_DIR / "001_initial_schema.sql").read_text()
+    drop_sql = (MIGRATIONS_DIR / "006_drop_user_table.sql").read_text()
+
+    # Count how many FK references to "user"(id) exist in 001
+    fk_refs = re.findall(
+        r'REFERENCES\s+"user"\s*\(\s*id\s*\)',
+        create_sql,
+        re.IGNORECASE,
+    )
+    assert len(fk_refs) == 4, f"Expected 4 FK references to user(id) in 001, found {len(fk_refs)}"
+
+    # Count how many FK constraints 006 drops
+    fk_drops = re.findall(
+        r"DROP\s+CONSTRAINT\s+IF\s+EXISTS",
+        drop_sql,
+        re.IGNORECASE,
+    )
+    assert len(fk_drops) == 4, f"Expected 4 DROP CONSTRAINT in 006, found {len(fk_drops)}"
+
+
+# ===========================================================================
+# Migration 007 — realtime publication (idempotent, reproducibility)
+# ===========================================================================
+
+MIGRATION_007 = MIGRATIONS_DIR / "007_realtime_publication.sql"
+
+
+def test_migration_007_file_exists() -> None:
+    """Migration 007 artifact MUST exist at migrations/007_realtime_publication.sql."""
+    assert MIGRATION_007.is_file(), f"Migration file missing: {MIGRATION_007}"
+
+
+def test_migration_007_adds_tables_to_realtime_publication() -> None:
+    """Migration 007 MUST add guild, greeting_config, ticket, ticket_note
+    to the supabase_realtime publication for CDC support.
+
+    The publication is already configured in the live Supabase DB — this
+    migration exists purely for reproducibility.
+    """
+    sql = MIGRATION_007.read_text()
+
+    # Must reference the supabase_realtime publication
+    assert re.search(
+        r"ALTER\s+PUBLICATION\s+supabase_realtime",
+        sql,
+        re.IGNORECASE,
+    ), "ALTER PUBLICATION supabase_realtime statement missing"
+
+    # Must reference all 4 tables
+    for table in ("guild", "greeting_config", "ticket", "ticket_note"):
+        assert re.search(
+            rf"\b{table}\b",
+            sql,
+            re.IGNORECASE,
+        ), f"Table {table} missing from publication migration"
+
+
+def test_migration_007_is_idempotent() -> None:
+    """Migration 007 MUST be safe to re-run without error.
+
+    ALTER PUBLICATION ... ADD TABLE does not support IF NOT EXISTS natively,
+    so the migration must use a DO block or exception handling for idempotency.
+    """
+    sql = MIGRATION_007.read_text()
+
+    # Check for idempotency mechanism: either DO block with EXCEPTION,
+    # or a check-and-skip approach
+    has_do_block = re.search(r"DO\s+\$", sql, re.IGNORECASE)
+    has_exception = re.search(r"EXCEPTION", sql, re.IGNORECASE)
+    has_already_exists = re.search(
+        r"already\s+exists|duplicate|42710",
+        sql,
+        re.IGNORECASE,
+    )
+
+    assert has_do_block or has_exception or has_already_exists, (
+        "Migration 007 must be idempotent — use a DO block with EXCEPTION handling "
+        "or check pg_publication_tables before ALTER PUBLICATION"
+    )
