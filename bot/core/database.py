@@ -400,6 +400,101 @@ class Database:
         logger.debug("DB delete_ticket_note(%s)", note_id)
         self._client.table("ticket_note").delete().eq("id", note_id).execute()
 
+    async def get_recent_notes_for_dedup(
+        self, ticket_id: str, author_id: str, window_seconds: int = 2
+    ) -> list[dict]:
+        """Return notes by *author_id* on *ticket_id* created in the dedup window.
+
+        Computes a cutoff of ``now() - window_seconds`` client-side and pushes
+        it down as a ``createdAt >= cutoff`` filter, then returns the matching
+        rows (``content`` is selected so callers can compare normalized hashes).
+        The composite index ``idx_ticket_note_ticket_author_created`` backs this
+        query. Dedup comparison itself happens in the service layer
+        (:mod:`bot.services.ticket_invariants`) — this method only fetches the
+        candidate rows.
+        """
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        cutoff = datetime.now(UTC) - timedelta(seconds=window_seconds)
+        logger.debug(
+            "DB get_recent_notes_for_dedup(ticket=%s, author=%s, cutoff=%s)",
+            ticket_id, author_id, cutoff.isoformat(),
+        )
+        response = (
+            self._client.table("ticket_note")
+            .select("content")
+            .eq("ticketId", ticket_id)
+            .eq("authorId", author_id)
+            .gte("createdAt", cutoff.isoformat())
+            .execute()
+        )
+        return _unwrap(response)
+
+    # -- ticket_audit --------------------------------------------------
+
+    async def insert_audit_row(
+        self,
+        guild_id: str,
+        ticket_id: str,
+        action: str,
+        actor_id: str | None,
+        outcome: str,
+        reason: str | None,
+    ) -> dict:
+        """Insert a ``ticket_audit`` row and return the persisted row.
+
+        Generates a v4 UUID for the primary key (matches the project's
+        ``insert_ticket_note`` / ``insert_infraction`` convention). The
+        ``createdAt`` timestamp is set by the database ``DEFAULT now()`` — it
+        is NOT set client-side. ``actor_id`` and ``reason`` are nullable to
+        support system-originated actions (auto-close) and success rows
+        without a detail reason.
+        """
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        audit_id = str(uuid.uuid4())
+        row = {
+            "id": audit_id,
+            "guildId": guild_id,
+            "ticketId": ticket_id,
+            "action": action,
+            "actorId": actor_id,
+            "outcome": outcome,
+            "reason": reason,
+        }
+        logger.debug("DB insert_audit_row(%s) action=%s outcome=%s", audit_id, action, outcome)
+        response = self._client.table("ticket_audit").insert(row).execute()
+        rows = _unwrap(response)
+        return rows[0] if rows else {}
+
+    async def get_audit_rows(
+        self, guild_id: str, limit: int = 50, offset: int = 0
+    ) -> list[dict]:
+        """Return ``ticket_audit`` rows for a guild, newest-first, paginated.
+
+        Guild-scoped by an ``eq("guildId")`` filter so rows from other guilds
+        cannot leak. Ordered by ``createdAt`` DESC. Pagination via *limit* and
+        *offset* backs the dashboard audit panel.
+        """
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        logger.debug(
+            "DB get_audit_rows(guild=%s, limit=%d, offset=%d)", guild_id, limit, offset
+        )
+        response = (
+            self._client.table("ticket_audit")
+            .select("*")
+            .eq("guildId", guild_id)
+            .order("createdAt", desc=True)
+            .limit(limit)
+            .offset(offset)
+            .execute()
+        )
+        return _unwrap(response)
+
     async def get_ticket(self, ticket_id: str) -> dict | None:
         """Fetch a ticket by its UUID primary key."""
         if self._client is None:
@@ -425,6 +520,27 @@ class Database:
             self._client.table("ticket")
             .select("*")
             .eq("channelId", channel_id)
+            .execute()
+        )
+        rows = _unwrap(response)
+        return rows[0] if rows else None
+
+    async def get_ticket_by_number(self, guild_id: str, ticket_number: int) -> dict | None:
+        """Fetch a ticket by guild snowflake and sequential *ticket_number*.
+
+        Used by ``/reopen ticket:#0003`` to resolve a closed ticket from any
+        channel — the original channel is deleted on close, so channel-scoped
+        lookup is unusable for closed tickets. Guild-scoped by construction.
+        """
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        logger.debug("DB get_ticket_by_number(guild=%s, number=%d)", guild_id, ticket_number)
+        response = (
+            self._client.table("ticket")
+            .select("*")
+            .eq("guildId", guild_id)
+            .eq("ticketNumber", ticket_number)
             .execute()
         )
         rows = _unwrap(response)
