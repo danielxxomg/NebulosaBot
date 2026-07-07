@@ -3,19 +3,26 @@
 import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { reopenTicket, transferTicket } from "@/lib/actions/ticket-actions";
+import { getReopenGuidance, transferTicket } from "@/lib/actions/ticket-actions";
 import type { Ticket } from "@/lib/types";
 import { NotesPanel } from "./NotesPanel";
+import { ReopenTicketDialog } from "./ReopenTicketDialog";
+import type { ReopenGuidance } from "@/lib/actions/ticket-actions";
 
 /**
  * Per-row action buttons for a ticket.
  *
  * Rendered server-side by the tickets page; the caller is already
  * admin-gated by `getTicketsForGuild`, so this leaf only handles the
- * interactive mutations:
- * - Reopen — visible only when the ticket is closed.
+ * interactive mutations/guidance:
+ * - Reopen — visible only when the ticket is closed. Calls `getReopenGuidance`
+ *   (NO DB mutation) and shows the "Reopen in Discord" command inline.
+ *   (decision #2a — a DB-only status flip would create zombie tickets, since
+ *   the original channel is deleted on close; the bot's `/reopen` creates the
+ *   new channel.)
  * - Transfer — visible only when the ticket is open or claimed; opens an
- *   inline form to capture the new staff member's Discord ID.
+ *   inline form to capture the new staff member's Discord ID. The action sets
+ *   BOTH `claimedBy` AND `status='claimed'` (decision #3 — implicit re-claim).
  * - Notes — always visible; toggles the collapsible {@link NotesPanel}.
  *
  * Every button carries a visible text label so the action is never conveyed
@@ -30,19 +37,34 @@ export function TicketRowActions({ ticket }: { ticket: Ticket }) {
   const [transferTarget, setTransferTarget] = useState("");
   const [notesOpen, setNotesOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [reopenGuidance, setReopenGuidance] = useState<ReopenGuidance | null>(null);
+  const [reopenDialogError, setReopenDialogError] = useState<string | null>(null);
+  const [reopenDialogOpen, setReopenDialogOpen] = useState(false);
 
   const canReopen = ticket.status === "closed";
   const canTransfer = ticket.status === "open" || ticket.status === "claimed";
 
   function handleReopen() {
+    // Clear any inline (legacy) error state — the dialog owns the reopen UX now.
     setActionError(null);
+    setReopenDialogError(null);
+    setReopenGuidance(null);
+    setReopenDialogOpen(true);
     startReopenTransition(async () => {
-      const result = await reopenTicket(ticket.id);
+      const result = await getReopenGuidance(ticket.id);
       if (result.error) {
-        setActionError(result.error);
+        // Per TI-030 a missing category yields an error and NO command; the
+        // dialog shows the error state instead of the guidance.
+        setReopenDialogError(result.error);
+        setReopenGuidance(null);
         return;
       }
-      router.refresh();
+      // CRITICAL (decision #2a): no DB mutation, no router.refresh — the
+      // dashboard shows guidance; the bot's /reopen command does the work.
+      if (result.data) {
+        setReopenGuidance(result.data);
+        setReopenDialogError(null);
+      }
     });
   }
 
@@ -69,6 +91,14 @@ export function TicketRowActions({ ticket }: { ticket: Ticket }) {
         <p role="alert" className="text-xs text-destructive">
           {actionError}
         </p>
+      )}
+      {canReopen && (
+        <ReopenTicketDialog
+          open={reopenDialogOpen}
+          guidance={reopenGuidance}
+          error={reopenDialogError}
+          onClose={() => setReopenDialogOpen(false)}
+        />
       )}
       <div className="flex flex-wrap items-center gap-1.5">
         {canReopen && (

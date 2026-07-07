@@ -11,6 +11,7 @@ import { getTicketsForGuild } from "@/lib/actions/ticket-actions";
 import type { Ticket, TicketStatus } from "@/lib/types";
 import { buildTicketTree } from "./_lib/build-ticket-tree";
 import { TicketRowActions } from "./_components/TicketRowActions";
+import { AuditPanel } from "./_components/AuditPanel";
 
 export const metadata = {
   title: "Tickets — NebulosaBot Dashboard",
@@ -273,6 +274,11 @@ export default async function TicketsPage({ params }: TicketsPageProps) {
           )}
         </CardContent>
       </Card>
+
+      {/* Audit trail — admin-only by construction (the page layout + the
+          getTicketAudit server action both enforce verifyGuildAdmin). Guild-
+          scoped and paginated (TI-038 / TI-021 / TI-028). */}
+      <AuditPanel guildId={guildId} />
     </div>
   );
 }

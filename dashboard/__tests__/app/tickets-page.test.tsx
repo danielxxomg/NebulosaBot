@@ -13,11 +13,13 @@ import type { Ticket, TicketNote, TicketStatus } from "@/lib/types";
 // ---------------------------------------------------------------------------
 
 const mockGetTicketsForGuild = vi.fn();
-const mockReopenTicket = vi.fn();
+const mockGetReopenGuidance = vi.fn();
 const mockTransferTicket = vi.fn();
 const mockGetTicketNotes = vi.fn();
 const mockAddTicketNote = vi.fn();
 const mockDeleteTicketNote = vi.fn();
+const mockGetCurrentUserId = vi.fn();
+const mockGetTicketAudit = vi.fn();
 const mockRouterRefresh = vi.fn();
 
 vi.mock("next/navigation", () => ({
@@ -26,11 +28,13 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/actions/ticket-actions", () => ({
   getTicketsForGuild: (...args: unknown[]) => mockGetTicketsForGuild(...args),
-  reopenTicket: (...args: unknown[]) => mockReopenTicket(...args),
+  getReopenGuidance: (...args: unknown[]) => mockGetReopenGuidance(...args),
   transferTicket: (...args: unknown[]) => mockTransferTicket(...args),
   getTicketNotes: (...args: unknown[]) => mockGetTicketNotes(...args),
   addTicketNote: (...args: unknown[]) => mockAddTicketNote(...args),
   deleteTicketNote: (...args: unknown[]) => mockDeleteTicketNote(...args),
+  getCurrentUserId: (...args: unknown[]) => mockGetCurrentUserId(...args),
+  getTicketAudit: (...args: unknown[]) => mockGetTicketAudit(...args),
 }));
 
 import TicketsPage from "@/app/(authenticated)/guilds/[guildId]/tickets/page";
@@ -89,11 +93,18 @@ beforeEach(() => {
   vi.clearAllMocks();
   // Defaults: mutation/read actions succeed; notes start empty. Tests that
   // need different shapes override these after clearAllMocks.
-  mockReopenTicket.mockResolvedValue({ data: null, error: null });
+  mockGetReopenGuidance.mockResolvedValue({
+    data: { ticketNumber: 3, command: "/reopen ticket:#0003" },
+    error: null,
+  });
   mockTransferTicket.mockResolvedValue({ data: null, error: null });
   mockGetTicketNotes.mockResolvedValue({ data: [], error: null });
   mockAddTicketNote.mockResolvedValue({ data: null, error: null });
   mockDeleteTicketNote.mockResolvedValue({ data: null, error: null });
+  mockGetCurrentUserId.mockResolvedValue("111");
+  // The tickets page now renders an AuditPanel that calls getTicketAudit on
+  // mount; default to an empty success so the page renders cleanly.
+  mockGetTicketAudit.mockResolvedValue({ data: [], error: null });
 });
 
 // ---------------------------------------------------------------------------
@@ -436,8 +447,11 @@ describe("TicketRowActions — visibility and action calls", () => {
     ).not.toBeNull();
   });
 
-  it("calls reopenTicket with the ticket id when Reopen is clicked", async () => {
-    mockReopenTicket.mockResolvedValue({ data: null, error: null });
+  it("calls getReopenGuidance with the ticket id and shows the command when Reopen is clicked (TI-029)", async () => {
+    mockGetReopenGuidance.mockResolvedValue({
+      data: { ticketNumber: 3, command: "/reopen ticket:#0003" },
+      error: null,
+    });
     const ticket = buildTicket({
       id: "t1",
       ticketNumber: 3,
@@ -449,8 +463,33 @@ describe("TicketRowActions — visibility and action calls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reopen" }));
 
     await waitFor(() => {
-      expect(mockReopenTicket).toHaveBeenCalledWith("t1");
+      expect(mockGetReopenGuidance).toHaveBeenCalledWith("t1");
     });
+    expect(await screen.findByText("/reopen ticket:#0003")).toBeTruthy();
+  });
+
+  it("shows the category-not-configured error and no command when getReopenGuidance errors (TI-030)", async () => {
+    mockGetReopenGuidance.mockResolvedValue({
+      data: null,
+      error: "Ticket category is not configured.",
+    });
+    const ticket = buildTicket({
+      id: "t1",
+      ticketNumber: 3,
+      status: "closed",
+      closedAt: "2025-02-01T00:00:00.000Z",
+    });
+
+    render(<TicketRowActions ticket={ticket} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reopen" }));
+
+    await waitFor(() => {
+      expect(mockGetReopenGuidance).toHaveBeenCalledWith("t1");
+    });
+    expect(
+      await screen.findByText(/Ticket category is not configured/i)
+    ).toBeTruthy();
+    expect(screen.queryByText(/\/reopen ticket:/)).toBeNull();
   });
 
   it("calls transferTicket with the ticket id and entered staff id", async () => {
@@ -584,7 +623,7 @@ describe("NotesPanel — empty / list / add / delete", () => {
     await screen.findByText("Old note");
 
     fireEvent.click(
-      screen.getByRole("button", { name: /Delete note by/ })
+      screen.getByRole("button", { name: /Delete your note/i })
     );
 
     await waitFor(() => {
