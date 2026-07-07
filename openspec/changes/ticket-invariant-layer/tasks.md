@@ -92,5 +92,5 @@ Chain strategy: pending
 - [x] 4.11 RED: write failing vitest for TI-019→TI-021 (audit every success, every denied, guild scope) — dashboard-side assertions
 - [x] 4.12 GREEN: add `TicketAudit` type to `dashboard/lib/types.ts` (id, guildId, ticketId, action, actorId, outcome, reason, createdAt); create audit panel component in `dashboard/app/.../tickets/_components/AuditPanel.tsx` with pagination
 - [x] 4.13 GREEN: update `NotesPanel.tsx` — disable add-note form at cap=50 with message; show delete button only for own notes (compare authorId to session user)
-- [ ] 4.14 GREEN: enable all 38 vitest contract tests (remove `describe.skip`) — verify each ScenarioID passes against TS invariant logic + server actions
-- [ ] 4.15 REFACTOR: extract shared mock factories for ticket/guild/note across dashboard contract tests
+- [x] 4.14 GREEN: enable all 38 vitest contract tests (remove `describe.skip`) — verify each ScenarioID passes against TS invariant logic + server actions
+- [x] 4.15 REFACTOR: extract shared mock factories for ticket/guild/note across dashboard contract tests
