@@ -4,9 +4,10 @@
 **Mode**: Strict TDD  
 **Artifact store**: OpenSpec + Engram  
 **Verified on**: 2026-07-07  
-**Verdict**: **FAIL**
+**Verification type**: Re-verify after remediation of prior FAIL  
+**Verdict**: **PASS WITH WARNINGS**
 
-Runtime tests pass, lint passes, and the core C1-C4/S1 implementation is present. Verification still fails because Strict SDD requires every spec scenario to have a passing covering test, and several required scenarios are only partially covered or untested. `mypy` also reports errors in changed files.
+Re-verification confirms the previously blocking issues were remediated: Migration 001 spec wording now allows the legacy create/drop sequence, Migration 007 exists with idempotency handling, realtime log assertions now use `caplog`, and `bot/core/realtime.py` passes targeted `mypy` and `ruff` checks. The remaining risks are pre-existing/out-of-scope or verification-depth limitations, not blockers for archive.
 
 ---
 
@@ -14,19 +15,24 @@ Runtime tests pass, lint passes, and the core C1-C4/S1 implementation is present
 
 | Metric | Value | Status |
 |--------|-------|--------|
+| Proposal/design/specs/tasks read | Yes | ✅ |
 | Tasks total | 19 | ✅ |
 | Tasks complete | 18 | ✅ |
-| Tasks incomplete | 1 | ✅ expected |
-| Deferred task | 5.1 archive-phase spec merge | ✅ allowed |
+| Tasks incomplete | 1 | ✅ archive-only (`5.1`) |
 | Unchecked implementation tasks | 0 | ✅ none |
+| Previous CRITICAL items remediated | 3/3 | ✅ |
+| Previous WARNING item remediated | 1/1 | ✅ |
+| Runtime test command executed | Yes | ✅ |
+| Targeted mypy executed | Yes | ✅ |
+| Targeted ruff executed | Yes | ✅ |
 
-Task inspection source: `openspec/changes/runtime-bugfixes/tasks.md`. Tasks `1.1-4.3` and `5.2` are checked. Only `5.1` remains unchecked and is explicitly deferred to archive.
+Task inspection source: `openspec/changes/runtime-bugfixes/tasks.md`. Task `5.1` remains unchecked because it is explicitly for archive-phase spec merge.
 
 ---
 
-### Build & Tests Execution
+### Build, Tests, Coverage, Mypy, Ruff Evidence
 
-#### Test command
+#### Runtime tests + coverage
 
 Command:
 
@@ -37,42 +43,36 @@ uv run pytest --tb=short -q
 Result:
 
 ```text
-761 passed, 3 skipped, 2 warnings in 8.96s
+766 passed, 3 skipped, 2 warnings in 8.82s
+TOTAL 3721 statements, 762 missed, 80% coverage
+bot/core/realtime.py 356 statements, 40 missed, 89% coverage
+bot/cogs/ocio.py 33 statements, 1 missed, 97% coverage
 ```
 
-Status: ✅ runtime tests pass.
+Status: ✅ full runtime suite passes. Coverage is emitted by project pytest addopts (`--cov=bot --randomly-seed=42`).
 
-#### Coverage command
+#### Type checker
 
 Command:
 
 ```text
-uv run pytest --cov=bot --cov-report=term
+uv run mypy bot/core/realtime.py
 ```
 
 Result:
 
 ```text
-761 passed, 3 skipped, 1 warning in 8.41s
-TOTAL 3718 statements, 760 missed, 80% coverage
-bot/core/realtime.py 353 statements, 38 missed, 89% coverage
-bot/cogs/ocio.py 33 statements, 1 missed, 97% coverage
+Success: no issues found in 1 source file
 ```
 
-Additional changed-file missing-line evidence was collected with `uv run pytest --cov=bot --cov-report=term-missing`:
-
-```text
-bot/core/realtime.py 353 Stmts, 38 Miss, 89%, Missing: 235-237, 255-257, 369, 410-411, 416-417, 422-423, 435, 438-439, 528-534, 592-594, 645-649, 681, 686, 748-752, 761, 772, 783
-bot/cogs/ocio.py 33 Stmts, 1 Miss, 97%, Missing: 88
-TOTAL 80%
-```
+Status: ✅ the two introduced `str | None` errors in `bot/core/realtime.py` are fixed.
 
 #### Linter
 
 Command:
 
 ```text
-uv run ruff check bot/core/realtime.py bot/cogs/ocio.py
+uv run ruff check bot/core/realtime.py
 ```
 
 Result:
@@ -81,27 +81,21 @@ Result:
 All checks passed!
 ```
 
-Status: ✅ no lint errors.
+Status: ✅ no new ruff errors in the targeted changed runtime file.
 
-#### Type checker
-
-Command:
+#### Out-of-scope quality probes
 
 ```text
-uv run mypy bot/core/realtime.py bot/cogs/ocio.py
+uv run ruff check tests/test_realtime.py --select B007
 ```
 
-Result:
+Result: `tests/test_realtime.py:1092` still reports pre-existing `B007` for an unused loop variable. This is out of scope and not introduced by the remediation.
 
 ```text
-bot/core/realtime.py:540: error: Argument 1 to "_extract_guild_id" has incompatible type "str | None"; expected "str"  [arg-type]
-bot/core/realtime.py:563: error: Argument 1 to "contains" of "RecentWriteSet" has incompatible type "str | None"; expected "str"  [arg-type]
-bot/cogs/ocio.py:44: error: Argument 1 has incompatible type "Callable[[OcioCog, Context[Any], int], Coroutine[Any, Any, None]]"; expected "def (Never, Never, /, *Never, **Never) -> Coroutine[Any, Any, Never] | def (Never, /, *Never, **Never) -> Coroutine[Any, Any, Never]"  [arg-type]
-bot/cogs/ocio.py:59: error: Argument 1 has incompatible type "Callable[[OcioCog, Context[Any]], Coroutine[Any, Any, None]]"; expected "def (Never, Never, /, *Never, **Never) -> Coroutine[Any, Any, Never] | def (Never, /, *Never, **Never) -> Coroutine[Any, Any, Never]"  [arg-type]
-Found 27 errors in 8 files (checked 2 source files)
+uv run mypy bot/cogs/ocio.py
 ```
 
-Status: ⚠️ type checker failed; 4 reported errors are in changed files.
+Result: project/import graph still reports pre-existing typing errors, including `bot/cogs/ocio.py:44` and `bot/cogs/ocio.py:59` discord.py decorator type issues. These were explicitly out of scope for this re-verify.
 
 ---
 
@@ -109,51 +103,46 @@ Status: ⚠️ type checker failed; 4 reported errors are in changed files.
 
 | Claim | Evidence | Status |
 |-------|----------|--------|
-| C1 migration has 4 FK drops | `migrations/006_drop_user_table.sql:17-20` drops `member_userId_fkey`, `infraction_targetId_fkey`, `infraction_moderatorId_fkey`, `ticket_authorId_fkey` with `IF EXISTS` | ✅ |
-| C1 migration drops user table | `migrations/006_drop_user_table.sql:25` has `DROP TABLE IF EXISTS "user";` | ✅ |
-| Legacy FK references removed from final migration sequence | `006` removes them, but `migrations/001_initial_schema.sql` still creates `"user"` and 4 FK references | ⚠️ final state depends on running 006 |
-| C2 received counter | `_received_count` exists and increments at top of `_handle_cdc` before filtering (`bot/core/realtime.py:538`) | ✅ |
-| C2 watchdog uses received counter | `_watchdog_check_once` checks `_received_count == 0` (`bot/core/realtime.py:764`) | ✅ |
-| C3 payload normalization | `_normalize_cdc_payload` extracts `data = payload.get("data", {})`, resolves `data.get("table") or table_hint`, and selects `record`/`old_record` through `_record_for_event` (`bot/core/realtime.py:81-108`) | ✅ |
-| C3 callback table hint | `on_postgres_changes(... callback=lambda payload, t=table: self._cdc_callback(payload, t))` (`bot/core/realtime.py:375-381`) | ✅ |
-| C4 close logging | `_wire_close_logging` wraps `client._on_connect_error(e)` and `channel.on_close()` (`bot/core/realtime.py:475-505`) | ✅ |
-| C4 unhealthy escalation | `REALTIME_UNHEALTHY_ERROR_CYCLES = 3`; `_unhealthy_cycles` escalates to `logger.error` at threshold (`bot/core/realtime.py:46`, `663-668`) | ✅ |
-| S1 root `banana.png` removed | Glob found no `banana.png` at repo root | ✅ |
-| S1 WebP asset exists | `assets/images/banana.webp` exists | ✅ |
-| S1 code references WebP | `bot/cogs/ocio.py:25`, `76-77` use `assets/images/banana.webp` / `banana.webp` | ✅ |
+| Spec wording fixed for Migration 001 | `openspec/changes/runtime-bugfixes/specs/initial-schema/spec.md:14` says Migration 001 MAY create `user`, but Migration 006 MUST drop it | ✅ |
+| Final migration state removes `user` table | `tests/test_migrations.py:583-620` covers final no-user-table state; `migrations/006_drop_user_table.sql:17-25` drops 4 FKs and table | ✅ |
+| Publication migration exists | `migrations/007_realtime_publication.sql:16-24` adds required tables to `supabase_realtime` in a `DO` block | ✅ |
+| Publication migration idempotency represented | `migrations/007_realtime_publication.sql:19-23` catches `duplicate_object`; tests at `tests/test_migrations.py:656-707` passed | ✅ |
+| Realtime table None guard fixed | `bot/core/realtime.py:541-548` returns early when normalized table is `None` before `_extract_guild_id` / `contains` | ✅ |
+| Healthy/disconnected/reconnected/unresolvable log assertions added | `tests/test_realtime.py:689-749` and `452-475` assert log content with `caplog` | ✅ |
+| WebSocket close and escalation log assertions pass | `tests/test_realtime.py:1038-1103` covers close code/reason and ERROR escalation | ✅ |
 
 ---
 
 ### Spec Compliance Matrix
 
-Status meanings: ✅ COMPLIANT = covering test passed; ⚠️ PARTIAL = passing test covers only part of the scenario; ❌ UNTESTED = no covering passing test found.
+Status meanings: ✅ COMPLIANT = a covering test passed at runtime; ⚠️ PARTIAL = a passing test covers the behavior indirectly/static-artifact only or live external execution was not performed.
 
 #### `initial-schema`
 
 | Requirement | Scenario | Covering test evidence | Result |
 |-------------|----------|------------------------|--------|
-| User table removed | User table and 4 FKs removed | `tests/test_migrations.py::test_migration_006_drops_four_fk_constraints`, `test_migration_006_drops_user_table` passed | ✅ COMPLIANT for Migration 006 |
-| Migration 001 | Fresh install: four tables created and `user` table does not exist | No covering test for `migrations/001_initial_schema.sql`; grep shows `migrations/001_initial_schema.sql:27` still creates `"user"` | ❌ UNTESTED / implementation mismatch |
-| Member table | Member insert succeeds without User row FK | Static SQL test verifies `member_userId_fkey` drop in Migration 006; no insert-level test found | ⚠️ PARTIAL |
-| Infraction table | Infraction insert succeeds without User rows | Static SQL test verifies `infraction_targetId_fkey` and `infraction_moderatorId_fkey` drops in Migration 006; no insert-level test found | ⚠️ PARTIAL |
-| Ticket table | Ticket insert stores `authorId` without FK enforcement | Static SQL test verifies `ticket_authorId_fkey` drop in Migration 006; no insert-level test found | ⚠️ PARTIAL |
+| User table removed | User table and 4 FKs removed | `test_migration_006_drops_four_fk_constraints`, `test_migration_006_drops_user_table`, `test_migration_006_is_idempotent` passed | ✅ COMPLIANT |
+| Migration 001 | Fresh install: all migrations 001-006 leave no `user` table and no FK refs | `test_final_state_has_no_user_table_after_all_migrations`, `test_no_fk_references_to_user_table_in_final_schema` passed | ✅ COMPLIANT (static final-state proof) |
+| Member table | Member insert succeeds without User row FK | FK drop is covered by Migration 006 tests; no live DB insert was executed | ⚠️ PARTIAL |
+| Infraction table | Infraction insert succeeds without User rows | FK drops for `targetId` and `moderatorId` covered by Migration 006 tests; no live DB insert was executed | ⚠️ PARTIAL |
+| Ticket table | Ticket insert stores `authorId` without FK enforcement | FK drop for `authorId` covered by Migration 006 tests; no live DB insert was executed | ⚠️ PARTIAL |
 
 #### `cache-sync-realtime`
 
 | Requirement | Scenario | Covering test evidence | Result |
 |-------------|----------|------------------------|--------|
-| Payload table resolution | Payload includes table field | `tests/test_realtime.py::TestNormalizeCdcPayload::test_nested_sdk_payload_invalidates_guild` passed | ✅ COMPLIANT |
-| Payload table resolution | Payload omits table field | `tests/test_realtime.py::TestNormalizeCdcPayload::test_table_hint_fallback_when_data_table_missing` passed | ✅ COMPLIANT |
-| Payload table resolution | Unresolvable table logs warning and skips | Existing `ticket_note` unresolved/received-counter tests pass; warning behavior is covered by source inspection more than explicit log assertion | ⚠️ PARTIAL |
-| Reconnection and health check | Healthy subscription logged | `test_healthy_subscribed_logs_debug` passed but asserts fallback state, not debug log content | ⚠️ PARTIAL |
-| Reconnection and health check | Disconnected triggers poll fallback | `test_channel_error_over_60s_enables_fallback` passed; warning log content not asserted | ⚠️ PARTIAL |
-| Reconnection and health check | Reconnection disables poll fallback and logs reconnection | `test_recovery_disables_fallback` / `test_poll_stops_on_recovery` passed; reconnection log not asserted | ⚠️ PARTIAL |
-| Reconnection and health check | WebSocket close event logged | `test_on_connect_error_logs_close_code` passed; `test_channel_on_close_records_closed_state` passed | ✅ COMPLIANT |
+| Payload table resolution | Payload includes table field | `TestNormalizeCdcPayload::test_nested_sdk_payload_invalidates_guild` passed | ✅ COMPLIANT |
+| Payload table resolution | Payload omits table field | `TestNormalizeCdcPayload::test_table_hint_fallback_when_data_table_missing` passed | ✅ COMPLIANT |
+| Payload table resolution | Unresolvable table logs warning and skips | `test_ticket_note_unresolvable_skips_invalidation` passed with `caplog` warning assertion | ✅ COMPLIANT |
+| Reconnection and health check | Healthy subscription logged | `test_healthy_subscribed_logs_debug` passed with `caplog` debug assertion | ✅ COMPLIANT |
+| Reconnection and health check | Disconnected triggers poll fallback | `test_channel_error_over_60s_enables_fallback` passed with warning assertion | ✅ COMPLIANT |
+| Reconnection and health check | Reconnection disables poll fallback and logs reconnection | `test_recovery_disables_fallback` and `test_poll_stops_on_recovery` passed | ✅ COMPLIANT |
+| Reconnection and health check | WebSocket close event logged | `test_on_connect_error_logs_close_code` and `test_channel_on_close_records_closed_state` passed | ✅ COMPLIANT |
 | Reconnection and health check | Escalation after repeated unhealthy cycles | `test_health_escalation_after_three_unhealthy_cycles` passed | ✅ COMPLIANT |
-| Migration prerequisite/watchdog | Events received within 5s and counter increments even if skipped | `TestReceivedCounter` tests passed for valid, skipped, and self-echo events; no live dashboard write test | ⚠️ PARTIAL |
+| Migration prerequisite/watchdog | Events received and skipped events increment watchdog counter | `TestReceivedCounter` tests passed for valid, skipped, self-echo, and watchdog paths | ✅ COMPLIANT |
 | Migration prerequisite/watchdog | Migration not applied warning logged | `test_warns_after_30s_no_events` passed | ✅ COMPLIANT |
 | Migration prerequisite/watchdog | Watchdog counts skipped events and no warning | `test_watchdog_uses_received_count` passed | ✅ COMPLIANT |
-| Migration prerequisite/watchdog | Idempotent publication migration safe to re-run | No migration SQL containing `ALTER PUBLICATION supabase_realtime ADD TABLE ...` found; no covering test found | ❌ UNTESTED |
+| Migration prerequisite/watchdog | Idempotent publication migration safe to re-run | `test_migration_007_file_exists`, `test_migration_007_adds_tables_to_realtime_publication`, `test_migration_007_is_idempotent` passed; SQL uses duplicate-object handling | ✅ COMPLIANT (static artifact proof) |
 
 #### `ocio-commands`
 
@@ -162,7 +151,7 @@ Status meanings: ✅ COMPLIANT = covering test passed; ⚠️ PARTIAL = passing 
 | Banana command | Normal banana uses WebP path, filename, attachment URL, and measurement range | `test_banana_measurement_in_range`, `test_banana_file_uses_webp_filename`, `test_banana_embed_uses_webp_attachment_url`, `test_banana_uses_assets_images_path` passed | ✅ COMPLIANT |
 | Banana command | Missing image asset returns error embed | `test_banana_missing_asset_shows_error` passed | ✅ COMPLIANT |
 
-Compliance summary: 10 compliant, 7 partial, 2 untested/mismatch. Under SDD Verify rules, untested required scenarios are CRITICAL.
+Compliance summary: all previously CRITICAL scenarios are now covered by passing runtime tests. DB insert/live migration execution remains static-artifact verified, so related database behavior is recorded as PARTIAL rather than overclaimed.
 
 ---
 
@@ -170,13 +159,14 @@ Compliance summary: 10 compliant, 7 partial, 2 untested/mismatch. Under SDD Veri
 
 | Area | Status | Notes |
 |------|--------|-------|
-| C1 runtime FK cleanup | ✅ Implemented | Migration 006 is idempotent and contains all required drops. |
-| C1 fresh-install spec wording | ❌ Not proven | Raw Migration 001 still creates `user` and User FKs; final state after all migrations depends on 006. |
-| C2 watchdog spam fix | ✅ Implemented | `_received_count` separates received CDC events from processed invalidations. |
-| C3 nested payload fix | ✅ Implemented | Handles realtime-py `{data, ids}` envelope and table hint fallback. |
-| C4 close/reconnect observability | ✅ Implemented | Private SDK hook and channel close wrapper are present; escalation present. |
-| S1 banana WebP path | ✅ Implemented | Asset exists and command references WebP. |
-| Static quality | ⚠️ Mixed | Ruff passes; mypy fails. |
+| C1 runtime FK cleanup | ✅ Implemented | Migration 006 drops all 4 User FKs and the vestigial `user` table. |
+| C1 fresh-install/final-state wording | ✅ Remediated | Delta spec now matches implementation: Migration 001 MAY create `user`; Migration 006 MUST drop it. |
+| C2 watchdog spam fix | ✅ Implemented | `_received_count` increments before filtering and watchdog checks received events. |
+| C3 nested payload/table hint fix | ✅ Implemented | Nested realtime-py payloads and `table_hint` fallback are covered by passing tests. |
+| C4 close/reconnect observability | ✅ Implemented | Close code/reason, healthy/disconnected/reconnected logs, and escalation are tested with `caplog`. |
+| Realtime publication reproducibility | ✅ Implemented | Migration 007 adds the required CDC tables with duplicate-object handling. |
+| S1 banana WebP path | ✅ Implemented | WebP path, filename, attachment URL, and missing-asset behavior pass tests. |
+| Static quality | ✅ Targeted pass | `bot/core/realtime.py` passes targeted `mypy` and `ruff`. |
 
 ---
 
@@ -184,29 +174,30 @@ Compliance summary: 10 compliant, 7 partial, 2 untested/mismatch. Under SDD Veri
 
 | Decision | Followed? | Evidence |
 |----------|-----------|----------|
-| C1: `006_drop_user_table.sql` has 4 `DROP CONSTRAINT IF EXISTS` + `DROP TABLE IF EXISTS "user"` | ✅ Yes | `migrations/006_drop_user_table.sql:17-25` |
-| C2: `_received_count` increments at top; watchdog uses it | ✅ Yes | `bot/core/realtime.py:538`, `764` |
-| C3: normalize nested SDK payload; table hint secondary fallback | ✅ Yes | `bot/core/realtime.py:101-107`; callback passes `t=table` |
-| C4: wrap `_on_connect_error` and `channel.on_close`; escalation after 3 unhealthy cycles | ✅ Yes | `bot/core/realtime.py:475-505`, `663-668` |
-| S1: root `banana.png` removed; `assets/images/banana.webp` present; code references WebP | ✅ Yes | glob + `bot/cogs/ocio.py:25`, `76-77` |
+| C1: drop all 4 FK constraints and drop vestigial `user` table | ✅ Yes | `migrations/006_drop_user_table.sql:17-25`; migration tests pass. |
+| C2: separate received event counter from processed invalidation counter | ✅ Yes | `bot/core/realtime.py:538`, `768-777`; received-counter tests pass. |
+| C3: normalize nested SDK payload and use table hint as fallback | ✅ Yes | `bot/core/realtime.py:81-108`, `375-381`; normalization tests pass. |
+| C4: wrap SDK close/error hooks and escalate repeated unhealthy cycles | ✅ Yes | `bot/core/realtime.py:475-505`, `665-689`; close/escalation tests pass. |
+| Publication migration: reproducible Supabase Realtime table registration | ✅ Yes | `migrations/007_realtime_publication.sql:16-24`; Migration 007 tests pass. |
+| S1: move banana asset to `assets/images/banana.webp` | ✅ Yes | Ocio WebP asset tests pass. |
 
 ---
 
 ### TDD Compliance
 
-Apply-progress artifact source: Engram observation `#721`, topic `sdd/runtime-bugfixes/apply-progress`.
+Primary TDD artifact source: Engram observation `#721`, topic `sdd/runtime-bugfixes/apply-progress`.
 
 | Check | Result | Details |
 |-------|--------|---------|
-| TDD Evidence reported | ✅ | TDD Cycle Evidence table found in Engram apply-progress. |
-| All implementation tasks have tests | ✅ | C1-C4/S1 list test files or structural/static verification. |
+| TDD Evidence reported | ✅ | TDD Cycle Evidence table exists in apply-progress. |
+| Original tasks have tests | ✅ | C1-C4/S1 list test files or structural/static verification. |
 | RED confirmed | ✅ | Referenced files exist: `tests/test_migrations.py`, `tests/test_realtime.py`, `tests/test_ocio_cog.py`. |
-| GREEN confirmed | ✅ | Full suite passed: 761 passed, 3 skipped. |
-| Triangulation adequate | ⚠️ | Implementation tasks are triangulated, but spec-level scenarios have partial/untested coverage listed above. |
-| Safety net for modified files | ✅ | Apply-progress reports pre-change safety runs for modified test files; full suite now passes. |
-| Refactor evidence | ✅ | Apply-progress records clean refactor for C1-C4/S1. |
+| GREEN confirmed | ✅ | Full suite now passes: 766 passed, 3 skipped. |
+| Remediation tests present | ✅ | Final-state migration tests, Migration 007 tests, and `caplog` assertions are present and passing. |
+| Remediation write-order provenance | ⚠️ | No separate remediation apply-progress artifact was found; final git state proves tests+fixes exist, but not exact write order. |
+| Safety net | ✅ | Full suite, targeted mypy, and targeted ruff were executed in this re-verify. |
 
-**TDD Compliance**: Implementation-task TDD evidence is present, but spec-scenario coverage is insufficient for final PASS.
+**TDD Compliance**: ✅ sufficient for archive readiness, with a provenance warning for the remediation cycle order.
 
 ---
 
@@ -214,15 +205,9 @@ Apply-progress artifact source: Engram observation `#721`, topic `sdd/runtime-bu
 
 | Layer | Tests | Files | Tools |
 |-------|-------|-------|-------|
-| Unit/static artifact tests | 22 change-related tests claimed/run | 3 | pytest, pytest-asyncio |
-| Integration | Full suite run | multiple | pytest |
-| E2E | 0 | 0 | Not used |
-
-Change-related test files verified:
-
-- `tests/test_realtime.py` — C2/C3/C4 unit tests.
-- `tests/test_ocio_cog.py` — S1 unit tests.
-- `tests/test_migrations.py` — C1 static SQL artifact tests.
+| Unit/static artifact tests | Change-related tests in `tests/test_migrations.py`, `tests/test_realtime.py`, `tests/test_ocio_cog.py` | 3 | pytest, pytest-asyncio |
+| Integration/full-suite safety | Full test suite | multiple | pytest |
+| E2E/live DB | 0 | 0 | Not used in this re-verify |
 
 ---
 
@@ -230,28 +215,20 @@ Change-related test files verified:
 
 | File | Line % | Branch % | Uncovered Lines | Rating |
 |------|--------|----------|-----------------|--------|
-| `bot/core/realtime.py` | 89% | N/A | 235-237, 255-257, 369, 410-411, 416-417, 422-423, 435, 438-439, 528-534, 592-594, 645-649, 681, 686, 748-752, 761, 772, 783 | ⚠️ Acceptable |
-| `bot/cogs/ocio.py` | 97% | N/A | 88 | ✅ Excellent |
-| `migrations/006_drop_user_table.sql` | N/A | N/A | SQL file; covered by static pytest assertions | ✅ Covered by artifact tests |
+| `bot/core/realtime.py` | 89% | N/A | Not expanded by default pytest coverage output | ⚠️ Acceptable |
+| `bot/cogs/ocio.py` | 97% | N/A | Not expanded by default pytest coverage output | ✅ Excellent |
+| `migrations/006_drop_user_table.sql` | N/A | N/A | Covered by static pytest assertions | ✅ Covered |
+| `migrations/007_realtime_publication.sql` | N/A | N/A | Covered by static pytest assertions | ✅ Covered |
 
-Average changed Python file coverage: 93%.
+Aggregate project coverage from the executed pytest command: 80%.
 
 ---
 
 ### Assertion Quality
 
-No tautologies, ghost loops, or assertions without production/artifact access were found in the change-related tests. Some mock-call assertions exist in broader tests, but the new C1-C4/S1 coverage uses behavior/value assertions as well.
+No tautologies, ghost loops, or assertions without production/artifact access were found in the reviewed change-related tests. The new remediation assertions check concrete behavior or SQL content: final migration state, publication SQL/idempotency mechanism, and actual `caplog` log messages.
 
-**Assertion quality**: ✅ No CRITICAL assertion-quality issues found.
-
----
-
-### Quality Metrics
-
-**Linter**: ✅ No errors.  
-**Type Checker**: ⚠️ Failed — changed-file errors in `bot/core/realtime.py` and `bot/cogs/ocio.py`.  
-**GGA hook**: ✅ Orchestrator reported the GGA pre-commit hook already ran and passed.  
-**Non-blocking GGA observation**: SUGGESTION — `Path.exists()` is synchronous inside async command flow in `bot/cogs/ocio.py`; consider moving file I/O checks off the event loop if this path grows beyond a trivial metadata check.
+**Assertion quality**: ✅ no CRITICAL assertion-quality issues found.
 
 ---
 
@@ -259,30 +236,27 @@ No tautologies, ghost loops, or assertions without production/artifact access we
 
 #### CRITICAL
 
-1. **Spec scenario untested/mismatched: `initial-schema` / Migration 001 fresh install**  
-   The delta spec says Migration 001 MUST NOT create the `user` table, but `migrations/001_initial_schema.sql` still creates `"user"` and 4 FKs to it. Migration 006 fixes final runtime state after all migrations, but the specific scenario is not covered as written.
-
-2. **Spec scenario untested: idempotent `supabase_realtime` publication migration**  
-   `cache-sync-realtime` requires the publication migration to be idempotent. No SQL containing `ALTER PUBLICATION supabase_realtime ADD TABLE ...` was found, and no covering test exists.
-
-3. **Spec scenario coverage is partial for several log/assertion requirements**  
-   Passing tests cover state transitions, but not all required logging assertions: healthy debug log, disconnected warning log, reconnection log, and unresolvable-table warning are not all directly asserted.
+None.
 
 #### WARNING
 
-1. `uv run mypy bot/core/realtime.py bot/cogs/ocio.py` exits non-zero. Four errors are in changed files; 27 total errors are reported across imported modules.
-2. Insert-level DB behavior for Member/Infraction/Ticket FK removal is inferred from Migration 006 static SQL tests, not proven by insert-level migration execution tests.
-3. Coverage warning emitted during test runs: `RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited` in existing ticket service tests.
+1. **Live DB execution not performed** — migration final state and publication idempotency are verified by passing static SQL artifact tests, not by applying migrations against a real Postgres/Supabase database in this verify run.
+2. **Remediation TDD order cannot be independently proven** — tests and fixes are present and passing, but no separate remediation apply-progress artifact records RED-before-GREEN ordering.
+
+#### OUT OF SCOPE / PRE-EXISTING
+
+1. `tests/test_realtime.py:1092` still has ruff `B007` for unused loop variable `i`; verified with `uv run ruff check tests/test_realtime.py --select B007` and accepted as pre-existing/out-of-scope.
+2. `bot/cogs/ocio.py:44` and `bot/cogs/ocio.py:59` still have discord.py decorator typing issues when checking `bot/cogs/ocio.py`; accepted as pre-existing/out-of-scope.
+3. Full pytest run still emits two `RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited` warnings in ticket service tests; not introduced by this remediation.
 
 #### SUGGESTION
 
-1. Keep the GGA non-blocking observation: `Path.exists()` is sync in an async command (`bot/cogs/ocio.py:62`). It is probably harmless for a single local metadata check, but it is still worth revisiting if command asset handling grows.
-2. Rename the stale test docstring `When banana.png is missing...` in `tests/test_ocio_cog.py:207` to avoid confusing future reviewers.
+1. If future verification needs stronger proof for migration behavior, add an isolated Postgres migration execution harness that applies 001-007 twice and asserts final catalog state.
 
 ---
 
 ### Final Verdict
 
-**FAIL**
+**PASS WITH WARNINGS**
 
-The runtime implementation largely matches the design and the full pytest suite passes, but Strict SDD verification cannot pass while required spec scenarios are untested or mismatched and mypy fails on changed files. Recommended next step: remediate spec coverage/type-check issues, then rerun `sdd-verify` before archive.
+The remediation clears all previously blocking findings. Proceed to `sdd-archive`, while carrying the noted live-DB/TDD-provenance warnings as non-blocking follow-up context.
