@@ -32,3 +32,12 @@ Thumbs.db
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+
+# Local packaged archives
+*.7z
+*.zip
+*.rar
+*.tar
+*.tar.gz
+*.tgz
+*.tar.xz
