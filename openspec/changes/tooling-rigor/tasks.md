@@ -28,20 +28,20 @@ Chain strategy: stacked-to-main
 
 ## Phase 1: Test Guards (RED)
 
-- [ ] 1.1 Write `tests/test_ruff_config.py`: validate pyproject.toml ruff select includes all 14 new groups, max-complexity=15, per-file ignores for tests
-- [ ] 1.2 Write `tests/test_mypy_config.py`: validate strict=true, no global disable_error_code, per-file overrides exist for known debt modules
-- [ ] 1.3 Write `tests/test_precommit_config.py`: validate hook order (ruff check → ruff format → mypy), `files: ^(bot/|tests/)` pattern
-- [ ] 1.4 Write `tests/test_ci_config.py`: validate matrix includes 3.13, fail-fast disabled, coverage gate 75
-- [ ] 1.5 Write `tests/test_makefile_config.py`: validate `make cov` target passes `--cov-fail-under=75`
+- [x] 1.1 Write `tests/test_ruff_config.py`: validate pyproject.toml ruff select includes all 14 new groups, max-complexity=15, per-file ignores for tests
+- [x] 1.2 Write `tests/test_mypy_config.py`: validate strict=true, no global disable_error_code, per-file overrides exist for known debt modules
+- [x] 1.3 Write `tests/test_precommit_config.py`: validate hook order (ruff check → ruff format → mypy), `files: ^(bot/|tests/)` pattern
+- [x] 1.4 Write `tests/test_ci_config.py`: validate matrix includes 3.13, fail-fast disabled, coverage gate 75
+- [x] 1.5 Write `tests/test_makefile_config.py`: validate `make cov` target passes `--cov-fail-under=75`
 
 ## Phase 2: Config Edits (GREEN for Phase 1 tests)
 
-- [ ] 2.1 `pyproject.toml`: add 14 ruff groups to `[tool.ruff.lint]` select, set `max-complexity=15`, add `per-file-ignores` for `tests/`
-- [ ] 2.2 `pyproject.toml`: set `[tool.mypy] strict = true`, remove global `disable_error_code`, add `[[tool.mypy.overrides]]` for `bot.bot`
-- [ ] 2.3 `pyproject.toml`: set `addopts = "--cov=bot --cov-fail-under=75"`
-- [ ] 2.4 `.pre-commit-config.yaml`: replace file allowlists with `files: "^(bot/|tests/)"` on ruff check, ruff format, mypy hooks
-- [ ] 2.5 `.github/workflows/ci.yml`: add `3.13` to matrix, pass `--cov-fail-under=75` to pytest
-- [ ] 2.6 `Makefile`: align `test` and `cov` targets with `--cov-fail-under=75`
+- [x] 2.1 `pyproject.toml`: add 14 ruff groups to `[tool.ruff.lint]` select, set `max-complexity=15`, add `per-file-ignores` for `tests/`
+- [x] 2.2 `pyproject.toml`: set `[tool.mypy] strict = true`, remove global `disable_error_code`, add `[[tool.mypy.overrides]]` for `bot.bot`
+- [x] 2.3 `pyproject.toml`: set `addopts = "--cov=bot --cov-fail-under=75"`
+- [x] 2.4 `.pre-commit-config.yaml`: replace file allowlists with `files: "^(bot/|tests/)"` on ruff check, ruff format, mypy hooks
+- [x] 2.5 `.github/workflows/ci.yml`: add `3.13` to matrix, pass `--cov-fail-under=75` to pytest
+- [x] 2.6 `Makefile`: align `test` and `cov` targets with `--cov-fail-under=75`
 
 ## Phase 3: Auto-fix Ruff Violations
 

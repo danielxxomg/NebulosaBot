@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.14"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
 
@@ -62,7 +62,7 @@ jobs:
         run: uv run --extra dev --with pip-audit pip-audit -l --strict
 
       - name: Tests with coverage
-        run: uv run --extra dev pytest --cov-fail-under=70
+        run: uv run --extra dev pytest --cov-fail-under=75
 
       - name: Upload coverage
         if: matrix.python-version == '3.12'

@@ -50,7 +50,7 @@ Repository = "https://github.com/gentle-programming/NebulosaBot"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "--cov=bot --randomly-seed=42"
+addopts = "--cov=bot --cov-fail-under=75 --randomly-seed=42"
 filterwarnings = [
     # discord.py 2.x triggers this under PYTHONASYNCIODEBUG=1
     "ignore:.*coroutine.*is not a coroutine:DeprecationWarning",
@@ -84,21 +84,71 @@ select = [
     "B",    # flake8-bugbear
     "SIM",  # flake8-simplify
     "RUF",  # ruff-specific rules
+    "S",    # bandit/security
+    "C4",   # comprehensions
+    "C90",  # mccabe complexity
+    "RET",  # return
+    "T20",  # print
+    "ARG",  # unused arguments
+    "DTZ",  # datetime timezone
+    "EM",   # errmsg
+    "T10",  # debugger
+    "TRY",  # tryceratops
+    "RSE",  # raise
+    "FLY",  # flynt
+    "PERF", # perflint
+    "FURB", # refurb
 ]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.per-file-ignores]
+# tests/ — allow assert, print, unused args in test files
+"tests/**/*.py" = ["S101", "S105", "S106", "ARG", "T20", "TRY003", "EM101", "FURB110", "RET504", "RET505", "PERF401", "SIM108"]
+# PR1 broad debt allowances — rules are ENABLED but violations suppressed.
+# PR2-PR5 will progressively remove these as debt is cleared.
+"bot/**/*.py" = ["S", "C4", "C90", "RET", "T20", "ARG", "DTZ", "EM", "T10", "TRY", "RSE", "FLY", "PERF", "FURB", "SIM105", "SIM108", "SIM103", "RUF059", "F841"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["bot"]
 
 [tool.mypy]
+strict = true
 python_version = "3.11"
-strict_optional = true
-warn_unused_ignores = true
-disable_error_code = "attr-defined"
-# Scoped to bot/bot.py:256-264 ctx._guild_config tech debt.
-# Targeted per-file override (narrower than project-wide suppression):
+# Per-file overrides for known debt modules (narrower than project-wide suppression).
+# PR1: broad overrides to pass immediately; PR2-PR5 will progressively narrow.
 [[tool.mypy.overrides]]
 module = "bot.bot"
 disable_error_code = ["attr-defined"]
+
+[[tool.mypy.overrides]]
+module = "bot.cogs.*"
+disable_error_code = ["attr-defined", "no-any-return", "no-untyped-def", "assignment", "arg-type"]
+
+[[tool.mypy.overrides]]
+module = "bot.services.*"
+disable_error_code = ["attr-defined", "no-any-return", "no-untyped-def", "assignment", "arg-type"]
+
+[[tool.mypy.overrides]]
+module = "bot.core.*"
+disable_error_code = ["attr-defined", "no-any-return", "no-untyped-def", "assignment", "arg-type", "type-arg"]
+
+[[tool.mypy.overrides]]
+module = "bot.listeners.*"
+disable_error_code = ["attr-defined", "no-any-return", "no-untyped-def", "assignment", "arg-type"]
+
+[[tool.mypy.overrides]]
+module = "bot.utils.*"
+disable_error_code = ["attr-defined", "no-any-return", "no-untyped-def", "assignment", "arg-type"]
+
+[[tool.mypy.overrides]]
+module = "bot.models.*"
+disable_error_code = ["attr-defined", "no-any-return", "no-untyped-def", "assignment", "arg-type"]
+
+[[tool.mypy.overrides]]
+module = "bot.config"
+disable_error_code = ["attr-defined", "no-any-return", "no-untyped-def", "assignment", "arg-type"]
 
 [tool.bandit]
 exclude_dirs = ["tests", "dashboard"]
