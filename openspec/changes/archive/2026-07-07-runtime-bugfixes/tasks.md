@@ -53,5 +53,5 @@ Chain strategy: size-exception
 
 ## Phase 5: Cleanup
 
-- [ ] 5.1 Update `openspec/specs/initial-schema/spec.md` to remove `user` table and FK references (done by archive phase)
+- [x] 5.1 Update `openspec/specs/initial-schema/spec.md` to remove `user` table and FK references (done by archive phase)
 - [x] 5.2 Verify `banana.png` no longer exists at repo root after git mv
