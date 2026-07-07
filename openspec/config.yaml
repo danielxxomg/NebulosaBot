@@ -3,7 +3,7 @@ schema: spec-driven
 context: |
   Project: NebulosaBot — Discord bot with web dashboard
   Stack: Python (bot), Next.js (dashboard), Supabase/PostgreSQL (DB)
-  Architecture: Cache-first with webhook invalidation, modular command system
+  Architecture: Cache-first with Supabase Realtime CDC invalidation, modular command system
   Modules: Core, Tickets, Moderation (Sentinel), Economy (Stellar), Utility
   Status: Implemented — 7 cogs, 8 services, 2 listeners, 24 hybrid commands, 384 tests, 74.59% coverage
   Diagrams: 4 Mermaid/PlantUML design docs in /Diagramas
@@ -38,7 +38,7 @@ rules:
   design:
     - Include sequence diagrams for complex flows
     - Document architecture decisions with rationale
-    - Follow cache-first + webhook invalidation pattern from design docs
+    - Follow cache-first + Supabase Realtime CDC invalidation pattern from design docs
   tasks:
     - Group by phase, use hierarchical numbering
     - Keep tasks completable in one session

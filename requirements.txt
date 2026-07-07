@@ -1,30 +1,7 @@
-# Core dependencies
+# Pterodactyl runtime dependencies.
+# Keep this file direct-only: pip resolves compatible transitive packages.
+# Source of truth: pyproject.toml + uv.lock.
 discord.py==2.7.1
-supabase==2.7.0
-python-dotenv==1.0.1
-Pillow>=10.0.0
-
-# Transitive dependencies (auto-generated, pinned for reproducibility)
-# aiohttp pinned to match uv.lock (transitive via discord.py 2.7.1).
-aiohttp==3.14.1
-aiosignal==1.3.1
-async-timeout==4.0.3
-attrs==23.2.0
-certifi==2024.7.4
-charset-normalizer==3.3.2
-frozenlist==1.4.1
-gotrue==2.5.0
-h2==4.1.0
-hpack==4.0.0
-hyperframe==6.0.1
-httpx==0.27.0
-httpcore==1.0.5
-idna==3.7
-multidict==6.0.5
-postgrest==0.16.3
-realtime==2.0.1
-storage3==0.8.1
-supafunc==0.5.1
-typing_extensions==4.12.2
-websockets==12.0
-yarl==1.9.4
+supabase==2.31.0
+python-dotenv==1.2.2
+Pillow==12.2.0
