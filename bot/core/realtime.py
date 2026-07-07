@@ -537,6 +537,16 @@ class RealtimeCacheSubscriber:
         """Route a CDC payload to the correct guild invalidation."""
         self._received_count += 1
         table, record = _normalize_cdc_payload(payload, table_hint)
+
+        # Guard: _normalize_cdc_payload may return table=None when both the
+        # payload data and the table_hint are missing/empty.  Treat this the
+        # same as an unresolvable guild_id — log and skip.
+        if table is None:
+            logger.warning(
+                "CDC event with unresolvable table — skipping",
+            )
+            return
+
         guild_id = _extract_guild_id(table, record)
 
         if guild_id is None and table == "ticket_note":

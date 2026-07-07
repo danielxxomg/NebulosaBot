@@ -449,8 +449,10 @@ class TestCdcDispatch:
         assert cache.get("G-db:config") is None
 
     @pytest.mark.asyncio
-    async def test_ticket_note_unresolvable_skips_invalidation(self, cache: TTLCache) -> None:
-        """ticket_note unresolved (cache miss + DB None) MUST skip, not invalidate wrong guild."""
+    async def test_ticket_note_unresolvable_skips_invalidation(self, cache: TTLCache, caplog) -> None:
+        """ticket_note unresolved (cache miss + DB None) MUST skip and log a warning."""
+        import logging
+
         client = _make_client_mock()
         ticket_resp = MagicMock()
         ticket_resp.data = []  # DB returns nothing
@@ -462,10 +464,15 @@ class TestCdcDispatch:
         sub = _make_subscriber(cache, client)
         cache.set("some:config", "v")
 
-        await sub._handle_cdc(_cdc_payload(table="ticket_note", record={"ticketId": "T3"}))
+        with caplog.at_level(logging.WARNING, logger="bot.core.realtime"):
+            await sub._handle_cdc(_cdc_payload(table="ticket_note", record={"ticketId": "T3"}))
 
         # Nothing invalidated.
         assert cache.get("some:config") == "v"
+        # Warning about unresolvable guild_id MUST be logged.
+        assert any("could not resolve" in r.message.lower() or "guild_id" in r.message for r in caplog.records), (
+            "Expected a WARNING log about unresolvable guild_id"
+        )
 
     @pytest.mark.asyncio
     async def test_cdc_event_increments_counter(self, cache: TTLCache) -> None:
@@ -679,33 +686,51 @@ class TestHealthCheck:
     """_health_check_once — logs status; enables poll fallback after >60s unhealthy."""
 
     @pytest.mark.asyncio
-    async def test_healthy_subscribed_logs_debug(self, cache: TTLCache) -> None:
+    async def test_healthy_subscribed_logs_debug(self, cache: TTLCache, caplog) -> None:
+        """Spec: healthy subscription MUST log a DEBUG message."""
+        import logging
+
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
         sub._status = "SUBSCRIBED"
 
-        await sub._health_check_once()
+        with caplog.at_level(logging.DEBUG, logger="bot.core.realtime"):
+            await sub._health_check_once()
 
         assert sub._poll_fallback_enabled is False
+        assert any("healthy" in r.message.lower() or "subscribed" in r.message.lower() for r in caplog.records), (
+            "Expected a DEBUG log about healthy/subscribed status"
+        )
 
     @pytest.mark.asyncio
-    async def test_channel_error_over_60s_enables_fallback(self, cache: TTLCache) -> None:
+    async def test_channel_error_over_60s_enables_fallback(self, cache: TTLCache, caplog) -> None:
+        """Spec: disconnected state >60s MUST log a WARNING and enable poll fallback."""
+        import logging
+
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
         sub._status = "CHANNEL_ERROR"
         try:
             with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
                 sub._status_since = 930.0  # 70s ago
-                await sub._health_check_once()
+                with caplog.at_level(logging.WARNING, logger="bot.core.realtime"):
+                    await sub._health_check_once()
 
                 assert sub._poll_fallback_enabled is True
+                assert any(
+                    "unhealthy" in r.message.lower() or "poll fallback" in r.message.lower()
+                    for r in caplog.records
+                ), "Expected a WARNING log about unhealthy state or poll fallback"
         finally:
             # _health_check_once now recreates the poll task when enabling the
             # fallback — clean it up so no background task leaks past the test.
             await sub.stop()
 
     @pytest.mark.asyncio
-    async def test_recovery_disables_fallback(self, cache: TTLCache) -> None:
+    async def test_recovery_disables_fallback(self, cache: TTLCache, caplog) -> None:
+        """Spec: reconnection to SUBSCRIBED MUST disable poll fallback and log."""
+        import logging
+
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
         sub._poll_fallback_enabled = True
@@ -714,10 +739,14 @@ class TestHealthCheck:
             sub._status_since = 930.0
 
         # Recover — sync callback, no await.
-        sub._on_subscribe("SUBSCRIBED", None)
+        with caplog.at_level(logging.INFO, logger="bot.core.realtime"):
+            sub._on_subscribe("SUBSCRIBED", None)
         await sub._health_check_once()
 
         assert sub._poll_fallback_enabled is False
+        assert any("subscribed" in r.message.lower() for r in caplog.records), (
+            "Expected an INFO log about SUBSCRIBED reconnection"
+        )
 
 
 # ===========================================================================

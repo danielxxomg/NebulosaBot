@@ -11,14 +11,15 @@
 
 ### Requirement: Migration 001
 
-The system MUST provide a Migration 001 that creates the Guild, Member, Infraction, and Ticket tables. The `user` table MUST NOT be created.
+The system MUST provide a Migration 001 that creates the Guild, Member, Infraction, and Ticket tables. After all migrations through 006, the `user` table MUST NOT exist. Migration 001 MAY create it, but Migration 006 MUST drop it.
 
 #### Scenario: Fresh install
 
 - GIVEN an empty database
-- WHEN Migration 001 runs
-- THEN all four tables are created with the defined columns and constraints
-- AND the `user` table does not exist
+- WHEN all migrations 001-006 run in order
+- THEN all four core tables are created with the defined columns and constraints
+- AND the `user` table does not exist in the final state
+- AND no FK constraints reference the `user` table
 
 (Previously: Migration 001 created five tables including User)
 
