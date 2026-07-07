@@ -47,9 +47,7 @@ class XPListener(commands.Cog):
         user_id = str(message.author.id)
 
         # Delegate to EconomyService — handles cooldown via DB timestamp.
-        new_xp, new_level, leveled_up = await self.bot.economy_service.gain_xp(
-            guild_id, user_id
-        )
+        new_xp, new_level, leveled_up = await self.bot.economy_service.gain_xp(guild_id, user_id)
 
         # No XP awarded (cooldown or zero config).
         if new_xp == 0 and not leveled_up:
@@ -63,9 +61,7 @@ class XPListener(commands.Cog):
     # Level-up helpers
     # ------------------------------------------------------------------
 
-    async def _handle_level_up(
-        self, message: discord.Message, guild_id: str, new_level: int
-    ) -> None:
+    async def _handle_level_up(self, message: discord.Message, guild_id: str, new_level: int) -> None:
         """Send level-up embed and auto-assign roles for *new_level*.
 
         Fetches economy config ONCE and passes it to both sub-helpers.
@@ -106,7 +102,8 @@ class XPListener(commands.Cog):
         except discord.HTTPException:
             logger.exception(
                 "Failed to send level-up embed for user %s in guild %s",
-                message.author.id, guild.id,
+                message.author.id,
+                guild.id,
             )
 
     async def _assign_level_role(
@@ -135,7 +132,8 @@ class XPListener(commands.Cog):
         except (ValueError, TypeError):
             logger.warning(
                 "Invalid role ID %r in levelRoleMap for guild %s",
-                role_id_str, guild.id,
+                role_id_str,
+                guild.id,
             )
             return
 
@@ -143,7 +141,9 @@ class XPListener(commands.Cog):
         if role is None:
             logger.debug(
                 "Role %s not found in guild %s for level %d",
-                role_id_str, guild.id, new_level,
+                role_id_str,
+                guild.id,
+                new_level,
             )
             return
 
@@ -154,17 +154,24 @@ class XPListener(commands.Cog):
             await message.author.add_roles(role)
             logger.info(
                 "Assigned role %s to %s (level %d) in guild %s",
-                role.name, message.author, new_level, guild.id,
+                role.name,
+                message.author,
+                new_level,
+                guild.id,
             )
         except discord.Forbidden:
             logger.warning(
                 "Missing permissions to assign role %s to %s in guild %s",
-                role.name, message.author, guild.id,
+                role.name,
+                message.author,
+                guild.id,
             )
         except discord.HTTPException:
             logger.exception(
                 "Failed to assign role %s to %s in guild %s",
-                role.name, message.author, guild.id,
+                role.name,
+                message.author,
+                guild.id,
             )
 
 

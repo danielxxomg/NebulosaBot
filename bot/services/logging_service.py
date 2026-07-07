@@ -299,7 +299,8 @@ class LoggingService:
         if log_channel is None:
             logger.warning(
                 "Log channel %s not found for guild %s — skipping log",
-                config.log_channel_id, guild_id,
+                config.log_channel_id,
+                guild_id,
             )
             return
 
@@ -308,5 +309,6 @@ class LoggingService:
         except discord.HTTPException:
             logger.exception(
                 "Failed to send log embed to channel %s (guild=%s)",
-                config.log_channel_id, guild_id,
+                config.log_channel_id,
+                guild_id,
             )

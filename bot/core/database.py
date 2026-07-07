@@ -237,9 +237,7 @@ class Database:
         response = query.execute()
         return _unwrap(response)
 
-    async def get_active_warnings(
-        self, guild_id: str, target_id: str
-    ) -> list[dict]:
+    async def get_active_warnings(self, guild_id: str, target_id: str) -> list[dict]:
         """Return all active WARN infractions for a guild member.
 
         Convenience wrapper around ``get_infractions`` with ``type="WARN"``
@@ -267,9 +265,7 @@ class Database:
             raise RuntimeError("Database.connect() must be called first")
 
         logger.debug("DB deactivate_infraction(%s)", infraction_id)
-        self._client.table("infraction").update({"active": False}).eq(
-            "id", infraction_id
-        ).execute()
+        self._client.table("infraction").update({"active": False}).eq("id", infraction_id).execute()
 
     # -- ticket -------------------------------------------------------
 
@@ -305,9 +301,7 @@ class Database:
             "lastActivity": now,
             "parentId": parent_id,
         }
-        logger.debug(
-            "DB insert_ticket(%s) number=%d parent=%s", ticket_id, ticket_number, parent_id
-        )
+        logger.debug("DB insert_ticket(%s) number=%d parent=%s", ticket_id, ticket_number, parent_id)
         response = self._client.table("ticket").insert(row).execute()
         rows = _unwrap(response)
         if self._on_write is not None:
@@ -326,11 +320,7 @@ class Database:
 
         logger.debug("DB get_tickets_by_parent(%r)", parent_id)
         response = (
-            self._client.table("ticket")
-            .select("*")
-            .eq("parentId", parent_id)
-            .order("createdAt", desc=True)
-            .execute()
+            self._client.table("ticket").select("*").eq("parentId", parent_id).order("createdAt", desc=True).execute()
         )
         return _unwrap(response)
 
@@ -358,9 +348,7 @@ class Database:
             "authorId": author_id,
             "content": content,
         }
-        logger.debug(
-            "DB insert_ticket_note(%s) ticket=%s author=%s", note_id, ticket_id, author_id
-        )
+        logger.debug("DB insert_ticket_note(%s) ticket=%s author=%s", note_id, ticket_id, author_id)
         response = self._client.table("ticket_note").insert(row).execute()
         rows = _unwrap(response)
         if self._on_write is not None:
@@ -400,9 +388,7 @@ class Database:
         logger.debug("DB delete_ticket_note(%s)", note_id)
         self._client.table("ticket_note").delete().eq("id", note_id).execute()
 
-    async def get_recent_notes_for_dedup(
-        self, ticket_id: str, author_id: str, window_seconds: int = 2
-    ) -> list[dict]:
+    async def get_recent_notes_for_dedup(self, ticket_id: str, author_id: str, window_seconds: int = 2) -> list[dict]:
         """Return notes by *author_id* on *ticket_id* created in the dedup window.
 
         Computes a cutoff of ``now() - window_seconds`` client-side and pushes
@@ -419,7 +405,9 @@ class Database:
         cutoff = datetime.now(UTC) - timedelta(seconds=window_seconds)
         logger.debug(
             "DB get_recent_notes_for_dedup(ticket=%s, author=%s, cutoff=%s)",
-            ticket_id, author_id, cutoff.isoformat(),
+            ticket_id,
+            author_id,
+            cutoff.isoformat(),
         )
         response = (
             self._client.table("ticket_note")
@@ -469,9 +457,7 @@ class Database:
         rows = _unwrap(response)
         return rows[0] if rows else {}
 
-    async def get_audit_rows(
-        self, guild_id: str, limit: int = 50, offset: int = 0
-    ) -> list[dict]:
+    async def get_audit_rows(self, guild_id: str, limit: int = 50, offset: int = 0) -> list[dict]:
         """Return ``ticket_audit`` rows for a guild, newest-first, paginated.
 
         Guild-scoped by an ``eq("guildId")`` filter so rows from other guilds
@@ -481,9 +467,7 @@ class Database:
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
 
-        logger.debug(
-            "DB get_audit_rows(guild=%s, limit=%d, offset=%d)", guild_id, limit, offset
-        )
+        logger.debug("DB get_audit_rows(guild=%s, limit=%d, offset=%d)", guild_id, limit, offset)
         response = (
             self._client.table("ticket_audit")
             .select("*")
@@ -501,12 +485,7 @@ class Database:
             raise RuntimeError("Database.connect() must be called first")
 
         logger.debug("DB get_ticket(%r)", ticket_id)
-        response = (
-            self._client.table("ticket")
-            .select("*")
-            .eq("id", ticket_id)
-            .execute()
-        )
+        response = self._client.table("ticket").select("*").eq("id", ticket_id).execute()
         rows = _unwrap(response)
         return rows[0] if rows else None
 
@@ -516,12 +495,7 @@ class Database:
             raise RuntimeError("Database.connect() must be called first")
 
         logger.debug("DB get_ticket_by_channel(%r)", channel_id)
-        response = (
-            self._client.table("ticket")
-            .select("*")
-            .eq("channelId", channel_id)
-            .execute()
-        )
+        response = self._client.table("ticket").select("*").eq("channelId", channel_id).execute()
         rows = _unwrap(response)
         return rows[0] if rows else None
 
@@ -537,11 +511,7 @@ class Database:
 
         logger.debug("DB get_ticket_by_number(guild=%s, number=%d)", guild_id, ticket_number)
         response = (
-            self._client.table("ticket")
-            .select("*")
-            .eq("guildId", guild_id)
-            .eq("ticketNumber", ticket_number)
-            .execute()
+            self._client.table("ticket").select("*").eq("guildId", guild_id).eq("ticketNumber", ticket_number).execute()
         )
         rows = _unwrap(response)
         return rows[0] if rows else None
@@ -558,9 +528,7 @@ class Database:
         logger.debug("DB update_ticket(%s) %s", ticket_id, kwargs)
         self._client.table("ticket").update(kwargs).eq("id", ticket_id).execute()
 
-    async def get_stale_tickets(
-        self, guild_id: str, hours: int = 48
-    ) -> list[dict]:
+    async def get_stale_tickets(self, guild_id: str, hours: int = 48) -> list[dict]:
         """Return open/claimed tickets with ``lastActivity`` older than *hours*.
 
         Used by the auto-close task to identify inactive tickets.
@@ -569,9 +537,7 @@ class Database:
             raise RuntimeError("Database.connect() must be called first")
 
         cutoff = datetime.now(UTC) - timedelta(hours=hours)
-        logger.debug(
-            "DB get_stale_tickets(guild=%s, cutoff=%s)", guild_id, cutoff.isoformat()
-        )
+        logger.debug("DB get_stale_tickets(guild=%s, cutoff=%s)", guild_id, cutoff.isoformat())
         response = (
             self._client.table("ticket")
             .select("*")
@@ -654,12 +620,7 @@ class Database:
             raise RuntimeError("Database.connect() must be called first")
 
         logger.debug("DB get_ticket_category(%r)", category_id)
-        response = (
-            self._client.table("ticket_category")
-            .select("*")
-            .eq("id", category_id)
-            .execute()
-        )
+        response = self._client.table("ticket_category").select("*").eq("id", category_id).execute()
         rows = _unwrap(response)
         return rows[0] if rows else None
 
@@ -722,15 +683,11 @@ class Database:
 
         now = datetime.now(UTC).isoformat()
         logger.debug("DB update_ticket_last_activity(ch=%s)", channel_id)
-        self._client.table("ticket").update(
-            {"lastActivity": now}
-        ).eq("channelId", channel_id).execute()
+        self._client.table("ticket").update({"lastActivity": now}).eq("channelId", channel_id).execute()
 
     # -- guild_panel ---------------------------------------------------
 
-    async def update_guild_panel(
-        self, guild_id: str, message_id: str, channel_id: str
-    ) -> None:
+    async def update_guild_panel(self, guild_id: str, message_id: str, channel_id: str) -> None:
         """Persist the ticket panel message and channel IDs on the guild row.
 
         Called after deploying a panel so it survives bot restarts.
@@ -740,12 +697,16 @@ class Database:
 
         logger.debug(
             "DB update_guild_panel(guild=%s, msg=%s, ch=%s)",
-            guild_id, message_id, channel_id,
+            guild_id,
+            message_id,
+            channel_id,
         )
-        self._client.table("guild").update({
-            "ticketPanelMessageId": message_id,
-            "ticketPanelChannelId": channel_id,
-        }).eq("id", guild_id).execute()
+        self._client.table("guild").update(
+            {
+                "ticketPanelMessageId": message_id,
+                "ticketPanelChannelId": channel_id,
+            }
+        ).eq("id", guild_id).execute()
 
     # -- member -------------------------------------------------------
 
@@ -759,19 +720,11 @@ class Database:
             raise RuntimeError("Database.connect() must be called first")
 
         logger.debug("DB get_member(guild=%s, user=%s)", guild_id, user_id)
-        response = (
-            self._client.table("member")
-            .select("*")
-            .eq("guildId", guild_id)
-            .eq("userId", user_id)
-            .execute()
-        )
+        response = self._client.table("member").select("*").eq("guildId", guild_id).eq("userId", user_id).execute()
         rows = _unwrap(response)
         return rows[0] if rows else None
 
-    async def update_member_warnings(
-        self, guild_id: str, user_id: str, delta: int
-    ) -> None:
+    async def update_member_warnings(self, guild_id: str, user_id: str, delta: int) -> None:
         """Increment or decrement the warnings counter for a member.
 
         If the member does not have a row yet, an initial row with
@@ -786,23 +739,30 @@ class Database:
             new_warnings = max(existing.get("warnings", 0) + delta, 0)
             logger.debug(
                 "DB update_member_warnings(%s/%s): %d → %d",
-                guild_id, user_id, existing.get("warnings", 0), new_warnings,
+                guild_id,
+                user_id,
+                existing.get("warnings", 0),
+                new_warnings,
             )
-            self._client.table("member").update(
-                {"warnings": new_warnings}
-            ).eq("guildId", guild_id).eq("userId", user_id).execute()
+            self._client.table("member").update({"warnings": new_warnings}).eq("guildId", guild_id).eq(
+                "userId", user_id
+            ).execute()
         else:
             # First interaction — create the row.
             initial = max(delta, 0)
             logger.debug(
                 "DB update_member_warnings(%s/%s): new member, warnings=%d",
-                guild_id, user_id, initial,
+                guild_id,
+                user_id,
+                initial,
             )
-            self._client.table("member").upsert({
-                "guildId": guild_id,
-                "userId": user_id,
-                "warnings": initial,
-            }).execute()
+            self._client.table("member").upsert(
+                {
+                    "guildId": guild_id,
+                    "userId": user_id,
+                    "warnings": initial,
+                }
+            ).execute()
 
     # -- economy_config ------------------------------------------------
 
@@ -816,12 +776,7 @@ class Database:
             raise RuntimeError("Database.connect() must be called first")
 
         logger.debug("DB get_economy_config(%r)", guild_id)
-        response = (
-            self._client.table("economy_config")
-            .select("*")
-            .eq("guildId", guild_id)
-            .execute()
-        )
+        response = self._client.table("economy_config").select("*").eq("guildId", guild_id).execute()
         rows = _unwrap(response)
         return rows[0] if rows else None
 
@@ -841,7 +796,10 @@ class Database:
     # -- member economy --------------------------------------------------
 
     async def update_member_xp(
-        self, guild_id: str, user_id: str, xp_delta: int,
+        self,
+        guild_id: str,
+        user_id: str,
+        xp_delta: int,
         new_level: int | None = None,
     ) -> dict:
         """Increment a member's XP and return the updated row.
@@ -860,32 +818,40 @@ class Database:
             level = new_level if new_level is not None else existing.get("level", 0)
             logger.debug(
                 "DB update_member_xp(%s/%s): xp %d → %d, level=%d",
-                guild_id, user_id, existing.get("xp", 0), new_xp_val, level,
+                guild_id,
+                user_id,
+                existing.get("xp", 0),
+                new_xp_val,
+                level,
             )
-            self._client.table("member").update({
-                "xp": new_xp_val,
-                "level": level,
-                "lastXpGain": now,
-            }).eq("guildId", guild_id).eq("userId", user_id).execute()
+            self._client.table("member").update(
+                {
+                    "xp": new_xp_val,
+                    "level": level,
+                    "lastXpGain": now,
+                }
+            ).eq("guildId", guild_id).eq("userId", user_id).execute()
             return {"xp": new_xp_val, "level": level}
         else:
             level = new_level if new_level is not None else 0
             logger.debug(
                 "DB update_member_xp(%s/%s): new member, xp=%d",
-                guild_id, user_id, xp_delta,
+                guild_id,
+                user_id,
+                xp_delta,
             )
-            self._client.table("member").upsert({
-                "guildId": guild_id,
-                "userId": user_id,
-                "xp": max(xp_delta, 0),
-                "level": level,
-                "lastXpGain": now,
-            }).execute()
+            self._client.table("member").upsert(
+                {
+                    "guildId": guild_id,
+                    "userId": user_id,
+                    "xp": max(xp_delta, 0),
+                    "level": level,
+                    "lastXpGain": now,
+                }
+            ).execute()
             return {"xp": xp_delta, "level": level}
 
-    async def update_member_coins(
-        self, guild_id: str, user_id: str, coin_delta: int
-    ) -> dict:
+    async def update_member_coins(self, guild_id: str, user_id: str, coin_delta: int) -> dict:
         """Increment a member's coins and return the updated row.
 
         If the member does not have a row yet, an initial row with
@@ -900,22 +866,29 @@ class Database:
             new_coins = max(existing.get("coins", 0) + coin_delta, 0)
             logger.debug(
                 "DB update_member_coins(%s/%s): coins %d → %d",
-                guild_id, user_id, existing.get("coins", 0), new_coins,
+                guild_id,
+                user_id,
+                existing.get("coins", 0),
+                new_coins,
             )
-            self._client.table("member").update(
-                {"coins": new_coins}
-            ).eq("guildId", guild_id).eq("userId", user_id).execute()
+            self._client.table("member").update({"coins": new_coins}).eq("guildId", guild_id).eq(
+                "userId", user_id
+            ).execute()
             return {"coins": new_coins}
         else:
             logger.debug(
                 "DB update_member_coins(%s/%s): new member, coins=%d",
-                guild_id, user_id, coin_delta,
+                guild_id,
+                user_id,
+                coin_delta,
             )
-            self._client.table("member").upsert({
-                "guildId": guild_id,
-                "userId": user_id,
-                "coins": max(coin_delta, 0),
-            }).execute()
+            self._client.table("member").upsert(
+                {
+                    "guildId": guild_id,
+                    "userId": user_id,
+                    "coins": max(coin_delta, 0),
+                }
+            ).execute()
             return {"coins": coin_delta}
 
     async def update_member_daily(
@@ -940,28 +913,39 @@ class Database:
             new_coins = max(existing.get("coins", 0) + coin_delta, 0)
             logger.debug(
                 "DB update_member_daily(%s/%s): coins %d → %d, streak=%d",
-                guild_id, user_id, existing.get("coins", 0), new_coins, streak,
+                guild_id,
+                user_id,
+                existing.get("coins", 0),
+                new_coins,
+                streak,
             )
-            self._client.table("member").update({
-                "coins": new_coins,
-                "dailyStreak": streak,
-                "lastDailyReset": last_daily_reset,
-                "lastDaily": last_daily,
-            }).eq("guildId", guild_id).eq("userId", user_id).execute()
+            self._client.table("member").update(
+                {
+                    "coins": new_coins,
+                    "dailyStreak": streak,
+                    "lastDailyReset": last_daily_reset,
+                    "lastDaily": last_daily,
+                }
+            ).eq("guildId", guild_id).eq("userId", user_id).execute()
             return {"coins": new_coins}
         else:
             logger.debug(
                 "DB update_member_daily(%s/%s): new member, coins=%d, streak=%d",
-                guild_id, user_id, coin_delta, streak,
+                guild_id,
+                user_id,
+                coin_delta,
+                streak,
             )
-            self._client.table("member").upsert({
-                "guildId": guild_id,
-                "userId": user_id,
-                "coins": max(coin_delta, 0),
-                "dailyStreak": streak,
-                "lastDailyReset": last_daily_reset,
-                "lastDaily": last_daily,
-            }).execute()
+            self._client.table("member").upsert(
+                {
+                    "guildId": guild_id,
+                    "userId": user_id,
+                    "coins": max(coin_delta, 0),
+                    "dailyStreak": streak,
+                    "lastDailyReset": last_daily_reset,
+                    "lastDaily": last_daily,
+                }
+            ).execute()
             return {"coins": coin_delta}
 
     async def get_leaderboard(
@@ -988,7 +972,10 @@ class Database:
         column = "xp" if sort_by == "xp" else "coins"
         logger.debug(
             "DB get_leaderboard(guild=%s, sort=%s, limit=%d, offset=%d)",
-            guild_id, column, limit, offset,
+            guild_id,
+            column,
+            limit,
+            offset,
         )
         response = (
             self._client.table("member")
@@ -1013,12 +1000,7 @@ class Database:
             raise RuntimeError("Database.connect() must be called first")
 
         logger.debug("DB get_greeting_config(%r)", guild_id)
-        response = (
-            self._client.table("greeting_config")
-            .select("*")
-            .eq("guildId", guild_id)
-            .execute()
-        )
+        response = self._client.table("greeting_config").select("*").eq("guildId", guild_id).execute()
         rows = _unwrap(response)
         return rows[0] if rows else None
 
@@ -1037,9 +1019,7 @@ class Database:
         if self._on_write is not None:
             await self._on_write("greeting_config", str(config.guild_id))
 
-    async def get_member_rank(
-        self, guild_id: str, user_id: str, sort_by: str = "xp"
-    ) -> int | None:
+    async def get_member_rank(self, guild_id: str, user_id: str, sort_by: str = "xp") -> int | None:
         """Return the 1-indexed rank position of a member on the leaderboard.
 
         Counts how many members have a higher *sort_by* value than the
@@ -1059,7 +1039,9 @@ class Database:
 
         logger.debug(
             "DB get_member_rank(guild=%s, user=%s, sort=%s)",
-            guild_id, user_id, column,
+            guild_id,
+            user_id,
+            column,
         )
         # Count members with higher value → rank = count + 1
         response = (

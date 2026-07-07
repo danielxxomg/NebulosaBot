@@ -1267,12 +1267,8 @@ class TestGetTicketByNumber:
         await db.get_ticket_by_number("g1", 3)
 
         filters = fake_client.get_table_filters("ticket")
-        assert ("eq", "guildId", "g1") in filters, (
-            f"Missing guildId filter for guild scope, got: {filters}"
-        )
-        assert ("eq", "ticketNumber", 3) in filters, (
-            f"Missing ticketNumber filter, got: {filters}"
-        )
+        assert ("eq", "guildId", "g1") in filters, f"Missing guildId filter for guild scope, got: {filters}"
+        assert ("eq", "ticketNumber", 3) in filters, f"Missing ticketNumber filter, got: {filters}"
 
     @pytest.mark.asyncio
     async def test_raises_without_connect(self, disconnected_db: Database) -> None:
@@ -1292,8 +1288,15 @@ class TestInsertAuditRow:
     @pytest.mark.asyncio
     async def test_returns_persisted_row(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """insert_audit_row() MUST return the persisted audit row."""
-        audit_row = {"id": "a1", "guildId": "g1", "ticketId": "t1", "action": "claim",
-                     "actorId": "u1", "outcome": "success", "reason": None}
+        audit_row = {
+            "id": "a1",
+            "guildId": "g1",
+            "ticketId": "t1",
+            "action": "claim",
+            "actorId": "u1",
+            "outcome": "success",
+            "reason": None,
+        }
         fake_client.set_table_data("ticket_audit", [audit_row])
 
         result = await db.insert_audit_row("g1", "t1", "claim", "u1", "success", None)
@@ -1308,8 +1311,12 @@ class TestInsertAuditRow:
         fake_client.set_table_data("ticket_audit", [{}])
 
         await db.insert_audit_row(
-            guild_id="g1", ticket_id="t1", action="claim",
-            actor_id="u1", outcome="success", reason="mod claim",
+            guild_id="g1",
+            ticket_id="t1",
+            action="claim",
+            actor_id="u1",
+            outcome="success",
+            reason="mod claim",
         )
 
         insert_calls = fake_client.get_table_calls("ticket_audit")
@@ -1382,9 +1389,7 @@ class TestGetAuditRows:
         await db.get_audit_rows("g1", limit=50, offset=0)
 
         filters = fake_client.get_table_filters("ticket_audit")
-        assert ("eq", "guildId", "g1") in filters, (
-            f"Missing guildId filter (guild scope), got: {filters}"
-        )
+        assert ("eq", "guildId", "g1") in filters, f"Missing guildId filter (guild scope), got: {filters}"
 
     @pytest.mark.asyncio
     async def test_orders_by_created_at_desc(self, db: Database, fake_client: FakeSupabaseClient) -> None:
@@ -1394,9 +1399,7 @@ class TestGetAuditRows:
         await db.get_audit_rows("g1", limit=50, offset=0)
 
         orders = fake_client.get_table_orders("ticket_audit")
-        assert ("createdAt", True) in orders, (
-            f"Expected order('createdAt', desc=True), got: {orders}"
-        )
+        assert ("createdAt", True) in orders, f"Expected order('createdAt', desc=True), got: {orders}"
 
     @pytest.mark.asyncio
     async def test_applies_limit_and_offset(self, db: Database, fake_client: FakeSupabaseClient) -> None:
@@ -1457,9 +1460,7 @@ class TestGetRecentNotesForDedup:
         # cutoff = now - 2s = 11:59:58
         gte_filters = [f for f in filters if f[0] == "gte" and f[1] == "createdAt"]
         assert len(gte_filters) == 1, f"Expected one gte createdAt filter, got: {filters}"
-        assert gte_filters[0][2] == "2024-06-15T11:59:58+00:00", (
-            f"Expected cutoff now()-2s, got: {gte_filters[0][2]}"
-        )
+        assert gte_filters[0][2] == "2024-06-15T11:59:58+00:00", f"Expected cutoff now()-2s, got: {gte_filters[0][2]}"
 
     @pytest.mark.asyncio
     async def test_custom_window_seconds_changes_cutoff(self, db: Database, fake_client: FakeSupabaseClient) -> None:
@@ -1471,9 +1472,7 @@ class TestGetRecentNotesForDedup:
 
         filters = fake_client.get_table_filters("ticket_note")
         gte_filters = [f for f in filters if f[0] == "gte" and f[1] == "createdAt"]
-        assert gte_filters[0][2] == "2024-06-15T11:59:55+00:00", (
-            f"Expected cutoff now()-5s, got: {gte_filters[0][2]}"
-        )
+        assert gte_filters[0][2] == "2024-06-15T11:59:55+00:00", f"Expected cutoff now()-5s, got: {gte_filters[0][2]}"
 
     @pytest.mark.asyncio
     async def test_raises_without_connect(self, disconnected_db: Database) -> None:

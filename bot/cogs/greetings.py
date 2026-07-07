@@ -55,7 +55,8 @@ class GreetingsCog(commands.Cog, name="Greetings"):
         except Exception:
             logger.exception(
                 "on_member_join dispatch_welcome failed for %s in guild %s",
-                member.name, member.guild.id,
+                member.name,
+                member.guild.id,
             )
 
     @commands.Cog.listener()
@@ -68,7 +69,8 @@ class GreetingsCog(commands.Cog, name="Greetings"):
         except Exception:
             logger.exception(
                 "on_member_remove dispatch_goodbye failed for %s in guild %s",
-                member.name, member.guild.id,
+                member.name,
+                member.guild.id,
             )
 
     # ------------------------------------------------------------------

@@ -157,9 +157,7 @@ class TicketService:
         try:
             check_can_close(pre.get("status", ""))
         except ValueError as exc:
-            await self._db.insert_audit_row(
-                guild_id, ticket_id, "close", closed_by, "denied", str(exc)
-            )
+            await self._db.insert_audit_row(guild_id, ticket_id, "close", closed_by, "denied", str(exc))
             raise
 
         update_kwargs: dict[str, str | None] = {
@@ -179,9 +177,7 @@ class TicketService:
         # Remove channel from cache so the on_message listener skips it.
         self._ticket_channel_cache.discard(int(ticket.channel_id))
 
-        await self._db.insert_audit_row(
-            guild_id, ticket_id, "close", closed_by, "success", None
-        )
+        await self._db.insert_audit_row(guild_id, ticket_id, "close", closed_by, "success", None)
         logger.info(
             "Ticket %s closed by %s%s",
             ticket_id,
@@ -216,9 +212,7 @@ class TicketService:
         try:
             check_can_claim(pre.get("status", ""), pre.get("claimedBy"))
         except ValueError as exc:
-            await self._db.insert_audit_row(
-                guild_id, ticket_id, "claim", claimed_by, "denied", str(exc)
-            )
+            await self._db.insert_audit_row(guild_id, ticket_id, "claim", claimed_by, "denied", str(exc))
             raise
 
         await self._db.update_ticket(
@@ -232,9 +226,7 @@ class TicketService:
             raise ValueError(f"Ticket {ticket_id} not found after claim")
         ticket = Ticket.from_db_row(row)
 
-        await self._db.insert_audit_row(
-            guild_id, ticket_id, "claim", claimed_by, "success", None
-        )
+        await self._db.insert_audit_row(guild_id, ticket_id, "claim", claimed_by, "success", None)
         logger.info("Ticket %s claimed by %s", ticket_id, claimed_by)
         return ticket
 
@@ -331,7 +323,11 @@ class TicketService:
         parent_row = await self._db.get_ticket(parent_id)
         if parent_row is None:
             await self._db.insert_audit_row(
-                guild_id, parent_id, "subticket_create", author_id, "denied",
+                guild_id,
+                parent_id,
+                "subticket_create",
+                author_id,
+                "denied",
                 f"Parent ticket {parent_id} not found",
             )
             raise ValueError(f"Parent ticket {parent_id} not found")
@@ -344,7 +340,11 @@ class TicketService:
         #    because parentId is non-None, which is less actionable).
         if parent.parent_id is not None and parent.parent_id == parent.id:
             await self._db.insert_audit_row(
-                guild_id, parent_id, "subticket_create", author_id, "denied",
+                guild_id,
+                parent_id,
+                "subticket_create",
+                author_id,
+                "denied",
                 f"Parent ticket {parent_id} is self-referential",
             )
             raise ValueError(f"Parent ticket {parent_id} is self-referential")
@@ -360,9 +360,7 @@ class TicketService:
             # operation origin), not the parent's guild — a cross-guild
             # attempt's denial must land in the caller's audit trail, not the
             # parent guild's.
-            await self._db.insert_audit_row(
-                guild_id, parent_id, "subticket_create", author_id, "denied", str(exc)
-            )
+            await self._db.insert_audit_row(guild_id, parent_id, "subticket_create", author_id, "denied", str(exc))
             raise
 
         # Sequential numbering + insert (mirrors create_ticket). Carve-out:
@@ -388,9 +386,7 @@ class TicketService:
                 )
                 ticket = Ticket.from_db_row(row)
                 self._ticket_channel_cache.add(int(channel_id))
-                await self._db.insert_audit_row(
-                    guild_id, ticket.id, "subticket_create", author_id, "success", None
-                )
+                await self._db.insert_audit_row(guild_id, ticket.id, "subticket_create", author_id, "success", None)
                 logger.info(
                     "Sub-ticket #%d created (parent=%s, guild=%s, channel=%s)",
                     ticket_number,
@@ -453,9 +449,7 @@ class TicketService:
         try:
             check_can_reopen(closed_row.get("status", ""))
         except ValueError as exc:
-            await self._db.insert_audit_row(
-                guild_id, ticket_id, "reopen", None, "denied", str(exc)
-            )
+            await self._db.insert_audit_row(guild_id, ticket_id, "reopen", None, "denied", str(exc))
             # Translate to the user-facing Spanish message the cog surfaces
             # verbatim (preserves the existing contract).
             raise ValueError(
@@ -466,9 +460,7 @@ class TicketService:
         category_channel = self._resolve_ticket_category(guild, guild_row)
         if category_channel is None:
             err = f"No ticket category configured for guild {guild.id} — cannot reopen ticket {ticket_id}"
-            await self._db.insert_audit_row(
-                guild_id, ticket_id, "reopen", None, "denied", err
-            )
+            await self._db.insert_audit_row(guild_id, ticket_id, "reopen", None, "denied", err)
             raise ValueError(err)
 
         # Build permission overwrites (everyone denied, bot + author + mod).
@@ -525,9 +517,7 @@ class TicketService:
         # New channel is now an active ticket channel — cache it.
         self._ticket_channel_cache.add(int(ticket.channel_id))
 
-        await self._db.insert_audit_row(
-            guild_id, ticket_id, "reopen", None, "success", None
-        )
+        await self._db.insert_audit_row(guild_id, ticket_id, "reopen", None, "success", None)
         logger.info("Ticket %s reopened (new channel=%s)", ticket_id, ticket.channel_id)
         return ticket
 
@@ -594,9 +584,7 @@ class TicketService:
         try:
             check_can_transfer(pre.get("status", ""), pre.get("claimedBy"), new_claimed_by)
         except ValueError as exc:
-            await self._db.insert_audit_row(
-                guild_id, ticket_id, "transfer", actor_id, "denied", str(exc)
-            )
+            await self._db.insert_audit_row(guild_id, ticket_id, "transfer", actor_id, "denied", str(exc))
             raise
 
         await self._db.update_ticket(
@@ -610,9 +598,7 @@ class TicketService:
             raise ValueError(f"Ticket {ticket_id} not found after transfer")
         ticket = Ticket.from_db_row(row)
 
-        await self._db.insert_audit_row(
-            ticket.guild_id, ticket_id, "transfer", actor_id, "success", None
-        )
+        await self._db.insert_audit_row(ticket.guild_id, ticket_id, "transfer", actor_id, "success", None)
 
         # Best-effort audit embed (LoggingService, not a DB audit table).
         if logging_service is not None and guild is not None:
@@ -678,16 +664,12 @@ class TicketService:
                     "content within the 2-second dedup window)"
                 )
         except ValueError as exc:
-            await self._db.insert_audit_row(
-                guild_id, ticket_id, "note_add", author_id, "denied", str(exc)
-            )
+            await self._db.insert_audit_row(guild_id, ticket_id, "note_add", author_id, "denied", str(exc))
             raise
 
         row = await self._db.insert_ticket_note(ticket_id, author_id, content)
         note = TicketNote.from_db_row(row)
-        await self._db.insert_audit_row(
-            guild_id, ticket_id, "note_add", author_id, "success", None
-        )
+        await self._db.insert_audit_row(guild_id, ticket_id, "note_add", author_id, "success", None)
         logger.info("Note %s added to ticket %s by %s", note.id, ticket_id, author_id)
         return note
 
@@ -710,9 +692,7 @@ class TicketService:
         notes = [TicketNote.from_db_row(r) for r in rows]
         ticket_row = await self._db.get_ticket(ticket_id)
         guild_id = (ticket_row or {}).get("guildId", "")
-        await self._db.insert_audit_row(
-            guild_id, ticket_id, "note_list", None, "success", None
-        )
+        await self._db.insert_audit_row(guild_id, ticket_id, "note_list", None, "success", None)
         logger.debug("get_notes(ticket=%s): %d notes", ticket_id, len(notes))
         return notes
 
@@ -743,13 +723,9 @@ class TicketService:
                 raise ValueError(f"Note {note_id} not found on ticket {ticket_id}")
             check_can_delete_note(target.get("authorId", ""), author_id)
         except ValueError as exc:
-            await self._db.insert_audit_row(
-                guild_id, ticket_id, "note_delete", author_id, "denied", str(exc)
-            )
+            await self._db.insert_audit_row(guild_id, ticket_id, "note_delete", author_id, "denied", str(exc))
             raise
 
         await self._db.delete_ticket_note(note_id)
-        await self._db.insert_audit_row(
-            guild_id, ticket_id, "note_delete", author_id, "success", None
-        )
+        await self._db.insert_audit_row(guild_id, ticket_id, "note_delete", author_id, "success", None)
         logger.info("Note %s deleted by %s", note_id, author_id)

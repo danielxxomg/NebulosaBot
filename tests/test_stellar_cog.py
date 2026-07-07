@@ -74,7 +74,9 @@ class TestDailyCommand:
 
     @pytest.mark.asyncio
     async def test_daily_success_embed(
-        self, cog: StellarCog, mock_bot: MagicMock,
+        self,
+        cog: StellarCog,
+        mock_bot: MagicMock,
     ) -> None:
         """Successful claim should send a green embed with coins and streak."""
         ctx = _make_context()
@@ -82,9 +84,7 @@ class TestDailyCommand:
 
         await cog.daily.callback(cog, ctx)
 
-        mock_bot.economy_service.claim_daily.assert_called_once_with(
-            "123456789", "111111111"
-        )
+        mock_bot.economy_service.claim_daily.assert_called_once_with("123456789", "111111111")
         ctx.send.assert_called_once()
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
@@ -95,7 +95,9 @@ class TestDailyCommand:
 
     @pytest.mark.asyncio
     async def test_daily_cooldown_embed(
-        self, cog: StellarCog, mock_bot: MagicMock,
+        self,
+        cog: StellarCog,
+        mock_bot: MagicMock,
     ) -> None:
         """Claim on cooldown should show a yellow embed with streak."""
         ctx = _make_context()
@@ -110,7 +112,9 @@ class TestDailyCommand:
 
     @pytest.mark.asyncio
     async def test_daily_error_handling(
-        self, cog: StellarCog, mock_bot: MagicMock,
+        self,
+        cog: StellarCog,
+        mock_bot: MagicMock,
     ) -> None:
         """Service errors should produce a red error embed."""
         ctx = _make_context()
@@ -134,7 +138,9 @@ class TestCoinsCommand:
 
     @pytest.mark.asyncio
     async def test_coins_self_balance(
-        self, cog: StellarCog, mock_bot: MagicMock,
+        self,
+        cog: StellarCog,
+        mock_bot: MagicMock,
     ) -> None:
         """Show own balance in an info embed."""
         ctx = _make_context(user_id=111111111)
@@ -150,7 +156,9 @@ class TestCoinsCommand:
 
     @pytest.mark.asyncio
     async def test_coins_target_balance(
-        self, cog: StellarCog, mock_bot: MagicMock,
+        self,
+        cog: StellarCog,
+        mock_bot: MagicMock,
     ) -> None:
         """Show a target member's balance."""
         ctx = _make_context(user_id=111111111)
@@ -161,16 +169,16 @@ class TestCoinsCommand:
 
         await cog.coins.callback(cog, ctx, member=target)
 
-        mock_bot.economy_service.get_balance.assert_called_once_with(
-            "123456789", "222222222"
-        )
+        mock_bot.economy_service.get_balance.assert_called_once_with("123456789", "222222222")
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         assert "1200" in embed.description
 
     @pytest.mark.asyncio
     async def test_coins_zero_balance(
-        self, cog: StellarCog, mock_bot: MagicMock,
+        self,
+        cog: StellarCog,
+        mock_bot: MagicMock,
     ) -> None:
         """Zero balance should still display 0."""
         ctx = _make_context()
@@ -184,7 +192,9 @@ class TestCoinsCommand:
 
     @pytest.mark.asyncio
     async def test_coins_error_handling(
-        self, cog: StellarCog, mock_bot: MagicMock,
+        self,
+        cog: StellarCog,
+        mock_bot: MagicMock,
     ) -> None:
         """Service errors in coins should produce error embed."""
         ctx = _make_context()
@@ -207,21 +217,18 @@ class TestLeaderboardCommand:
 
     @pytest.mark.asyncio
     async def test_leaderboard_xp_displays_top_10(
-        self, cog: StellarCog, mock_bot: MagicMock,
+        self,
+        cog: StellarCog,
+        mock_bot: MagicMock,
     ) -> None:
         """XP leaderboard should show top 10 with rank numbers."""
         ctx = _make_context()
-        members = [
-            {"userId": f"{1000 + i}", "xp": 1000 - i * 90, "coins": i * 10}
-            for i in range(10)
-        ]
+        members = [{"userId": f"{1000 + i}", "xp": 1000 - i * 90, "coins": i * 10} for i in range(10)]
         mock_bot.economy_service.get_leaderboard.return_value = members
 
         await cog.leaderboard.callback(cog, ctx, lb_type="xp")
 
-        mock_bot.economy_service.get_leaderboard.assert_called_once_with(
-            "123456789", sort_by="xp", limit=10, offset=0
-        )
+        mock_bot.economy_service.get_leaderboard.assert_called_once_with("123456789", sort_by="xp", limit=10, offset=0)
         ctx.send.assert_called_once()
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
@@ -230,14 +237,13 @@ class TestLeaderboardCommand:
 
     @pytest.mark.asyncio
     async def test_leaderboard_coins_displays_top_10(
-        self, cog: StellarCog, mock_bot: MagicMock,
+        self,
+        cog: StellarCog,
+        mock_bot: MagicMock,
     ) -> None:
         """Coins leaderboard should query with sort_by='coins'."""
         ctx = _make_context()
-        members = [
-            {"userId": f"{1000 + i}", "xp": i * 10, "coins": 5000 - i * 450}
-            for i in range(10)
-        ]
+        members = [{"userId": f"{1000 + i}", "xp": i * 10, "coins": 5000 - i * 450} for i in range(10)]
         mock_bot.economy_service.get_leaderboard.return_value = members
 
         await cog.leaderboard.callback(cog, ctx, lb_type="coins")
@@ -248,7 +254,9 @@ class TestLeaderboardCommand:
 
     @pytest.mark.asyncio
     async def test_leaderboard_empty(
-        self, cog: StellarCog, mock_bot: MagicMock,
+        self,
+        cog: StellarCog,
+        mock_bot: MagicMock,
     ) -> None:
         """Empty leaderboard should show an appropriate embed."""
         ctx = _make_context()
@@ -264,7 +272,9 @@ class TestLeaderboardCommand:
 
     @pytest.mark.asyncio
     async def test_leaderboard_error_handling(
-        self, cog: StellarCog, mock_bot: MagicMock,
+        self,
+        cog: StellarCog,
+        mock_bot: MagicMock,
     ) -> None:
         """Service errors in leaderboard should produce error embed."""
         ctx = _make_context()
@@ -278,7 +288,9 @@ class TestLeaderboardCommand:
 
     @pytest.mark.asyncio
     async def test_leaderboard_invalid_type_defaults_to_xp(
-        self, cog: StellarCog, mock_bot: MagicMock,
+        self,
+        cog: StellarCog,
+        mock_bot: MagicMock,
     ) -> None:
         """Invalid leaderboard type should default to XP."""
         ctx = _make_context()
@@ -287,9 +299,7 @@ class TestLeaderboardCommand:
 
         await cog.leaderboard.callback(cog, ctx, lb_type="invalid")
 
-        mock_bot.economy_service.get_leaderboard.assert_called_once_with(
-            "123456789", sort_by="xp", limit=10, offset=0
-        )
+        mock_bot.economy_service.get_leaderboard.assert_called_once_with("123456789", sort_by="xp", limit=10, offset=0)
 
 
 # ---------------------------------------------------------------------------
@@ -302,7 +312,9 @@ class TestRankCommand:
 
     @pytest.mark.asyncio
     async def test_rank_self_sends_rank_card(
-        self, cog: StellarCog, mock_bot: MagicMock,
+        self,
+        cog: StellarCog,
+        mock_bot: MagicMock,
     ) -> None:
         """Rank command for self should defer, generate card, and send file."""
         ctx = _make_context(user_id=111111111)
@@ -323,6 +335,7 @@ class TestRankCommand:
 
         # Mock image_service.generate_rank_card
         import io
+
         fake_png = io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
         mock_bot.image_service.generate_rank_card.return_value = fake_png
 
@@ -332,9 +345,7 @@ class TestRankCommand:
         ctx.defer.assert_called_once()
 
         # Must call get_rank_info for self
-        mock_bot.economy_service.get_rank_info.assert_called_once_with(
-            "123456789", "111111111"
-        )
+        mock_bot.economy_service.get_rank_info.assert_called_once_with("123456789", "111111111")
 
         # Must send a file
         ctx.send.assert_called_once()
@@ -342,12 +353,15 @@ class TestRankCommand:
         assert "file" in call_kwargs
         sent_file = call_kwargs["file"]
         import discord
+
         assert isinstance(sent_file, discord.File)
         assert sent_file.filename == "rank.png"
 
     @pytest.mark.asyncio
     async def test_rank_target_member(
-        self, cog: StellarCog, mock_bot: MagicMock,
+        self,
+        cog: StellarCog,
+        mock_bot: MagicMock,
     ) -> None:
         """Rank command for a target member should query that member's stats."""
         ctx = _make_context(user_id=111111111)
@@ -369,22 +383,23 @@ class TestRankCommand:
         }
 
         import io
+
         fake_png = io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
         mock_bot.image_service.generate_rank_card.return_value = fake_png
 
         await cog.rank.callback(cog, ctx, member=target)
 
         # Must query the target's rank info, not self's
-        mock_bot.economy_service.get_rank_info.assert_called_once_with(
-            "123456789", "222222222"
-        )
+        mock_bot.economy_service.get_rank_info.assert_called_once_with("123456789", "222222222")
 
         # Must send file
         ctx.send.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_rank_no_member_data(
-        self, cog: StellarCog, mock_bot: MagicMock,
+        self,
+        cog: StellarCog,
+        mock_bot: MagicMock,
     ) -> None:
         """When member has no data (None), show an error embed."""
         ctx = _make_context(user_id=111111111)
@@ -400,12 +415,15 @@ class TestRankCommand:
         embed = call_kwargs.get("embed")
         assert embed is not None
         import discord
+
         assert isinstance(embed, discord.Embed)
         assert embed.color.value == 0xE74C3C  # COLOR_ERROR
 
     @pytest.mark.asyncio
     async def test_rank_error_handling(
-        self, cog: StellarCog, mock_bot: MagicMock,
+        self,
+        cog: StellarCog,
+        mock_bot: MagicMock,
     ) -> None:
         """Service errors in rank should produce error embed."""
         ctx = _make_context(user_id=111111111)

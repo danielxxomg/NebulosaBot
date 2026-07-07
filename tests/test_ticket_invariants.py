@@ -275,7 +275,9 @@ class TestCheckSubticketParent:
         with pytest.raises(ValueError, match=r"depth|nested|sub"):
             check_subticket_parent(
                 _parent_row("p1", parent_id_of_parent="g1"),
-                "guildA", "guildA", current_id="c1",
+                "guildA",
+                "guildA",
+                current_id="c1",
             )
 
     def test_cross_guild_rejected(self) -> None:
