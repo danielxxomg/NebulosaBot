@@ -266,6 +266,9 @@ class TestTicketActionsView:
     ) -> None:
         """Claim button → ticket claimed, interaction response sent."""
         ticket_interaction.client = ticket_bot
+        # PR2: Claim button is mod-gated — make the clicker a mod (admin fallback).
+        ticket_interaction.user.guild_permissions.administrator = True
+        ticket_bot._guild_mod_role_cache = {}
         ticket_row = _ticket_row(status="open")
         mock_db.get_ticket_by_channel = AsyncMock(return_value=ticket_row)
 
@@ -286,6 +289,10 @@ class TestTicketActionsView:
     ) -> None:
         """Already claimed ticket → error embed."""
         ticket_interaction.client = ticket_bot
+        # PR2: Claim is mod-gated — make the clicker a mod so we reach the
+        # "Already Claimed" branch instead of the mod-deny branch.
+        ticket_interaction.user.guild_permissions.administrator = True
+        ticket_bot._guild_mod_role_cache = {}
         ticket_row = _ticket_row(status="claimed")
         ticket_row["claimedBy"] = "999999999"
         mock_db.get_ticket_by_channel = AsyncMock(return_value=ticket_row)
@@ -446,6 +453,9 @@ class TestClaimEdgeCases:
     ) -> None:
         """Claim on non-ticket channel → error embed."""
         ticket_interaction.client = ticket_bot
+        # PR2: pass the mod gate so the "not a ticket channel" branch is reached.
+        ticket_interaction.user.guild_permissions.administrator = True
+        ticket_bot._guild_mod_role_cache = {}
         mock_db.get_ticket_by_channel = AsyncMock(return_value=None)
 
         view = TicketActionsView()
@@ -1714,3 +1724,219 @@ class TestDBErrorHandling:
         assert embed is not None
         assert "DB down" not in (embed.description or "")
         mock_exc.assert_called_once()
+
+
+# ===========================================================================
+# PR2 — button permission gates + /reopen ticket_ref
+# ===========================================================================
+
+
+class TestPR2ButtonPermissionGates:
+    """Inline is_mod_check() gates on claim/close buttons (design.md L33-44)."""
+
+    async def test_claim_button_denies_non_mod(
+        self,
+        ticket_bot: MagicMock,
+        ticket_interaction: MagicMock,
+        mock_db,
+    ) -> None:
+        """3.11/3.12: a non-mod clicking Claim MUST get an ephemeral deny (no claim)."""
+        ticket_interaction.client = ticket_bot
+        # Non-admin, no mod role configured → is_mod_check returns False.
+        ticket_interaction.user.guild_permissions.administrator = False
+        ticket_interaction.user.roles = []
+        ticket_bot._guild_mod_role_cache = {}
+
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row(status="open"))
+
+        view = TicketActionsView()
+        await view.claim_button.callback(ticket_interaction)
+
+        ticket_bot.ticket_service.claim_ticket.assert_not_awaited()
+        ticket_interaction.response.send_message.assert_awaited_once()
+        kwargs = ticket_interaction.response.send_message.call_args.kwargs
+        assert kwargs.get("ephemeral") is True
+        embed = kwargs.get("embed")
+        assert embed is not None  # user-facing error embed
+
+    async def test_claim_button_allows_mod(
+        self,
+        ticket_bot: MagicMock,
+        ticket_interaction: MagicMock,
+        mock_db,
+    ) -> None:
+        """A mod (configured role) clicking Claim MUST proceed to claim."""
+        ticket_interaction.client = ticket_bot
+        mod_role_id = 987654321
+        ticket_interaction.user.guild_permissions.administrator = False
+        ticket_bot._guild_mod_role_cache = {123456789: str(mod_role_id)}
+        role = MagicMock(spec=discord.Role)
+        role.id = mod_role_id
+        ticket_interaction.user.roles = [role]
+
+        ticket_row = _ticket_row(status="open")
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=ticket_row)
+        claimed = Ticket.from_db_row({**ticket_row, "status": "claimed", "claimedBy": "111111111"})
+        ticket_bot.ticket_service.claim_ticket = AsyncMock(return_value=claimed)
+
+        view = TicketActionsView()
+        await view.claim_button.callback(ticket_interaction)
+
+        ticket_bot.ticket_service.claim_ticket.assert_awaited_once()
+
+    async def test_close_button_denies_non_author_non_mod(
+        self,
+        ticket_bot: MagicMock,
+        ticket_interaction: MagicMock,
+        mock_ticket_channel: MagicMock,
+        mock_db,
+    ) -> None:
+        """3.13/3.14: a non-author non-mod clicking Close MUST get an ephemeral deny."""
+        ticket_interaction.client = ticket_bot
+        ticket_interaction.channel = mock_ticket_channel
+        # A user who is NOT the author (author is 111111111) and NOT a mod.
+        ticket_interaction.user.id = 222222222
+        ticket_interaction.user.guild_permissions.administrator = False
+        ticket_interaction.user.roles = []
+        ticket_bot._guild_mod_role_cache = {}
+
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row(status="open"))
+
+        view = TicketActionsView()
+        await view.close_button.callback(ticket_interaction)
+
+        ticket_bot.ticket_service.close_ticket.assert_not_awaited()
+        ticket_interaction.response.send_message.assert_awaited_once()
+        kwargs = ticket_interaction.response.send_message.call_args.kwargs
+        assert kwargs.get("ephemeral") is True
+
+
+class TestReopenByTicketRef:
+    """/reopen ticket_ref resolution by number / UUID (TI-029, TI-037)."""
+
+    async def test_reopen_by_ticket_number(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """/reopen ticket:#0003 resolves ticket #3 via get_ticket_by_number."""
+        closed_row = _ticket_row(ticket_number=3, status="closed")
+        mock_db.get_ticket_by_number = AsyncMock(return_value=closed_row)
+        reopened = Ticket.from_db_row({**closed_row, "status": "open"})
+        ticket_bot.ticket_service.reopen_ticket = AsyncMock(return_value=reopened)
+
+        await tickets_cog.reopen.callback(tickets_cog, slash_ctx, ticket_ref="#0003")
+
+        mock_db.get_ticket_by_number.assert_awaited_once_with("123456789", 3)
+        ticket_bot.ticket_service.reopen_ticket.assert_awaited_once()
+        args = ticket_bot.ticket_service.reopen_ticket.call_args.args
+        assert args[0] == closed_row["id"]
+
+    async def test_reopen_by_ticket_number_with_prefix(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """The literal guidance 'ticket:#0003' parses to number 3."""
+        closed_row = _ticket_row(ticket_number=3, status="closed")
+        mock_db.get_ticket_by_number = AsyncMock(return_value=closed_row)
+        ticket_bot.ticket_service.reopen_ticket = AsyncMock(
+            return_value=Ticket.from_db_row({**closed_row, "status": "open"})
+        )
+
+        await tickets_cog.reopen.callback(tickets_cog, slash_ctx, ticket_ref="ticket:#0003")
+
+        mock_db.get_ticket_by_number.assert_awaited_once_with("123456789", 3)
+
+    async def test_reopen_by_uuid(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """A UUID ref resolves via get_ticket (with guild-scope check)."""
+        uuid_str = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        closed_row = {**_ticket_row(ticket_number=3, status="closed"), "id": uuid_str}
+        mock_db.get_ticket = AsyncMock(return_value=closed_row)
+        ticket_bot.ticket_service.reopen_ticket = AsyncMock(
+            return_value=Ticket.from_db_row({**closed_row, "status": "open"})
+        )
+
+        await tickets_cog.reopen.callback(tickets_cog, slash_ctx, ticket_ref=uuid_str)
+
+        mock_db.get_ticket.assert_awaited_once_with(uuid_str)
+        mock_db.get_ticket_by_number.assert_not_awaited()
+        ticket_bot.ticket_service.reopen_ticket.assert_awaited_once()
+
+    async def test_reopen_bad_ref_shows_error(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        mock_db,
+    ) -> None:
+        """An unparseable ticket_ref MUST surface an error_embed (no reopen)."""
+        mock_db.get_ticket_by_number = AsyncMock(return_value=None)
+        mock_db.get_ticket = AsyncMock(return_value=None)
+
+        await tickets_cog.reopen.callback(tickets_cog, slash_ctx, ticket_ref="not-a-ticket")
+
+        slash_ctx.send.assert_awaited_once()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+
+    async def test_reopen_missing_ticket_shows_error(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        mock_db,
+    ) -> None:
+        """A valid number that matches no ticket MUST surface an error_embed."""
+        mock_db.get_ticket_by_number = AsyncMock(return_value=None)
+
+        await tickets_cog.reopen.callback(tickets_cog, slash_ctx, ticket_ref="#9999")
+
+        slash_ctx.send.assert_awaited_once()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+
+    async def test_reopen_wrong_guild_denied(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        mock_db,
+    ) -> None:
+        """A UUID ref belonging to a different guild MUST be denied."""
+        uuid_str = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        # Ticket found but belongs to a DIFFERENT guild.
+        other_guild_row = {**_ticket_row(status="closed"), "id": uuid_str, "guildId": "999000999"}
+        mock_db.get_ticket = AsyncMock(return_value=other_guild_row)
+
+        await tickets_cog.reopen.callback(tickets_cog, slash_ctx, ticket_ref=uuid_str)
+
+        slash_ctx.send.assert_awaited_once()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+
+    async def test_reopen_no_arg_legacy_channel_lookup(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """TI-037: with no ticket_ref, /reopen falls back to channel lookup."""
+        closed_row = _ticket_row(status="closed")
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=closed_row)
+        ticket_bot.ticket_service.reopen_ticket = AsyncMock(
+            return_value=Ticket.from_db_row({**closed_row, "status": "open"})
+        )
+
+        await tickets_cog.reopen.callback(tickets_cog, slash_ctx)  # no ticket_ref
+
+        mock_db.get_ticket_by_channel.assert_awaited_once()
+        mock_db.get_ticket_by_number.assert_not_awaited()

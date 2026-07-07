@@ -10,6 +10,13 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "."),
+      // `server-only` exists to FAIL the client bundle if a server module is
+      // imported from a Client Component. Under vitest (the test runs in a
+      // Node-like module graph, not a real client bundle) the package throws
+      // on import and breaks every test that touches a server-only module.
+      // Stub it to an empty module so server-only modules remain importable in
+      // tests; the Next build is the real guard for the client/server split.
+      "server-only": path.resolve(__dirname, "__tests__/_server-only-stub.js"),
     },
   },
   // The project's tsconfig sets `jsx: "preserve"` (required by Next.js/SWC),

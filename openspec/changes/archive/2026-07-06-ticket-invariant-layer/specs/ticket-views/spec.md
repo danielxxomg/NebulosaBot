@@ -1,32 +1,6 @@
-# Ticket Views Specification
+# Delta for Ticket Views
 
-## Purpose
-
-Define persistent Discord UI components for ticket panels and per-ticket actions.
-
-## Requirements
-
-### Requirement: Ticket panel view
-
-The system MUST provide a persistent panel view with a category dropdown and an open button.
-
-#### Scenario: Panel render
-
-- GIVEN a guild with at least one ticket category
-- WHEN the panel is deployed
-- THEN the message displays a category select menu and an open ticket button
-
-#### Scenario: Open ticket from panel
-
-- GIVEN a user selects a category from the panel dropdown
-- WHEN the user clicks the open button
-- THEN a new ticket is created for that category
-
-#### Scenario: Empty category list
-
-- GIVEN a guild with no ticket categories
-- WHEN the panel is rendered
-- THEN the dropdown is disabled and a placeholder indicates no categories configured
+## MODIFIED Requirements
 
 ### Requirement: Ticket actions view
 
@@ -105,13 +79,3 @@ The `/reopen` command MUST accept an optional ticket-id argument (e.g. `/reopen 
 - GIVEN ticket #3 has status `open`
 - WHEN a mod runs `/reopen ticket:#0003`
 - THEN the operation is rejected (status-guard: reopen only if status==closed)
-
-### Requirement: View persistence
-
-The system MUST re-register persistent views on bot startup so buttons remain functional after restart.
-
-#### Scenario: Bot restart
-
-- GIVEN a deployed panel or active ticket view
-- WHEN the bot restarts
-- THEN the views are re-registered and interactions continue to work
