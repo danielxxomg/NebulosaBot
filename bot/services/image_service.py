@@ -31,11 +31,11 @@ CARD_WIDTH = 934
 CARD_HEIGHT = 282
 
 # Colors (RGBA)
-BG_TOP = (43, 45, 49, 255)        # #2b2d31
-BG_BOTTOM = (30, 31, 34, 255)     # #1e1f22
+BG_TOP = (43, 45, 49, 255)  # #2b2d31
+BG_BOTTOM = (30, 31, 34, 255)  # #1e1f22
 USERNAME_COLOR = (255, 255, 255, 255)
 LEVEL_COLOR = (114, 137, 218, 255)  # #7289da
-XP_BAR_BG = (78, 80, 88, 255)       # #4e5058
+XP_BAR_BG = (78, 80, 88, 255)  # #4e5058
 XP_BAR_FILL = (114, 137, 218, 255)  # #7289da
 XP_TEXT_COLOR = (185, 187, 190, 255)  # #b9bbbe
 RANK_COLOR = (255, 255, 255, 255)
@@ -143,9 +143,7 @@ class ImageService:
         if avatar is not None:
             avatar = avatar.resize((AVATAR_SIZE, AVATAR_SIZE), Image.LANCZOS)
             mask = Image.new("L", (AVATAR_SIZE, AVATAR_SIZE), 0)
-            ImageDraw.Draw(mask).ellipse(
-                (0, 0, AVATAR_SIZE, AVATAR_SIZE), fill=255
-            )
+            ImageDraw.Draw(mask).ellipse((0, 0, AVATAR_SIZE, AVATAR_SIZE), fill=255)
             avatar.putalpha(mask)
             img.paste(avatar, (AVATAR_X, AVATAR_Y), avatar)
 

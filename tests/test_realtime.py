@@ -741,18 +741,12 @@ class TestPollFallback:
             assert sub._last_check == "1970-01-01T00:00:00+00:00"
             # The poll task MUST be stopped — cleared to None, or done/cancelled.
             # A live dormant task (the prior bug) fails this assertion.
-            assert (
-                sub._poll_task is None
-                or sub._poll_task.done()
-                or sub._poll_task.cancelled()
-            )
+            assert sub._poll_task is None or sub._poll_task.done() or sub._poll_task.cancelled()
         finally:
             await sub.stop()
 
     @pytest.mark.asyncio
-    async def test_poll_task_recreated_when_unhealthy_after_recovery(
-        self, cache: TTLCache
-    ) -> None:
+    async def test_poll_task_recreated_when_unhealthy_after_recovery(self, cache: TTLCache) -> None:
         """After recovery cancels the poll task, a subsequent unhealthy spell
         (>60s) MUST recreate the poll task so the fallback can run again.
 
@@ -765,11 +759,7 @@ class TestPollFallback:
         try:
             # Recover — cancels and clears the poll task.
             sub._on_subscribe("SUBSCRIBED", None)
-            assert (
-                sub._poll_task is None
-                or sub._poll_task.done()
-                or sub._poll_task.cancelled()
-            )
+            assert sub._poll_task is None or sub._poll_task.done() or sub._poll_task.cancelled()
 
             # Now go unhealthy for >60s and run a health check.
             sub._status = "CHANNEL_ERROR"
@@ -919,10 +909,12 @@ class TestPollSelectEnforcement:
         def _table(name: str) -> MagicMock:
             r = MagicMock()
             r.data = []
+
             # Wire .select() on the per-table mock so the chain works.
             def _inner_select(col: str) -> MagicMock:
                 select_calls.append(col)
                 return r
+
             r.select = MagicMock(side_effect=_inner_select)
             return r
 

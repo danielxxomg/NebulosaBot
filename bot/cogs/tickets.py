@@ -65,17 +65,13 @@ class TicketPanelView(discord.ui.View):
         custom_id="ticket:open",
         emoji="🎫",
     )
-    async def open_ticket_button(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ) -> None:
+    async def open_ticket_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         """Show category selection then create the ticket channel."""
         bot: NebulosaBot = interaction.client  # type: ignore[assignment]
         guild = interaction.guild
         if guild is None:
             await interaction.response.send_message(
-                embed=error_embed(
-                    "Server Only", "Tickets can only be opened in a server."
-                ),
+                embed=error_embed("Server Only", "Tickets can only be opened in a server."),
                 ephemeral=True,
             )
             return
@@ -83,16 +79,13 @@ class TicketPanelView(discord.ui.View):
         assert bot.db is not None
         # Fetch active ticket categories for this guild.
         rows = await bot.db.get_ticket_categories(str(guild.id))
-        categories = [
-            TicketCategory.from_db_row(r) for r in rows if r.get("active", True)
-        ]
+        categories = [TicketCategory.from_db_row(r) for r in rows if r.get("active", True)]
 
         if not categories:
             await interaction.response.send_message(
                 embed=error_embed(
                     "No Categories",
-                    "No ticket categories are configured. "
-                    "Ask an admin to set them up with `/create_category`.",
+                    "No ticket categories are configured. Ask an admin to set them up with `/create_category`.",
                 ),
                 ephemeral=True,
             )
@@ -110,9 +103,7 @@ class TicketPanelView(discord.ui.View):
         ]
 
         view = _CategorySelectView(options, guild)
-        await interaction.response.send_message(
-            "Select a ticket category:", view=view, ephemeral=True
-        )
+        await interaction.response.send_message("Select a ticket category:", view=view, ephemeral=True)
 
 
 class TicketActionsView(discord.ui.View):
@@ -129,9 +120,7 @@ class TicketActionsView(discord.ui.View):
     # -- helpers -------------------------------------------------------
 
     @staticmethod
-    async def _get_ticket(
-        bot: NebulosaBot, channel_id: int
-    ) -> tuple[dict | None, str | None]:
+    async def _get_ticket(bot: NebulosaBot, channel_id: int) -> tuple[dict | None, str | None]:
         """Fetch the ticket row (raw dict) and build a user-facing error.
 
         Returns ``(row, error_message)`` — exactly one is non-None.
@@ -152,9 +141,7 @@ class TicketActionsView(discord.ui.View):
         custom_id="ticket:claim",
         emoji="✋",
     )
-    async def claim_button(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ) -> None:
+    async def claim_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         """Claim the ticket, assigning it to the clicking staff member.
 
         Permission gate (design.md L33-38): Claim is mod-only — the clicking
@@ -179,9 +166,7 @@ class TicketActionsView(discord.ui.View):
 
         ticket_row, error = await self._get_ticket(bot, channel_id)
         if error is not None:
-            await interaction.response.send_message(
-                embed=error_embed("Claim Failed", error), ephemeral=True
-            )
+            await interaction.response.send_message(embed=error_embed("Claim Failed", error), ephemeral=True)
             return
 
         assert ticket_row is not None
@@ -206,9 +191,7 @@ class TicketActionsView(discord.ui.View):
         except Exception:
             logger.exception("Failed to claim ticket %s", ticket_id)
             await interaction.response.send_message(
-                embed=error_embed(
-                    "Claim Failed", "Could not claim the ticket. Please try again."
-                ),
+                embed=error_embed("Claim Failed", "Could not claim the ticket. Please try again."),
                 ephemeral=True,
             )
             return
@@ -218,7 +201,9 @@ class TicketActionsView(discord.ui.View):
         await interaction.response.edit_message(embed=embed, view=self)
         logger.info(
             "Ticket %s claimed by %s in channel %s",
-            ticket_id, staff_id, channel_id,
+            ticket_id,
+            staff_id,
+            channel_id,
         )
 
     @discord.ui.button(
@@ -227,9 +212,7 @@ class TicketActionsView(discord.ui.View):
         custom_id="ticket:close",
         emoji="🔒",
     )
-    async def close_button(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ) -> None:
+    async def close_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         """Close the ticket: generate transcript, upload, delete channel.
 
         Permission gate (design.md L40-44): Close is author OR mod — the
@@ -244,9 +227,7 @@ class TicketActionsView(discord.ui.View):
 
         ticket_row, error = await self._get_ticket(bot, channel_id)
         if error is not None:
-            await interaction.response.send_message(
-                embed=error_embed("Close Failed", error), ephemeral=True
-            )
+            await interaction.response.send_message(embed=error_embed("Close Failed", error), ephemeral=True)
             return
 
         assert ticket_row is not None
@@ -290,25 +271,19 @@ class TicketActionsView(discord.ui.View):
                 pass
 
             if log_channel is not None:
-                transcript_url = await bot.transcript_service.upload(
-                    transcript_file, log_channel
-                )
+                transcript_url = await bot.transcript_service.upload(transcript_file, log_channel)
             else:
                 logger.warning(
                     "No log channel configured for guild %s — skipping transcript upload",
                     guild.id,
                 )
         except Exception:
-            logger.exception(
-                "Transcript generation/upload failed for ticket %s", ticket_id
-            )
+            logger.exception("Transcript generation/upload failed for ticket %s", ticket_id)
 
         # 2. Close ticket in DB.
         closer_id = str(interaction.user.id)
         try:
-            await bot.ticket_service.close_ticket(
-                ticket_id, closed_by=closer_id, transcript_url=transcript_url
-            )
+            await bot.ticket_service.close_ticket(ticket_id, closed_by=closer_id, transcript_url=transcript_url)
         except Exception:
             logger.exception("Failed to close ticket %s in DB", ticket_id)
             await interaction.followup.send(
@@ -324,9 +299,7 @@ class TicketActionsView(discord.ui.View):
         close_msg = "Ticket closed"
         if transcript_url:
             close_msg += f" — [Transcript]({transcript_url})"
-        await channel.send(
-            embed=info_embed("Ticket Closed", close_msg)
-        )
+        await channel.send(embed=info_embed("Ticket Closed", close_msg))
 
         # 4. Delete channel after a short delay.
         await interaction.followup.send(
@@ -367,9 +340,7 @@ class _CategorySelect(discord.ui.Select):
 
     __slots__ = ("_guild",)
 
-    def __init__(
-        self, options: list[discord.SelectOption], guild: discord.Guild
-    ) -> None:
+    def __init__(self, options: list[discord.SelectOption], guild: discord.Guild) -> None:
         super().__init__(
             placeholder="Choose a ticket category...",
             min_values=1,
@@ -398,9 +369,7 @@ class _CategorySelect(discord.ui.Select):
                 guild.id,
             )
             await interaction.followup.send(
-                embed=error_embed(
-                    "Config Error", "Could not load guild configuration."
-                ),
+                embed=error_embed("Config Error", "Could not load guild configuration."),
                 ephemeral=True,
             )
             return
@@ -409,19 +378,14 @@ class _CategorySelect(discord.ui.Select):
             await interaction.followup.send(
                 embed=error_embed(
                     "Not Configured",
-                    "The ticket category channel has not been configured. "
-                    "Ask an admin to set it up.",
+                    "The ticket category channel has not been configured. Ask an admin to set it up.",
                 ),
                 ephemeral=True,
             )
             return
 
-        ticket_category_channel = guild.get_channel(
-            int(config.ticket_category_id)
-        )
-        if ticket_category_channel is None or not isinstance(
-            ticket_category_channel, discord.CategoryChannel
-        ):
+        ticket_category_channel = guild.get_channel(int(config.ticket_category_id))
+        if ticket_category_channel is None or not isinstance(ticket_category_channel, discord.CategoryChannel):
             await interaction.followup.send(
                 embed=error_embed(
                     "Invalid Category",
@@ -450,20 +414,12 @@ class _CategorySelect(discord.ui.Select):
             discord.Role | discord.Member | discord.Object,
             discord.PermissionOverwrite,
         ] = {
-            guild.default_role: discord.PermissionOverwrite(
-                read_messages=False
-            ),
-            author: discord.PermissionOverwrite(
-                read_messages=True, send_messages=True
-            ),
-            guild.me: discord.PermissionOverwrite(
-                read_messages=True, send_messages=True
-            ),
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            author: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True),
         }
         if mod_role is not None:
-            overwrites[mod_role] = discord.PermissionOverwrite(
-                read_messages=True, send_messages=True
-            )
+            overwrites[mod_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
 
         # --- Create the Discord channel. ---
         try:
@@ -523,7 +479,8 @@ class _CategorySelect(discord.ui.Select):
             except discord.HTTPException:
                 logger.warning(
                     "Failed to rename ticket channel %s → %s",
-                    channel.id, actual_name,
+                    channel.id,
+                    actual_name,
                 )
 
         # --- Register actions view for this channel. ---
@@ -548,7 +505,10 @@ class _CategorySelect(discord.ui.Select):
 
         logger.info(
             "Ticket #%d created (guild=%s, channel=%s, author=%s)",
-            ticket.ticket_number, guild.id, channel.id, author.id,
+            ticket.ticket_number,
+            guild.id,
+            channel.id,
+            author.id,
         )
 
 
@@ -579,18 +539,13 @@ def _build_ticket_embed(
     if status == "claimed":
         color = COLOR_INFO
         title = f"🎫 Ticket #{number} — Claimed"
-        description = (
-            "A staff member has claimed this ticket and will assist you shortly."
-        )
+        description = "A staff member has claimed this ticket and will assist you shortly."
         if claimed_by is not None:
             description += f"\n**Claimed by:** {claimed_by.mention}"
     else:
         color = COLOR_SUCCESS
         title = f"🎫 Ticket #{number}"
-        description = (
-            "Welcome! A staff member will assist you soon.\n"
-            "Describe your issue and a moderator will respond."
-        )
+        description = "Welcome! A staff member will assist you soon.\nDescribe your issue and a moderator will respond."
 
     embed = discord.Embed(
         title=title,
@@ -649,9 +604,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         assert self.bot.ticket_service is not None
         for guild in self.bot.guilds:
             try:
-                ids = await self.bot.db.get_open_ticket_channel_ids(
-                    str(guild.id)
-                )
+                ids = await self.bot.db.get_open_ticket_channel_ids(str(guild.id))
                 for cid in ids:
                     with contextlib.suppress(ValueError, TypeError):
                         all_channel_ids.add(int(cid))
@@ -661,9 +614,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
                     guild.id,
                 )
         self.bot.ticket_service.sync_channel_cache(all_channel_ids)
-        logger.info(
-            "Ticket channel cache synced: %d active channels", len(all_channel_ids)
-        )
+        logger.info("Ticket channel cache synced: %d active channels", len(all_channel_ids))
 
     # ==================================================================
     # Tasks
@@ -705,26 +656,22 @@ class TicketsCog(commands.Cog, name="Tickets"):
 
             # Fetch stale tickets.
             try:
-                stale = await self.bot.ticket_service.get_stale_tickets(
-                    guild_id, hours=AUTO_CLOSE_HOURS
-                )
+                stale = await self.bot.ticket_service.get_stale_tickets(guild_id, hours=AUTO_CLOSE_HOURS)
             except Exception:
-                logger.exception(
-                    "Failed to query stale tickets for guild %s", guild_id
-                )
+                logger.exception("Failed to query stale tickets for guild %s", guild_id)
                 continue
 
             for ticket in stale:
                 try:
                     await self._close_one_ticket(
-                        ticket, guild, log_channel,
+                        ticket,
+                        guild,
+                        log_channel,
                         reason="Auto-closed due to inactivity (48 h)",
                     )
                     closed_count += 1
                 except Exception:
-                    logger.exception(
-                        "Failed to auto-close stale ticket %s", ticket.id
-                    )
+                    logger.exception("Failed to auto-close stale ticket %s", ticket.id)
 
         if closed_count:
             logger.info("Auto-close task: closed %d stale ticket(s)", closed_count)
@@ -753,7 +700,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
             await self.bot.ticket_service.close_ticket(ticket.id)
             logger.info(
                 "Ticket %s closed (channel %s already deleted)",
-                ticket.id, ticket.channel_id,
+                ticket.id,
+                ticket.channel_id,
             )
             return
 
@@ -762,27 +710,19 @@ class TicketsCog(commands.Cog, name="Tickets"):
         try:
             transcript_file = await self.bot.transcript_service.generate(channel)
             if log_channel is not None:
-                transcript_url = await self.bot.transcript_service.upload(
-                    transcript_file, log_channel
-                )
+                transcript_url = await self.bot.transcript_service.upload(transcript_file, log_channel)
         except Exception:
-            logger.exception(
-                "Transcript generation failed for stale ticket %s", ticket.id
-            )
+            logger.exception("Transcript generation failed for stale ticket %s", ticket.id)
 
         # 2. Close in DB.
-        await self.bot.ticket_service.close_ticket(
-            ticket.id, transcript_url=transcript_url
-        )
+        await self.bot.ticket_service.close_ticket(ticket.id, transcript_url=transcript_url)
 
         # 3. Delete channel silently after delay.
         await asyncio.sleep(CHANNEL_DELETE_DELAY)
         try:
             await channel.delete(reason=reason)
         except discord.HTTPException:
-            logger.exception(
-                "Failed to delete stale ticket channel %s", channel.id
-            )
+            logger.exception("Failed to delete stale ticket channel %s", channel.id)
 
     # ==================================================================
     # Listeners
@@ -811,9 +751,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
 
         assert self.bot.db is not None
         try:
-            await self.bot.db.update_ticket_last_activity(
-                str(message.channel.id)
-            )
+            await self.bot.db.update_ticket_last_activity(str(message.channel.id))
             logger.debug(
                 "lastActivity updated for ticket channel %s",
                 message.channel.id,
@@ -845,8 +783,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         *,
         title: str = "Support Tickets",
         description_text: str = (
-            "Click the button below to open a support ticket. "
-            "A staff member will assist you shortly."
+            "Click the button below to open a support ticket. A staff member will assist you shortly."
         ),
     ) -> None:
         """Deploy (or redeploy) the ticket panel in the current channel.
@@ -855,11 +792,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         so the panel survives bot restarts.
         """
         if ctx.guild is None:
-            await ctx.send(
-                embed=error_embed(
-                    "Server Only", "The ticket panel can only be deployed in a server."
-                )
-            )
+            await ctx.send(embed=error_embed("Server Only", "The ticket panel can only be deployed in a server."))
             return
 
         assert self.bot.db is not None
@@ -894,15 +827,16 @@ class TicketsCog(commands.Cog, name="Tickets"):
             )
             logger.info(
                 "Ticket panel deployed in guild %s (msg=%s, ch=%s)",
-                ctx.guild.id, message.id, message.channel.id,
+                ctx.guild.id,
+                message.id,
+                message.channel.id,
             )
         except Exception:
             logger.exception("Failed to persist ticket panel for guild %s", ctx.guild.id)
             await ctx.send(
                 embed=error_embed(
                     "Persistence Error",
-                    "The panel was sent but the IDs could not be saved. "
-                    "It will not survive a bot restart.",
+                    "The panel was sent but the IDs could not be saved. It will not survive a bot restart.",
                 )
             )
             return
@@ -962,9 +896,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
 
             # Auto-increment position if not explicitly provided.
             if position is None:
-                max_pos = max(
-                    (cat.get("position", 0) for cat in existing), default=0
-                )
+                max_pos = max((cat.get("position", 0) for cat in existing), default=0)
                 position = max_pos + 1
         except Exception:
             logger.exception("Failed to check for duplicate category name")
@@ -998,8 +930,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         await ctx.send(
             embed=success_embed(
                 "Category Created",
-                f"Ticket category **{category.name}** has been created.\n"
-                f"ID: `{category.id}`",
+                f"Ticket category **{category.name}** has been created.\nID: `{category.id}`",
             )
         )
 
@@ -1020,11 +951,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
 
         try:
             rows = await self.bot.db.get_ticket_categories(guild_id)
-            categories = [
-                TicketCategory.from_db_row(r)
-                for r in rows
-                if r.get("active", True)
-            ]
+            categories = [TicketCategory.from_db_row(r) for r in rows if r.get("active", True)]
         except Exception:
             logger.exception("Failed to fetch ticket categories")
             await ctx.send(
@@ -1039,8 +966,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             await ctx.send(
                 embed=info_embed(
                     "No Categories",
-                    "No ticket categories have been created yet. "
-                    "Use `/create_category` to add one.",
+                    "No ticket categories have been created yet. Use `/create_category` to add one.",
                 )
             )
             return
@@ -1050,10 +976,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         for cat in categories:
             emoji_str = f"{cat.emoji} " if cat.emoji else ""
             desc_str = f" — {cat.description}" if cat.description else ""
-            lines.append(
-                f"{emoji_str}**{cat.name}**{desc_str}\n"
-                f"　↳ ID: `{cat.id}` · Position: {cat.position}"
-            )
+            lines.append(f"{emoji_str}**{cat.name}**{desc_str}\n　↳ ID: `{cat.id}` · Position: {cat.position}")
 
         embed = discord.Embed(
             title="📋 Ticket Categories",
@@ -1074,9 +997,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         category_id="The UUID of the category to delete (from /list_categories)",
     )
     @is_mod()
-    async def delete_category(
-        self, ctx: commands.Context, category_id: str
-    ) -> None:
+    async def delete_category(self, ctx: commands.Context, category_id: str) -> None:
         """Delete a ticket category by its UUID.
 
         This is a hard delete — the category is removed from the database.
@@ -1090,11 +1011,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             row = await self.bot.db.get_ticket_category(category_id)
         except Exception:
             logger.exception("Failed to fetch ticket category %s", category_id)
-            await ctx.send(
-                embed=error_embed(
-                    "Query Failed", "Could not verify the category. Please try again."
-                )
-            )
+            await ctx.send(embed=error_embed("Query Failed", "Could not verify the category. Please try again."))
             return
 
         if row is None:
@@ -1122,9 +1039,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         try:
             open_count = await self.bot.db.count_open_tickets_by_category(category_id)
         except Exception:
-            logger.exception(
-                "Failed to count open tickets for category %s", category_id
-            )
+            logger.exception("Failed to count open tickets for category %s", category_id)
             await ctx.send(
                 embed=error_embed(
                     "Check Failed",
@@ -1137,8 +1052,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             await ctx.send(
                 embed=error_embed(
                     "Category In Use",
-                    f"Cannot delete category **{cat_name}** because it has "
-                    f"**{open_count}** open ticket(s).",
+                    f"Cannot delete category **{cat_name}** because it has **{open_count}** open ticket(s).",
                 )
             )
             return
@@ -1181,8 +1095,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         await ctx.send(
             embed=info_embed(
                 "Sub-tickets",
-                "Use `/subticket create` to create a sub-ticket from "
-                "the current ticket channel.",
+                "Use `/subticket create` to create a sub-ticket from the current ticket channel.",
             )
         )
 
@@ -1213,9 +1126,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
                 return member
             return await guild.fetch_member(int(parent_author_id))
         except (discord.NotFound, discord.HTTPException, ValueError, TypeError):
-            logger.exception(
-                "Failed to resolve parent ticket owner %s", parent_author_id
-            )
+            logger.exception("Failed to resolve parent ticket owner %s", parent_author_id)
             await ctx.send(
                 embed=error_embed(
                     "Owner Not Found",
@@ -1231,9 +1142,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         parent_id="The UUID of the parent ticket (omitted: uses current channel)",
     )
     @is_mod()
-    async def subticket_create(
-        self, ctx: commands.Context, parent_id: str | None = None
-    ) -> None:
+    async def subticket_create(self, ctx: commands.Context, parent_id: str | None = None) -> None:
         """Create a sub-ticket linked to the current ticket channel's ticket.
 
         The parent is resolved from the current channel unless an explicit
@@ -1242,11 +1151,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         which performs the four ``parentId`` FK validations.
         """
         if ctx.guild is None:
-            await ctx.send(
-                embed=error_embed(
-                    "Server Only", "Sub-tickets can only be created in a server."
-                )
-            )
+            await ctx.send(embed=error_embed("Server Only", "Sub-tickets can only be created in a server."))
             return
 
         guild = ctx.guild
@@ -1260,14 +1165,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
         try:
             config = await self.bot.guild_service.get_config(str(guild.id))
         except Exception:
-            logger.exception(
-                "Failed to fetch guild config for sub-ticket (guild=%s)", guild.id
-            )
-            await ctx.send(
-                embed=error_embed(
-                    "Config Error", "Could not load guild configuration."
-                )
-            )
+            logger.exception("Failed to fetch guild config for sub-ticket (guild=%s)", guild.id)
+            await ctx.send(embed=error_embed("Config Error", "Could not load guild configuration."))
             return
 
         if not config.ticket_category_id:
@@ -1297,15 +1196,14 @@ class TicketsCog(commands.Cog, name="Tickets"):
         # raw traceback.
         try:
             if parent_id is None:
-                parent_row = await self.bot.db.get_ticket_by_channel(
-                    str(ctx.channel.id)
-                )
+                parent_row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id))
             else:
                 parent_row = await self.bot.db.get_ticket(parent_id)
         except Exception:
             logger.exception(
                 "Failed to look up parent ticket (channel=%s, parent_id=%s)",
-                ctx.channel.id, parent_id,
+                ctx.channel.id,
+                parent_id,
             )
             await ctx.send(
                 embed=error_embed(
@@ -1333,9 +1231,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         if str(author.id) == parent_author_id:
             parent_owner: discord.Member = author
         else:
-            parent_owner = await self._resolve_parent_owner(
-                guild, parent_author_id, ctx
-            )
+            parent_owner = await self._resolve_parent_owner(guild, parent_author_id, ctx)
             if parent_owner is None:
                 return
 
@@ -1345,38 +1241,27 @@ class TicketsCog(commands.Cog, name="Tickets"):
             discord.PermissionOverwrite,
         ] = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            parent_owner: discord.PermissionOverwrite(
-                read_messages=True, send_messages=True
-            ),
-            guild.me: discord.PermissionOverwrite(
-                read_messages=True, send_messages=True
-            ),
+            parent_owner: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True),
         }
         if config.mod_role_id:
             try:
                 mod_role = guild.get_role(int(config.mod_role_id))
                 if mod_role is not None:
-                    overwrites[mod_role] = discord.PermissionOverwrite(
-                        read_messages=True, send_messages=True
-                    )
+                    overwrites[mod_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
             except (ValueError, TypeError):
                 pass
 
         # Tentative channel name (renamed after the real number is known).
         # B4: wrap the max-number lookup so a DB failure is user-safe.
         try:
-            tentative_max = await self.bot.db.get_max_ticket_number(
-                str(guild.id)
-            )
+            tentative_max = await self.bot.db.get_max_ticket_number(str(guild.id))
         except Exception:
-            logger.exception(
-                "Failed to fetch max ticket number (guild=%s)", guild.id
-            )
+            logger.exception("Failed to fetch max ticket number (guild=%s)", guild.id)
             await ctx.send(
                 embed=error_embed(
                     "Lookup Failed",
-                    "Could not determine the next ticket number. "
-                    "Please try again.",
+                    "Could not determine the next ticket number. Please try again.",
                 )
             )
             return
@@ -1409,9 +1294,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
                 guild_id=str(guild.id),
             )
         except Exception:
-            logger.exception(
-                "Failed to create sub-ticket in DB (parent=%s)", parent_id
-            )
+            logger.exception("Failed to create sub-ticket in DB (parent=%s)", parent_id)
             # Clean up the orphan channel.
             with contextlib.suppress(discord.HTTPException):
                 await channel.delete(reason="Sub-ticket creation failed — cleanup")
@@ -1431,12 +1314,11 @@ class TicketsCog(commands.Cog, name="Tickets"):
             except discord.HTTPException:
                 logger.warning(
                     "Failed to rename sub-ticket channel %s → %s",
-                    channel.id, actual_name,
+                    channel.id,
+                    actual_name,
                 )
 
-        await channel.send(
-            content=parent_owner.mention, embed=_build_ticket_embed(ticket)
-        )
+        await channel.send(content=parent_owner.mention, embed=_build_ticket_embed(ticket))
         await ctx.send(
             embed=success_embed(
                 "Sub-ticket Created",
@@ -1445,7 +1327,10 @@ class TicketsCog(commands.Cog, name="Tickets"):
         )
         logger.info(
             "Sub-ticket #%d created (parent=%s, guild=%s, author=%s)",
-            ticket.ticket_number, parent_id, guild.id, author.id,
+            ticket.ticket_number,
+            parent_id,
+            guild.id,
+            author.id,
         )
 
     # -- /reopen -------------------------------------------------------
@@ -1459,9 +1344,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         ),
     )
     @is_mod()
-    async def reopen(
-        self, ctx: commands.Context, *, ticket_ref: str | None = None
-    ) -> None:
+    async def reopen(self, ctx: commands.Context, *, ticket_ref: str | None = None) -> None:
         """Reopen a closed ticket, creating a new Discord channel.
 
         With *ticket_ref* the ticket is resolved by guild+number (``#0003`` /
@@ -1473,9 +1356,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         """
         if ctx.guild is None:
             await ctx.send(
-                embed=error_embed(
-                    "Server Only", "Tickets can only be reopened in a server."
-                ),
+                embed=error_embed("Server Only", "Tickets can only be reopened in a server."),
             )
             return
 
@@ -1551,9 +1432,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             try:
                 row = await self.bot.db.get_ticket_by_number(guild_id, ref.number)
             except Exception:
-                logger.exception(
-                    "Failed to look up ticket by number %d", ref.number
-                )
+                logger.exception("Failed to look up ticket by number %d", ref.number)
                 await ctx.send(
                     embed=error_embed(
                         "Lookup Failed",
@@ -1575,9 +1454,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             try:
                 row = await self.bot.db.get_ticket(ref.uuid)
             except Exception:
-                logger.exception(
-                    "Failed to look up ticket by UUID %s", ref.uuid
-                )
+                logger.exception("Failed to look up ticket by UUID %s", ref.uuid)
                 await ctx.send(
                     embed=error_embed(
                         "Lookup Failed",
@@ -1605,13 +1482,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
 
         # ref is None and ticket_ref is None → legacy channel-scoped lookup.
         try:
-            ticket_row = await self.bot.db.get_ticket_by_channel(
-                str(ctx.channel.id)
-            )
+            ticket_row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id))
         except Exception:
-            logger.exception(
-                "Failed to look up ticket by channel %s", ctx.channel.id
-            )
+            logger.exception("Failed to look up ticket by channel %s", ctx.channel.id)
             await ctx.send(
                 embed=error_embed(
                     "Lookup Failed",
@@ -1636,9 +1509,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @commands.hybrid_command(name="transfer")
     @app_commands.describe(member="The staff member to transfer the ticket to")
     @is_mod()
-    async def transfer(
-        self, ctx: commands.Context, member: discord.Member
-    ) -> None:
+    async def transfer(self, ctx: commands.Context, member: discord.Member) -> None:
         """Transfer the current ticket's claim to another staff member.
 
         Mutates ``claimedBy`` and emits a :class:`LoggingService` audit
@@ -1646,22 +1517,16 @@ class TicketsCog(commands.Cog, name="Tickets"):
         """
         if ctx.guild is None:
             await ctx.send(
-                embed=error_embed(
-                    "Server Only", "Tickets can only be transferred in a server."
-                ),
+                embed=error_embed("Server Only", "Tickets can only be transferred in a server."),
             )
             return
 
         assert self.bot.db is not None
         assert self.bot.ticket_service is not None
         try:
-            ticket_row = await self.bot.db.get_ticket_by_channel(
-                str(ctx.channel.id)
-            )
+            ticket_row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id))
         except Exception:
-            logger.exception(
-                "Failed to look up ticket by channel %s", ctx.channel.id
-            )
+            logger.exception("Failed to look up ticket by channel %s", ctx.channel.id)
             await ctx.send(
                 embed=error_embed(
                     "Lookup Failed",
@@ -1731,13 +1596,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
         assert self.bot.db is not None
         assert self.bot.ticket_service is not None
         try:
-            ticket_row = await self.bot.db.get_ticket_by_channel(
-                str(ctx.channel.id)
-            )
+            ticket_row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id))
         except Exception:
-            logger.exception(
-                "Failed to look up ticket by channel %s", ctx.channel.id
-            )
+            logger.exception("Failed to look up ticket by channel %s", ctx.channel.id)
             await ctx.send(
                 embed=error_embed(
                     "Lookup Failed",
@@ -1756,27 +1617,15 @@ class TicketsCog(commands.Cog, name="Tickets"):
 
         ticket_id = ticket_row["id"]
         try:
-            note = await self.bot.ticket_service.create_note(
-                ticket_id, str(ctx.author.id), content
-            )
+            note = await self.bot.ticket_service.create_note(ticket_id, str(ctx.author.id), content)
         except Exception:
             logger.exception("Failed to add note to ticket %s", ticket_id)
-            await ctx.send(
-                embed=error_embed(
-                    "Note Failed", "Could not add the note. Please try again."
-                )
-            )
+            await ctx.send(embed=error_embed("Note Failed", "Could not add the note. Please try again."))
             return
 
-        await ctx.send(
-            embed=success_embed(
-                "Note Added", f"Note `{note.id}` has been added to the ticket."
-            )
-        )
+        await ctx.send(embed=success_embed("Note Added", f"Note `{note.id}` has been added to the ticket."))
 
-    async def _send_notes_private(
-        self, ctx: commands.Context, embed: discord.Embed
-    ) -> None:
+    async def _send_notes_private(self, ctx: commands.Context, embed: discord.Embed) -> None:
         """Route a notes embed privately (B1).
 
         Slash invocations reply ephemerally. Prefix invocations DM the
@@ -1791,14 +1640,11 @@ class TicketsCog(commands.Cog, name="Tickets"):
         try:
             await ctx.author.send(embed=embed)
         except (discord.Forbidden, discord.HTTPException):
-            logger.exception(
-                "Failed to DM staff notes to %s", ctx.author.id
-            )
+            logger.exception("Failed to DM staff notes to %s", ctx.author.id)
             await ctx.send(
                 embed=error_embed(
                     "DM Failed",
-                    "Could not send the notes to your DMs. "
-                    "Please enable DMs from server members.",
+                    "Could not send the notes to your DMs. Please enable DMs from server members.",
                 )
             )
             return
@@ -1823,13 +1669,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
         # B4: wrap the channel-ticket lookup so a DB failure does not
         # surface a raw traceback.
         try:
-            ticket_row = await self.bot.db.get_ticket_by_channel(
-                str(ctx.channel.id)
-            )
+            ticket_row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id))
         except Exception:
-            logger.exception(
-                "Failed to look up ticket by channel %s", ctx.channel.id
-            )
+            logger.exception("Failed to look up ticket by channel %s", ctx.channel.id)
             await ctx.send(
                 embed=error_embed(
                     "Lookup Failed",
@@ -1863,14 +1705,10 @@ class TicketsCog(commands.Cog, name="Tickets"):
             # B1: the empty-state ('ticket has no staff notes') is private
             # state — route it through the same privacy path as the notes
             # themselves so it never leaks to the channel.
-            await self._send_notes_private(
-                ctx, info_embed("No Notes", "No staff notes yet.")
-            )
+            await self._send_notes_private(ctx, info_embed("No Notes", "No staff notes yet."))
             return
 
-        lines = [
-            f"`{n.id}` <@{n.author_id}> — {n.content}" for n in notes
-        ]
+        lines = [f"`{n.id}` <@{n.author_id}> — {n.content}" for n in notes]
         embed = discord.Embed(
             title="📋 Staff Notes",
             description="\n".join(lines),
@@ -1885,20 +1723,14 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @note.command(name="delete")
     @app_commands.describe(note_id="The UUID of the note to delete")
     @is_mod()
-    async def note_delete(
-        self, ctx: commands.Context, note_id: str
-    ) -> None:
+    async def note_delete(self, ctx: commands.Context, note_id: str) -> None:
         """Delete a staff note (author-only — enforced by the service)."""
         assert self.bot.db is not None
         assert self.bot.ticket_service is not None
         try:
-            ticket_row = await self.bot.db.get_ticket_by_channel(
-                str(ctx.channel.id)
-            )
+            ticket_row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id))
         except Exception:
-            logger.exception(
-                "Failed to look up ticket by channel %s", ctx.channel.id
-            )
+            logger.exception("Failed to look up ticket by channel %s", ctx.channel.id)
             await ctx.send(
                 embed=error_embed(
                     "Lookup Failed",
@@ -1924,18 +1756,10 @@ class TicketsCog(commands.Cog, name="Tickets"):
             )
         except Exception:
             logger.exception("Failed to delete note %s", note_id)
-            await ctx.send(
-                embed=error_embed(
-                    "Delete Failed", "Could not delete the note."
-                )
-            )
+            await ctx.send(embed=error_embed("Delete Failed", "Could not delete the note."))
             return
 
-        await ctx.send(
-            embed=success_embed(
-                "Note Deleted", f"Note `{note_id}` has been deleted."
-            )
-        )
+        await ctx.send(embed=success_embed("Note Deleted", f"Note `{note_id}` has been deleted."))
 
 
 # ======================================================================

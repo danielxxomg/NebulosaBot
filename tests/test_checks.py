@@ -330,9 +330,7 @@ async def test_is_mod_predicate_delegates_to_is_mod_check(
     mock_interaction.user.roles = [mod_role]
     mock_interaction.client._guild_mod_role_cache = {guild_id: str(mod_role_id)}
 
-    with patch(
-        "bot.utils.checks.is_mod_check", new=AsyncMock(return_value=True)
-    ) as spy:
+    with patch("bot.utils.checks.is_mod_check", new=AsyncMock(return_value=True)) as spy:
         result = await predicate(mock_interaction)
 
     assert result is True

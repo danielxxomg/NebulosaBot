@@ -70,7 +70,9 @@ class TestXpListenerGuard:
 
     @pytest.mark.asyncio
     async def test_ignores_bot_messages(
-        self, listener: XPListener, mock_message: MagicMock,
+        self,
+        listener: XPListener,
+        mock_message: MagicMock,
     ) -> None:
         """Messages from bots should not trigger XP gain."""
         mock_message.author.bot = True
@@ -81,7 +83,9 @@ class TestXpListenerGuard:
 
     @pytest.mark.asyncio
     async def test_ignores_dm_messages(
-        self, listener: XPListener, mock_bot: MagicMock,
+        self,
+        listener: XPListener,
+        mock_bot: MagicMock,
     ) -> None:
         """Direct messages (no guild) should not trigger XP gain."""
         msg = MagicMock(spec=discord.Message)
@@ -104,7 +108,9 @@ class TestXpListenerGain:
 
     @pytest.mark.asyncio
     async def test_calls_gain_xp_with_correct_ids(
-        self, listener: XPListener, mock_message: MagicMock,
+        self,
+        listener: XPListener,
+        mock_message: MagicMock,
     ) -> None:
         """Valid message should call gain_xp(guild_id, user_id)."""
         mock_message.author.id = 111111111
@@ -112,13 +118,13 @@ class TestXpListenerGain:
 
         await listener.on_message(mock_message)
 
-        listener.bot.economy_service.gain_xp.assert_called_once_with(
-            "123456789", "111111111"
-        )
+        listener.bot.economy_service.gain_xp.assert_called_once_with("123456789", "111111111")
 
     @pytest.mark.asyncio
     async def test_gain_xp_no_level_up_does_nothing_extra(
-        self, listener: XPListener, mock_message: MagicMock,
+        self,
+        listener: XPListener,
+        mock_message: MagicMock,
     ) -> None:
         """When gain_xp returns leveled_up=False, no embed or role change."""
         listener.bot.economy_service.gain_xp.return_value = (260, 2, False)
@@ -131,7 +137,9 @@ class TestXpListenerGain:
 
     @pytest.mark.asyncio
     async def test_gain_xp_level_up_sends_embed(
-        self, listener: XPListener, mock_message: MagicMock,
+        self,
+        listener: XPListener,
+        mock_message: MagicMock,
     ) -> None:
         """Level-up should send a notification embed."""
         mock_message.author.id = 111111111
@@ -151,7 +159,9 @@ class TestXpListenerGain:
 
     @pytest.mark.asyncio
     async def test_gain_xp_zero_xp_on_cooldown(
-        self, listener: XPListener, mock_message: MagicMock,
+        self,
+        listener: XPListener,
+        mock_message: MagicMock,
     ) -> None:
         """When gain_xp returns (0, 0, False), no embed or role action."""
         listener.bot.economy_service.gain_xp.return_value = (0, 0, False)
@@ -165,7 +175,9 @@ class TestXpListenerGain:
 
     @pytest.mark.asyncio
     async def test_gain_xp_level_up_high_level(
-        self, listener: XPListener, mock_message: MagicMock,
+        self,
+        listener: XPListener,
+        mock_message: MagicMock,
     ) -> None:
         """Level-up to a high level (e.g., 50) should still work."""
         mock_message.author.id = 111111111
@@ -190,7 +202,9 @@ class TestXpListenerLevelUpChannel:
 
     @pytest.mark.asyncio
     async def test_level_up_uses_configured_channel(
-        self, listener: XPListener, mock_message: MagicMock,
+        self,
+        listener: XPListener,
+        mock_message: MagicMock,
         mock_guild: MagicMock,
     ) -> None:
         """When levelUpChannelId is set, embed goes to that channel."""
@@ -215,7 +229,9 @@ class TestXpListenerLevelUpChannel:
 
     @pytest.mark.asyncio
     async def test_level_up_fallback_to_message_channel(
-        self, listener: XPListener, mock_message: MagicMock,
+        self,
+        listener: XPListener,
+        mock_message: MagicMock,
     ) -> None:
         """When levelUpChannelId is None, embed goes to message.channel."""
         mock_message.author.id = 111111111
@@ -230,7 +246,9 @@ class TestXpListenerLevelUpChannel:
 
     @pytest.mark.asyncio
     async def test_level_up_configured_channel_not_found(
-        self, listener: XPListener, mock_message: MagicMock,
+        self,
+        listener: XPListener,
+        mock_message: MagicMock,
         mock_guild: MagicMock,
     ) -> None:
         """When configured channel doesn't exist, fallback to message channel."""
@@ -261,7 +279,9 @@ class TestXpListenerRoleAssignment:
 
     @pytest.mark.asyncio
     async def test_level_up_assigns_role_from_config(
-        self, listener: XPListener, mock_message: MagicMock,
+        self,
+        listener: XPListener,
+        mock_message: MagicMock,
         mock_guild: MagicMock,
     ) -> None:
         """When levelRoleMap has a role for the new level, assign it."""
@@ -284,7 +304,9 @@ class TestXpListenerRoleAssignment:
 
     @pytest.mark.asyncio
     async def test_level_up_no_role_for_level(
-        self, listener: XPListener, mock_message: MagicMock,
+        self,
+        listener: XPListener,
+        mock_message: MagicMock,
         mock_guild: MagicMock,
     ) -> None:
         """When levelRoleMap has no entry for new level, skip role assignment."""
@@ -304,7 +326,9 @@ class TestXpListenerRoleAssignment:
 
     @pytest.mark.asyncio
     async def test_level_up_role_not_found(
-        self, listener: XPListener, mock_message: MagicMock,
+        self,
+        listener: XPListener,
+        mock_message: MagicMock,
         mock_guild: MagicMock,
     ) -> None:
         """When role ID from config doesn't exist, skip gracefully."""
@@ -325,7 +349,9 @@ class TestXpListenerRoleAssignment:
 
     @pytest.mark.asyncio
     async def test_level_up_no_config_skips_role(
-        self, listener: XPListener, mock_message: MagicMock,
+        self,
+        listener: XPListener,
+        mock_message: MagicMock,
         mock_guild: MagicMock,
     ) -> None:
         """When no economy_config exists, skip role assignment entirely."""

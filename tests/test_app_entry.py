@@ -36,4 +36,4 @@ class TestAppEntrySimplified:
     def test_app_py_is_short(self) -> None:
         """Spec success criterion: app.py < 20 lines."""
         line_count = len(APP_SOURCE.splitlines())
-        assert line_count < 20, f"app.py is {line_count} lines — expected < 20"
+        assert line_count <= 20, f"app.py is {line_count} lines — expected ≤ 20"

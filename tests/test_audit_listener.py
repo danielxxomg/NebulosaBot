@@ -129,6 +129,7 @@ def listener(mock_bot: MagicMock) -> commands.Cog:
     Module is imported dynamically since the file does not exist yet (RED phase).
     """
     from bot.listeners.audit_listener import AuditListener
+
     return AuditListener(mock_bot)
 
 
@@ -142,7 +143,9 @@ class TestOnMessageEditEarlyExits:
 
     @pytest.mark.asyncio
     async def test_skip_bot_messages(
-        self, listener: commands.Cog, mock_logging: MagicMock,
+        self,
+        listener: commands.Cog,
+        mock_logging: MagicMock,
     ) -> None:
         """Bot-authored message edits must be skipped."""
         before = make_mock_message(author_bot=True, author_id=888)
@@ -154,7 +157,9 @@ class TestOnMessageEditEarlyExits:
 
     @pytest.mark.asyncio
     async def test_skip_dm_messages(
-        self, listener: commands.Cog, mock_logging: MagicMock,
+        self,
+        listener: commands.Cog,
+        mock_logging: MagicMock,
     ) -> None:
         """DM message edits (no guild) must be skipped."""
         before = make_mock_message()
@@ -168,7 +173,9 @@ class TestOnMessageEditEarlyExits:
 
     @pytest.mark.asyncio
     async def test_skip_when_channel_not_loggable(
-        self, listener: commands.Cog, mock_logging: MagicMock,
+        self,
+        listener: commands.Cog,
+        mock_logging: MagicMock,
     ) -> None:
         """Messages in channels invisible to @everyone must be skipped."""
         mock_logging.can_log_in_channel.return_value = False
@@ -181,7 +188,9 @@ class TestOnMessageEditEarlyExits:
 
     @pytest.mark.asyncio
     async def test_calls_log_message_edit_on_valid_message(
-        self, listener: commands.Cog, mock_logging: MagicMock,
+        self,
+        listener: commands.Cog,
+        mock_logging: MagicMock,
     ) -> None:
         """Valid guild message edit must call log_message_edit with correct args."""
         before = make_mock_message(content="original")
@@ -190,7 +199,9 @@ class TestOnMessageEditEarlyExits:
         await listener.on_message_edit(before, after)  # type: ignore[union-attr]
 
         mock_logging.log_message_edit.assert_awaited_once_with(
-            "123456789", before, after,
+            "123456789",
+            before,
+            after,
         )
 
 
@@ -204,7 +215,9 @@ class TestOnMessageDeleteEarlyExits:
 
     @pytest.mark.asyncio
     async def test_skip_bot_messages(
-        self, listener: commands.Cog, mock_logging: MagicMock,
+        self,
+        listener: commands.Cog,
+        mock_logging: MagicMock,
     ) -> None:
         """Bot-authored message deletes must be skipped."""
         message = make_mock_message(author_bot=True, author_id=888)
@@ -215,7 +228,9 @@ class TestOnMessageDeleteEarlyExits:
 
     @pytest.mark.asyncio
     async def test_skip_dm_messages(
-        self, listener: commands.Cog, mock_logging: MagicMock,
+        self,
+        listener: commands.Cog,
+        mock_logging: MagicMock,
     ) -> None:
         """DM message deletes (no guild) must be skipped."""
         message = make_mock_message()
@@ -227,7 +242,9 @@ class TestOnMessageDeleteEarlyExits:
 
     @pytest.mark.asyncio
     async def test_calls_log_message_delete_on_valid_message(
-        self, listener: commands.Cog, mock_logging: MagicMock,
+        self,
+        listener: commands.Cog,
+        mock_logging: MagicMock,
     ) -> None:
         """Valid guild message delete must call log_message_delete with correct args."""
         message = make_mock_message(content="deleted content")
@@ -235,7 +252,8 @@ class TestOnMessageDeleteEarlyExits:
         await listener.on_message_delete(message)  # type: ignore[union-attr]
 
         mock_logging.log_message_delete.assert_awaited_once_with(
-            "123456789", message,
+            "123456789",
+            message,
         )
 
 
@@ -249,7 +267,9 @@ class TestOnMemberUpdate:
 
     @pytest.mark.asyncio
     async def test_calls_log_member_update(
-        self, listener: commands.Cog, mock_logging: MagicMock,
+        self,
+        listener: commands.Cog,
+        mock_logging: MagicMock,
     ) -> None:
         """Member update must delegate to log_member_update.
 
@@ -262,12 +282,16 @@ class TestOnMemberUpdate:
         await listener.on_member_update(before, after)  # type: ignore[union-attr]
 
         mock_logging.log_member_update.assert_awaited_once_with(
-            "123456789", before, after,
+            "123456789",
+            before,
+            after,
         )
 
     @pytest.mark.asyncio
     async def test_calls_log_member_update_even_when_roles_unchanged(
-        self, listener: commands.Cog, mock_logging: MagicMock,
+        self,
+        listener: commands.Cog,
+        mock_logging: MagicMock,
     ) -> None:
         """Even if roles are unchanged, the listener delegates.
 
@@ -281,7 +305,9 @@ class TestOnMemberUpdate:
 
         # Listener always calls — LoggingService decides whether to send.
         mock_logging.log_member_update.assert_awaited_once_with(
-            "123456789", before, after,
+            "123456789",
+            before,
+            after,
         )
 
 
@@ -295,7 +321,9 @@ class TestOnMemberJoin:
 
     @pytest.mark.asyncio
     async def test_skip_bot_members(
-        self, listener: commands.Cog, mock_logging: MagicMock,
+        self,
+        listener: commands.Cog,
+        mock_logging: MagicMock,
     ) -> None:
         """Bot member joins must be skipped."""
         member = make_mock_member(member_id=888, name="BotUser")
@@ -307,7 +335,9 @@ class TestOnMemberJoin:
 
     @pytest.mark.asyncio
     async def test_calls_log_member_join_on_valid_member(
-        self, listener: commands.Cog, mock_logging: MagicMock,
+        self,
+        listener: commands.Cog,
+        mock_logging: MagicMock,
     ) -> None:
         """Valid member join must call log_member_join with correct args."""
         member = make_mock_member(member_id=333, name="NewUser")
@@ -316,7 +346,8 @@ class TestOnMemberJoin:
         await listener.on_member_join(member)  # type: ignore[union-attr]
 
         mock_logging.log_member_join.assert_awaited_once_with(
-            "123456789", member,
+            "123456789",
+            member,
         )
 
 
@@ -330,7 +361,9 @@ class TestOnMemberRemove:
 
     @pytest.mark.asyncio
     async def test_skip_bot_members(
-        self, listener: commands.Cog, mock_logging: MagicMock,
+        self,
+        listener: commands.Cog,
+        mock_logging: MagicMock,
     ) -> None:
         """Bot member leaves must be skipped."""
         member = make_mock_member(member_id=888, name="BotUser")
@@ -342,7 +375,9 @@ class TestOnMemberRemove:
 
     @pytest.mark.asyncio
     async def test_calls_log_member_leave_on_valid_member(
-        self, listener: commands.Cog, mock_logging: MagicMock,
+        self,
+        listener: commands.Cog,
+        mock_logging: MagicMock,
     ) -> None:
         """Valid member leave must call log_member_leave with correct args."""
         member = make_mock_member(member_id=444, name="LeavingUser")
@@ -351,7 +386,8 @@ class TestOnMemberRemove:
         await listener.on_member_remove(member)  # type: ignore[union-attr]
 
         mock_logging.log_member_leave.assert_awaited_once_with(
-            "123456789", member,
+            "123456789",
+            member,
         )
 
 
@@ -365,7 +401,9 @@ class TestOnGuildChannelCreate:
 
     @pytest.mark.asyncio
     async def test_calls_log_channel_create(
-        self, listener: commands.Cog, mock_logging: MagicMock,
+        self,
+        listener: commands.Cog,
+        mock_logging: MagicMock,
     ) -> None:
         """Channel creation must call log_channel_create with correct args."""
         channel = make_mock_channel(name="new-channel")
@@ -373,7 +411,8 @@ class TestOnGuildChannelCreate:
         await listener.on_guild_channel_create(channel)  # type: ignore[union-attr]
 
         mock_logging.log_channel_create.assert_awaited_once_with(
-            "123456789", channel,
+            "123456789",
+            channel,
         )
 
 
@@ -382,7 +421,9 @@ class TestOnGuildChannelDelete:
 
     @pytest.mark.asyncio
     async def test_calls_log_channel_delete(
-        self, listener: commands.Cog, mock_logging: MagicMock,
+        self,
+        listener: commands.Cog,
+        mock_logging: MagicMock,
     ) -> None:
         """Channel deletion must call log_channel_delete with correct args."""
         channel = make_mock_channel(name="deleted-channel")
@@ -390,7 +431,8 @@ class TestOnGuildChannelDelete:
         await listener.on_guild_channel_delete(channel)  # type: ignore[union-attr]
 
         mock_logging.log_channel_delete.assert_awaited_once_with(
-            "123456789", channel,
+            "123456789",
+            channel,
         )
 
 
@@ -450,7 +492,9 @@ class TestSentinelCogUsesLoggingService:
 
     @pytest.mark.asyncio
     async def test_warn_handler_calls_log_moderation_action(
-        self, sentinel_cog: SentinelCog, sentinel_bot: MagicMock,
+        self,
+        sentinel_cog: SentinelCog,
+        sentinel_bot: MagicMock,
     ) -> None:
         """After refactor, /warn must call logging_service.log_moderation_action.
 
@@ -483,7 +527,11 @@ class TestSentinelCogUsesLoggingService:
         # RED: this assertion will FAIL because SentinelCog currently
         # uses _log_action() instead of logging_service.log_moderation_action.
         sentinel_bot.logging_service.log_moderation_action.assert_awaited_once_with(
-            "123456789", "Warn", target, ctx.author, reason,
+            "123456789",
+            "Warn",
+            target,
+            ctx.author,
+            reason,
         )
 
 
@@ -501,6 +549,7 @@ class TestAuditListenerSetup:
         mock_bot.add_cog = AsyncMock()
 
         from bot.listeners.audit_listener import setup
+
         await setup(mock_bot)
 
         mock_bot.add_cog.assert_awaited_once()
@@ -513,6 +562,7 @@ class TestAuditListenerSetup:
         mock_bot.remove_cog = AsyncMock()
 
         from bot.listeners.audit_listener import teardown
+
         await teardown(mock_bot)
 
         mock_bot.remove_cog.assert_awaited_once_with("AuditListener")

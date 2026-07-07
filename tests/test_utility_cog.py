@@ -113,7 +113,8 @@ class TestAvatarCommand:
 
     @pytest.mark.asyncio
     async def test_avatar_self_shows_author_thumbnail(
-        self, cog: UtilityCog,
+        self,
+        cog: UtilityCog,
     ) -> None:
         """Invoking /avatar without a target shows the caller's avatar."""
         ctx = _make_ctx()
@@ -129,7 +130,8 @@ class TestAvatarCommand:
 
     @pytest.mark.asyncio
     async def test_avatar_target_shows_member_thumbnail(
-        self, cog: UtilityCog,
+        self,
+        cog: UtilityCog,
     ) -> None:
         """Invoking /avatar @member shows the target's avatar."""
         ctx = _make_ctx()
@@ -145,7 +147,8 @@ class TestAvatarCommand:
 
     @pytest.mark.asyncio
     async def test_avatar_fallback_when_no_avatar(
-        self, cog: UtilityCog,
+        self,
+        cog: UtilityCog,
     ) -> None:
         """If a member has no custom avatar, default avatar is used."""
         ctx = _make_ctx()
@@ -170,7 +173,8 @@ class TestServerinfoCommand:
 
     @pytest.mark.asyncio
     async def test_serverinfo_shows_guild_fields(
-        self, cog: UtilityCog,
+        self,
+        cog: UtilityCog,
     ) -> None:
         """In a guild context, /serverinfo shows all server fields."""
         ctx = _make_ctx()
@@ -203,7 +207,8 @@ class TestServerinfoCommand:
 
     @pytest.mark.asyncio
     async def test_serverinfo_dm_shows_error_embed(
-        self, cog: UtilityCog,
+        self,
+        cog: UtilityCog,
     ) -> None:
         """Invoking /serverinfo in a DM returns an error embed."""
         ctx = _make_ctx()
@@ -219,7 +224,8 @@ class TestServerinfoCommand:
 
     @pytest.mark.asyncio
     async def test_serverinfo_no_icon_handles_none_thumbnail(
-        self, cog: UtilityCog,
+        self,
+        cog: UtilityCog,
     ) -> None:
         """Guilds without an icon should not break the embed."""
         ctx = _make_ctx()
@@ -248,7 +254,8 @@ class TestUserinfoCommand:
 
     @pytest.mark.asyncio
     async def test_userinfo_self_defaults_to_author(
-        self, cog: UtilityCog,
+        self,
+        cog: UtilityCog,
     ) -> None:
         """Without a target, /userinfo shows the caller's own info."""
         ctx = _make_ctx()
@@ -274,7 +281,8 @@ class TestUserinfoCommand:
 
     @pytest.mark.asyncio
     async def test_userinfo_target_shows_member_info(
-        self, cog: UtilityCog,
+        self,
+        cog: UtilityCog,
     ) -> None:
         """Invoking /userinfo @member shows the target's details."""
         ctx = _make_ctx()
@@ -299,7 +307,8 @@ class TestUserinfoCommand:
 
     @pytest.mark.asyncio
     async def test_userinfo_role_truncation_at_20(
-        self, cog: UtilityCog,
+        self,
+        cog: UtilityCog,
     ) -> None:
         """More than 20 roles should show first 20 + 'and N more' suffix."""
         ctx = _make_ctx()
@@ -328,7 +337,8 @@ class TestUserinfoCommand:
 
     @pytest.mark.asyncio
     async def test_userinfo_no_roles_shows_none(
-        self, cog: UtilityCog,
+        self,
+        cog: UtilityCog,
     ) -> None:
         """A member with no extra roles should show 'None'."""
         ctx = _make_ctx()
@@ -348,7 +358,8 @@ class TestUserinfoCommand:
 
     @pytest.mark.asyncio
     async def test_userinfo_shows_bot_flag(
-        self, cog: UtilityCog,
+        self,
+        cog: UtilityCog,
     ) -> None:
         """A bot member should have a 'Bot' field indicating it's a bot."""
         ctx = _make_ctx()
