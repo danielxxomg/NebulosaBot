@@ -44,38 +44,38 @@ Chain strategy: pending
 - [x] 2.6 GREEN: add `validate_parent_id(parent_row, child_guild_id, child_id)` raises ValueError with reason
 - [x] 2.7 RED: write failing tests TI-016→TI-018 (note dedup: exact hash denied, outside window allowed, different author allowed)
 - [x] 2.8 GREEN: add `compute_dedup_hash(content)` returning SHA256 of normalized content; `check_note_dedup(recent_notes, content, author_id)` raises ValueError on duplicate within 2s
-- [ ] 2.9 RED: write failing tests TI-020→TI-021 (audit violations + guild scope)
+- [x] 2.9 RED: write failing tests TI-020→TI-021 (audit violations + guild scope)
 - [ ] 2.10 GREEN: add `build_audit_reason(action, outcome, detail)` helper; ensure guild scope via `.eq("guildId")` in database methods
-- [ ] 2.11 RED: write failing tests TI-022→TI-028 (permission matrix: create any, claim mod, close author+mod, reopen mod, transfer admin, notes/staff admin+mod, audit view admin)
+- [x] 2.11 RED: write failing tests TI-022→TI-028 (permission matrix: create any, claim mod, close author+mod, reopen mod, transfer admin, notes/staff admin+mod, audit view admin)
 - [ ] 2.12 GREEN: add `PERMISSION_MATRIX` dict mapping action→allowed roles; update `check_actor_permission` to consult it
-- [ ] 2.13 RED: write failing tests TI-029→TI-030 (drift: reopen by number, no category error)
-- [ ] 2.14 GREEN: add `parse_ticket_ref(ref_str)` parsing `#0003`, `0003`, UUID, stripping `ticket:` prefix
+- [x] 2.13 RED: write failing tests TI-029→TI-030 (drift: reopen by number, no category error)
+- [x] 2.14 GREEN: add `parse_ticket_ref(ref_str)` parsing `#0003`, `0003`, UUID, stripping `ticket:` prefix
 - [x] 2.15 RED: write failing tests TI-031→TI-035 (note cap, delete ownership, under cap, author delete own)
 - [x] 2.16 GREEN: add `validate_note_cap(note_count)` raises at 50; `validate_note_delete(note_row, actor_id)` raises if not owner
-- [ ] 2.17 RED: write failing test TI-033 (guild scope — ticket/note/audit from guild B not leakable from guild A)
-- [ ] 2.18 RED: write failing tests TI-036→TI-038 (action view render, no-arg legacy reopen, audit paginated)
+- [x] 2.17 RED: write failing test TI-033 (guild scope — ticket/note/audit from guild B not leakable from guild A)
+- [x] 2.18 RED: write failing tests TI-036→TI-038 (action view render, no-arg legacy reopen, audit paginated)
 - [ ] 2.19 GREEN: stub dashboard-side assertions as vitest `describe.skip` blocks in `dashboard/__tests__/contract/ticket-invariants.test.ts` — one test per ScenarioID with correct function name (e.g. `ti001OpenToClaimed`), asserting the pure TS invariant or marking as bot-only
-- [ ] 2.20 REFACTOR: deduplicate fixture factories (mock ticket rows, mock guild config, mock interaction) across contract test file
+- [x] 2.20 REFACTOR: deduplicate fixture factories (mock ticket rows, mock guild config, mock interaction) across contract test file
 
 ## Phase 3: Bot Service/Cog Integration (PR 2)
 
-- [ ] 3.1 RED: write failing test `test_claim_audits_success` asserting `claim_ticket` writes audit row with outcome=success
-- [ ] 3.2 GREEN: in `bot/services/ticket_service.py` `claim_ticket()` — call `validate_claim()` from invariants BEFORE `update_ticket`; call `insert_audit_row()` after; catch ValueError → audit denied + re-raise
-- [ ] 3.3 RED: write failing test `test_transfer_same_user_denied` asserting `transfer_ticket(ticket, userA, userA)` raises ValueError
-- [ ] 3.4 GREEN: in `transfer_ticket()` — add `if claimed_by == new_claimed_by: raise ValueError("same user")`; audit success/denied
-- [ ] 3.5 RED: write failing test `test_note_dedup_within_window` asserting `create_note()` raises ValueError for duplicate within 2s
-- [ ] 3.6 GREEN: in `create_note()` — call `get_recent_notes_for_dedup()` + `check_note_dedup()` from invariants before insert; audit success/denied
-- [ ] 3.7 RED: write failing test `test_reopen_audits` asserting audit row written on reopen success/denied
-- [ ] 3.8 GREEN: in `reopen_ticket()` — audit success after channel created; audit denied on ValueError
-- [ ] 3.9 RED: write failing test `test_close_audits` and `test_subticket_create_audits`
-- [ ] 3.10 GREEN: in `close_ticket()` + `create_subticket()` — add audit rows for success/denied paths
-- [ ] 3.11 RED: write failing test `test_claim_button_denies_non_mod` asserting ephemeral error for non-mod user
-- [ ] 3.12 GREEN: in `bot/utils/checks.py` — extract `is_mod_check(interaction) -> bool` predicate (no decorator); refactor `is_mod()` to call it; in `bot/cogs/tickets.py` `claim_button` — gate with `if not await is_mod_check(interaction): send ephemeral error`
-- [ ] 3.13 RED: write failing test `test_close_button_denies_non_author_non_mod` asserting ephemeral error
-- [ ] 3.14 GREEN: in `close_button` — gate with `if user != author and not await is_mod_check(interaction): send ephemeral error`
-- [ ] 3.15 RED: write failing test `test_reopen_by_ticket_number` asserting `/reopen ticket:#0003` resolves ticket #3 from any channel
-- [ ] 3.16 GREEN: in `bot/cogs/tickets.py` `reopen()` — change signature to `ticket_ref: str | None = None`; call `parse_ticket_ref()` → `get_ticket_by_number()` or `get_ticket()` + guild check; preserve legacy channel lookup when no arg
-- [ ] 3.17 REFACTOR: extract `_resolve_ticket_for_reopen(bot, ctx, ticket_ref)` helper to keep `reopen()` under 50 lines
+- [x] 3.1 RED: write failing test `test_claim_audits_success` asserting `claim_ticket` writes audit row with outcome=success
+- [x] 3.2 GREEN: in `bot/services/ticket_service.py` `claim_ticket()` — call `validate_claim()` from invariants BEFORE `update_ticket`; call `insert_audit_row()` after; catch ValueError → audit denied + re-raise
+- [x] 3.3 RED: write failing test `test_transfer_same_user_denied` asserting `transfer_ticket(ticket, userA, userA)` raises ValueError
+- [x] 3.4 GREEN: in `transfer_ticket()` — add `if claimed_by == new_claimed_by: raise ValueError("same user")`; audit success/denied
+- [x] 3.5 RED: write failing test `test_note_dedup_within_window` asserting `create_note()` raises ValueError for duplicate within 2s
+- [x] 3.6 GREEN: in `create_note()` — call `get_recent_notes_for_dedup()` + `check_note_dedup()` from invariants before insert; audit success/denied
+- [x] 3.7 RED: write failing test `test_reopen_audits` asserting audit row written on reopen success/denied
+- [x] 3.8 GREEN: in `reopen_ticket()` — audit success after channel created; audit denied on ValueError
+- [x] 3.9 RED: write failing test `test_close_audits` and `test_subticket_create_audits`
+- [x] 3.10 GREEN: in `close_ticket()` + `create_subticket()` — add audit rows for success/denied paths
+- [x] 3.11 RED: write failing test `test_claim_button_denies_non_mod` asserting ephemeral error for non-mod user
+- [x] 3.12 GREEN: in `bot/utils/checks.py` — extract `is_mod_check(interaction) -> bool` predicate (no decorator); refactor `is_mod()` to call it; in `bot/cogs/tickets.py` `claim_button` — gate with `if not await is_mod_check(interaction): send ephemeral error`
+- [x] 3.13 RED: write failing test `test_close_button_denies_non_author_non_mod` asserting ephemeral error
+- [x] 3.14 GREEN: in `close_button` — gate with `if user != author and not await is_mod_check(interaction): send ephemeral error`
+- [x] 3.15 RED: write failing test `test_reopen_by_ticket_number` asserting `/reopen ticket:#0003` resolves ticket #3 from any channel
+- [x] 3.16 GREEN: in `bot/cogs/tickets.py` `reopen()` — change signature to `ticket_ref: str | None = None`; call `parse_ticket_ref()` → `get_ticket_by_number()` or `get_ticket()` + guild check; preserve legacy channel lookup when no arg
+- [x] 3.17 REFACTOR: extract `_resolve_ticket_for_reopen(bot, ctx, ticket_ref)` helper to keep `reopen()` under 50 lines
 
 ## Phase 4: Dashboard Changes (PR 3)
 

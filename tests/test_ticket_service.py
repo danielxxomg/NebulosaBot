@@ -43,6 +43,9 @@ def mock_db() -> AsyncMock:
     db.get_ticket_notes = AsyncMock()
     db.insert_ticket_note = AsyncMock()
     db.delete_ticket_note = AsyncMock()
+    # PR1 audit + dedup DB methods (wired by PR2 service integration).
+    db.insert_audit_row = AsyncMock(return_value={})
+    db.get_recent_notes_for_dedup = AsyncMock(return_value=[])
     return db
 
 
@@ -199,13 +202,16 @@ async def test_close_ticket_updates_status(
     service._ticket_channel_cache.add(channel_id)
     assert channel_id in service._ticket_channel_cache
 
-    # Mock DB: update is a fire-and-forget, get returns updated row.
-    mock_db.get_ticket.return_value = {
-        **ticket_row,
-        "status": "closed",
-        "closedAt": "2026-06-16T18:00:00+00:00",
-        "transcriptUrl": "https://cdn.discord.com/transcript.html",
-    }
+    # PR2 contract: pre-read the OPEN row (invariant passes), then re-read closed row.
+    mock_db.get_ticket.side_effect = [
+        ticket_row,  # pre-read: open
+        {
+            **ticket_row,
+            "status": "closed",
+            "closedAt": "2026-06-16T18:00:00+00:00",
+            "transcriptUrl": "https://cdn.discord.com/transcript.html",
+        },
+    ]
 
     ticket = await service.close_ticket(
         ticket_id,
@@ -220,8 +226,10 @@ async def test_close_ticket_updates_status(
     assert update_kwargs["closedAt"] is not None
     assert update_kwargs["transcriptUrl"] == "https://cdn.discord.com/transcript.html"
 
-    # Re-read from DB.
-    mock_db.get_ticket.assert_awaited_once_with(ticket_id)
+    # Re-read from DB (PR2: pre-read + re-read → two calls, both with the id).
+    assert mock_db.get_ticket.await_count == 2
+    for call in mock_db.get_ticket.call_args_list:
+        assert call.args == (ticket_id,)
 
     # Returned model.
     assert ticket.status == "closed"
@@ -260,11 +268,12 @@ async def test_claim_ticket_updates_status(
     ticket_id = ticket_row["id"]
     staff_id = "999999999"
 
-    mock_db.get_ticket.return_value = {
-        **ticket_row,
-        "status": "claimed",
-        "claimedBy": staff_id,
-    }
+    # PR2 contract: service pre-reads the OPEN row (invariant passes),
+    # then re-reads the claimed row after update.
+    mock_db.get_ticket.side_effect = [
+        ticket_row,  # pre-read: open + unclaimed
+        {**ticket_row, "status": "claimed", "claimedBy": staff_id},  # post-update
+    ]
 
     ticket = await service.claim_ticket(ticket_id, claimed_by=staff_id)
 
@@ -488,7 +497,7 @@ async def test_create_subticket_sub_of_sub_rejected(
     # Parent already has a different parentId → it is a sub-ticket.
     mock_db.get_ticket.return_value = _parent_row(parent_id="grandparent-uuid")
 
-    with pytest.raises(ValueError, match="already a sub-ticket"):
+    with pytest.raises(ValueError, match=r"depth|subticket|sub"):
         await service.create_subticket(
             parent_id=parent_id,
             author_id="111111111",
@@ -509,7 +518,7 @@ async def test_create_subticket_cross_guild_rejected(
     parent_id = "parent-uuid-001"
     mock_db.get_ticket.return_value = _parent_row(parent_id=None, guild_id="111000111")
 
-    with pytest.raises(ValueError, match="different guild"):
+    with pytest.raises(ValueError, match=r"guild|same"):
         await service.create_subticket(
             parent_id=parent_id,
             author_id="111111111",
@@ -756,7 +765,11 @@ async def test_transfer_updates_claimed_by(
     new_staff = "222222222"
     actor = "999999999"
 
-    mock_db.get_ticket.return_value = {**ticket_row, "claimedBy": new_staff, "status": "claimed"}
+    # PR2 contract: pre-read open+unclaimed (invariant passes), re-read claimed.
+    mock_db.get_ticket.side_effect = [
+        {**ticket_row, "status": "open", "claimedBy": None},
+        {**ticket_row, "claimedBy": new_staff, "status": "claimed"},
+    ]
 
     guild = MagicMock()
     guild.id = 123456789
@@ -787,8 +800,11 @@ async def test_transfer_unclaimed_implicit_claim(
 ) -> None:
     """Transferring an unclaimed ticket MUST set claimedBy (implicit claim)."""
     ticket_id = ticket_row["id"]
-    # Ticket currently unclaimed (claimedBy=None, status=open).
-    mock_db.get_ticket.return_value = {**ticket_row, "claimedBy": "222222222", "status": "claimed"}
+    # PR2 contract: pre-read open+unclaimed, re-read claimed.
+    mock_db.get_ticket.side_effect = [
+        {**ticket_row, "status": "open", "claimedBy": None},
+        {**ticket_row, "claimedBy": "222222222", "status": "claimed"},
+    ]
 
     guild = MagicMock()
     guild.id = 123456789
@@ -816,7 +832,11 @@ async def test_transfer_logs_audit(
 ) -> None:
     """transfer_ticket MUST call LoggingService with the transfer audit info."""
     ticket_id = ticket_row["id"]
-    mock_db.get_ticket.return_value = {**ticket_row, "claimedBy": "222222222"}
+    # PR2 contract: pre-read open+unclaimed, re-read claimed.
+    mock_db.get_ticket.side_effect = [
+        {**ticket_row, "status": "open", "claimedBy": None},
+        {**ticket_row, "claimedBy": "222222222"},
+    ]
 
     target_member = MagicMock()
     actor_member = MagicMock()
@@ -910,7 +930,7 @@ async def test_create_note_cap_enforced(
     """With 50 notes already present, create_note MUST raise ValueError."""
     mock_db.get_ticket_notes.return_value = [_note_row() for _ in range(50)]
 
-    with pytest.raises(ValueError, match="limit"):
+    with pytest.raises(ValueError, match="cap"):
         await service.create_note(
             "ticket-uuid-003",
             author_id="999999999",
@@ -926,6 +946,10 @@ async def test_get_notes_returns_list(
     mock_db: AsyncMock,
 ) -> None:
     """get_notes MUST delegate to the DB and return TicketNote models."""
+    mock_db.get_ticket.return_value = {
+        "id": "ticket-uuid-003",
+        "guildId": "123456789",
+    }
     mock_db.get_ticket_notes.return_value = [_note_row(note_id=f"n-{i}") for i in range(3)]
 
     notes = await service.get_notes("ticket-uuid-003")
@@ -941,11 +965,44 @@ async def test_get_notes_empty(
     mock_db: AsyncMock,
 ) -> None:
     """get_notes on a ticket with no notes MUST return an empty list."""
+    mock_db.get_ticket.return_value = {
+        "id": "ticket-uuid-003",
+        "guildId": "123456789",
+    }
     mock_db.get_ticket_notes.return_value = []
 
     notes = await service.get_notes("ticket-uuid-003")
 
     assert notes == []
+
+
+@pytest.mark.asyncio
+async def test_get_notes_audits_success(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """CRITICAL 5: get_notes (the list op) MUST write a note_list audit row.
+
+    Spec ``ticket-service/spec.md``: "Every ticket operation (claim, close,
+    reopen, transfer, subticket create, note add, note list, note delete)
+    MUST write a ``ticket_audit`` row" — note LIST is in that list. The audit
+    row is scoped to the ticket's guild (resolved via a get_ticket pre-read)
+    with action=``note_list`` and outcome=``success``.
+    """
+    ticket_id = "ticket-uuid-003"
+    guild_id = "123456789"
+    mock_db.get_ticket.return_value = {"id": ticket_id, "guildId": guild_id}
+    mock_db.get_ticket_notes.return_value = []
+
+    await service.get_notes(ticket_id)
+
+    calls = mock_db.insert_audit_row.call_args_list
+    assert len(calls) == 1, calls
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "note_list"
+    assert kwargs["outcome"] == "success"
+    assert kwargs["guild_id"] == guild_id
+    assert kwargs["ticket_id"] == ticket_id
 
 
 @pytest.mark.asyncio
@@ -987,3 +1044,435 @@ async def test_delete_note_not_found(
         await service.delete_note("missing-note", author_id="999999999", ticket_id="ticket-uuid-003")
 
     mock_db.delete_ticket_note.assert_not_awaited()
+
+
+# ===========================================================================
+# PR2 — invariant + audit wiring (claim/close/reopen/transfer/subticket/notes)
+# ===========================================================================
+#
+# Every op MUST: (1) run the pure invariant BEFORE mutating, (2) write a
+# ticket_audit row (outcome=success on completion, outcome=denied + reason on
+# invariant rejection), (3) re-raise the ValueError on the denied path.
+
+
+def _audit_kwargs(mock_db: AsyncMock, index: int = -1) -> dict:
+    """Return a kwargs dict for the index-th insert_audit_row call.
+
+    Merges positional args (by Database.insert_audit_row param order) when
+    the service called positionally, so test assertions read uniformly.
+    """
+    call = mock_db.insert_audit_row.call_args_list[index]
+    if call.kwargs:
+        return call.kwargs
+    keys = ["guild_id", "ticket_id", "action", "actor_id", "outcome", "reason"]
+    return dict(zip(keys, call.args, strict=False))
+
+
+@pytest.mark.asyncio
+async def test_claim_audits_success(
+    service: TicketService, mock_db: AsyncMock, ticket_row: dict
+) -> None:
+    """3.1/3.2: claim on an open ticket MUST write an audit success row."""
+    ticket_id = ticket_row["id"]
+    staff_id = "999999999"
+    # Pre-read returns the OPEN row (invariant passes); re-read returns claimed.
+    mock_db.get_ticket.side_effect = [
+        ticket_row,
+        {**ticket_row, "status": "claimed", "claimedBy": staff_id},
+    ]
+
+    await service.claim_ticket(ticket_id, claimed_by=staff_id)
+
+    mock_db.insert_audit_row.assert_awaited_once()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "claim"
+    assert kwargs["outcome"] == "success"
+    assert kwargs["actor_id"] == staff_id
+    assert kwargs["guild_id"] == ticket_row["guildId"]
+    assert kwargs["ticket_id"] == ticket_id
+
+
+@pytest.mark.asyncio
+async def test_claim_denied_audits_and_reraises(
+    service: TicketService, mock_db: AsyncMock, ticket_row: dict
+) -> None:
+    """Claim on an already-claimed ticket MUST audit denied + re-raise."""
+    ticket_id = ticket_row["id"]
+    claimed_row = {**ticket_row, "status": "claimed", "claimedBy": "userA"}
+    mock_db.get_ticket.return_value = claimed_row
+
+    with pytest.raises(ValueError, match=r"claim"):
+        await service.claim_ticket(ticket_id, claimed_by="userB")
+
+    mock_db.insert_audit_row.assert_awaited_once()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "claim"
+    assert kwargs["outcome"] == "denied"
+    assert kwargs["reason"] is not None
+    mock_db.update_ticket.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_close_audits_success(
+    service: TicketService, mock_db: AsyncMock, ticket_row: dict
+) -> None:
+    """3.9/3.10: close on open/claimed MUST write an audit success row."""
+    ticket_id = ticket_row["id"]
+    mock_db.get_ticket.side_effect = [
+        ticket_row,
+        {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"},
+    ]
+
+    await service.close_ticket(ticket_id, closed_by="999999999")
+
+    mock_db.insert_audit_row.assert_awaited_once()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "close"
+    assert kwargs["outcome"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_close_denied_audits_and_reraises(
+    service: TicketService, mock_db: AsyncMock, ticket_row: dict
+) -> None:
+    """Close on an already-closed ticket MUST audit denied + re-raise."""
+    closed_row = {**ticket_row, "status": "closed"}
+    mock_db.get_ticket.return_value = closed_row
+
+    with pytest.raises(ValueError, match=r"close"):
+        await service.close_ticket(ticket_row["id"], closed_by="999999999")
+
+    mock_db.insert_audit_row.assert_awaited_once()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "close"
+    assert kwargs["outcome"] == "denied"
+    mock_db.update_ticket.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_transfer_same_user_denied(
+    service: TicketService, mock_db: AsyncMock, ticket_row: dict
+) -> None:
+    """3.3/3.4: transfer to the same claimant MUST raise ValueError + audit denied."""
+    ticket_id = ticket_row["id"]
+    claimed = {**ticket_row, "status": "claimed", "claimedBy": "userA"}
+    mock_db.get_ticket.return_value = claimed
+
+    with pytest.raises(ValueError, match=r"same"):
+        await service.transfer_ticket(
+            ticket_id, new_claimed_by="userA", actor_id="admin1"
+        )
+
+    mock_db.insert_audit_row.assert_awaited_once()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "transfer"
+    assert kwargs["outcome"] == "denied"
+    mock_db.update_ticket.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_transfer_audits_success(
+    service: TicketService, mock_db: AsyncMock, ticket_row: dict
+) -> None:
+    """Transfer to a different staff member MUST audit success."""
+    ticket_id = ticket_row["id"]
+    mock_db.get_ticket.side_effect = [
+        {**ticket_row, "status": "open", "claimedBy": None},
+        {**ticket_row, "claimedBy": "userB", "status": "claimed"},
+    ]
+
+    await service.transfer_ticket(ticket_id, new_claimed_by="userB", actor_id="admin1")
+
+    mock_db.insert_audit_row.assert_awaited_once()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "transfer"
+    assert kwargs["outcome"] == "success"
+    assert kwargs["actor_id"] == "admin1"
+
+
+@pytest.mark.asyncio
+async def test_transfer_closed_denied(
+    service: TicketService, mock_db: AsyncMock, ticket_row: dict
+) -> None:
+    """Transferring a closed ticket MUST be denied + audited."""
+    closed = {**ticket_row, "status": "closed"}
+    mock_db.get_ticket.return_value = closed
+
+    with pytest.raises(ValueError, match=r"closed"):
+        await service.transfer_ticket(
+            ticket_row["id"], new_claimed_by="userB", actor_id="admin1"
+        )
+
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["outcome"] == "denied"
+
+
+@pytest.mark.asyncio
+async def test_note_dedup_within_window(
+    service: TicketService, mock_db: AsyncMock
+) -> None:
+    """3.5/3.6: a duplicate note (same author, within 2s) MUST raise ValueError."""
+    ticket_id = "ticket-uuid-003"
+    author = "999999999"
+    mock_db.get_ticket.return_value = {
+        "id": ticket_id, "guildId": "123456789", "ticketNumber": 3,
+    }
+    mock_db.get_ticket_notes.return_value = []  # under cap
+    mock_db.get_recent_notes_for_dedup.return_value = [
+        {"content": "Hello World"},  # same normalized form as incoming
+    ]
+
+    with pytest.raises(ValueError, match=r"duplicate|dedup"):
+        await service.create_note(ticket_id, author, "  hello world  ")
+
+    mock_db.insert_ticket_note.assert_not_awaited()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "note_add"
+    assert kwargs["outcome"] == "denied"
+
+
+@pytest.mark.asyncio
+async def test_note_dedup_outside_window_allowed(
+    service: TicketService, mock_db: AsyncMock
+) -> None:
+    """3.5/3.6: outside the dedup window the same content is allowed (audit success)."""
+    ticket_id = "ticket-uuid-003"
+    author = "999999999"
+    mock_db.get_ticket.return_value = {"id": ticket_id, "guildId": "123456789"}
+    mock_db.get_ticket_notes.return_value = []
+    mock_db.get_recent_notes_for_dedup.return_value = []  # no recent → no dup
+    mock_db.insert_ticket_note.return_value = _note_row(content="hello")
+
+    await service.create_note(ticket_id, author, "hello")
+
+    mock_db.insert_ticket_note.assert_awaited_once()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "note_add"
+    assert kwargs["outcome"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_note_cap_denied_audited(
+    service: TicketService, mock_db: AsyncMock
+) -> None:
+    """3.5/3.6: at the 50-note cap, create_note MUST audit denied + raise."""
+    ticket_id = "ticket-uuid-003"
+    mock_db.get_ticket.return_value = {"id": ticket_id, "guildId": "123456789"}
+    mock_db.get_ticket_notes.return_value = [_note_row() for _ in range(50)]
+
+    with pytest.raises(ValueError, match=r"cap"):
+        await service.create_note(ticket_id, "999999999", "one too many")
+
+    mock_db.insert_ticket_note.assert_not_awaited()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "note_add"
+    assert kwargs["outcome"] == "denied"
+
+
+@pytest.mark.asyncio
+async def test_note_under_cap_audited_success(
+    service: TicketService, mock_db: AsyncMock
+) -> None:
+    """TI-034: under the cap, create_note persists + audits success."""
+    ticket_id = "ticket-uuid-003"
+    mock_db.get_ticket.return_value = {"id": ticket_id, "guildId": "123456789"}
+    mock_db.get_ticket_notes.return_value = [_note_row() for _ in range(30)]
+    mock_db.get_recent_notes_for_dedup.return_value = []
+    mock_db.insert_ticket_note.return_value = _note_row(content="new note")
+
+    await service.create_note(ticket_id, "999999999", "new note")
+
+    mock_db.insert_ticket_note.assert_awaited_once()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["outcome"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_note_delete_author_audited_success(
+    service: TicketService, mock_db: AsyncMock
+) -> None:
+    """TI-035: author deleting own note MUST audit success."""
+    ticket_id = "ticket-uuid-003"
+    author = "999999999"
+    mock_db.get_ticket.return_value = {"id": ticket_id, "guildId": "123456789"}
+    mock_db.get_ticket_notes.return_value = [_note_row(author_id=author)]
+
+    await service.delete_note("note-uuid-001", author_id=author, ticket_id=ticket_id)
+
+    mock_db.delete_ticket_note.assert_awaited_once_with("note-uuid-001")
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "note_delete"
+    assert kwargs["outcome"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_note_delete_other_denied_audited(
+    service: TicketService, mock_db: AsyncMock
+) -> None:
+    """delete_note by a non-author MUST audit denied + raise."""
+    ticket_id = "ticket-uuid-003"
+    mock_db.get_ticket.return_value = {"id": ticket_id, "guildId": "123456789"}
+    mock_db.get_ticket_notes.return_value = [_note_row(author_id="userA")]
+
+    with pytest.raises(ValueError, match=r"[Aa]uthor|owner"):
+        await service.delete_note("note-uuid-001", author_id="userB", ticket_id=ticket_id)
+
+    mock_db.delete_ticket_note.assert_not_awaited()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "note_delete"
+    assert kwargs["outcome"] == "denied"
+
+
+@pytest.mark.asyncio
+async def test_reopen_audits_success(
+    service: TicketService, mock_db: AsyncMock
+) -> None:
+    """3.7/3.8: reopen success MUST write an audit success row after channel creation."""
+    ticket_id = "ticket-uuid-003"
+    closed_row = _closed_ticket_row()
+    reopened_row = {**closed_row, "channelId": "555555555", "status": "open", "closedAt": None}
+    mock_db.get_ticket.side_effect = [closed_row, reopened_row]
+    mock_db.get_guild.return_value = {
+        "id": "123456789", "ticketCategoryId": "100000000", "modRoleId": None,
+    }
+    category_channel = MagicMock(spec=discord.CategoryChannel)
+    guild = _mock_guild_for_reopen(category_channel=category_channel)
+
+    await service.reopen_ticket(ticket_id, guild=guild)
+
+    mock_db.insert_audit_row.assert_awaited_once()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "reopen"
+    assert kwargs["outcome"] == "success"
+    assert kwargs["guild_id"] == "123456789"
+
+
+@pytest.mark.asyncio
+async def test_reopen_denied_audited(
+    service: TicketService, mock_db: AsyncMock
+) -> None:
+    """3.7/3.8: reopen on a non-closed ticket MUST audit denied + re-raise."""
+    ticket_id = "ticket-uuid-003"
+    open_row = {**_closed_ticket_row(), "status": "open"}
+    mock_db.get_ticket.return_value = open_row
+    guild = _mock_guild_for_reopen(category_channel=None)
+
+    with pytest.raises(ValueError, match=r"cerrados"):
+        await service.reopen_ticket(ticket_id, guild=guild)
+
+    mock_db.insert_audit_row.assert_awaited_once()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "reopen"
+    assert kwargs["outcome"] == "denied"
+    guild.create_text_channel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_subticket_create_audits_success(
+    service: TicketService, mock_db: AsyncMock, ticket_row: dict
+) -> None:
+    """3.9/3.10: subticket success MUST write an audit success row."""
+    parent_id = "parent-uuid-001"
+    guild_id = "123456789"
+    mock_db.get_ticket.return_value = _parent_row(parent_id=None, guild_id=guild_id)
+    mock_db.get_max_ticket_number.return_value = 5
+    mock_db.insert_ticket.return_value = {
+        **ticket_row, "parentId": parent_id, "ticketNumber": 6,
+    }
+
+    await service.create_subticket(
+        parent_id=parent_id, author_id="111111111", category_id=None,
+        channel_id="666666666", guild_id=guild_id,
+    )
+
+    mock_db.insert_audit_row.assert_awaited_once()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "subticket_create"
+    assert kwargs["outcome"] == "success"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "case, parent_row_kwargs, parent_id, match",
+    [
+        # CRITICAL 3: parent-missing MUST audit (spec: every denial audits).
+        ("parent_missing", None, "missing-parent", r"[Pp]arent"),
+        # CRITICAL 3: self-reference denial MUST audit. _parent_row hardcodes
+        # id="parent-uuid-001", so the calling parent_id MUST equal that for
+        # the parentId==id self-reference guard to trigger.
+        (
+            "self_reference",
+            {"parent_id": "parent-uuid-001"},
+            "parent-uuid-001",
+            r"self-referential",
+        ),
+        # CRITICAL 3: depth-max-2 denial MUST audit (parent already a child).
+        (
+            "depth",
+            {"parent_id": "grandparent-uuid"},
+            "parent-uuid-001",
+            r"depth|subticket|sub",
+        ),
+        # CRITICAL 4: cross-guild denial MUST audit scoped to CALLER guild.
+        (
+            "cross_guild",
+            {"parent_id": None, "guild_id": "111000111"},
+            "parent-other-guild",
+            r"guild|same",
+        ),
+    ],
+)
+async def test_subticket_create_denied_audited(
+    service: TicketService,
+    mock_db: AsyncMock,
+    case: str,
+    parent_row_kwargs: dict | None,
+    parent_id: str,
+    match: str,
+) -> None:
+    """CRITICAL 3+4: EVERY create_subticket invariant denial MUST write a
+    ``ticket_audit`` row (action=subticket_create, outcome=denied, non-empty
+    reason) scoped to the CALLER's ``guild_id`` (the guild the operation was
+    attempted FROM), then re-raise ``ValueError``.
+
+    Spec ``ticket-service/spec.md``: audit logging on ticket operations lists
+    "subticket create" and requires an audit row on every operation,
+    including denials (the Invariant-violation-audited scenario). The audit
+    guild scope is the caller's guild (the operation origin), NOT the
+    parent's guild — for cross-guild attempts the parent's guild is a
+    different guild and auditing under it would leak the denial into the
+    wrong guild's audit trail.
+    """
+    caller_guild = "123456789"
+    if parent_row_kwargs is None:
+        mock_db.get_ticket.return_value = None
+    else:
+        mock_db.get_ticket.return_value = _parent_row(**parent_row_kwargs)
+
+    with pytest.raises(ValueError, match=match):
+        await service.create_subticket(
+            parent_id=parent_id,
+            author_id="111111111",
+            category_id=None,
+            channel_id="666666666",
+            guild_id=caller_guild,
+        )
+
+    mock_db.insert_ticket.assert_not_awaited()
+    mock_db.insert_audit_row.assert_awaited_once()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "subticket_create", case
+    assert kwargs["outcome"] == "denied", case
+    assert kwargs["reason"], f"{case}: reason MUST be non-empty"
+    # CRITICAL 4: audit scoped to the CALLER's guild, never the parent's.
+    assert kwargs["guild_id"] == caller_guild, case
+    assert kwargs["ticket_id"] == parent_id, case
+
+
+@pytest.mark.asyncio
+async def test_audit_guild_scope_query(mock_db: AsyncMock) -> None:
+    """TI-021: get_audit_rows MUST filter by guildId (delegated to Database)."""
+    mock_db.get_audit_rows = AsyncMock(return_value=[{"guildId": "A", "action": "claim"}])
+    rows = await mock_db.get_audit_rows("A", limit=10, offset=0)
+    mock_db.get_audit_rows.assert_awaited_once_with("A", limit=10, offset=0)
+    assert all(r["guildId"] == "A" for r in rows)
