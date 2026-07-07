@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_BANANA_IMAGE_PATH = Path("assets/images/banana.png")
+_BANANA_IMAGE_PATH = Path("assets/images/banana.webp")
 
 # ======================================================================
 # OcioCog
@@ -73,8 +73,8 @@ class OcioCog(commands.Cog, name="Ocio"):
             "🍌 Banana",
             f"This banana is **{size} cm**",
         )
-        file = discord.File(str(_BANANA_IMAGE_PATH), filename="banana.png")
-        embed.set_image(url="attachment://banana.png")
+        file = discord.File(str(_BANANA_IMAGE_PATH), filename="banana.webp")
+        embed.set_image(url="attachment://banana.webp")
         await ctx.send(file=file, embed=embed)
 
 

@@ -486,3 +486,80 @@ def test_migration_005_cron_schedule_is_guarded() -> None:
         sql,
         re.IGNORECASE,
     ), "cron.job guard (jobname = 'ticket_audit_retention') missing — re-run would error"
+
+
+# ===========================================================================
+# Migration 006 — drop user table + FK constraints
+# ===========================================================================
+
+MIGRATION_006 = MIGRATIONS_DIR / "006_drop_user_table.sql"
+
+
+def _migration_006_text() -> str:
+    """Return Migration 006 SQL text, failing cleanly if the file is absent."""
+    assert MIGRATION_006.is_file(), f"Migration 006 not found at {MIGRATION_006}"
+    return MIGRATION_006.read_text()
+
+
+def test_migration_006_file_exists() -> None:
+    """Migration 006 artifact MUST exist at migrations/006_drop_user_table.sql."""
+    assert MIGRATION_006.is_file(), f"Migration file missing: {MIGRATION_006}"
+
+
+def test_migration_006_drops_four_fk_constraints() -> None:
+    """Migration 006 MUST drop all 4 FK constraints referencing user(id).
+
+    Spec: member.userId, infraction.targetId, infraction.moderatorId,
+    ticket.authorId all had FK to user(id). Migration drops each constraint.
+    """
+    sql = _migration_006_text()
+
+    # The 4 FK constraints following the Postgres auto-naming convention:
+    # {table}_{column}_fkey
+    expected_constraints = [
+        "member_userId_fkey",
+        "infraction_targetId_fkey",
+        "infraction_moderatorId_fkey",
+        "ticket_authorId_fkey",
+    ]
+
+    for constraint_name in expected_constraints:
+        assert re.search(
+            rf'DROP\s+CONSTRAINT\s+IF\s+EXISTS\s+"?{re.escape(constraint_name)}"?',
+            sql,
+            re.IGNORECASE,
+        ), f"DROP CONSTRAINT IF EXISTS {constraint_name} missing"
+
+
+def test_migration_006_drops_user_table() -> None:
+    """Migration 006 MUST drop the user table with IF EXISTS."""
+    sql = _migration_006_text()
+    assert re.search(
+        r'DROP\s+TABLE\s+IF\s+EXISTS\s+"user"',
+        sql,
+        re.IGNORECASE,
+    ), 'DROP TABLE IF EXISTS "user" missing'
+
+
+def test_migration_006_is_idempotent() -> None:
+    """Every ALTER/DROP in Migration 006 MUST use IF EXISTS (re-runnable)."""
+    sql = _migration_006_text()
+
+    # All DROP CONSTRAINT must use IF EXISTS
+    drop_constraints = re.findall(
+        r'DROP\s+CONSTRAINT\s+(IF\s+EXISTS\s+)?"?\w+"?', sql, re.IGNORECASE
+    )
+    for stmt in drop_constraints:
+        assert "IF EXISTS" in stmt.upper(), (
+            f"Non-idempotent DROP CONSTRAINT: {stmt!r} — MUST use IF EXISTS"
+        )
+
+    # DROP TABLE must use IF EXISTS
+    drop_tables = re.findall(
+        r"DROP\s+TABLE\s+(IF\s+EXISTS\s+)?", sql, re.IGNORECASE
+    )
+    assert drop_tables, "Expected at least one DROP TABLE statement"
+    for stmt in drop_tables:
+        assert "IF EXISTS" in stmt.upper(), (
+            "Non-idempotent DROP TABLE — MUST use IF EXISTS"
+        )
