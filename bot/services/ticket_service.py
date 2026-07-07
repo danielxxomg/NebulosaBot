@@ -15,6 +15,17 @@ import discord
 
 from bot.models.ticket import Ticket
 from bot.models.ticket_note import TicketNote
+from bot.services.ticket_invariants import (
+    check_can_add_note,
+    check_can_claim,
+    check_can_close,
+    check_can_delete_note,
+    check_can_reopen,
+    check_can_transfer,
+    check_subticket_parent,
+    compute_note_hash,
+    is_duplicate_note,
+)
 
 if TYPE_CHECKING:
     from bot.core.cache import TTLCache
@@ -138,6 +149,19 @@ class TicketService:
             ValueError: If the ticket does not exist after the update.
         """
         now = datetime.now(UTC).isoformat()
+        pre = await self._db.get_ticket(ticket_id)
+        if pre is None:
+            raise ValueError(f"Ticket {ticket_id} not found")
+        guild_id = pre.get("guildId", "")
+
+        try:
+            check_can_close(pre.get("status", ""))
+        except ValueError as exc:
+            await self._db.insert_audit_row(
+                guild_id, ticket_id, "close", closed_by, "denied", str(exc)
+            )
+            raise
+
         update_kwargs: dict[str, str | None] = {
             "status": "closed",
             "closedAt": now,
@@ -155,6 +179,9 @@ class TicketService:
         # Remove channel from cache so the on_message listener skips it.
         self._ticket_channel_cache.discard(int(ticket.channel_id))
 
+        await self._db.insert_audit_row(
+            guild_id, ticket_id, "close", closed_by, "success", None
+        )
         logger.info(
             "Ticket %s closed by %s%s",
             ticket_id,
@@ -167,6 +194,8 @@ class TicketService:
         """Claim a ticket, assigning it to a staff member.
 
         Sets ``status='claimed'`` and ``claimedBy`` to the given user ID.
+        Enforces the claim invariant (open + unclaimed) BEFORE mutating and
+        writes a ``ticket_audit`` row on both success and denied paths.
 
         Args:
             ticket_id: UUID of the ticket to claim.
@@ -176,8 +205,22 @@ class TicketService:
             The updated :class:`Ticket`.
 
         Raises:
-            ValueError: If the ticket does not exist after the update.
+            ValueError: If the ticket does not exist or the claim invariant
+                fails (non-open status, already claimed).
         """
+        pre = await self._db.get_ticket(ticket_id)
+        if pre is None:
+            raise ValueError(f"Ticket {ticket_id} not found")
+        guild_id = pre.get("guildId", "")
+
+        try:
+            check_can_claim(pre.get("status", ""), pre.get("claimedBy"))
+        except ValueError as exc:
+            await self._db.insert_audit_row(
+                guild_id, ticket_id, "claim", claimed_by, "denied", str(exc)
+            )
+            raise
+
         await self._db.update_ticket(
             ticket_id,
             status="claimed",
@@ -189,6 +232,9 @@ class TicketService:
             raise ValueError(f"Ticket {ticket_id} not found after claim")
         ticket = Ticket.from_db_row(row)
 
+        await self._db.insert_audit_row(
+            guild_id, ticket_id, "claim", claimed_by, "success", None
+        )
         logger.info("Ticket %s claimed by %s", ticket_id, claimed_by)
         return ticket
 
@@ -284,20 +330,40 @@ class TicketService:
         """
         parent_row = await self._db.get_ticket(parent_id)
         if parent_row is None:
+            await self._db.insert_audit_row(
+                guild_id, parent_id, "subticket_create", author_id, "denied",
+                f"Parent ticket {parent_id} not found",
+            )
             raise ValueError(f"Parent ticket {parent_id} not found")
         parent = Ticket.from_db_row(parent_row)
+        parent_guild_id = parent_row.get("guildId", "")
 
-        # 1. self-reference: the parent points to itself (corrupted row).
+        # 1. self-reference: the parent points to itself (corrupted row) —
+        #    kept inline for a more specific message than the pure helper's
+        #    depth-limit message (check_subticket_parent would raise "depth"
+        #    because parentId is non-None, which is less actionable).
         if parent.parent_id is not None and parent.parent_id == parent.id:
+            await self._db.insert_audit_row(
+                guild_id, parent_id, "subticket_create", author_id, "denied",
+                f"Parent ticket {parent_id} is self-referential",
+            )
             raise ValueError(f"Parent ticket {parent_id} is self-referential")
 
-        # 2. one level deep: the parent must not already be a child.
-        if parent.parent_id is not None:
-            raise ValueError(f"Parent ticket {parent_id} is already a sub-ticket")
-
-        # 3. same guild: the sub-ticket inherits the parent's guild.
-        if parent.guild_id != guild_id:
-            raise ValueError(f"Parent ticket {parent_id} belongs to a different guild")
+        # 2+3. FK / depth / cross-guild — delegated to the pure invariant.
+        #    current_id is None because the child UUID is generated inside
+        #    insert_ticket (server-side default), so the parent==child self
+        #    check is structurally unreachable here.
+        try:
+            check_subticket_parent(parent_row, parent_guild_id, guild_id, current_id=None)
+        except ValueError as exc:
+            # CRITICAL 4: audit the denial scoped to the CALLER's guild (the
+            # operation origin), not the parent's guild — a cross-guild
+            # attempt's denial must land in the caller's audit trail, not the
+            # parent guild's.
+            await self._db.insert_audit_row(
+                guild_id, parent_id, "subticket_create", author_id, "denied", str(exc)
+            )
+            raise
 
         # Sequential numbering + insert (mirrors create_ticket). Carve-out:
         # parentId set → no one-open-ticket-per-user check is performed.
@@ -322,6 +388,9 @@ class TicketService:
                 )
                 ticket = Ticket.from_db_row(row)
                 self._ticket_channel_cache.add(int(channel_id))
+                await self._db.insert_audit_row(
+                    guild_id, ticket.id, "subticket_create", author_id, "success", None
+                )
                 logger.info(
                     "Sub-ticket #%d created (parent=%s, guild=%s, channel=%s)",
                     ticket_number,
@@ -373,22 +442,34 @@ class TicketService:
         closed_row = await self._db.get_ticket(ticket_id)
         if closed_row is None:
             raise ValueError(f"Ticket {ticket_id} not found")
+        guild_id = closed_row.get("guildId", "")
 
         # B2: defense-in-depth status guard — only closed tickets can be
         # reopened. Prevents duplicate channel creation for open/claimed
         # tickets even if a caller bypasses the cog-layer guard. The cog
         # surfaces this message verbatim, so it MUST contain the actual
-        # status and the user-facing Spanish wording.
-        status = closed_row.get("status")
-        if status != "closed":
-            raise ValueError(
-                f"Solo se pueden reabrir tickets cerrados. Estado actual: {status}"
+        # status and the user-facing Spanish wording. Reuse the pure
+        # invariant helper so the rule lives in ONE place.
+        try:
+            check_can_reopen(closed_row.get("status", ""))
+        except ValueError as exc:
+            await self._db.insert_audit_row(
+                guild_id, ticket_id, "reopen", None, "denied", str(exc)
             )
+            # Translate to the user-facing Spanish message the cog surfaces
+            # verbatim (preserves the existing contract).
+            raise ValueError(
+                f"Solo se pueden reabrir tickets cerrados. Estado actual: {closed_row.get('status')}"
+            ) from exc
 
         guild_row = await self._db.get_guild(str(guild.id))
         category_channel = self._resolve_ticket_category(guild, guild_row)
         if category_channel is None:
-            raise ValueError(f"No ticket category configured for guild {guild.id} — cannot reopen ticket {ticket_id}")
+            err = f"No ticket category configured for guild {guild.id} — cannot reopen ticket {ticket_id}"
+            await self._db.insert_audit_row(
+                guild_id, ticket_id, "reopen", None, "denied", err
+            )
+            raise ValueError(err)
 
         # Build permission overwrites (everyone denied, bot + author + mod).
         overwrites: dict[
@@ -444,6 +525,9 @@ class TicketService:
         # New channel is now an active ticket channel — cache it.
         self._ticket_channel_cache.add(int(ticket.channel_id))
 
+        await self._db.insert_audit_row(
+            guild_id, ticket_id, "reopen", None, "success", None
+        )
         logger.info("Ticket %s reopened (new channel=%s)", ticket_id, ticket.channel_id)
         return ticket
 
@@ -502,6 +586,19 @@ class TicketService:
         Raises:
             ValueError: If the ticket does not exist after the update.
         """
+        pre = await self._db.get_ticket(ticket_id)
+        if pre is None:
+            raise ValueError(f"Ticket {ticket_id} not found")
+        guild_id = pre.get("guildId", "")
+
+        try:
+            check_can_transfer(pre.get("status", ""), pre.get("claimedBy"), new_claimed_by)
+        except ValueError as exc:
+            await self._db.insert_audit_row(
+                guild_id, ticket_id, "transfer", actor_id, "denied", str(exc)
+            )
+            raise
+
         await self._db.update_ticket(
             ticket_id,
             claimedBy=new_claimed_by,
@@ -512,6 +609,10 @@ class TicketService:
         if row is None:
             raise ValueError(f"Ticket {ticket_id} not found after transfer")
         ticket = Ticket.from_db_row(row)
+
+        await self._db.insert_audit_row(
+            ticket.guild_id, ticket_id, "transfer", actor_id, "success", None
+        )
 
         # Best-effort audit embed (LoggingService, not a DB audit table).
         if logging_service is not None and guild is not None:
@@ -563,10 +664,30 @@ class TicketService:
             ValueError: If the per-ticket note cap has been reached.
         """
         existing = await self._db.get_ticket_notes(ticket_id, limit=NOTE_CAP)
-        if len(existing) >= NOTE_CAP:
-            raise ValueError(f"Note limit reached ({NOTE_CAP} notes per ticket)")
+        ticket_row = await self._db.get_ticket(ticket_id)
+        guild_id = (ticket_row or {}).get("guildId", "")
+
+        try:
+            check_can_add_note(len(existing), NOTE_CAP)
+            recent = await self._db.get_recent_notes_for_dedup(ticket_id, author_id, 2)
+            recent_hashes = [compute_note_hash(r.get("content", "")) for r in recent]
+            new_hash = compute_note_hash(content)
+            if is_duplicate_note(new_hash, author_id, recent_hashes):
+                raise ValueError(
+                    "Duplicate note (same author submitted the same normalized "
+                    "content within the 2-second dedup window)"
+                )
+        except ValueError as exc:
+            await self._db.insert_audit_row(
+                guild_id, ticket_id, "note_add", author_id, "denied", str(exc)
+            )
+            raise
+
         row = await self._db.insert_ticket_note(ticket_id, author_id, content)
         note = TicketNote.from_db_row(row)
+        await self._db.insert_audit_row(
+            guild_id, ticket_id, "note_add", author_id, "success", None
+        )
         logger.info("Note %s added to ticket %s by %s", note.id, ticket_id, author_id)
         return note
 
@@ -574,7 +695,10 @@ class TicketService:
         """Return all staff notes for a ticket, newest-first.
 
         Delegates to :meth:`Database.get_ticket_notes` which orders by
-        ``createdAt`` descending and caps at :data:`NOTE_CAP`.
+        ``createdAt`` descending and caps at :data:`NOTE_CAP`. Per the
+        ``ticket-service`` audit requirement, the list operation writes a
+        ``note_list`` audit row (outcome=success) scoped to the ticket's
+        guild (resolved via a pre-read of the ticket row).
 
         Args:
             ticket_id: UUID of the ticket.
@@ -584,6 +708,11 @@ class TicketService:
         """
         rows = await self._db.get_ticket_notes(ticket_id, limit=NOTE_CAP)
         notes = [TicketNote.from_db_row(r) for r in rows]
+        ticket_row = await self._db.get_ticket(ticket_id)
+        guild_id = (ticket_row or {}).get("guildId", "")
+        await self._db.insert_audit_row(
+            guild_id, ticket_id, "note_list", None, "success", None
+        )
         logger.debug("get_notes(ticket=%s): %d notes", ticket_id, len(notes))
         return notes
 
@@ -605,10 +734,22 @@ class TicketService:
                 requester is not the note's author.
         """
         rows = await self._db.get_ticket_notes(ticket_id, limit=NOTE_CAP)
+        ticket_row = await self._db.get_ticket(ticket_id)
+        guild_id = (ticket_row or {}).get("guildId", "")
         target = next((r for r in rows if r.get("id") == note_id), None)
-        if target is None:
-            raise ValueError(f"Note {note_id} not found on ticket {ticket_id}")
-        if target.get("authorId") != author_id:
-            raise ValueError("Only the note author may delete this note")
+
+        try:
+            if target is None:
+                raise ValueError(f"Note {note_id} not found on ticket {ticket_id}")
+            check_can_delete_note(target.get("authorId", ""), author_id)
+        except ValueError as exc:
+            await self._db.insert_audit_row(
+                guild_id, ticket_id, "note_delete", author_id, "denied", str(exc)
+            )
+            raise
+
         await self._db.delete_ticket_note(note_id)
+        await self._db.insert_audit_row(
+            guild_id, ticket_id, "note_delete", author_id, "success", None
+        )
         logger.info("Note %s deleted by %s", note_id, author_id)

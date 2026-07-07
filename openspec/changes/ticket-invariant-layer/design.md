@@ -112,7 +112,7 @@ Both suites MUST mirror every row and include the `ScenarioID` in the test name.
 | TI-023 | claim permission | admin/mod/author/user | claim | admin+mod allowed; author/user denied | `test_ti023_claim_permission_matrix` | `ti023ClaimPermissionMatrix` |
 | TI-024 | close permission | admin/mod/author/user | close | admin/mod/author allowed; user denied | `test_ti024_close_permission_matrix` | `ti024ClosePermissionMatrix` |
 | TI-025 | reopen permission | admin/mod/author/user | reopen | admin+mod allowed; author/user denied | `test_ti025_reopen_permission_matrix` | `ti025ReopenPermissionMatrix` |
-| TI-026 | transfer permission | admin/mod/author/user | transfer | admin only | `test_ti026_transfer_permission_matrix` | `ti026TransferPermissionMatrix` |
+| TI-026 | transfer permission | admin/mod/author/user | transfer | bot: admin OR configured mod (`@is_mod()`); dashboard: admin only (documented divergence, decision #1 / engram #669) | `test_ti026_transfer_permission_matrix` | `ti026TransferPermissionMatrix` |
 | TI-027 | notes/subticket permission | admin/mod/author/user | note CRUD/subticket | admin+mod allowed; others denied | `test_ti027_staff_ops_permission_matrix` | `ti027DashboardAdminOnlyStaffOps` |
 | TI-028 | audit view permission | admin/mod/author/user | view audit | admin only | `test_ti028_audit_view_admin_only` | `ti028AuditViewAdminOnly` |
 | TI-029 | drift: dashboard reopen | closed ticket | dashboard reopen | no ticket update; command shown | `test_ti029_reopen_by_number` | `ti029DashboardReopenNoMutation` |

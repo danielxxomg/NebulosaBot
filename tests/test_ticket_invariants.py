@@ -282,3 +282,73 @@ class TestCheckSubticketParent:
         """A parent in a different guild MUST raise."""
         with pytest.raises(ValueError, match="guild"):
             check_subticket_parent(_parent_row("p1"), "guildA", "guildB", current_id="c1")
+
+
+# ===========================================================================
+# parse_ticket_ref — /reopen ticket reference parser (PR2, TI-029/TI-037)
+# ===========================================================================
+
+
+def test_parse_ticket_ref_strip_ticket_prefix_hash() -> None:
+    """'ticket:#0003' parses to ticket number 3."""
+    from bot.services.ticket_invariants import parse_ticket_ref
+
+    ref = parse_ticket_ref("ticket:#0003")
+    assert ref is not None
+    assert ref.number == 3
+    assert ref.uuid is None
+
+
+def test_parse_ticket_ref_hash_number() -> None:
+    """'#0003' parses to ticket number 3."""
+    from bot.services.ticket_invariants import parse_ticket_ref
+
+    ref = parse_ticket_ref("#0003")
+    assert ref is not None
+    assert ref.number == 3
+
+
+def test_parse_ticket_ref_bare_number() -> None:
+    """'0003' parses to ticket number 3."""
+    from bot.services.ticket_invariants import parse_ticket_ref
+
+    ref = parse_ticket_ref("0003")
+    assert ref is not None
+    assert ref.number == 3
+
+
+def test_parse_ticket_ref_uuid() -> None:
+    """A UUID parses to ref.uuid set, number None."""
+    from bot.services.ticket_invariants import parse_ticket_ref
+
+    uuid_str = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    ref = parse_ticket_ref(uuid_str)
+    assert ref is not None
+    assert ref.uuid == uuid_str
+    assert ref.number is None
+
+
+def test_parse_ticket_ref_uuid_with_ticket_prefix() -> None:
+    """'ticket:<uuid>' strips prefix and parses as UUID."""
+    from bot.services.ticket_invariants import parse_ticket_ref
+
+    uuid_str = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    ref = parse_ticket_ref(f"ticket:{uuid_str}")
+    assert ref is not None
+    assert ref.uuid == uuid_str
+
+
+def test_parse_ticket_ref_empty_returns_none() -> None:
+    """Empty / whitespace string returns None (caller falls back to channel)."""
+    from bot.services.ticket_invariants import parse_ticket_ref
+
+    assert parse_ticket_ref("") is None
+    assert parse_ticket_ref("   ") is None
+
+
+def test_parse_ticket_ref_garbage_returns_none() -> None:
+    """Non-number, non-UUID strings return None (caller surfaces bad-ref error)."""
+    from bot.services.ticket_invariants import parse_ticket_ref
+
+    assert parse_ticket_ref("not-a-ticket") is None
+    assert parse_ticket_ref("ticket:hello") is None
