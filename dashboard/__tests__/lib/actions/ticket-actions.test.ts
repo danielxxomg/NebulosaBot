@@ -102,7 +102,7 @@ function setupAuth({
   hasSession = true,
   hasProviderToken = true,
   guildActive = true,
-  guildTicketCategoryId = CATEGORY_ID,
+  guildTicketCategoryId = CATEGORY_ID as string | null,
   isAdmin = true,
   adminGuildId = GUILD_ID,
   ticketData = [] as Ticket[],
