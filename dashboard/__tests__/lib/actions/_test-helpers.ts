@@ -71,6 +71,7 @@ export function buildMockServiceClient(overrides: {
   ticketSelectResult?: { data: unknown; error: null } | { data: null; error: Error };
   ticketSingleResult?: { data: unknown; error: null } | { data: null; error: Error };
   ticketUpdateResult?: { data: unknown | null; error: Error | null };
+  ticketAuditSelectResult?: { data: unknown; error: null } | { data: null; error: Error };
   ticketNoteSelectResult?: { data: unknown; error: null } | { data: null; error: Error };
   ticketNoteSingleResult?: { data: unknown; error: null } | { data: null; error: Error };
   ticketNoteInsertResult?: { data: unknown | null; error: Error | null };
@@ -151,6 +152,19 @@ export function buildMockServiceClient(overrides: {
     .mockResolvedValue(overrides.ticketNoteDeleteResult ?? { data: null, error: null });
   const ticketNoteDelete = vi.fn().mockReturnValue({ eq: ticketNoteDeleteEq });
 
+  // Ticket audit chain: select -> eq("guildId") -> [eq("ticketId")] -> order -> range (terminal).
+  // `eq` is chainable so the optional per-ticket filter (`.eq("ticketId", id)`)
+  // before `.order()` works against the same builder.
+  const ticketAuditRange = vi
+    .fn()
+    .mockResolvedValue(overrides.ticketAuditSelectResult ?? { data: [], error: null });
+  const ticketAuditOrder = vi.fn().mockReturnValue({ range: ticketAuditRange });
+  // `eq` returns a builder with `eq` (self, for chaining) + `order` (terminal-ish).
+  const ticketAuditEq = vi.fn();
+  const ticketAuditBuilder = { eq: ticketAuditEq, order: ticketAuditOrder };
+  ticketAuditEq.mockReturnValue(ticketAuditBuilder);
+  const ticketAuditSelect = vi.fn().mockReturnValue({ eq: ticketAuditEq });
+
   return {
     from: vi.fn((table: string) => {
       if (table === "guild") {
@@ -187,6 +201,9 @@ export function buildMockServiceClient(overrides: {
           delete: ticketNoteDelete,
         };
       }
+      if (table === "ticket_audit") {
+        return { select: ticketAuditSelect };
+      }
       return {};
     }),
     // Test-only handle exposing the stable ticket-chain spies for assertions.
@@ -210,6 +227,13 @@ export function buildMockServiceClient(overrides: {
       delete: ticketNoteDelete,
       deleteEq: ticketNoteDeleteEq,
     } satisfies TicketNoteChainSpies,
+    // Test-only handle exposing the stable ticket-audit-chain spies.
+    ticketAudit: {
+      select: ticketAuditSelect,
+      eq: ticketAuditEq,
+      order: ticketAuditOrder,
+      range: ticketAuditRange,
+    },
   };
 }
 

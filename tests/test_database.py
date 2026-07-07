@@ -19,6 +19,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from freezegun import freeze_time
 
 from bot.core.database import Database
 from bot.models.guild import GuildConfig
@@ -1227,3 +1228,255 @@ class TestDeleteTicketNote:
         """delete_ticket_note() MUST raise RuntimeError if connect() wasn't called."""
         with pytest.raises(RuntimeError, match="connect"):
             await disconnected_db.delete_ticket_note("n-uuid-1")
+
+
+# ===========================================================================
+# get_ticket_by_number — resolve by guild + sequential ticket number (B5)
+# ===========================================================================
+
+
+class TestGetTicketByNumber:
+    """Verify Database.get_ticket_by_number() resolves by guild+ticketNumber."""
+
+    @pytest.mark.asyncio
+    async def test_returns_row_when_found(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_ticket_by_number() MUST return the ticket row matching guild+number."""
+        ticket_row = {"id": "t1", "guildId": "g1", "ticketNumber": 3, "status": "closed"}
+        fake_client.set_table_data("ticket", [ticket_row])
+
+        result = await db.get_ticket_by_number("g1", 3)
+
+        assert result == ticket_row
+        assert result is not None
+        assert result["ticketNumber"] == 3
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_not_found(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_ticket_by_number() MUST return None when no ticket matches."""
+        fake_client.set_table_data("ticket", [])
+
+        result = await db.get_ticket_by_number("g1", 999)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_filters_by_guild_and_number(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_ticket_by_number() MUST apply eq('guildId') AND eq('ticketNumber')."""
+        fake_client.set_table_data("ticket", [])
+
+        await db.get_ticket_by_number("g1", 3)
+
+        filters = fake_client.get_table_filters("ticket")
+        assert ("eq", "guildId", "g1") in filters, (
+            f"Missing guildId filter for guild scope, got: {filters}"
+        )
+        assert ("eq", "ticketNumber", 3) in filters, (
+            f"Missing ticketNumber filter, got: {filters}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
+        """get_ticket_by_number() MUST raise RuntimeError if connect() wasn't called."""
+        with pytest.raises(RuntimeError, match="connect"):
+            await disconnected_db.get_ticket_by_number("g1", 3)
+
+
+# ===========================================================================
+# insert_audit_row — append a ticket_audit row (B5)
+# ===========================================================================
+
+
+class TestInsertAuditRow:
+    """Verify Database.insert_audit_row() persists an audit log entry."""
+
+    @pytest.mark.asyncio
+    async def test_returns_persisted_row(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """insert_audit_row() MUST return the persisted audit row."""
+        audit_row = {"id": "a1", "guildId": "g1", "ticketId": "t1", "action": "claim",
+                     "actorId": "u1", "outcome": "success", "reason": None}
+        fake_client.set_table_data("ticket_audit", [audit_row])
+
+        result = await db.insert_audit_row("g1", "t1", "claim", "u1", "success", None)
+
+        assert result["id"] == "a1"
+        assert result["outcome"] == "success"
+        assert result["action"] == "claim"
+
+    @pytest.mark.asyncio
+    async def test_inserts_all_fields_in_row(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """insert_audit_row() MUST insert a row carrying every field."""
+        fake_client.set_table_data("ticket_audit", [{}])
+
+        await db.insert_audit_row(
+            guild_id="g1", ticket_id="t1", action="claim",
+            actor_id="u1", outcome="success", reason="mod claim",
+        )
+
+        insert_calls = fake_client.get_table_calls("ticket_audit")
+        assert len(insert_calls) == 1
+        assert insert_calls[0][0] == "insert"
+        inserted = insert_calls[0][1]
+        assert inserted["guildId"] == "g1"
+        assert inserted["ticketId"] == "t1"
+        assert inserted["action"] == "claim"
+        assert inserted["actorId"] == "u1"
+        assert inserted["outcome"] == "success"
+        assert inserted["reason"] == "mod claim"
+        # id is generated client-side (matches insert_ticket_note convention).
+        assert "id" in inserted and isinstance(inserted["id"], str) and inserted["id"]
+
+    @pytest.mark.asyncio
+    async def test_allows_nullable_actor_and_reason(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """insert_audit_row() MUST accept None for actorId and reason (system actions)."""
+        fake_client.set_table_data("ticket_audit", [{}])
+
+        await db.insert_audit_row("g1", "t1", "auto_close", None, "error", None)
+
+        inserted = fake_client.get_table_calls("ticket_audit")[0][1]
+        assert inserted["actorId"] is None
+        assert inserted["reason"] is None
+
+    @pytest.mark.asyncio
+    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
+        """insert_audit_row() MUST raise RuntimeError if connect() wasn't called."""
+        with pytest.raises(RuntimeError, match="connect"):
+            await disconnected_db.insert_audit_row("g1", "t1", "claim", "u1", "success", None)
+
+
+# ===========================================================================
+# get_audit_rows — paginated guild-scoped audit read (B5)
+# ===========================================================================
+
+
+class TestGetAuditRows:
+    """Verify Database.get_audit_rows() returns guild-scoped, paginated audit rows."""
+
+    @pytest.mark.asyncio
+    async def test_returns_rows_newest_first(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_audit_rows() MUST return rows ordered by createdAt DESC."""
+        rows = [
+            {"id": "a2", "guildId": "g1", "createdAt": "2024-06-15T12:01:00+00:00"},
+            {"id": "a1", "guildId": "g1", "createdAt": "2024-06-15T12:00:00+00:00"},
+        ]
+        fake_client.set_table_data("ticket_audit", rows)
+
+        result = await db.get_audit_rows("g1", limit=50, offset=0)
+
+        assert result == rows
+        assert len(result) == 2
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_none(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_audit_rows() MUST return [] when no audit rows exist."""
+        fake_client.set_table_data("ticket_audit", [])
+
+        result = await db.get_audit_rows("g1", limit=50, offset=0)
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_filters_by_guild_id(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_audit_rows() MUST apply eq('guildId') so other guilds cannot leak."""
+        fake_client.set_table_data("ticket_audit", [])
+
+        await db.get_audit_rows("g1", limit=50, offset=0)
+
+        filters = fake_client.get_table_filters("ticket_audit")
+        assert ("eq", "guildId", "g1") in filters, (
+            f"Missing guildId filter (guild scope), got: {filters}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_orders_by_created_at_desc(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_audit_rows() MUST order by createdAt DESC (newest-first)."""
+        fake_client.set_table_data("ticket_audit", [])
+
+        await db.get_audit_rows("g1", limit=50, offset=0)
+
+        orders = fake_client.get_table_orders("ticket_audit")
+        assert ("createdAt", True) in orders, (
+            f"Expected order('createdAt', desc=True), got: {orders}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_applies_limit_and_offset(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_audit_rows() MUST apply both limit() and offset() for pagination."""
+        fake_client.set_table_data("ticket_audit", [])
+
+        await db.get_audit_rows("g1", limit=25, offset=50)
+
+        limits = fake_client.get_table_limits("ticket_audit")
+        assert 25 in limits, f"Expected limit(25), got: {limits}"
+
+    @pytest.mark.asyncio
+    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
+        """get_audit_rows() MUST raise RuntimeError if connect() wasn't called."""
+        with pytest.raises(RuntimeError, match="connect"):
+            await disconnected_db.get_audit_rows("g1", limit=50, offset=0)
+
+
+# ===========================================================================
+# get_recent_notes_for_dedup — same-author notes in the dedup window (B5)
+# ===========================================================================
+
+
+class TestGetRecentNotesForDedup:
+    """Verify Database.get_recent_notes_for_dedup() queries the 2s dedup window."""
+
+    @pytest.mark.asyncio
+    async def test_returns_recent_notes_for_author(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_recent_notes_for_dedup() MUST return notes by this author in the window."""
+        notes = [{"content": "hello world"}, {"content": "hi"}]
+        fake_client.set_table_data("ticket_note", notes)
+
+        result = await db.get_recent_notes_for_dedup("t1", "authorA")
+
+        assert result == notes
+        assert len(result) == 2
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_none(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_recent_notes_for_dedup() MUST return [] when no recent notes match."""
+        fake_client.set_table_data("ticket_note", [])
+
+        result = await db.get_recent_notes_for_dedup("t1", "authorA")
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_filters_by_ticket_author_and_window(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_recent_notes_for_dedup() MUST eq ticketId + authorId + gte createdAt(cutoff)."""
+        fake_client.set_table_data("ticket_note", [])
+
+        with freeze_time("2024-06-15 12:00:00", tz_offset=0):
+            await db.get_recent_notes_for_dedup("t1", "authorA", window_seconds=2)
+
+        filters = fake_client.get_table_filters("ticket_note")
+        assert ("eq", "ticketId", "t1") in filters, f"Missing ticketId filter, got: {filters}"
+        assert ("eq", "authorId", "authorA") in filters, f"Missing authorId filter, got: {filters}"
+        # cutoff = now - 2s = 11:59:58
+        gte_filters = [f for f in filters if f[0] == "gte" and f[1] == "createdAt"]
+        assert len(gte_filters) == 1, f"Expected one gte createdAt filter, got: {filters}"
+        assert gte_filters[0][2] == "2024-06-15T11:59:58+00:00", (
+            f"Expected cutoff now()-2s, got: {gte_filters[0][2]}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_custom_window_seconds_changes_cutoff(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_recent_notes_for_dedup(window_seconds=5) MUST compute cutoff = now()-5s."""
+        fake_client.set_table_data("ticket_note", [])
+
+        with freeze_time("2024-06-15 12:00:00", tz_offset=0):
+            await db.get_recent_notes_for_dedup("t1", "authorA", window_seconds=5)
+
+        filters = fake_client.get_table_filters("ticket_note")
+        gte_filters = [f for f in filters if f[0] == "gte" and f[1] == "createdAt"]
+        assert gte_filters[0][2] == "2024-06-15T11:59:55+00:00", (
+            f"Expected cutoff now()-5s, got: {gte_filters[0][2]}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
+        """get_recent_notes_for_dedup() MUST raise RuntimeError if connect() wasn't called."""
+        with pytest.raises(RuntimeError, match="connect"):
+            await disconnected_db.get_recent_notes_for_dedup("t1", "authorA")
