@@ -102,6 +102,9 @@ beforeEach(() => {
   mockAddTicketNote.mockResolvedValue({ data: null, error: null });
   mockDeleteTicketNote.mockResolvedValue({ data: null, error: null });
   mockGetCurrentUserId.mockResolvedValue("111");
+  // The tickets page now renders an AuditPanel that calls getTicketAudit on
+  // mount; default to an empty success so the page renders cleanly.
+  mockGetTicketAudit.mockResolvedValue({ data: [], error: null });
 });
 
 // ---------------------------------------------------------------------------

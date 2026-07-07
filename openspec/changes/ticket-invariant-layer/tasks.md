@@ -88,9 +88,9 @@ Chain strategy: pending
 - [x] 4.7 RED: write failing vitest for TI-031 (note cap), TI-032 (delete ownership), TI-034 (under cap), TI-035 (author delete own)
 - [x] 4.8 GREEN: enforce cap=50 + dedup in `addTicketNote`; enforce authorId match in `deleteTicketNote`
 - [x] 4.9 RED: write failing vitest `ti038AuditPaginated` asserting paginated audit rows returned
-- [ ] 4.10 GREEN: create `ReopenTicketDialog` component in `dashboard/app/.../tickets/_components/ReopenTicketDialog.tsx` — shows ticket number (copyable) + `/reopen ticket:#XXXX` command; update `TicketRowActions.tsx` to call `getReopenGuidance` and show dialog instead of direct mutation
-- [ ] 4.11 RED: write failing vitest for TI-019→TI-021 (audit every success, every denied, guild scope) — dashboard-side assertions
-- [ ] 4.12 GREEN: add `TicketAudit` type to `dashboard/lib/types.ts` (id, guildId, ticketId, action, actorId, outcome, reason, createdAt); create audit panel component in `dashboard/app/.../tickets/_components/AuditPanel.tsx` with pagination
+- [x] 4.10 GREEN: create `ReopenTicketDialog` component in `dashboard/app/.../tickets/_components/ReopenTicketDialog.tsx` — shows ticket number (copyable) + `/reopen ticket:#XXXX` command; update `TicketRowActions.tsx` to call `getReopenGuidance` and show dialog instead of direct mutation
+- [x] 4.11 RED: write failing vitest for TI-019→TI-021 (audit every success, every denied, guild scope) — dashboard-side assertions
+- [x] 4.12 GREEN: add `TicketAudit` type to `dashboard/lib/types.ts` (id, guildId, ticketId, action, actorId, outcome, reason, createdAt); create audit panel component in `dashboard/app/.../tickets/_components/AuditPanel.tsx` with pagination
 - [x] 4.13 GREEN: update `NotesPanel.tsx` — disable add-note form at cap=50 with message; show delete button only for own notes (compare authorId to session user)
 - [ ] 4.14 GREEN: enable all 38 vitest contract tests (remove `describe.skip`) — verify each ScenarioID passes against TS invariant logic + server actions
 - [ ] 4.15 REFACTOR: extract shared mock factories for ticket/guild/note across dashboard contract tests
