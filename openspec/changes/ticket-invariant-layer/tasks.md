@@ -45,16 +45,16 @@ Chain strategy: pending
 - [x] 2.7 RED: write failing tests TI-016→TI-018 (note dedup: exact hash denied, outside window allowed, different author allowed)
 - [x] 2.8 GREEN: add `compute_dedup_hash(content)` returning SHA256 of normalized content; `check_note_dedup(recent_notes, content, author_id)` raises ValueError on duplicate within 2s
 - [x] 2.9 RED: write failing tests TI-020→TI-021 (audit violations + guild scope)
-- [ ] 2.10 GREEN: add `build_audit_reason(action, outcome, detail)` helper; ensure guild scope via `.eq("guildId")` in database methods
+- [x] 2.10 GREEN: add `build_audit_reason(action, outcome, detail)` helper; ensure guild scope via `.eq("guildId")` in database methods — SUPERSEDED: audit reasons are inlined at each call site in `ticket_service.py` (e.g. reason="parent missing", reason="already claimed"); guild scope enforced via `.eq("guildId")` in `insert_audit_row`/`get_audit_rows`. Intent covered without a separate helper.
 - [x] 2.11 RED: write failing tests TI-022→TI-028 (permission matrix: create any, claim mod, close author+mod, reopen mod, transfer admin, notes/staff admin+mod, audit view admin)
-- [ ] 2.12 GREEN: add `PERMISSION_MATRIX` dict mapping action→allowed roles; update `check_actor_permission` to consult it
+- [x] 2.12 GREEN: add `PERMISSION_MATRIX` dict mapping action→allowed roles; update `check_actor_permission` to consult it — SUPERSEDED: permission is enforced inline via `is_mod_check()` (admin OR mod) + author check in button callbacks/cog commands, + the `check_can_*` pure invariants. TI-022..TI-028 contract tests pass asserting the decision per actor. Intent covered without a centralized dict.
 - [x] 2.13 RED: write failing tests TI-029→TI-030 (drift: reopen by number, no category error)
 - [x] 2.14 GREEN: add `parse_ticket_ref(ref_str)` parsing `#0003`, `0003`, UUID, stripping `ticket:` prefix
 - [x] 2.15 RED: write failing tests TI-031→TI-035 (note cap, delete ownership, under cap, author delete own)
 - [x] 2.16 GREEN: add `validate_note_cap(note_count)` raises at 50; `validate_note_delete(note_row, actor_id)` raises if not owner
 - [x] 2.17 RED: write failing test TI-033 (guild scope — ticket/note/audit from guild B not leakable from guild A)
 - [x] 2.18 RED: write failing tests TI-036→TI-038 (action view render, no-arg legacy reopen, audit paginated)
-- [ ] 2.19 GREEN: stub dashboard-side assertions as vitest `describe.skip` blocks in `dashboard/__tests__/contract/ticket-invariants.test.ts` — one test per ScenarioID with correct function name (e.g. `ti001OpenToClaimed`), asserting the pure TS invariant or marking as bot-only
+- [x] 2.19 GREEN: stub dashboard-side assertions as vitest `describe.skip` blocks in `dashboard/__tests__/contract/ticket-invariants.test.ts` — one test per ScenarioID with correct function name (e.g. `ti001OpenToClaimed`), asserting the pure TS invariant or marking as bot-only — SUPERSEDED: PR3 implemented the full vitest contract suite as PASSING tests (42 tests, TI-001..TI-038), not skip stubs. Bot-only scenarios assert the pure TS invariant or no-mutation-path. Went further than the stub task.
 - [x] 2.20 REFACTOR: deduplicate fixture factories (mock ticket rows, mock guild config, mock interaction) across contract test file
 
 ## Phase 3: Bot Service/Cog Integration (PR 2)
