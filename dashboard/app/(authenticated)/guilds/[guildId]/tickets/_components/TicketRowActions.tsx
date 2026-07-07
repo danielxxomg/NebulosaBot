@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { getReopenGuidance, transferTicket } from "@/lib/actions/ticket-actions";
 import type { Ticket } from "@/lib/types";
 import { NotesPanel } from "./NotesPanel";
+import { ReopenTicketDialog } from "./ReopenTicketDialog";
+import type { ReopenGuidance } from "@/lib/actions/ticket-actions";
 
 /**
  * Per-row action buttons for a ticket.
@@ -35,27 +37,33 @@ export function TicketRowActions({ ticket }: { ticket: Ticket }) {
   const [transferTarget, setTransferTarget] = useState("");
   const [notesOpen, setNotesOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [reopenGuidance, setReopenGuidance] = useState<{
-    ticketNumber: number;
-    command: string;
-  } | null>(null);
+  const [reopenGuidance, setReopenGuidance] = useState<ReopenGuidance | null>(null);
+  const [reopenDialogError, setReopenDialogError] = useState<string | null>(null);
+  const [reopenDialogOpen, setReopenDialogOpen] = useState(false);
 
   const canReopen = ticket.status === "closed";
   const canTransfer = ticket.status === "open" || ticket.status === "claimed";
 
   function handleReopen() {
+    // Clear any inline (legacy) error state — the dialog owns the reopen UX now.
     setActionError(null);
+    setReopenDialogError(null);
     setReopenGuidance(null);
+    setReopenDialogOpen(true);
     startReopenTransition(async () => {
       const result = await getReopenGuidance(ticket.id);
       if (result.error) {
-        setActionError(result.error);
+        // Per TI-030 a missing category yields an error and NO command; the
+        // dialog shows the error state instead of the guidance.
+        setReopenDialogError(result.error);
+        setReopenGuidance(null);
         return;
       }
       // CRITICAL (decision #2a): no DB mutation, no router.refresh — the
       // dashboard shows guidance; the bot's /reopen command does the work.
       if (result.data) {
         setReopenGuidance(result.data);
+        setReopenDialogError(null);
       }
     });
   }
@@ -84,25 +92,13 @@ export function TicketRowActions({ ticket }: { ticket: Ticket }) {
           {actionError}
         </p>
       )}
-      {reopenGuidance && (
-        <div
-          role="status"
-          className="space-y-1 rounded-md bg-muted/60 p-2 ring-1 ring-border"
-        >
-          <p className="text-xs font-medium text-foreground">
-            Reopen in Discord
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Run this command in any channel of your server to recreate the
-            ticket channel:
-          </p>
-          <code className="block rounded bg-background px-1.5 py-1 font-mono text-xs ring-1 ring-border">
-            {reopenGuidance.command}
-          </code>
-          <p className="text-[0.65rem] text-muted-foreground">
-            Ticket #{String(reopenGuidance.ticketNumber).padStart(4, "0")}
-          </p>
-        </div>
+      {canReopen && (
+        <ReopenTicketDialog
+          open={reopenDialogOpen}
+          guidance={reopenGuidance}
+          error={reopenDialogError}
+          onClose={() => setReopenDialogOpen(false)}
+        />
       )}
       <div className="flex flex-wrap items-center gap-1.5">
         {canReopen && (
