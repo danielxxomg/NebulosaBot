@@ -9,6 +9,7 @@ Strict TDD: RED phase — tests written BEFORE the implementation exists.
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -16,6 +17,25 @@ import pytest
 from discord.ext import commands
 
 from bot.cogs.ocio import OcioCog
+from bot.core.i18n import load_locales, set_guild_language
+
+# ---------------------------------------------------------------------------
+# i18n setup
+# ---------------------------------------------------------------------------
+
+_GUILD_ID = 123456789
+
+
+@pytest.fixture(autouse=True)
+def _load_i18n() -> None:
+    """Load real locale files so t() returns actual strings."""
+    from bot.core import i18n as i18n_mod
+
+    i18n_mod._locales.clear()
+    i18n_mod._guild_languages.clear()
+    load_locales(Path("bot/locales"))
+    set_guild_language(str(_GUILD_ID), "es")
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -161,10 +181,9 @@ class TestBananaCommand:
 
     @pytest.mark.asyncio
     @patch("bot.cogs.ocio.Path.exists", return_value=True)
+    @patch("discord.File")
     async def test_banana_returns_embed_with_file(
-        self,
-        mock_exists: MagicMock,
-        cog: OcioCog,
+        self, mock_file: MagicMock, mock_exists: MagicMock, cog: OcioCog,
     ) -> None:
         """Normal banana sends embed + discord.File attachment."""
         ctx = _make_ctx()
@@ -177,20 +196,19 @@ class TestBananaCommand:
         # Should send file
         assert "file" in call_args[1]
         sent_file = call_args[1]["file"]
-        assert isinstance(sent_file, discord.File)
+        assert isinstance(sent_file, MagicMock)  # mocked discord.File
 
         # Should send embed
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
         assert "cm" in embed.description
-        assert "🍌" in embed.title
+        assert "banana" in embed.title.lower() or "🍌" in embed.title
 
     @pytest.mark.asyncio
     @patch("bot.cogs.ocio.Path.exists", return_value=True)
+    @patch("discord.File")
     async def test_banana_measurement_in_range(
-        self,
-        mock_exists: MagicMock,
-        cog: OcioCog,
+        self, mock_file: MagicMock, mock_exists: MagicMock, cog: OcioCog,
     ) -> None:
         """Measurement should be between 2 and 30 cm."""
         ctx = _make_ctx()
@@ -215,7 +233,7 @@ class TestBananaCommand:
         mock_exists: MagicMock,
         cog: OcioCog,
     ) -> None:
-        """When banana.png is missing, reply with error embed."""
+        """When banana image is missing, reply with error embed."""
         ctx = _make_ctx()
 
         await cog.banana.callback(cog, ctx)
@@ -228,10 +246,9 @@ class TestBananaCommand:
 
     @pytest.mark.asyncio
     @patch("bot.cogs.ocio.Path.exists", return_value=True)
+    @patch("discord.File")
     async def test_banana_works_in_dm(
-        self,
-        mock_exists: MagicMock,
-        cog: OcioCog,
+        self, mock_file: MagicMock, mock_exists: MagicMock, cog: OcioCog,
     ) -> None:
         """Banana should work in DM context."""
         ctx = _make_ctx(guild_id=None)

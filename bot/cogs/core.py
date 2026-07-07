@@ -15,6 +15,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.core.context import NebulosaContext
+from bot.core.i18n import t
 from bot.utils.checks import is_admin
 from bot.utils.embeds import COLOR_INFO, COLOR_SUCCESS, error_embed, info_embed
 
@@ -36,12 +37,18 @@ class _HelpPaginator(discord.ui.View):
     first/last page.
     """
 
-    __slots__ = ("_current", "_pages")
+    __slots__ = ("_current", "_pages", "_guild_id")
 
-    def __init__(self, pages: list[discord.Embed]) -> None:
+    def __init__(
+        self,
+        pages: list[discord.Embed],
+        *,
+        guild_id: int | None = None,
+    ) -> None:
         super().__init__(timeout=120)  # auto-remove after 2 min idle
         self._pages = pages
         self._current = 0
+        self._guild_id = guild_id
         self._update_buttons()
 
     # -- button callbacks ----------------------------------------------
@@ -102,8 +109,13 @@ class CoreCog(commands.Cog, name="Core"):
     @commands.hybrid_command(name="ping", description="Show the bot's WebSocket latency.")
     async def ping(self, ctx: NebulosaContext) -> None:
         """Reply with the current gateway latency in milliseconds."""
+        guild_id = ctx.guild.id if ctx.guild else None
         latency = round(self.bot.latency * 1000)
-        embed = info_embed("🏓 Pong!", f"WebSocket latency: **{latency} ms**")
+        embed = info_embed(
+            t(guild_id, "core.ping.title"),
+            t(guild_id, "core.ping.description", latency=latency),
+            guild_id=guild_id,
+        )
         await ctx.send(embed=embed)
 
     @commands.hybrid_command(
@@ -112,6 +124,8 @@ class CoreCog(commands.Cog, name="Core"):
     )
     async def status(self, ctx: NebulosaContext) -> None:
         """Build a health-check embed covering DB, cache, and bot state."""
+        guild_id = ctx.guild.id if ctx.guild else None
+
         # Database health
         db_healthy = False
         if self.bot.db is not None:
@@ -127,40 +141,61 @@ class CoreCog(commands.Cog, name="Core"):
 
         # Build embed
         embed = discord.Embed(
-            title="📊 NebulosaBot Status",
+            title=t(guild_id, "core.status.title"),
             color=COLOR_INFO,
             timestamp=datetime.now(UTC),
         )
 
         embed.add_field(
-            name="Database",
-            value="✅ Connected" if db_healthy else "❌ Unreachable",
+            name=t(guild_id, "core.status.db_field"),
+            value=t(guild_id, "core.status.db_connected")
+            if db_healthy
+            else t(guild_id, "core.status.db_unreachable"),
             inline=True,
         )
         embed.add_field(
-            name="Cache",
-            value=f"✅ {cache_keys} key(s) in memory" if self.bot.cache is not None else "❌ Not initialised",
+            name=t(guild_id, "core.status.cache_field"),
+            value=t(guild_id, "core.status.cache_ok", count=cache_keys)
+            if self.bot.cache is not None
+            else t(guild_id, "core.status.cache_none"),
             inline=True,
         )
 
         # Guild config status
-        guild_label = "N/A (DM)"
-        if ctx.guild is not None:
+        if ctx.guild is None:
+            guild_label = t(guild_id, "core.status.guild_config_dm")
+        else:
             config = ctx.guild_config
             if config is not None:
-                guild_label = f"✅ Loaded\nPrefix: `{config.prefix}`\nLanguage: `{config.language}`"
+                guild_label = t(
+                    guild_id,
+                    "core.status.guild_config_loaded",
+                    prefix=config.prefix,
+                    language=config.language,
+                )
             else:
-                guild_label = "⚠️ Not loaded"
-
-        embed.add_field(name="Guild Config", value=guild_label, inline=False)
+                guild_label = t(guild_id, "core.status.guild_config_missing")
 
         embed.add_field(
-            name="Latency",
-            value=f"{round(self.bot.latency * 1000)} ms",
+            name=t(guild_id, "core.status.guild_config_field"),
+            value=guild_label,
+            inline=False,
+        )
+
+        embed.add_field(
+            name=t(guild_id, "core.status.latency_field"),
+            value=t(
+                guild_id,
+                "core.status.latency_value",
+                latency=round(self.bot.latency * 1000),
+            ),
             inline=True,
         )
 
-        embed.set_footer(text="NebulosaBot • CoreCog")
+        embed.set_footer(
+            text=t(guild_id, "core.status.footer"),
+            icon_url="https://i.imgur.com/fvE4b0c.png",
+        )
         await ctx.send(embed=embed)
 
     @commands.hybrid_command(
@@ -174,15 +209,18 @@ class CoreCog(commands.Cog, name="Core"):
         For Phase 1 only the Core module exists. Future cogs will
         register their commands in additional modules automatically.
         """
+        guild_id = ctx.guild.id if ctx.guild else None
+
         # -- single-module help --
         if module is not None:
             prefix = _resolve_prefix(ctx)
-            embed = _build_cog_help_embed(self.bot, module, prefix)
+            embed = _build_cog_help_embed(self.bot, module, prefix, guild_id=guild_id)
             if embed is None:
                 await ctx.send(
                     embed=error_embed(
-                        f"Module '{module}' not found.",
-                        "Use `/help` without arguments to see available modules.",
+                        t(guild_id, "core.help.no_module", module=module),
+                        t(guild_id, "core.help.no_module_desc"),
+                        guild_id=guild_id,
                     )
                 )
                 return
@@ -192,14 +230,20 @@ class CoreCog(commands.Cog, name="Core"):
         # -- all-modules paginated help --
         pages = _build_help_pages(self.bot, ctx)
         if not pages:
-            await ctx.send(embed=error_embed("Help", "No commands are registered yet."))
+            await ctx.send(
+                embed=error_embed(
+                    t(guild_id, "core.help.title", module=""),
+                    t(guild_id, "core.help.no_commands"),
+                    guild_id=guild_id,
+                )
+            )
             return
 
         if len(pages) == 1:
             await ctx.send(embed=pages[0])
             return
 
-        view = _HelpPaginator(pages)
+        view = _HelpPaginator(pages, guild_id=guild_id)
         await ctx.send(embed=pages[0], view=view)
 
     @commands.hybrid_command(
@@ -212,19 +256,24 @@ class CoreCog(commands.Cog, name="Core"):
 
         Gated behind the Administrator permission via ``@is_admin()``.
         """
+        guild_id = ctx.guild.id if ctx.guild else None
         await ctx.defer(ephemeral=True)
         try:
             synced = await self.bot.tree.sync()
             embed = discord.Embed(
-                title="✅ Commands Synced",
-                description=f"{len(synced)} slash command(s) registered.",
+                title=t(guild_id, "core.sync.title"),
+                description=t(guild_id, "core.sync.description", count=len(synced)),
                 color=COLOR_SUCCESS,
             )
             await ctx.send(embed=embed, ephemeral=True)
         except Exception as exc:
             logger.exception("Tree sync failed")
             await ctx.send(
-                embed=error_embed("Sync Failed", str(exc)),
+                embed=error_embed(
+                    t(guild_id, "core.sync.failed_title"),
+                    str(exc),
+                    guild_id=guild_id,
+                ),
                 ephemeral=True,
             )
 
@@ -256,7 +305,13 @@ def _resolve_prefix(ctx: NebulosaContext) -> str:
     return "nb!"
 
 
-def _build_cog_help_embed(bot: NebulosaBot, cog_name: str, prefix: str) -> discord.Embed | None:
+def _build_cog_help_embed(
+    bot: NebulosaBot,
+    cog_name: str,
+    prefix: str,
+    *,
+    guild_id: int | None = None,
+) -> discord.Embed | None:
     """Build a single embed for *cog_name* showing its commands.
 
     Returns ``None`` if the cog is not loaded or has no commands.
@@ -272,8 +327,13 @@ def _build_cog_help_embed(bot: NebulosaBot, cog_name: str, prefix: str) -> disco
         return None
 
     embed = discord.Embed(
-        title=f"📚 {cog_name} Commands",
-        description=(f"{len(visible)} command(s) available.\nPrefix: `{prefix}`  •  Slash: `/`"),
+        title=t(guild_id, "core.help.title", module=cog_name),
+        description=t(
+            guild_id,
+            "core.help.description",
+            count=len(visible),
+            prefix=prefix,
+        ),
         color=COLOR_INFO,
         timestamp=datetime.now(UTC),
     )
@@ -289,7 +349,10 @@ def _build_cog_help_embed(bot: NebulosaBot, cog_name: str, prefix: str) -> disco
             inline=False,
         )
 
-    embed.set_footer(text="NebulosaBot • /help")
+    embed.set_footer(
+        text=t(guild_id, "core.help.footer"),
+        icon_url="https://i.imgur.com/fvE4b0c.png",
+    )
     return embed
 
 
@@ -302,10 +365,11 @@ def _build_help_pages(bot: NebulosaBot, ctx: NebulosaContext) -> list[discord.Em
     - Fetches prefix from context for consistent display
     """
     prefix = _resolve_prefix(ctx)
+    guild_id = ctx.guild.id if ctx.guild else None
     pages: list[discord.Embed] = []
 
     for cog_name in bot.cogs:
-        embed = _build_cog_help_embed(bot, cog_name, prefix)
+        embed = _build_cog_help_embed(bot, cog_name, prefix, guild_id=guild_id)
         if embed is None:
             continue  # skip empty / missing cogs
         pages.append(embed)
