@@ -74,7 +74,10 @@ UPDATE ticket SET status = 'claimed'
 -- a duplicate job: schedule only if no job named 'ticket_audit_retention'
 -- exists in cron.job. Requires the pg_cron extension to be enabled on the
 -- Supabase project (enable via Dashboard > Database > Extensions if absent).
+-- The CREATE EXTENSION below is idempotent and ensures pg_cron is available
+-- before the DO block references cron.job / cron.schedule.
 -- ----------------------------------------------------------------------------
+CREATE EXTENSION IF NOT EXISTS pg_cron;
 DO $guard$
 BEGIN
     IF NOT EXISTS (
