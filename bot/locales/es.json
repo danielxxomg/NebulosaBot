@@ -1,0 +1,92 @@
+{
+  "common": {
+    "footer": "NebulosaBot • {timestamp}",
+    "error": {
+      "title": "Error",
+      "unexpected_title": "Error Inesperado"
+    },
+    "success": {
+      "title": "Éxito"
+    },
+    "info": {
+      "title": "Información"
+    },
+    "warning": {
+      "title": "Advertencia"
+    }
+  },
+  "core": {
+    "ping": {
+      "title": "🏓 Pong!",
+      "description": "Latencia WebSocket: **{latency} ms**"
+    },
+    "status": {
+      "title": "📊 Estado de NebulosaBot",
+      "db_field": "Base de datos",
+      "db_connected": "✅ Conectado",
+      "db_unreachable": "❌ Inalcanzable",
+      "cache_field": "Caché",
+      "cache_ok": "✅ {count} clave(s) en memoria",
+      "cache_none": "❌ No inicializado",
+      "guild_config_field": "Configuración del Servidor",
+      "guild_config_dm": "N/A (DM)",
+      "guild_config_loaded": "✅ Cargado\nPrefijo: `{prefix}`\nIdioma: `{language}`",
+      "guild_config_missing": "⚠️ No cargado",
+      "latency_field": "Latencia",
+      "latency_value": "{latency} ms",
+      "footer": "NebulosaBot • CoreCog"
+    },
+    "help": {
+      "title": "📚 Comandos de {module}",
+      "description": "{count} comando(s) disponible(s).\nPrefijo: `{prefix}`  •  Slash: `/`",
+      "no_module": "Módulo '{module}' no encontrado.",
+      "no_module_desc": "Usa `/help` sin argumentos para ver los módulos disponibles.",
+      "no_commands": "No hay comandos registrados aún.",
+      "footer": "NebulosaBot • /help",
+      "prev_button": "◀ Anterior",
+      "next_button": "Siguiente ▶"
+    },
+    "sync": {
+      "title": "✅ Comandos Sincronizados",
+      "description": "{count} comando(s) slash registrado(s).",
+      "failed_title": "Sincronización Fallida"
+    }
+  },
+  "utility": {
+    "avatar": {
+      "title": "Avatar de {name}"
+    },
+    "serverinfo": {
+      "error_title": "Solo Servidores",
+      "error_description": "Este comando solo funciona dentro de un servidor.",
+      "owner_field": "Propietario",
+      "members_field": "Miembros",
+      "channels_field": "Canales",
+      "roles_field": "Roles",
+      "boosts_field": "Boosts",
+      "created_field": "Creado"
+    },
+    "userinfo": {
+      "id_field": "ID",
+      "roles_field": "Roles",
+      "roles_none": "Ninguno",
+      "joined_field": "Se Unió",
+      "created_field": "Cuenta Creada",
+      "bot_field": "Bot",
+      "bot_yes": "Sí",
+      "roles_overflow": "... y {count} más"
+    }
+  },
+  "ocio": {
+    "dados": {
+      "title": "🎲 Tirada de Dados",
+      "description": "Tiraste un **{result}** (d{sides})"
+    },
+    "banana": {
+      "title": "🍌 Banana",
+      "description": "Esta banana mide **{size} cm**",
+      "error_title": "Imagen No Encontrada",
+      "error_description": "La imagen de banana no está disponible. Contacta al dueño del bot."
+    }
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "common": {
+    "footer": "NebulosaBot • {timestamp}",
+    "error": {
+      "title": "Error",
+      "unexpected_title": "Unexpected Error"
+    },
+    "success": {
+      "title": "Success"
+    },
+    "info": {
+      "title": "Information"
+    },
+    "warning": {
+      "title": "Warning"
+    }
+  },
+  "core": {
+    "ping": {
+      "title": "🏓 Pong!",
+      "description": "WebSocket latency: **{latency} ms**"
+    },
+    "status": {
+      "title": "📊 NebulosaBot Status",
+      "db_field": "Database",
+      "db_connected": "✅ Connected",
+      "db_unreachable": "❌ Unreachable",
+      "cache_field": "Cache",
+      "cache_ok": "✅ {count} key(s) in memory",
+      "cache_none": "❌ Not initialised",
+      "guild_config_field": "Guild Config",
+      "guild_config_dm": "N/A (DM)",
+      "guild_config_loaded": "✅ Loaded\nPrefix: `{prefix}`\nLanguage: `{language}`",
+      "guild_config_missing": "⚠️ Not loaded",
+      "latency_field": "Latency",
+      "latency_value": "{latency} ms",
+      "footer": "NebulosaBot • CoreCog"
+    },
+    "help": {
+      "title": "📚 {module} Commands",
+      "description": "{count} command(s) available.\nPrefix: `{prefix}`  •  Slash: `/`",
+      "no_module": "Module '{module}' not found.",
+      "no_module_desc": "Use `/help` without arguments to see available modules.",
+      "no_commands": "No commands are registered yet.",
+      "footer": "NebulosaBot • /help",
+      "prev_button": "◀ Previous",
+      "next_button": "Next ▶"
+    },
+    "sync": {
+      "title": "✅ Commands Synced",
+      "description": "{count} slash command(s) registered.",
+      "failed_title": "Sync Failed"
+    }
+  },
+  "utility": {
+    "avatar": {
+      "title": "{name}'s Avatar"
+    },
+    "serverinfo": {
+      "error_title": "Server Only",
+      "error_description": "This command only works inside a server.",
+      "owner_field": "Owner",
+      "members_field": "Members",
+      "channels_field": "Channels",
+      "roles_field": "Roles",
+      "boosts_field": "Boosts",
+      "created_field": "Created"
+    },
+    "userinfo": {
+      "id_field": "ID",
+      "roles_field": "Roles",
+      "roles_none": "None",
+      "joined_field": "Joined",
+      "created_field": "Account Created",
+      "bot_field": "Bot",
+      "bot_yes": "Yes",
+      "roles_overflow": "... and {count} more"
+    }
+  },
+  "ocio": {
+    "dados": {
+      "title": "🎲 Dice Roll",
+      "description": "You rolled a **{result}** (d{sides})"
+    },
+    "banana": {
+      "title": "🍌 Banana",
+      "description": "This banana is **{size} cm**",
+      "error_title": "Image Missing",
+      "error_description": "The banana image asset is not available. Please contact the bot owner."
+    }
+  }
+}

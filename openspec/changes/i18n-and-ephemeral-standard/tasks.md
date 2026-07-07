@@ -27,19 +27,19 @@ Chain strategy: stacked-to-main
 
 ## Phase 1: i18n Core (PR 1)
 
-- [ ] 1.1 RED: Write `tests/test_i18n.py` — test `t()` es lookup, en lookup, missing-key fallback to es, exhausted fallback returns raw key, interpolation `{latency}`, missing placeholder warning, None guild_id fallback
-- [ ] 1.2 GREEN: Create `bot/core/i18n.py` with `load_locales()`, `set_guild_language()`, `t()` — module-level dicts, dot-notation resolver, es fallback, `.format_map()` interpolation, `logging.warning` on miss
-- [ ] 1.3 REFACTOR: Verify `t()` signatures match design contract (`guild_id: str|int|None, key: str, **kwargs: object -> str`)
-- [ ] 1.4 Create `bot/locales/es.json` — all strings for Core, Utility, Ocio cogs + common embed labels
-- [ ] 1.5 Create `bot/locales/en.json` — English translations for same keys
-- [ ] 1.6 Modify `bot/bot.py` `setup_hook()` — call `load_locales(Path("bot/locales"))` before cog loading
-- [ ] 1.7 Modify `bot/services/guild_service.py` — call `set_guild_language()` in `get_config`, `save_config`, `on_guild_join`, startup backfill
-- [ ] 1.8 Modify `bot/utils/embeds.py` — add optional `guild_id` param to `error_embed`, `success_embed`, `info_embed`, `warning_embed`; wire `t()` for footer/default text
-- [ ] 1.9 Migrate `bot/cogs/core.py` — replace hardcoded strings in `ping`, `status`, `help` with `t()` calls
-- [ ] 1.10 Migrate `bot/cogs/utility.py` — replace hardcoded strings with `t()` calls
-- [ ] 1.11 Migrate `bot/cogs/ocio.py` — replace hardcoded strings with `t()` calls
-- [ ] 1.12 Add locale keys for Core/Utility/Ocio to `es.json` and `en.json`
-- [ ] 1.13 Run `uv run pytest` — all tests green
+- [x] 1.1 RED: Write `tests/test_i18n.py` — test `t()` es lookup, en lookup, missing-key fallback to es, exhausted fallback returns raw key, interpolation `{latency}`, missing placeholder warning, None guild_id fallback
+- [x] 1.2 GREEN: Create `bot/core/i18n.py` with `load_locales()`, `set_guild_language()`, `t()` — module-level dicts, dot-notation resolver, es fallback, `.format_map()` interpolation, `logging.warning` on miss
+- [x] 1.3 REFACTOR: Verify `t()` signatures match design contract (`guild_id: str|int|None, key: str, **kwargs: object -> str`)
+- [x] 1.4 Create `bot/locales/es.json` — all strings for Core, Utility, Ocio cogs + common embed labels
+- [x] 1.5 Create `bot/locales/en.json` — English translations for same keys
+- [x] 1.6 Modify `bot/bot.py` `setup_hook()` — call `load_locales(Path("bot/locales"))` before cog loading
+- [x] 1.7 Modify `bot/services/guild_service.py` — call `set_guild_language()` in `get_config`, `save_config`, `on_guild_join`, startup backfill
+- [x] 1.8 Modify `bot/utils/embeds.py` — add optional `guild_id` param to `error_embed`, `success_embed`, `info_embed`, `warning_embed`; wire `t()` for footer/default text
+- [x] 1.9 Migrate `bot/cogs/core.py` — replace hardcoded strings in `ping`, `status`, `help` with `t()` calls
+- [x] 1.10 Migrate `bot/cogs/utility.py` — replace hardcoded strings with `t()` calls
+- [x] 1.11 Migrate `bot/cogs/ocio.py` — replace hardcoded strings with `t()` calls
+- [x] 1.12 Add locale keys for Core/Utility/Ocio to `es.json` and `en.json`
+- [x] 1.13 Run `uv run pytest` — all tests green
 
 ## Phase 2: Tickets Migration (PR 2)
 
