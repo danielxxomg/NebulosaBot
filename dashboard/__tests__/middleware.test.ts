@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { pathToRegexp } from "next/dist/compiled/path-to-regexp";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { config, middleware } from "@/middleware";
 import { updateSession } from "@/lib/supabase/middleware";
@@ -80,6 +81,7 @@ describe("middleware auth guard", () => {
     // original pathname so login can return the user to where they were.
     vi.mocked(updateSession).mockResolvedValue({
       supabaseResponse: NextResponse.next(),
+      supabase: {} as SupabaseClient,
       session: null,
     });
 
@@ -102,6 +104,7 @@ describe("middleware auth guard", () => {
     const next = NextResponse.next();
     vi.mocked(updateSession).mockResolvedValue({
       supabaseResponse: next,
+      supabase: {} as SupabaseClient,
       session: { user: { id: "u1" } } as never,
     });
 
