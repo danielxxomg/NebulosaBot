@@ -343,7 +343,7 @@ class ImageService:
                 "Could not load font at %s — falling back to default",
                 self._font_regular_path,
             )
-            return ImageFont.load_default()
+            return ImageFont.load_default()  # type: ignore[return-value]  # Pillow stub: always FreeTypeFont at runtime
 
     @staticmethod
     def _fetch_avatar(avatar_url: str | None) -> Image.Image | None:
