@@ -16,12 +16,14 @@ wiring lands.
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
 
 from bot.core.cache import TTLCache
+from bot.core.i18n import load_locales, set_guild_language
 from bot.services.ticket_invariants import (
     check_can_add_note,
     check_can_claim,
@@ -39,6 +41,25 @@ from bot.utils.checks import is_mod_check
 
 # Reason recorded for every skipped integration scenario in this slice.
 PR3_DASHBOARD = "PR3 implements the dashboard reopen guidance + audit panel"
+
+
+# ---------------------------------------------------------------------------
+# i18n autouse fixture — load real locales so t() resolves correctly
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _load_real_locales() -> None:
+    """Load real locale files so t() resolves ticket keys."""
+    from bot.core import i18n as i18n_mod
+
+    i18n_mod._locales.clear()
+    i18n_mod._guild_languages.clear()
+
+    locale_dir = Path("bot/locales")
+    if locale_dir.exists():
+        load_locales(locale_dir)
+        set_guild_language("123456789", "en")
 
 
 # ---------------------------------------------------------------------------
@@ -808,7 +829,7 @@ def test_ti036_action_view_render() -> None:
     assert "ticket:claim" in buttons, "claim button missing"
     assert "ticket:close" in buttons, "close button missing"
 
-    embed = _build_ticket_embed({"ticketNumber": 7, "status": "open", "authorId": "x"})
+    embed = _build_ticket_embed({"ticketNumber": 7, "status": "open", "authorId": "x"}, guild_id="123456789")
     assert isinstance(embed, discord.Embed)
     assert "7" in (embed.title or ""), embed.title
 

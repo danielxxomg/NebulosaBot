@@ -58,8 +58,14 @@ class TicketPanelView(discord.ui.View):
     in ``setup_hook()``.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, guild_id: str | None = None) -> None:
         super().__init__(timeout=None)
+        # Localize button label when guild_id is provided (per-panel creation).
+        # Persistent view instances registered at startup use the default label.
+        if guild_id is not None:
+            for child in self.children:
+                if isinstance(child, discord.ui.Button) and child.custom_id == "ticket:open":
+                    child.label = t(guild_id, "tickets.panel.open_button")
 
     @discord.ui.button(
         label="Open Ticket",
@@ -71,9 +77,13 @@ class TicketPanelView(discord.ui.View):
         """Show category selection then create the ticket channel."""
         bot: NebulosaBot = interaction.client  # type: ignore[assignment]
         guild = interaction.guild
+        guild_id = str(guild.id) if guild else None
         if guild is None:
             await interaction.response.send_message(
-                embed=error_embed("Server Only", "Tickets can only be opened in a server."),
+                embed=error_embed(
+                    t(guild_id, "tickets.open.server_only_title"),
+                    t(guild_id, "tickets.open.server_only_description"),
+                ),
                 ephemeral=True,
             )
             return
@@ -86,8 +96,8 @@ class TicketPanelView(discord.ui.View):
         if not categories:
             await interaction.response.send_message(
                 embed=error_embed(
-                    "No Categories",
-                    "No ticket categories are configured. Ask an admin to set them up with `/create_category`.",
+                    t(guild_id, "tickets.panel.no_categories_title"),
+                    t(guild_id, "tickets.panel.no_categories_description"),
                 ),
                 ephemeral=True,
             )
@@ -105,7 +115,11 @@ class TicketPanelView(discord.ui.View):
         ]
 
         view = _CategorySelectView(options, guild)
-        await interaction.response.send_message("Select a ticket category:", view=view, ephemeral=True)
+        await interaction.response.send_message(
+            t(guild_id, "tickets.open.select_category"),
+            view=view,
+            ephemeral=True,
+        )
 
 
 class TicketActionsView(discord.ui.View):
@@ -116,13 +130,28 @@ class TicketActionsView(discord.ui.View):
     Register in ``setup_hook()`` with ``bot.add_view(TicketActionsView())``.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, guild_id: str | None = None) -> None:
         super().__init__(timeout=None)
+        # Localize button labels when guild_id is provided (per-ticket creation).
+        # Persistent view instances registered at startup use default labels.
+        if guild_id is not None:
+            for child in self.children:
+                if isinstance(child, discord.ui.Button):
+                    if child.custom_id == "ticket:claim":
+                        child.label = t(guild_id, "tickets.actions.claim_button")
+                    elif child.custom_id == "ticket:close":
+                        child.label = t(guild_id, "tickets.actions.close_button")
 
     # -- helpers -------------------------------------------------------
 
     @staticmethod
-    async def _get_ticket(bot: NebulosaBot, channel_id: int) -> tuple[dict | None, str | None]:
+    async def _get_ticket(
+        bot: NebulosaBot,
+        channel_id: int,
+        guild_id: str | None = None,
+        *,
+        action: str = "claim",
+    ) -> tuple[dict | None, str | None]:
         """Fetch the ticket row (raw dict) and build a user-facing error.
 
         Returns ``(row, error_message)`` — exactly one is non-None.
@@ -130,9 +159,9 @@ class TicketActionsView(discord.ui.View):
         assert bot.db is not None
         row = await bot.db.get_ticket_by_channel(str(channel_id))
         if row is None:
-            return None, "This channel is not an active ticket channel."
+            return None, t(guild_id, f"tickets.actions.{action}_not_ticket_description")
         if row["status"] == "closed":
-            return None, "This ticket is already closed."
+            return None, t(guild_id, f"tickets.actions.{action}_already_closed_description")
         return row, None
 
     # -- button callbacks ----------------------------------------------
@@ -152,6 +181,7 @@ class TicketActionsView(discord.ui.View):
         """
         bot: NebulosaBot = interaction.client  # type: ignore[assignment]
         channel_id = interaction.channel_id
+        guild_id = str(interaction.guild_id) if interaction.guild_id else None
         if channel_id is None:
             return
 
@@ -159,16 +189,20 @@ class TicketActionsView(discord.ui.View):
         if not await is_mod_check(interaction):
             await interaction.response.send_message(
                 embed=error_embed(
-                    "Mods Only",
-                    "Only moderators can claim tickets.",
+                    t(guild_id, "tickets.actions.claim_mods_only_title"),
+                    t(guild_id, "tickets.actions.claim_mods_only_description"),
+                    guild_id=guild_id,
                 ),
                 ephemeral=True,
             )
             return
 
-        ticket_row, error = await self._get_ticket(bot, channel_id)
+        ticket_row, error = await self._get_ticket(bot, channel_id, guild_id)
         if error is not None:
-            await interaction.response.send_message(embed=error_embed("Claim Failed", error), ephemeral=True)
+            await interaction.response.send_message(
+                embed=error_embed(t(guild_id, "tickets.actions.claim_failed_title"), error, guild_id=guild_id),
+                ephemeral=True,
+            )
             return
 
         assert ticket_row is not None
@@ -177,8 +211,9 @@ class TicketActionsView(discord.ui.View):
         if claimed_by_id:
             await interaction.response.send_message(
                 embed=error_embed(
-                    "Already Claimed",
-                    f"This ticket is already claimed by <@{claimed_by_id}>.",
+                    t(guild_id, "tickets.actions.claim_already_claimed_title"),
+                    t(guild_id, "tickets.actions.claim_already_claimed_description", user=claimed_by_id),
+                    guild_id=guild_id,
                 ),
                 ephemeral=True,
             )
@@ -193,13 +228,17 @@ class TicketActionsView(discord.ui.View):
         except Exception:
             logger.exception("Failed to claim ticket %s", ticket_id)
             await interaction.response.send_message(
-                embed=error_embed("Claim Failed", "Could not claim the ticket. Please try again."),
+                embed=error_embed(
+                    t(guild_id, "tickets.actions.claim_failed_title"),
+                    t(guild_id, "tickets.actions.claim_generic_error_description"),
+                    guild_id=guild_id,
+                ),
                 ephemeral=True,
             )
             return
 
         # Update the embed to show the claimed status.
-        embed = _build_ticket_embed(ticket, claimed_by=interaction.user)
+        embed = _build_ticket_embed(ticket, claimed_by=interaction.user, guild_id=guild_id)
         await interaction.response.edit_message(embed=embed, view=self)
         logger.info(
             "Ticket %s claimed by %s in channel %s",
@@ -224,12 +263,16 @@ class TicketActionsView(discord.ui.View):
         bot: NebulosaBot = interaction.client  # type: ignore[assignment]
         channel_id = interaction.channel_id
         guild = interaction.guild
+        guild_id = str(guild.id) if guild else None
         if channel_id is None or guild is None:
             return
 
-        ticket_row, error = await self._get_ticket(bot, channel_id)
+        ticket_row, error = await self._get_ticket(bot, channel_id, guild_id, action="close")
         if error is not None:
-            await interaction.response.send_message(embed=error_embed("Close Failed", error), ephemeral=True)
+            await interaction.response.send_message(
+                embed=error_embed(t(guild_id, "tickets.actions.close_failed_title"), error, guild_id=guild_id),
+                ephemeral=True,
+            )
             return
 
         assert ticket_row is not None
@@ -239,8 +282,9 @@ class TicketActionsView(discord.ui.View):
         if not is_author and not await is_mod_check(interaction):
             await interaction.response.send_message(
                 embed=error_embed(
-                    "Author or Mod Only",
-                    "Only the ticket author or a moderator can close this ticket.",
+                    t(guild_id, "tickets.actions.close_author_or_mod_title"),
+                    t(guild_id, "tickets.actions.close_author_or_mod_description"),
+                    guild_id=guild_id,
                 ),
                 ephemeral=True,
             )
@@ -290,22 +334,33 @@ class TicketActionsView(discord.ui.View):
             logger.exception("Failed to close ticket %s in DB", ticket_id)
             await interaction.followup.send(
                 embed=error_embed(
-                    "Close Failed",
-                    "Could not close the ticket in the database.",
+                    t(guild_id, "tickets.actions.close_db_error_title"),
+                    t(guild_id, "tickets.actions.close_db_error_description"),
+                    guild_id=guild_id,
                 ),
                 ephemeral=True,
             )
             return
 
         # 3. Notify in channel (non-ephemeral, visible to all).
-        close_msg = "Ticket closed"
+        close_msg = t(guild_id, "tickets.actions.closed_channel_message")
         if transcript_url:
-            close_msg += f" — [Transcript]({transcript_url})"
-        await channel.send(embed=info_embed("Ticket Closed", close_msg))
+            close_msg += t(guild_id, "tickets.actions.closed_channel_transcript", url=transcript_url)
+        await channel.send(
+            embed=info_embed(
+                t(guild_id, "tickets.actions.closed_channel_title"),
+                close_msg,
+                guild_id=guild_id,
+            )
+        )
 
         # 4. Delete channel after a short delay.
         await interaction.followup.send(
-            embed=success_embed("Ticket Closed", "The ticket has been closed."),
+            embed=success_embed(
+                t(guild_id, "tickets.actions.close_success_title"),
+                t(guild_id, "tickets.actions.close_success_description"),
+                guild_id=guild_id,
+            ),
             ephemeral=True,
         )
         await asyncio.sleep(CHANNEL_DELETE_DELAY)
@@ -343,8 +398,9 @@ class _CategorySelect(discord.ui.Select):
     __slots__ = ("_guild",)
 
     def __init__(self, options: list[discord.SelectOption], guild: discord.Guild) -> None:
+        guild_id = str(guild.id)
         super().__init__(
-            placeholder="Choose a ticket category...",
+            placeholder=t(guild_id, "tickets.open.select_category"),
             min_values=1,
             max_values=1,
             options=options,
@@ -356,6 +412,7 @@ class _CategorySelect(discord.ui.Select):
         category_id = self.values[0]
         bot: NebulosaBot = interaction.client  # type: ignore[assignment]
         guild = self._guild
+        guild_id = str(guild.id)
         assert bot.db is not None
         assert bot.guild_service is not None
         assert bot.ticket_service is not None
@@ -364,20 +421,23 @@ class _CategorySelect(discord.ui.Select):
 
         # --- Fetch guild config for ticket category channel & mod role. ---
         try:
-            config = await bot.guild_service.get_config(str(guild.id))
+            config = await bot.guild_service.get_config(guild_id)
         except Exception:
             logger.exception(
                 "Failed to fetch guild config for ticket creation (guild=%s)",
                 guild.id,
             )
             await interaction.followup.send(
-                embed=error_embed("Config Error", "Could not load guild configuration."),
+                embed=error_embed(
+                    t(guild_id, "tickets.open.config_error_title"),
+                    t(guild_id, "tickets.open.config_error_description"),
+                    guild_id=guild_id,
+                ),
                 ephemeral=True,
             )
             return
 
         if not config.ticket_category_id:
-            guild_id = str(guild.id)
             await interaction.followup.send(
                 embed=error_embed(
                     t(guild_id, "tickets.config_missing.title"),
@@ -392,8 +452,9 @@ class _CategorySelect(discord.ui.Select):
         if ticket_category_channel is None or not isinstance(ticket_category_channel, discord.CategoryChannel):
             await interaction.followup.send(
                 embed=error_embed(
-                    "Invalid Category",
-                    "The configured Discord category for tickets no longer exists.",
+                    t(guild_id, "tickets.open.invalid_category_title"),
+                    t(guild_id, "tickets.open.invalid_category_description"),
+                    guild_id=guild_id,
                 ),
                 ephemeral=True,
             )
@@ -409,7 +470,7 @@ class _CategorySelect(discord.ui.Select):
         assert isinstance(author, discord.Member)
 
         # --- Get tentative ticket number for channel naming. ---
-        tentative_max = await bot.db.get_max_ticket_number(str(guild.id))
+        tentative_max = await bot.db.get_max_ticket_number(guild_id)
         tentative_number = tentative_max + 1
         channel_name = f"ticket-{tentative_number:04d}"
 
@@ -436,8 +497,9 @@ class _CategorySelect(discord.ui.Select):
         except discord.Forbidden:
             await interaction.followup.send(
                 embed=error_embed(
-                    "Permission Denied",
-                    "I don't have permission to create channels in the ticket category.",
+                    t(guild_id, "tickets.open.permission_denied_title"),
+                    t(guild_id, "tickets.open.permission_denied_description"),
+                    guild_id=guild_id,
                 ),
                 ephemeral=True,
             )
@@ -446,8 +508,9 @@ class _CategorySelect(discord.ui.Select):
             logger.exception("Failed to create ticket channel")
             await interaction.followup.send(
                 embed=error_embed(
-                    "Channel Creation Failed",
-                    "Could not create the ticket channel. Please try again.",
+                    t(guild_id, "tickets.open.channel_failed_title"),
+                    t(guild_id, "tickets.open.channel_failed_description"),
+                    guild_id=guild_id,
                 ),
                 ephemeral=True,
             )
@@ -456,7 +519,7 @@ class _CategorySelect(discord.ui.Select):
         # --- Create ticket in DB (MAX+1 with retry). ---
         try:
             ticket = await bot.ticket_service.create_ticket(
-                guild_id=str(guild.id),
+                guild_id=guild_id,
                 author_id=str(author.id),
                 category_id=category_id,
                 channel_id=str(channel.id),
@@ -468,8 +531,9 @@ class _CategorySelect(discord.ui.Select):
                 await channel.delete(reason="Ticket creation failed — cleanup")
             await interaction.followup.send(
                 embed=error_embed(
-                    "Ticket Creation Failed",
-                    "Could not create the ticket. Please try again.",
+                    t(guild_id, "tickets.open.creation_failed_title"),
+                    t(guild_id, "tickets.open.creation_failed_description"),
+                    guild_id=guild_id,
                 ),
                 ephemeral=True,
             )
@@ -490,8 +554,8 @@ class _CategorySelect(discord.ui.Select):
         # --- Register actions view for this channel. ---
         # The persistent view is already registered globally; just attach
         # it to the welcome message.
-        actions_view = TicketActionsView()
-        embed = _build_ticket_embed(ticket)
+        actions_view = TicketActionsView(guild_id=guild_id)
+        embed = _build_ticket_embed(ticket, guild_id=guild_id)
         await channel.send(
             content=author.mention,
             embed=embed,
@@ -501,8 +565,9 @@ class _CategorySelect(discord.ui.Select):
         # --- Confirm to the user (ephemeral). ---
         await interaction.followup.send(
             embed=success_embed(
-                "Ticket Created",
-                f"Your ticket has been created: {channel.mention}",
+                t(guild_id, "tickets.open.success_title"),
+                t(guild_id, "tickets.open.success_description", channel=channel.mention),
+                guild_id=guild_id,
             ),
             ephemeral=True,
         )
@@ -525,6 +590,7 @@ def _build_ticket_embed(
     ticket,  # Ticket model (or dict with ticketNumber, status, etc.)
     *,
     claimed_by: discord.User | discord.Member | None = None,
+    guild_id: str | None = None,
 ) -> discord.Embed:
     """Build the welcome / info embed for a ticket channel.
 
@@ -542,14 +608,14 @@ def _build_ticket_embed(
 
     if status == "claimed":
         color = COLOR_INFO
-        title = f"🎫 Ticket #{number} — Claimed"
-        description = "A staff member has claimed this ticket and will assist you shortly."
+        title = t(guild_id, "tickets.open.welcome_claimed_title", number=number)
+        description = t(guild_id, "tickets.open.welcome_claimed_description")
         if claimed_by is not None:
-            description += f"\n**Claimed by:** {claimed_by.mention}"
+            description += t(guild_id, "tickets.open.welcome_claimed_by", user=claimed_by.mention)
     else:
         color = COLOR_SUCCESS
-        title = f"🎫 Ticket #{number}"
-        description = "Welcome! A staff member will assist you soon.\nDescribe your issue and a moderator will respond."
+        title = t(guild_id, "tickets.open.welcome_title", number=number)
+        description = t(guild_id, "tickets.open.welcome_description")
 
     embed = discord.Embed(
         title=title,
@@ -557,8 +623,12 @@ def _build_ticket_embed(
         color=color,
         timestamp=datetime.now(UTC),
     )
-    embed.add_field(name="Author", value=f"<@{author_id}>", inline=True)
-    embed.set_footer(text="NebulosaBot • Tickets")
+    embed.add_field(
+        name=t(guild_id, "tickets.open.author_field"),
+        value=f"<@{author_id}>",
+        inline=True,
+    )
+    embed.set_footer(text=t(guild_id, "tickets.open.footer"))
     return embed
 
 
@@ -796,9 +866,16 @@ class TicketsCog(commands.Cog, name="Tickets"):
         so the panel survives bot restarts.
         """
         if ctx.guild is None:
-            await ctx.send(embed=error_embed("Server Only", "The ticket panel can only be deployed in a server."))
+            guild_id = None
+            await ctx.send(
+                embed=error_embed(
+                    t(guild_id, "tickets.panel.server_only_title"),
+                    t(guild_id, "tickets.panel.server_only_description"),
+                )
+            )
             return
 
+        guild_id = str(ctx.guild.id)
         assert self.bot.db is not None
         # Build the panel embed.
         embed = discord.Embed(
@@ -807,17 +884,18 @@ class TicketsCog(commands.Cog, name="Tickets"):
             color=COLOR_INFO,
             timestamp=datetime.now(UTC),
         )
-        embed.set_footer(text="NebulosaBot • Tickets")
+        embed.set_footer(text=t(guild_id, "tickets.open.footer"))
 
-        view = TicketPanelView()
+        view = TicketPanelView(guild_id=guild_id)
 
         try:
             message = await ctx.send(embed=embed, view=view)
         except discord.Forbidden:
             await ctx.send(
                 embed=error_embed(
-                    "Permission Denied",
-                    "I don't have permission to send messages here.",
+                    t(guild_id, "tickets.panel.permission_denied_title"),
+                    t(guild_id, "tickets.panel.permission_denied_description"),
+                    guild_id=guild_id,
                 )
             )
             return
@@ -825,7 +903,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         # Persist panel IDs so the view re-attaches after restart.
         try:
             await self.bot.db.update_guild_panel(
-                str(ctx.guild.id),
+                guild_id,
                 str(message.id),
                 str(message.channel.id),
             )
@@ -839,16 +917,18 @@ class TicketsCog(commands.Cog, name="Tickets"):
             logger.exception("Failed to persist ticket panel for guild %s", ctx.guild.id)
             await ctx.send(
                 embed=error_embed(
-                    "Persistence Error",
-                    "The panel was sent but the IDs could not be saved. It will not survive a bot restart.",
+                    t(guild_id, "tickets.panel.deploy_error_title"),
+                    t(guild_id, "tickets.panel.deploy_error_description"),
+                    guild_id=guild_id,
                 )
             )
             return
 
         await ctx.send(
             embed=success_embed(
-                "Panel Deployed",
-                "The ticket panel has been deployed successfully.",
+                t(guild_id, "tickets.panel.success_title"),
+                t(guild_id, "tickets.panel.success_description"),
+                guild_id=guild_id,
             ),
             delete_after=10,
         )
@@ -892,8 +972,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
             if any(cat.get("name", "").lower() == name.lower() for cat in existing):
                 await ctx.send(
                     embed=error_embed(
-                        "Duplicate Name",
-                        f"A ticket category named **{name}** already exists in this server.",
+                        t(guild_id, "tickets.create.duplicate_title"),
+                        t(guild_id, "tickets.create.duplicate_description", name=name),
+                        guild_id=guild_id,
                     )
                 )
                 return
@@ -906,8 +987,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
             logger.exception("Failed to check for duplicate category name")
             await ctx.send(
                 embed=error_embed(
-                    "Check Failed",
-                    "Could not verify category uniqueness. Please try again.",
+                    t(guild_id, "tickets.create.check_failed_title"),
+                    t(guild_id, "tickets.create.check_failed_description"),
+                    guild_id=guild_id,
                 )
             )
             return
@@ -925,16 +1007,18 @@ class TicketsCog(commands.Cog, name="Tickets"):
             logger.exception("Failed to create ticket category")
             await ctx.send(
                 embed=error_embed(
-                    "Creation Failed",
-                    "Could not create the ticket category. Please try again.",
+                    t(guild_id, "tickets.create.failed_title"),
+                    t(guild_id, "tickets.create.failed_description"),
+                    guild_id=guild_id,
                 )
             )
             return
 
         await ctx.send(
             embed=success_embed(
-                "Category Created",
-                f"Ticket category **{category.name}** has been created.\nID: `{category.id}`",
+                t(guild_id, "tickets.create.success_title"),
+                t(guild_id, "tickets.create.success_description", name=category.name, id=category.id),
+                guild_id=guild_id,
             )
         )
 
@@ -960,8 +1044,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
             logger.exception("Failed to fetch ticket categories")
             await ctx.send(
                 embed=error_embed(
-                    "Query Failed",
-                    "Could not retrieve ticket categories. Please try again.",
+                    t(guild_id, "tickets.list.failed_title"),
+                    t(guild_id, "tickets.list.failed_description"),
+                    guild_id=guild_id,
                 )
             )
             return
@@ -969,8 +1054,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
         if not categories:
             await ctx.send(
                 embed=info_embed(
-                    "No Categories",
-                    "No ticket categories have been created yet. Use `/create_category` to add one.",
+                    t(guild_id, "tickets.list.empty_title"),
+                    t(guild_id, "tickets.list.empty_description"),
+                    guild_id=guild_id,
                 )
             )
             return
@@ -980,15 +1066,19 @@ class TicketsCog(commands.Cog, name="Tickets"):
         for cat in categories:
             emoji_str = f"{cat.emoji} " if cat.emoji else ""
             desc_str = f" — {cat.description}" if cat.description else ""
-            lines.append(f"{emoji_str}**{cat.name}**{desc_str}\n　↳ ID: `{cat.id}` · Position: {cat.position}")
+            id_label = t(guild_id, "tickets.list.id_label")
+            pos_label = t(guild_id, "tickets.list.position_label")
+            lines.append(
+                f"{emoji_str}**{cat.name}**{desc_str}\n　↳ {id_label}: `{cat.id}` · {pos_label}: {cat.position}"
+            )
 
         embed = discord.Embed(
-            title="📋 Ticket Categories",
+            title=t(guild_id, "tickets.list.title"),
             description="\n".join(lines),
             color=COLOR_INFO,
             timestamp=datetime.now(UTC),
         )
-        embed.set_footer(text="NebulosaBot • Tickets")
+        embed.set_footer(text=t(guild_id, "tickets.open.footer"))
         await ctx.send(embed=embed)
 
     # -- /delete_category -----------------------------------------------
@@ -1010,29 +1100,37 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
 
         assert self.bot.db is not None
+        guild_id = str(ctx.guild.id)
         # Verify the category exists and belongs to this guild.
         try:
             row = await self.bot.db.get_ticket_category(category_id)
         except Exception:
             logger.exception("Failed to fetch ticket category %s", category_id)
-            await ctx.send(embed=error_embed("Query Failed", "Could not verify the category. Please try again."))
+            await ctx.send(
+                embed=error_embed(
+                    t(guild_id, "tickets.delete.failed_title"),
+                    t(guild_id, "tickets.delete.failed_description"),
+                    guild_id=guild_id,
+                )
+            )
             return
 
         if row is None:
             await ctx.send(
                 embed=error_embed(
-                    "Not Found",
-                    f"No ticket category found with ID `{category_id}`.",
+                    t(guild_id, "tickets.delete.not_found_title"),
+                    t(guild_id, "tickets.delete.not_found_description", id=category_id),
+                    guild_id=guild_id,
                 )
             )
             return
 
-        guild_id = str(ctx.guild.id)
         if row.get("guildId") != guild_id:
             await ctx.send(
                 embed=error_embed(
-                    "Wrong Guild",
-                    "That category belongs to a different server.",
+                    t(guild_id, "tickets.delete.wrong_guild_title"),
+                    t(guild_id, "tickets.delete.wrong_guild_description"),
+                    guild_id=guild_id,
                 )
             )
             return
@@ -1046,8 +1144,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
             logger.exception("Failed to count open tickets for category %s", category_id)
             await ctx.send(
                 embed=error_embed(
-                    "Check Failed",
-                    "Could not verify open tickets for this category. Please try again.",
+                    t(guild_id, "tickets.delete.failed_title"),
+                    t(guild_id, "tickets.delete.failed_description"),
+                    guild_id=guild_id,
                 )
             )
             return
@@ -1055,8 +1154,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
         if open_count > 0:
             await ctx.send(
                 embed=error_embed(
-                    "Category In Use",
-                    f"Cannot delete category **{cat_name}** because it has **{open_count}** open ticket(s).",
+                    t(guild_id, "tickets.delete.in_use_title"),
+                    t(guild_id, "tickets.delete.in_use_description", name=cat_name, count=open_count),
+                    guild_id=guild_id,
                 )
             )
             return
@@ -1067,16 +1167,18 @@ class TicketsCog(commands.Cog, name="Tickets"):
             logger.exception("Failed to delete ticket category %s", category_id)
             await ctx.send(
                 embed=error_embed(
-                    "Deletion Failed",
-                    "Could not delete the category. Please try again.",
+                    t(guild_id, "tickets.delete.failed_title"),
+                    t(guild_id, "tickets.delete.failed_description"),
+                    guild_id=guild_id,
                 )
             )
             return
 
         await ctx.send(
             embed=success_embed(
-                "Category Deleted",
-                f"Ticket category **{cat_name}** has been deleted.",
+                t(guild_id, "tickets.delete.success_title"),
+                t(guild_id, "tickets.delete.success_description", name=cat_name),
+                guild_id=guild_id,
             )
         )
 
@@ -1096,10 +1198,12 @@ class TicketsCog(commands.Cog, name="Tickets"):
         show this message (discord.py requires ``fallback`` for slash
         groups to be directly invokable).
         """
+        guild_id = str(ctx.guild.id) if ctx.guild else None
         await ctx.send(
             embed=info_embed(
-                "Sub-tickets",
-                "Use `/subticket create` to create a sub-ticket from the current ticket channel.",
+                t(guild_id, "tickets.subticket.help_title"),
+                t(guild_id, "tickets.subticket.help_description"),
+                guild_id=guild_id,
             )
         )
 
@@ -1116,11 +1220,13 @@ class TicketsCog(commands.Cog, name="Tickets"):
         sends a user-safe ``error_embed`` to *ctx*; the caller MUST
         return early when this returns ``None``.
         """
+        guild_id = str(guild.id)
         if not parent_author_id:
             await ctx.send(
                 embed=error_embed(
-                    "Owner Not Found",
-                    "The parent ticket has no recorded author.",
+                    t(guild_id, "tickets.subticket.owner_not_found_title"),
+                    t(guild_id, "tickets.subticket.owner_not_found_description"),
+                    guild_id=guild_id,
                 )
             )
             return None
@@ -1133,10 +1239,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
             logger.exception("Failed to resolve parent ticket owner %s", parent_author_id)
             await ctx.send(
                 embed=error_embed(
-                    "Owner Not Found",
-                    "Could not resolve the parent ticket owner. "
-                    "Please verify the parent ticket author is still "
-                    "in this server.",
+                    t(guild_id, "tickets.subticket.owner_not_found_resolve_title"),
+                    t(guild_id, "tickets.subticket.owner_not_found_resolve_description"),
+                    guild_id=guild_id,
                 )
             )
             return None
@@ -1155,10 +1260,17 @@ class TicketsCog(commands.Cog, name="Tickets"):
         which performs the four ``parentId`` FK validations.
         """
         if ctx.guild is None:
-            await ctx.send(embed=error_embed("Server Only", "Sub-tickets can only be created in a server."))
+            guild_id = None
+            await ctx.send(
+                embed=error_embed(
+                    t(guild_id, "tickets.subticket.server_only_title"),
+                    t(guild_id, "tickets.subticket.server_only_description"),
+                )
+            )
             return
 
         guild = ctx.guild
+        guild_id = str(guild.id)
         author = ctx.author
         assert isinstance(author, discord.Member)
         assert self.bot.db is not None
@@ -1167,14 +1279,19 @@ class TicketsCog(commands.Cog, name="Tickets"):
 
         # Resolve guild config + Discord ticket category.
         try:
-            config = await self.bot.guild_service.get_config(str(guild.id))
+            config = await self.bot.guild_service.get_config(guild_id)
         except Exception:
             logger.exception("Failed to fetch guild config for sub-ticket (guild=%s)", guild.id)
-            await ctx.send(embed=error_embed("Config Error", "Could not load guild configuration."))
+            await ctx.send(
+                embed=error_embed(
+                    t(guild_id, "tickets.open.config_error_title"),
+                    t(guild_id, "tickets.open.config_error_description"),
+                    guild_id=guild_id,
+                )
+            )
             return
 
         if not config.ticket_category_id:
-            guild_id = str(guild.id)
             await ctx.send(
                 embed=error_embed(
                     t(guild_id, "tickets.config_missing.title"),
@@ -1191,8 +1308,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
         if not isinstance(category_channel, discord.CategoryChannel):
             await ctx.send(
                 embed=error_embed(
-                    "Invalid Category",
-                    "The configured Discord category for tickets no longer exists.",
+                    t(guild_id, "tickets.subticket.invalid_category_title"),
+                    t(guild_id, "tickets.subticket.invalid_category_description"),
+                    guild_id=guild_id,
                 )
             )
             return
@@ -1213,16 +1331,18 @@ class TicketsCog(commands.Cog, name="Tickets"):
             )
             await ctx.send(
                 embed=error_embed(
-                    "Lookup Failed",
-                    "Could not look up the parent ticket. Please try again.",
+                    t(guild_id, "tickets.subticket.lookup_failed_title"),
+                    t(guild_id, "tickets.subticket.lookup_failed_description"),
+                    guild_id=guild_id,
                 )
             )
             return
         if parent_row is None or parent_row.get("status") == "closed":
             await ctx.send(
                 embed=error_embed(
-                    "Not a Ticket",
-                    "This command must be used in an open ticket channel.",
+                    t(guild_id, "tickets.subticket.not_ticket_title"),
+                    t(guild_id, "tickets.subticket.not_ticket_description"),
+                    guild_id=guild_id,
                 )
             )
             return
@@ -1262,13 +1382,14 @@ class TicketsCog(commands.Cog, name="Tickets"):
         # Tentative channel name (renamed after the real number is known).
         # B4: wrap the max-number lookup so a DB failure is user-safe.
         try:
-            tentative_max = await self.bot.db.get_max_ticket_number(str(guild.id))
+            tentative_max = await self.bot.db.get_max_ticket_number(guild_id)
         except Exception:
             logger.exception("Failed to fetch max ticket number (guild=%s)", guild.id)
             await ctx.send(
                 embed=error_embed(
-                    "Lookup Failed",
-                    "Could not determine the next ticket number. Please try again.",
+                    t(guild_id, "tickets.subticket.number_failed_title"),
+                    t(guild_id, "tickets.subticket.number_failed_description"),
+                    guild_id=guild_id,
                 )
             )
             return
@@ -1285,8 +1406,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
             logger.exception("Failed to create sub-ticket channel")
             await ctx.send(
                 embed=error_embed(
-                    "Channel Creation Failed",
-                    "Could not create the sub-ticket channel.",
+                    t(guild_id, "tickets.subticket.channel_failed_title"),
+                    t(guild_id, "tickets.subticket.channel_failed_description"),
+                    guild_id=guild_id,
                 )
             )
             return
@@ -1298,7 +1420,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
                 author_id=parent_author_id,
                 category_id=None,
                 channel_id=str(channel.id),
-                guild_id=str(guild.id),
+                guild_id=guild_id,
             )
         except Exception:
             logger.exception("Failed to create sub-ticket in DB (parent=%s)", parent_id)
@@ -1307,8 +1429,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
                 await channel.delete(reason="Sub-ticket creation failed — cleanup")
             await ctx.send(
                 embed=error_embed(
-                    "Sub-ticket Creation Failed",
-                    "Could not create the sub-ticket. Please try again.",
+                    t(guild_id, "tickets.subticket.creation_failed_title"),
+                    t(guild_id, "tickets.subticket.creation_failed_description"),
+                    guild_id=guild_id,
                 )
             )
             return
@@ -1325,11 +1448,15 @@ class TicketsCog(commands.Cog, name="Tickets"):
                     actual_name,
                 )
 
-        await channel.send(content=parent_owner.mention, embed=_build_ticket_embed(ticket))
+        await channel.send(
+            content=parent_owner.mention,
+            embed=_build_ticket_embed(ticket, guild_id=guild_id),
+        )
         await ctx.send(
             embed=success_embed(
-                "Sub-ticket Created",
-                f"Sub-ticket has been created: {channel.mention}",
+                t(guild_id, "tickets.subticket.success_title"),
+                t(guild_id, "tickets.subticket.success_description", channel=channel.mention),
+                guild_id=guild_id,
             )
         )
         logger.info(
@@ -1362,8 +1489,12 @@ class TicketsCog(commands.Cog, name="Tickets"):
         ``channel.delete()``. The service owns the status guard.
         """
         if ctx.guild is None:
+            guild_id = None
             await ctx.send(
-                embed=error_embed("Server Only", "Tickets can only be reopened in a server."),
+                embed=error_embed(
+                    t(guild_id, "tickets.reopen.server_only_title"),
+                    t(guild_id, "tickets.reopen.server_only_description"),
+                ),
             )
             return
 
@@ -1379,7 +1510,6 @@ class TicketsCog(commands.Cog, name="Tickets"):
         try:
             await self.bot.ticket_service.reopen_ticket(ticket_id, guild=ctx.guild)
         except TicketCategoryNotConfiguredError:
-            guild_id = str(ctx.guild.id)
             await ctx.send(
                 embed=error_embed(
                     t(guild_id, "tickets.config_missing.title"),
@@ -1389,26 +1519,34 @@ class TicketsCog(commands.Cog, name="Tickets"):
             )
             return
         except ValueError as e:
-            # Expected business-rule violation (non-closed, no category
-            # configured, ticket not found) — surface the service message
-            # verbatim. No logger.exception: this is a handled case, not an
-            # unexpected failure.
-            await ctx.send(embed=error_embed("Reopen Failed", str(e)))
+            # Expected business-rule violation (non-closed status) —
+            # translate the error to the user's language via t() instead
+            # of surfacing the service's raw exception text.
+            status = ticket_row.get("status", "unknown")
+            await ctx.send(
+                embed=error_embed(
+                    t(guild_id, "tickets.reopen.failed_title"),
+                    t(guild_id, "tickets.reopen.not_closed_description", status=status),
+                    guild_id=guild_id,
+                )
+            )
             return
         except Exception:
             logger.exception("Failed to reopen ticket %s", ticket_id)
             await ctx.send(
                 embed=error_embed(
-                    "Reopen Failed",
-                    "Could not reopen the ticket. Please try again.",
+                    t(guild_id, "tickets.reopen.failed_title"),
+                    t(guild_id, "tickets.reopen.failed_description"),
+                    guild_id=guild_id,
                 )
             )
             return
 
         await ctx.send(
             embed=success_embed(
-                "Ticket Reopened",
-                "The ticket has been reopened in a new channel.",
+                t(guild_id, "tickets.reopen.success_title"),
+                t(guild_id, "tickets.reopen.success_description"),
+                guild_id=guild_id,
             )
         )
 
@@ -1438,9 +1576,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
             # Caller supplied an arg we could not parse — surface a clear error.
             await ctx.send(
                 embed=error_embed(
-                    "Invalid Ticket Reference",
-                    f"Could not parse `{ticket_ref}`. Use `#0003`, `0003`, "
-                    f"or a UUID (optionally with a `ticket:` prefix).",
+                    t(guild_id, "tickets.reopen.invalid_ref_title"),
+                    t(guild_id, "tickets.reopen.invalid_ref_description", ref=ticket_ref),
+                    guild_id=guild_id,
                 )
             )
             return None
@@ -1452,16 +1590,18 @@ class TicketsCog(commands.Cog, name="Tickets"):
                 logger.exception("Failed to look up ticket by number %d", ref.number)
                 await ctx.send(
                     embed=error_embed(
-                        "Lookup Failed",
-                        "Could not look up the ticket. Please try again.",
+                        t(guild_id, "tickets.reopen.lookup_failed_title"),
+                        t(guild_id, "tickets.reopen.lookup_failed_description"),
+                        guild_id=guild_id,
                     )
                 )
                 return None
             if row is None:
                 await ctx.send(
                     embed=error_embed(
-                        "Not Found",
-                        f"No ticket #{ref.number} found in this server.",
+                        t(guild_id, "tickets.reopen.not_found_title"),
+                        t(guild_id, "tickets.reopen.not_found_description", number=ref.number),
+                        guild_id=guild_id,
                     )
                 )
                 return None
@@ -1474,24 +1614,27 @@ class TicketsCog(commands.Cog, name="Tickets"):
                 logger.exception("Failed to look up ticket by UUID %s", ref.uuid)
                 await ctx.send(
                     embed=error_embed(
-                        "Lookup Failed",
-                        "Could not look up the ticket. Please try again.",
+                        t(guild_id, "tickets.reopen.lookup_failed_title"),
+                        t(guild_id, "tickets.reopen.lookup_failed_description"),
+                        guild_id=guild_id,
                     )
                 )
                 return None
             if row is None:
                 await ctx.send(
                     embed=error_embed(
-                        "Not Found",
-                        f"No ticket found with ID `{ref.uuid}`.",
+                        t(guild_id, "tickets.reopen.not_found_uuid_title"),
+                        t(guild_id, "tickets.reopen.not_found_uuid_description", id=ref.uuid),
+                        guild_id=guild_id,
                     )
                 )
                 return None
             if row.get("guildId") != guild_id:
                 await ctx.send(
                     embed=error_embed(
-                        "Wrong Guild",
-                        "That ticket belongs to a different server.",
+                        t(guild_id, "tickets.reopen.wrong_guild_title"),
+                        t(guild_id, "tickets.reopen.wrong_guild_description"),
+                        guild_id=guild_id,
                     )
                 )
                 return None
@@ -1504,16 +1647,18 @@ class TicketsCog(commands.Cog, name="Tickets"):
             logger.exception("Failed to look up ticket by channel %s", ctx.channel.id)
             await ctx.send(
                 embed=error_embed(
-                    "Lookup Failed",
-                    "Could not look up the ticket. Please try again.",
+                    t(guild_id, "tickets.reopen.lookup_failed_title"),
+                    t(guild_id, "tickets.reopen.lookup_failed_description"),
+                    guild_id=guild_id,
                 )
             )
             return None
         if ticket_row is None:
             await ctx.send(
                 embed=error_embed(
-                    "Not a Ticket",
-                    "This command must be used in a ticket channel.",
+                    t(guild_id, "tickets.reopen.not_ticket_title"),
+                    t(guild_id, "tickets.reopen.not_ticket_description"),
+                    guild_id=guild_id,
                 )
             )
             return None
@@ -1533,11 +1678,16 @@ class TicketsCog(commands.Cog, name="Tickets"):
         embed (no DB audit table — see design.md decision).
         """
         if ctx.guild is None:
+            guild_id = None
             await ctx.send(
-                embed=error_embed("Server Only", "Tickets can only be transferred in a server."),
+                embed=error_embed(
+                    t(guild_id, "tickets.transfer.server_only_title"),
+                    t(guild_id, "tickets.transfer.server_only_description"),
+                ),
             )
             return
 
+        guild_id = str(ctx.guild.id)
         assert self.bot.db is not None
         assert self.bot.ticket_service is not None
         try:
@@ -1546,16 +1696,18 @@ class TicketsCog(commands.Cog, name="Tickets"):
             logger.exception("Failed to look up ticket by channel %s", ctx.channel.id)
             await ctx.send(
                 embed=error_embed(
-                    "Lookup Failed",
-                    "Could not look up the ticket. Please try again.",
+                    t(guild_id, "tickets.transfer.lookup_failed_title"),
+                    t(guild_id, "tickets.transfer.lookup_failed_description"),
+                    guild_id=guild_id,
                 )
             )
             return
         if ticket_row is None:
             await ctx.send(
                 embed=error_embed(
-                    "Not a Ticket",
-                    "This command must be used in a ticket channel.",
+                    t(guild_id, "tickets.transfer.not_ticket_title"),
+                    t(guild_id, "tickets.transfer.not_ticket_description"),
+                    guild_id=guild_id,
                 )
             )
             return
@@ -1573,16 +1725,18 @@ class TicketsCog(commands.Cog, name="Tickets"):
             logger.exception("Failed to transfer ticket %s", ticket_id)
             await ctx.send(
                 embed=error_embed(
-                    "Transfer Failed",
-                    "Could not transfer the ticket. Please try again.",
+                    t(guild_id, "tickets.transfer.failed_title"),
+                    t(guild_id, "tickets.transfer.failed_description"),
+                    guild_id=guild_id,
                 )
             )
             return
 
         await ctx.send(
             embed=success_embed(
-                "Ticket Transferred",
-                f"The ticket has been transferred to {member.mention}.",
+                t(guild_id, "tickets.transfer.success_title"),
+                t(guild_id, "tickets.transfer.success_description", member=member.mention),
+                guild_id=guild_id,
             )
         )
 
@@ -1598,10 +1752,12 @@ class TicketsCog(commands.Cog, name="Tickets"):
         message (discord.py requires ``fallback`` for slash groups to be
         directly invokable).
         """
+        guild_id = str(ctx.guild.id) if ctx.guild else None
         await ctx.send(
             embed=info_embed(
-                "Staff Notes",
-                "Use `/note add`, `/note list`, or `/note delete`.",
+                t(guild_id, "tickets.note.help_title"),
+                t(guild_id, "tickets.note.help_description"),
+                guild_id=guild_id,
             )
         )
 
@@ -1610,6 +1766,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @is_mod()
     async def note_add(self, ctx: commands.Context, content: str) -> None:
         """Add a staff note to the current ticket (not visible to the opener)."""
+        guild_id = str(ctx.guild.id) if ctx.guild else None
         assert self.bot.db is not None
         assert self.bot.ticket_service is not None
         try:
@@ -1618,16 +1775,18 @@ class TicketsCog(commands.Cog, name="Tickets"):
             logger.exception("Failed to look up ticket by channel %s", ctx.channel.id)
             await ctx.send(
                 embed=error_embed(
-                    "Lookup Failed",
-                    "Could not look up the ticket. Please try again.",
+                    t(guild_id, "tickets.note.add_lookup_failed_title"),
+                    t(guild_id, "tickets.note.add_lookup_failed_description"),
+                    guild_id=guild_id,
                 )
             )
             return
         if ticket_row is None:
             await ctx.send(
                 embed=error_embed(
-                    "Not a Ticket",
-                    "This command must be used in a ticket channel.",
+                    t(guild_id, "tickets.note.add_not_ticket_title"),
+                    t(guild_id, "tickets.note.add_not_ticket_description"),
+                    guild_id=guild_id,
                 )
             )
             return
@@ -1637,10 +1796,22 @@ class TicketsCog(commands.Cog, name="Tickets"):
             note = await self.bot.ticket_service.create_note(ticket_id, str(ctx.author.id), content)
         except Exception:
             logger.exception("Failed to add note to ticket %s", ticket_id)
-            await ctx.send(embed=error_embed("Note Failed", "Could not add the note. Please try again."))
+            await ctx.send(
+                embed=error_embed(
+                    t(guild_id, "tickets.note.add_failed_title"),
+                    t(guild_id, "tickets.note.add_failed_description"),
+                    guild_id=guild_id,
+                )
+            )
             return
 
-        await ctx.send(embed=success_embed("Note Added", f"Note `{note.id}` has been added to the ticket."))
+        await ctx.send(
+            embed=success_embed(
+                t(guild_id, "tickets.note.add_success_title"),
+                t(guild_id, "tickets.note.add_success_description", id=note.id),
+                guild_id=guild_id,
+            )
+        )
 
     async def _send_notes_private(self, ctx: commands.Context, embed: discord.Embed) -> None:
         """Route a notes embed privately (B1).
@@ -1651,6 +1822,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         appear in a non-ephemeral channel message. On DM failure, log and
         send a user-safe error embed without leaking the embed content.
         """
+        guild_id = str(ctx.guild.id) if ctx.guild else None
         if ctx.interaction is not None:
             await ctx.send(embed=embed, ephemeral=True)
             return
@@ -1660,15 +1832,17 @@ class TicketsCog(commands.Cog, name="Tickets"):
             logger.exception("Failed to DM staff notes to %s", ctx.author.id)
             await ctx.send(
                 embed=error_embed(
-                    "DM Failed",
-                    "Could not send the notes to your DMs. Please enable DMs from server members.",
+                    t(guild_id, "tickets.note.list_dm_failed_title"),
+                    t(guild_id, "tickets.note.list_dm_failed_description"),
+                    guild_id=guild_id,
                 )
             )
             return
         await ctx.send(
             embed=success_embed(
-                "Notes Sent",
-                "Staff notes were sent to your DMs.",
+                t(guild_id, "tickets.note.list_sent_title"),
+                t(guild_id, "tickets.note.list_sent_description"),
+                guild_id=guild_id,
             )
         )
 
@@ -1681,6 +1855,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         the author and posts a confirmation-only embed in the channel.
         Note content MUST NOT appear in a non-ephemeral channel message.
         """
+        guild_id = str(ctx.guild.id) if ctx.guild else None
         assert self.bot.db is not None
         assert self.bot.ticket_service is not None
         # B4: wrap the channel-ticket lookup so a DB failure does not
@@ -1691,16 +1866,18 @@ class TicketsCog(commands.Cog, name="Tickets"):
             logger.exception("Failed to look up ticket by channel %s", ctx.channel.id)
             await ctx.send(
                 embed=error_embed(
-                    "Lookup Failed",
-                    "Could not look up the ticket. Please try again.",
+                    t(guild_id, "tickets.note.add_lookup_failed_title"),
+                    t(guild_id, "tickets.note.add_lookup_failed_description"),
+                    guild_id=guild_id,
                 )
             )
             return
         if ticket_row is None:
             await ctx.send(
                 embed=error_embed(
-                    "Not a Ticket",
-                    "This command must be used in a ticket channel.",
+                    t(guild_id, "tickets.note.add_not_ticket_title"),
+                    t(guild_id, "tickets.note.add_not_ticket_description"),
+                    guild_id=guild_id,
                 )
             )
             return
@@ -1713,8 +1890,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
             logger.exception("Failed to fetch notes for ticket %s", ticket_id)
             await ctx.send(
                 embed=error_embed(
-                    "Notes Failed",
-                    "Could not retrieve the notes. Please try again.",
+                    t(guild_id, "tickets.note.add_failed_title"),
+                    t(guild_id, "tickets.note.add_failed_description"),
+                    guild_id=guild_id,
                 )
             )
             return
@@ -1722,17 +1900,24 @@ class TicketsCog(commands.Cog, name="Tickets"):
             # B1: the empty-state ('ticket has no staff notes') is private
             # state — route it through the same privacy path as the notes
             # themselves so it never leaks to the channel.
-            await self._send_notes_private(ctx, info_embed("No Notes", "No staff notes yet."))
+            await self._send_notes_private(
+                ctx,
+                info_embed(
+                    t(guild_id, "tickets.note.list_no_notes_title"),
+                    t(guild_id, "tickets.note.list_no_notes_description"),
+                    guild_id=guild_id,
+                ),
+            )
             return
 
         lines = [f"`{n.id}` <@{n.author_id}> — {n.content}" for n in notes]
         embed = discord.Embed(
-            title="📋 Staff Notes",
+            title=t(guild_id, "tickets.note.list_title"),
             description="\n".join(lines),
             color=COLOR_INFO,
             timestamp=datetime.now(UTC),
         )
-        embed.set_footer(text="NebulosaBot • Tickets")
+        embed.set_footer(text=t(guild_id, "tickets.open.footer"))
 
         # B1: route by invocation type to keep note content private.
         await self._send_notes_private(ctx, embed)
@@ -1742,6 +1927,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @is_mod()
     async def note_delete(self, ctx: commands.Context, note_id: str) -> None:
         """Delete a staff note (author-only — enforced by the service)."""
+        guild_id = str(ctx.guild.id) if ctx.guild else None
         assert self.bot.db is not None
         assert self.bot.ticket_service is not None
         try:
@@ -1750,16 +1936,18 @@ class TicketsCog(commands.Cog, name="Tickets"):
             logger.exception("Failed to look up ticket by channel %s", ctx.channel.id)
             await ctx.send(
                 embed=error_embed(
-                    "Lookup Failed",
-                    "Could not look up the ticket. Please try again.",
+                    t(guild_id, "tickets.note.delete_lookup_failed_title"),
+                    t(guild_id, "tickets.note.delete_lookup_failed_description"),
+                    guild_id=guild_id,
                 )
             )
             return
         if ticket_row is None:
             await ctx.send(
                 embed=error_embed(
-                    "Not a Ticket",
-                    "This command must be used in a ticket channel.",
+                    t(guild_id, "tickets.note.delete_not_ticket_title"),
+                    t(guild_id, "tickets.note.delete_not_ticket_description"),
+                    guild_id=guild_id,
                 )
             )
             return
@@ -1773,10 +1961,22 @@ class TicketsCog(commands.Cog, name="Tickets"):
             )
         except Exception:
             logger.exception("Failed to delete note %s", note_id)
-            await ctx.send(embed=error_embed("Delete Failed", "Could not delete the note."))
+            await ctx.send(
+                embed=error_embed(
+                    t(guild_id, "tickets.note.delete_failed_title"),
+                    t(guild_id, "tickets.note.delete_failed_description"),
+                    guild_id=guild_id,
+                )
+            )
             return
 
-        await ctx.send(embed=success_embed("Note Deleted", f"Note `{note_id}` has been deleted."))
+        await ctx.send(
+            embed=success_embed(
+                t(guild_id, "tickets.note.delete_success_title"),
+                t(guild_id, "tickets.note.delete_success_description", id=note_id),
+                guild_id=guild_id,
+            )
+        )
 
 
 # ======================================================================
