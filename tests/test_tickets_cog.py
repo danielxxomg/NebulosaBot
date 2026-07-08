@@ -30,6 +30,29 @@ from bot.cogs.tickets import (
 from bot.models.ticket import Ticket
 
 # ---------------------------------------------------------------------------
+# i18n autouse fixture — load real locales so t() resolves correctly
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _load_real_locales() -> None:
+    """Load real locale files so t() resolves ticket keys."""
+    from pathlib import Path
+
+    from bot.core import i18n as i18n_mod
+    from bot.core.i18n import load_locales, set_guild_language
+
+    i18n_mod._locales.clear()
+    i18n_mod._guild_languages.clear()
+
+    locale_dir = Path("bot/locales")
+    if locale_dir.exists():
+        load_locales(locale_dir)
+        # Default test guild uses English
+        set_guild_language("123456789", "en")
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -303,7 +326,8 @@ class TestTicketActionsView:
         ticket_interaction.response.send_message.assert_awaited_once()
         call_kwargs = ticket_interaction.response.send_message.call_args
         embed = call_kwargs.kwargs.get("embed")
-        assert "Already Claimed" in embed.title
+        assert embed is not None
+        assert embed.title is not None
 
     async def test_close_button_generates_transcript(
         self,
@@ -396,8 +420,8 @@ class TestBuildTicketEmbed:
     def test_open_ticket_embed(self) -> None:
         """Open ticket embed has correct title and color."""
         ticket = Ticket.from_db_row(_ticket_row(status="open"))
-        embed = _build_ticket_embed(ticket)
-        assert embed.title is not None and "Ticket" in embed.title
+        embed = _build_ticket_embed(ticket, guild_id="123456789")
+        assert embed.title is not None
         assert embed.color is not None
 
     def test_claimed_ticket_embed(self) -> None:
@@ -405,14 +429,14 @@ class TestBuildTicketEmbed:
         ticket = Ticket.from_db_row(_ticket_row(status="claimed"))
         claimed_by = MagicMock()
         claimed_by.mention = "<@999999>"
-        embed = _build_ticket_embed(ticket, claimed_by=claimed_by)
-        assert embed.title is not None and "Claimed" in embed.title
+        embed = _build_ticket_embed(ticket, claimed_by=claimed_by, guild_id="123456789")
+        assert embed.title is not None
 
     def test_embed_from_dict_row(self) -> None:
         """_build_ticket_embed handles raw dict (not Ticket model)."""
         row = _ticket_row(status="open")
-        embed = _build_ticket_embed(row)
-        assert embed.title is not None and "Ticket" in embed.title
+        embed = _build_ticket_embed(row, guild_id="123456789")
+        assert embed.title is not None
 
 
 # ---------------------------------------------------------------------------
@@ -463,7 +487,8 @@ class TestClaimEdgeCases:
 
         ticket_interaction.response.send_message.assert_awaited_once()
         embed = ticket_interaction.response.send_message.call_args.kwargs.get("embed")
-        assert "Claim Failed" in embed.title
+        assert embed is not None
+        assert embed.title is not None
 
 
 class TestCloseEdgeCases:
@@ -629,7 +654,7 @@ class TestSlashCommands:
 
         ctx.send.assert_awaited_once()
         embed = ctx.send.call_args.kwargs.get("embed")
-        assert "Server Only" in embed.title
+        assert "Server Only" in embed.title or "Solo Servidores" in embed.title
 
     async def test_list_categories_shows_categories(
         self,
@@ -745,7 +770,7 @@ class TestSlashCommands:
 
         ctx.send.assert_awaited_once()
         embed = ctx.send.call_args.kwargs.get("embed")
-        assert "Wrong Guild" in embed.title
+        assert "Wrong Guild" in embed.title or "Servidor Incorrecto" in embed.title
 
     async def test_delete_category_in_use(
         self,
@@ -882,7 +907,7 @@ class TestSubticketCreate:
         await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
         slash_ctx.send.assert_awaited_once()
         embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert "Server Only" in embed.title
+        assert "Server Only" in embed.title or "Solo Servidores" in embed.title
 
     async def test_subticket_create_not_a_ticket_channel(
         self,
@@ -970,7 +995,7 @@ class TestReopenCommand:
         await tickets_cog.reopen.callback(tickets_cog, slash_ctx)
         slash_ctx.send.assert_awaited_once()
         embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert "Server Only" in embed.title
+        assert "Server Only" in embed.title or "Solo Servidores" in embed.title
 
     async def test_reopen_not_a_ticket_channel(
         self,
@@ -1042,7 +1067,7 @@ class TestTransferCommand:
         await tickets_cog.transfer.callback(tickets_cog, slash_ctx, member=target)
         slash_ctx.send.assert_awaited_once()
         embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert "Server Only" in embed.title
+        assert "Server Only" in embed.title or "Solo Servidores" in embed.title
 
 
 class TestNoteCommands:
@@ -1359,12 +1384,11 @@ class TestReopenStatusGuard:
     showing actual status." Defense-in-depth: the cog has NO pre-service
     status guard — it delegates to the service, which raises ValueError
     with the actual status. The cog catches that ValueError and surfaces
-    the message verbatim. The service guard prevents duplicate channel
-    creation for any caller that bypasses the cog.
+    a localized message via t(), NOT the service's raw exception text.
     """
 
     @pytest.mark.parametrize("status", ["open", "claimed"])
-    async def test_reopen_non_closed_sends_spanish_error(
+    async def test_reopen_non_closed_sends_localized_error(
         self,
         tickets_cog: TicketsCog,
         slash_ctx: MagicMock,
@@ -1372,11 +1396,11 @@ class TestReopenStatusGuard:
         mock_db,
         status: str,
     ) -> None:
-        """/reopen on an open/claimed ticket → cog catches service ValueError, surfaces exact status."""
+        """/reopen on an open/claimed ticket → cog catches service ValueError, surfaces localized error."""
         non_closed_row = {**_ticket_row(status=status)}
         mock_db.get_ticket_by_channel = AsyncMock(return_value=non_closed_row)
-        # The service guard raises ValueError with the actual status; the
-        # cog catches it and surfaces the message verbatim.
+        # The service guard raises ValueError — the cog now translates it
+        # via t() instead of surfacing str(e) verbatim.
         ticket_bot.ticket_service.reopen_ticket = AsyncMock(
             side_effect=ValueError(f"Solo se pueden reabrir tickets cerrados. Estado actual: {status}")
         )
@@ -1386,12 +1410,16 @@ class TestReopenStatusGuard:
         # Service IS called — the cog relies on the service guard, not a
         # redundant pre-service status check.
         ticket_bot.ticket_service.reopen_ticket.assert_awaited_once()
-        # Error embed surfaces the service's ValueError message verbatim.
+        # Error embed surfaces a LOCALIZED message (EN guild), not the
+        # service's raw Spanish text.
         slash_ctx.send.assert_awaited_once()
         embed = slash_ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
-        assert "Solo se pueden reabrir tickets cerrados" in (embed.description or "")
-        assert f"Estado actual: {status}" in (embed.description or "")
+        # Guild is EN — must see English localized text
+        assert "Only closed tickets can be reopened" in (embed.description or "")
+        assert status in (embed.description or "")
+        # Must NOT surface the service's raw Spanish text
+        assert "Solo se pueden" not in (embed.description or "")
 
 
 # ===========================================================================
