@@ -62,16 +62,16 @@ Chain strategy: stacked-to-main
 
 ## Phase 4: Ephemeral + Permissions + Prefix (PR 4)
 
-- [ ] 4.1 RED: Write tests for prefix callable returning `[config.prefix, ","]`; test `,ping` invokes ping
-- [ ] 4.2 GREEN: Modify `bot/bot.py` `_build_prefix_callable()` — return `[config.prefix or "nb!", ","]`
-- [ ] 4.3 RED: Write tests for `on_command_error` — slash errors ephemeral, prefix errors DM, DM failure → channel fallback
-- [ ] 4.4 GREEN: Modify `bot/bot.py` `on_command_error` — slash: `interaction.response.send_message(ephemeral=True)`, prefix: `ctx.author.send()` with `discord.HTTPException` fallback to channel
-- [ ] 4.5 Add `ephemeral=True` to admin slash responses in `tickets.py`: `ticket_panel`, `create_category`, `list_categories`, `delete_category`
-- [ ] 4.6 Add `ephemeral=True` to `core.py`: `ping`, `status`, `help`
-- [ ] 4.7 Add `ephemeral=True` to `sentinel.py`: `modlogs`
-- [ ] 4.8 Add `@app_commands.default_permissions(administrator=True)` to ticket admin commands
-- [ ] 4.9 Add `@app_commands.default_permissions(moderate_members=True)` to `status`, `modlogs`, `warn`, `unwarn`, `mute`, `unmute`, `kick`, `lock`, `unlock`
-- [ ] 4.10 Add `@app_commands.default_permissions(ban_members=True)` to `ban`
-- [ ] 4.11 Add prefix DM fallback for admin commands — `ctx.author.send()` with channel fallback
-- [ ] 4.12 REFACTOR: Verify all 24 commands classified correctly per ephemeral-standard spec
-- [ ] 4.13 Run `uv run pytest` — all tests green, full regression
+- [x] 4.1 RED: Write tests for prefix callable returning `[config.prefix, ","]`; test `,ping` invokes ping
+- [x] 4.2 GREEN: Modify `bot/bot.py` `_build_prefix_callable()` — return `[config.prefix or "nb!", ","]`
+- [x] 4.3 RED: Write tests for `on_command_error` — slash errors ephemeral, prefix errors DM, DM failure → channel fallback
+- [x] 4.4 GREEN: Modify `bot/bot.py` `on_command_error` — slash: `interaction.response.send_message(ephemeral=True)`, prefix: `ctx.author.send()` with `discord.HTTPException` fallback to channel
+- [x] 4.5 Add `ephemeral=True` to admin slash responses in `tickets.py`: `ticket_panel`, `create_category`, `list_categories`, `delete_category`
+- [x] 4.6 Add `ephemeral=True` to `core.py`: `ping`, `status`, `help`
+- [x] 4.7 Add `ephemeral=True` to `sentinel.py`: `modlogs`
+- [x] 4.8 Add `@app_commands.default_permissions(administrator=True)` to ticket admin commands
+- [x] 4.9 Add `@app_commands.default_permissions(moderate_members=True)` to `status`, `modlogs`, `warn`, `unwarn`, `mute`, `unmute`, `kick`, `lock`, `unlock`
+- [x] 4.10 Add `@app_commands.default_permissions(ban_members=True)` to `ban`
+- [x] 4.11 Add prefix DM fallback for admin commands — `ctx.author.send()` with channel fallback
+- [x] 4.12 REFACTOR: Verify all 24 commands classified correctly per ephemeral-standard spec
+- [x] 4.13 Run `uv run pytest` — all tests green, full regression
