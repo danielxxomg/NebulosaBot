@@ -20,10 +20,24 @@ from freezegun import freeze_time
 
 from bot.core.cache import TTLCache
 from bot.core.database import Database
+from bot.core.i18n import load_locales
 from bot.models.guild import GuildConfig
 
 # Frozen deterministic timestamp: 2024-06-15 12:00:00 UTC
 _FROZEN_NOW = datetime(2024, 6, 15, 12, 0, 0, tzinfo=UTC)
+
+
+# ---------------------------------------------------------------------------
+# Load real locales once per session so t() works in all test modules.
+# Individual i18n test modules override with their own marker locales and
+# restore the originals on teardown.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _load_real_locales() -> None:
+    """Load the real es.json/en.json locale files for the test session."""
+    load_locales()
 
 
 # ---------------------------------------------------------------------------

@@ -16,6 +16,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from bot.core.i18n import t
 from bot.utils.embeds import error_embed
 
 if TYPE_CHECKING:
@@ -88,10 +89,11 @@ class GreetingsCog(commands.Cog, name="Greetings"):
     async def welcome_test(self, ctx: commands.Context) -> None:  # type: ignore[override]
         """Generate and send a sample welcome card."""
         if not isinstance(ctx.author, discord.Member) or not ctx.author.guild_permissions.administrator:
+            guild_id = str(ctx.guild.id) if ctx.guild else ""
             await ctx.send(
                 embed=error_embed(
-                    "Permission Denied",
-                    "You need Administrator permission to use this command.",
+                    t(guild_id, "greetings.permission_denied_title"),
+                    t(guild_id, "greetings.permission_denied_description"),
                 ),
                 ephemeral=True,
             )
@@ -112,10 +114,11 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             )
         except Exception:
             logger.exception("Failed to generate welcome test card")
+            guild_id = str(ctx.guild.id) if ctx.guild else ""
             await ctx.send(
                 embed=error_embed(
-                    "Card Generation Failed",
-                    "Could not generate the welcome card. Please try again.",
+                    t(guild_id, "greetings.welcome_test.failed_title"),
+                    t(guild_id, "greetings.welcome_test.failed_description"),
                 ),
                 ephemeral=True,
             )
@@ -137,10 +140,11 @@ class GreetingsCog(commands.Cog, name="Greetings"):
     async def goodbye_test(self, ctx: commands.Context) -> None:  # type: ignore[override]
         """Generate and send a sample goodbye card."""
         if not isinstance(ctx.author, discord.Member) or not ctx.author.guild_permissions.administrator:
+            guild_id = str(ctx.guild.id) if ctx.guild else ""
             await ctx.send(
                 embed=error_embed(
-                    "Permission Denied",
-                    "You need Administrator permission to use this command.",
+                    t(guild_id, "greetings.permission_denied_title"),
+                    t(guild_id, "greetings.permission_denied_description"),
                 ),
                 ephemeral=True,
             )
@@ -161,10 +165,11 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             )
         except Exception:
             logger.exception("Failed to generate goodbye test card")
+            guild_id = str(ctx.guild.id) if ctx.guild else ""
             await ctx.send(
                 embed=error_embed(
-                    "Card Generation Failed",
-                    "Could not generate the goodbye card. Please try again.",
+                    t(guild_id, "greetings.goodbye_test.failed_title"),
+                    t(guild_id, "greetings.goodbye_test.failed_description"),
                 ),
                 ephemeral=True,
             )

@@ -28,8 +28,20 @@ def _reset_i18n_state() -> None:
     """Clear module-level i18n state before each test."""
     from bot.core import i18n
 
+    # Save original state.
+    orig_locales = dict(i18n._locales)
+    orig_guild_langs = dict(i18n._guild_languages)
+
     i18n._locales.clear()
     i18n._guild_languages.clear()
+
+    yield
+
+    # Restore original state so other test modules are not affected.
+    i18n._locales.clear()
+    i18n._locales.update(orig_locales)
+    i18n._guild_languages.clear()
+    i18n._guild_languages.update(orig_guild_langs)
 
 
 # ---------------------------------------------------------------------------
