@@ -8,7 +8,7 @@ to the configured channel (or the message channel as fallback).
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import discord
 from discord.ext import commands
@@ -47,6 +47,7 @@ class XPListener(commands.Cog):
         user_id = str(message.author.id)
 
         # Delegate to EconomyService — handles cooldown via DB timestamp.
+        assert self.bot.economy_service is not None, "EconomyService initialised in setup_hook"
         new_xp, new_level, leveled_up = await self.bot.economy_service.gain_xp(guild_id, user_id)
 
         # No XP awarded (cooldown or zero config).
@@ -66,6 +67,7 @@ class XPListener(commands.Cog):
 
         Fetches economy config ONCE and passes it to both sub-helpers.
         """
+        assert self.bot.economy_service is not None, "EconomyService initialised in setup_hook"
         config = await self.bot.economy_service.get_economy_config(guild_id)
 
         await self._send_level_up_embed(message, new_level, config)
@@ -75,7 +77,7 @@ class XPListener(commands.Cog):
         self,
         message: discord.Message,
         new_level: int,
-        config: dict | None,
+        config: dict[str, Any] | None,
     ) -> None:
         """Send a level-up notification to the appropriate channel."""
         guild = message.guild
@@ -110,13 +112,13 @@ class XPListener(commands.Cog):
         self,
         message: discord.Message,
         new_level: int,
-        config: dict | None,
+        config: dict[str, Any] | None,
     ) -> None:
         """Assign the role mapped to *new_level* from economy_config if present."""
         if config is None:
             return
 
-        level_roles: dict = config.get("levelRoles", {})
+        level_roles: dict[str, Any] = config.get("levelRoles", {})
         if not level_roles:
             return
 
