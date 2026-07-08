@@ -64,7 +64,8 @@ class TestDadosCommand:
 
     @pytest.mark.asyncio
     async def test_dados_default_six_sided(
-        self, cog: OcioCog,
+        self,
+        cog: OcioCog,
     ) -> None:
         """Default roll (sides=6) produces result in [1, 6]."""
         ctx = _make_ctx()
@@ -84,7 +85,8 @@ class TestDadosCommand:
 
     @pytest.mark.asyncio
     async def test_dados_custom_sides(
-        self, cog: OcioCog,
+        self,
+        cog: OcioCog,
     ) -> None:
         """Custom sides (e.g., 20) produces result in [1, 20]."""
         ctx = _make_ctx()
@@ -99,7 +101,8 @@ class TestDadosCommand:
 
     @pytest.mark.asyncio
     async def test_dados_max_sides_100(
-        self, cog: OcioCog,
+        self,
+        cog: OcioCog,
     ) -> None:
         """Max sides (100) produces result in [1, 100]."""
         ctx = _make_ctx()
@@ -113,7 +116,8 @@ class TestDadosCommand:
 
     @pytest.mark.asyncio
     async def test_dados_result_in_range(
-        self, cog: OcioCog,
+        self,
+        cog: OcioCog,
     ) -> None:
         """The random result should be between 1 and sides (inclusive)."""
         ctx = _make_ctx()
@@ -133,7 +137,8 @@ class TestDadosCommand:
 
     @pytest.mark.asyncio
     async def test_dados_works_in_dm(
-        self, cog: OcioCog,
+        self,
+        cog: OcioCog,
     ) -> None:
         """Dice roll should work in DM context."""
         ctx = _make_ctx(guild_id=None)
@@ -157,7 +162,9 @@ class TestBananaCommand:
     @pytest.mark.asyncio
     @patch("bot.cogs.ocio.Path.exists", return_value=True)
     async def test_banana_returns_embed_with_file(
-        self, mock_exists: MagicMock, cog: OcioCog,
+        self,
+        mock_exists: MagicMock,
+        cog: OcioCog,
     ) -> None:
         """Normal banana sends embed + discord.File attachment."""
         ctx = _make_ctx()
@@ -181,7 +188,9 @@ class TestBananaCommand:
     @pytest.mark.asyncio
     @patch("bot.cogs.ocio.Path.exists", return_value=True)
     async def test_banana_measurement_in_range(
-        self, mock_exists: MagicMock, cog: OcioCog,
+        self,
+        mock_exists: MagicMock,
+        cog: OcioCog,
     ) -> None:
         """Measurement should be between 2 and 30 cm."""
         ctx = _make_ctx()
@@ -202,7 +211,9 @@ class TestBananaCommand:
     @pytest.mark.asyncio
     @patch("bot.cogs.ocio.Path.exists", return_value=False)
     async def test_banana_missing_asset_shows_error(
-        self, mock_exists: MagicMock, cog: OcioCog,
+        self,
+        mock_exists: MagicMock,
+        cog: OcioCog,
     ) -> None:
         """When banana.png is missing, reply with error embed."""
         ctx = _make_ctx()
@@ -218,7 +229,9 @@ class TestBananaCommand:
     @pytest.mark.asyncio
     @patch("bot.cogs.ocio.Path.exists", return_value=True)
     async def test_banana_works_in_dm(
-        self, mock_exists: MagicMock, cog: OcioCog,
+        self,
+        mock_exists: MagicMock,
+        cog: OcioCog,
     ) -> None:
         """Banana should work in DM context."""
         ctx = _make_ctx(guild_id=None)

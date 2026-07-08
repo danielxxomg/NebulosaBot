@@ -92,9 +92,7 @@ class TranscriptService:
         ]
         logger.debug("Fetched %d messages from #%s", len(messages), channel.name)
 
-        html_content = self._build_html(
-            channel.name or str(channel.id), messages
-        )
+        html_content = self._build_html(channel.name or str(channel.id), messages)
         buffer = io.BytesIO(html_content.encode("utf-8"))
         filename = f"transcript-{channel.name or channel.id}.html"
 
@@ -118,9 +116,7 @@ class TranscriptService:
             message = await log_channel.send(file=file)
             if message.attachments:
                 url = message.attachments[0].url
-                logger.info(
-                    "Transcript uploaded to #%s: %s", log_channel.name, url
-                )
+                logger.info("Transcript uploaded to #%s: %s", log_channel.name, url)
                 return url
             logger.warning(
                 "Transcript upload to #%s succeeded but no attachment found",
@@ -128,9 +124,7 @@ class TranscriptService:
             )
             return None
         except discord.HTTPException:
-            logger.exception(
-                "Failed to upload transcript to #%s", log_channel.name
-            )
+            logger.exception("Failed to upload transcript to #%s", log_channel.name)
             return None
 
     # ----------------------------------------------------------------
@@ -153,9 +147,7 @@ class TranscriptService:
         """
         message_blocks: list[str] = []
         for msg in messages:
-            author = _html_module.escape(
-                f"{msg.author.name}#{msg.author.discriminator}"
-            )
+            author = _html_module.escape(f"{msg.author.name}#{msg.author.discriminator}")
             timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M")
             content = msg.content or ""
             content = _html_module.escape(content) if content else "<em>[no text content]</em>"

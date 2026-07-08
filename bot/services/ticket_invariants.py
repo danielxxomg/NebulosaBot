@@ -116,9 +116,7 @@ def check_can_reopen(ticket_status: str) -> None:
         raise ValueError(f"Cannot reopen a ticket with status {ticket_status!r} (must be closed)")
 
 
-def check_can_transfer(
-    ticket_status: str, current_claimed_by: str | None, target_id: str | None
-) -> None:
+def check_can_transfer(ticket_status: str, current_claimed_by: str | None, target_id: str | None) -> None:
     """Validate that a transfer may proceed.
 
     Transfer reassigns ``claimedBy`` and sets ``status='claimed'`` (implicit
@@ -148,9 +146,7 @@ def check_can_add_note(existing_count: int, cap: int = NOTE_CAP) -> None:
     Raises ``ValueError`` when the ticket has reached or exceeded *cap* notes.
     """
     if existing_count >= cap:
-        raise ValueError(
-            f"Cannot add a note: ticket has reached the {cap}-note cap ({existing_count} notes)"
-        )
+        raise ValueError(f"Cannot add a note: ticket has reached the {cap}-note cap ({existing_count} notes)")
 
 
 def check_can_delete_note(note_author_id: str, actor_id: str) -> None:
@@ -249,7 +245,7 @@ def parse_ticket_ref(ref_str: str | None) -> TicketRef | None:
         return None
     # Strip an optional 'ticket:' prefix (case-insensitive).
     if value.lower().startswith("ticket:"):
-        value = value[len("ticket:"):]
+        value = value[len("ticket:") :]
     value = value.strip()
     if not value:
         return None

@@ -367,7 +367,7 @@ def test_migration_005_creates_ticket_history_index() -> None:
     """idx_ticket_audit_ticket_history on (guildId, ticketId, createdAt DESC) MUST exist."""
     sql = _migration_005_text()
     assert re.search(
-        r'CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_ticket_audit_ticket_history'
+        r"CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_ticket_audit_ticket_history"
         r'\s+ON\s+ticket_audit\s*\(\s*"guildId"\s*,\s*"ticketId"\s*,\s*"createdAt"\s+DESC\s*\)',
         sql,
         re.IGNORECASE,
@@ -378,7 +378,7 @@ def test_migration_005_creates_guild_created_index() -> None:
     """idx_ticket_audit_guild_created on (guildId, createdAt DESC) MUST exist."""
     sql = _migration_005_text()
     assert re.search(
-        r'CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_ticket_audit_guild_created'
+        r"CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_ticket_audit_guild_created"
         r'\s+ON\s+ticket_audit\s*\(\s*"guildId"\s*,\s*"createdAt"\s+DESC\s*\)',
         sql,
         re.IGNORECASE,
@@ -389,7 +389,7 @@ def test_migration_005_creates_guild_action_index() -> None:
     """idx_ticket_audit_guild_action on (guildId, action) MUST exist."""
     sql = _migration_005_text()
     assert re.search(
-        r'CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_ticket_audit_guild_action'
+        r"CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_ticket_audit_guild_action"
         r'\s+ON\s+ticket_audit\s*\(\s*"guildId"\s*,\s*action\s*\)',
         sql,
         re.IGNORECASE,
@@ -400,7 +400,7 @@ def test_migration_005_creates_note_author_created_index() -> None:
     """idx_ticket_note_ticket_author_created on ticket_note (ticketId, authorId, createdAt DESC) MUST exist."""
     sql = _migration_005_text()
     assert re.search(
-        r'CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_ticket_note_ticket_author_created'
+        r"CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_ticket_note_ticket_author_created"
         r'\s+ON\s+ticket_note\s*\(\s*"ticketId"\s*,\s*"authorId"\s*,\s*"createdAt"\s+DESC\s*\)',
         sql,
         re.IGNORECASE,

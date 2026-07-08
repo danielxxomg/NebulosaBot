@@ -78,12 +78,22 @@ class TestGenerateRankCard:
     def test_generate_rank_card_returns_different_images(self) -> None:
         """Two calls with different users must produce different images."""
         buf1 = self.service.generate_rank_card(
-            username="UserA", avatar_url=None, xp=100, level=1,
-            rank=10, xp_for_current=0.0, xp_for_next=100.0,
+            username="UserA",
+            avatar_url=None,
+            xp=100,
+            level=1,
+            rank=10,
+            xp_for_current=0.0,
+            xp_for_next=100.0,
         )
         buf2 = self.service.generate_rank_card(
-            username="UserB", avatar_url=None, xp=500, level=3,
-            rank=5, xp_for_current=300.0, xp_for_next=450.0,
+            username="UserB",
+            avatar_url=None,
+            xp=500,
+            level=3,
+            rank=5,
+            xp_for_current=300.0,
+            xp_for_next=450.0,
         )
         data1 = buf1.getvalue()
         data2 = buf2.getvalue()
@@ -93,9 +103,7 @@ class TestGenerateRankCard:
         assert _is_valid_png(data2)
 
         # The images should differ because the text content differs.
-        assert data1 != data2, (
-            "Different inputs should produce different images"
-        )
+        assert data1 != data2, "Different inputs should produce different images"
 
     # -- Missing avatar ------------------------------------------------------
 
@@ -111,9 +119,7 @@ class TestGenerateRankCard:
             xp_for_next=100.0,
         )
         assert isinstance(buf, io.BytesIO)
-        assert _is_valid_png(buf.getvalue()), (
-            "Should still produce valid PNG with no avatar"
-        )
+        assert _is_valid_png(buf.getvalue()), "Should still produce valid PNG with no avatar"
 
     def test_handle_empty_avatar_string(self) -> None:
         """When avatar_url is an empty string, must not crash."""
@@ -139,12 +145,10 @@ class TestGenerateRankCard:
             xp=100,
             level=1,
             rank=10,
-            xp_for_current=0.0,   # just hit this level
-            xp_for_next=150.0,      # need 150 to level up
+            xp_for_current=0.0,  # just hit this level
+            xp_for_next=150.0,  # need 150 to level up
         )
-        assert _is_valid_png(buf.getvalue()), (
-            "0% progress should work without error"
-        )
+        assert _is_valid_png(buf.getvalue()), "0% progress should work without error"
 
     def test_xp_bar_100_percent(self) -> None:
         """At 100% progress the XP bar should be completely filled."""
@@ -155,11 +159,9 @@ class TestGenerateRankCard:
             level=1,
             rank=10,
             xp_for_current=150.0,  # xp - threshold = 150
-            xp_for_next=150.0,      # same as needed → 100%
+            xp_for_next=150.0,  # same as needed → 100%
         )
-        assert _is_valid_png(buf.getvalue()), (
-            "100% progress should work without error"
-        )
+        assert _is_valid_png(buf.getvalue()), "100% progress should work without error"
 
     def test_xp_bar_mid_progress(self) -> None:
         """At ~50% the bar should be partially filled (intermediate)."""
@@ -172,9 +174,7 @@ class TestGenerateRankCard:
             xp_for_current=200.0,
             xp_for_next=400.0,  # 50%
         )
-        assert _is_valid_png(buf.getvalue()), (
-            "Mid-progress should work without error"
-        )
+        assert _is_valid_png(buf.getvalue()), "Mid-progress should work without error"
 
     # -- Edge cases ----------------------------------------------------------
 
@@ -286,12 +286,18 @@ class TestGenerateGreetingCard:
     def test_welcome_vs_goodbye_produces_different_images(self) -> None:
         """Welcome and goodbye cards must be visually distinct."""
         buf_welcome = self.service.generate_greeting_card(
-            username="SameUser", avatar_url=None, guild_name="G",
-            member_count=100, card_type="welcome",
+            username="SameUser",
+            avatar_url=None,
+            guild_name="G",
+            member_count=100,
+            card_type="welcome",
         )
         buf_goodbye = self.service.generate_greeting_card(
-            username="SameUser", avatar_url=None, guild_name="G",
-            member_count=100, card_type="goodbye",
+            username="SameUser",
+            avatar_url=None,
+            guild_name="G",
+            member_count=100,
+            card_type="goodbye",
         )
         assert buf_welcome.getvalue() != buf_goodbye.getvalue(), (
             "Welcome and goodbye cards must produce different images"
