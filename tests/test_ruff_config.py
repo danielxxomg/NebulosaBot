@@ -18,20 +18,20 @@ _PYPROJECT = _PROJECT_ROOT / "pyproject.toml"
 
 # The 14 new rule groups required by the tooling-rigor spec
 _EXPECTED_NEW_GROUPS = [
-    "S",      # bandit/security
-    "C4",     # comprehensions
-    "C90",    # mccabe complexity
-    "RET",    # return
-    "T20",    # print
-    "ARG",    # unused arguments
-    "DTZ",    # datetime timezone
-    "EM",     # errmsg
-    "T10",    # debugger
-    "TRY",    # tryceratops
-    "RSE",    # raise
-    "FLY",    # flynt
-    "PERF",   # perflint
-    "FURB",   # refurb
+    "S",  # bandit/security
+    "C4",  # comprehensions
+    "C90",  # mccabe complexity
+    "RET",  # return
+    "T20",  # print
+    "ARG",  # unused arguments
+    "DTZ",  # datetime timezone
+    "EM",  # errmsg
+    "T10",  # debugger
+    "TRY",  # tryceratops
+    "RSE",  # raise
+    "FLY",  # flynt
+    "PERF",  # perflint
+    "FURB",  # refurb
 ]
 
 
@@ -65,19 +65,13 @@ class TestRuffSelectGroups:
     @pytest.mark.parametrize("group", _EXPECTED_NEW_GROUPS)
     def test_select_includes_new_group(self, ruff_select: list[str], group: str) -> None:
         """select MUST contain {group}."""
-        assert group in ruff_select, (
-            f"Ruff select missing required group '{group}'. "
-            f"Current select: {ruff_select}"
-        )
+        assert group in ruff_select, f"Ruff select missing required group '{group}'. Current select: {ruff_select}"
 
     def test_select_includes_original_groups(self, ruff_select: list[str]) -> None:
         """select MUST still include the original 9 groups (E, W, F, I, N, UP, B, SIM, RUF)."""
         original = ["E", "W", "F", "I", "N", "UP", "B", "SIM", "RUF"]
         for group in original:
-            assert group in ruff_select, (
-                f"Ruff select missing original group '{group}'. "
-                f"Current select: {ruff_select}"
-            )
+            assert group in ruff_select, f"Ruff select missing original group '{group}'. Current select: {ruff_select}"
 
 
 # ---------------------------------------------------------------------------
@@ -91,9 +85,7 @@ class TestRuffMcCabe:
     def test_max_complexity_is_15(self, pyproject: dict) -> None:
         """max-complexity MUST be 15."""
         mccabe = pyproject["tool"]["ruff"]["lint"].get("mccabe", {})
-        assert mccabe.get("max-complexity") == 15, (
-            f"Expected max-complexity=15, got {mccabe.get('max-complexity')}"
-        )
+        assert mccabe.get("max-complexity") == 15, f"Expected max-complexity=15, got {mccabe.get('max-complexity')}"
 
 
 # ---------------------------------------------------------------------------
@@ -112,30 +104,22 @@ class TestRuffTestIgnores:
             if "tests" in key:
                 tests_key = key
                 break
-        assert tests_key is not None, (
-            f"No tests/ entry in per-file-ignores: {ruff_per_file_ignores}"
-        )
+        assert tests_key is not None, f"No tests/ entry in per-file-ignores: {ruff_per_file_ignores}"
 
     def test_tests_ignores_include_s101(self, ruff_per_file_ignores: dict[str, list[str]]) -> None:
         """tests/ ignores MUST include S101 (assert in tests)."""
         tests_ignores = self._get_tests_ignores(ruff_per_file_ignores)
-        assert "S101" in tests_ignores, (
-            f"S101 not in tests ignores: {tests_ignores}"
-        )
+        assert "S101" in tests_ignores, f"S101 not in tests ignores: {tests_ignores}"
 
     def test_tests_ignores_include_arg(self, ruff_per_file_ignores: dict[str, list[str]]) -> None:
         """tests/ ignores MUST include ARG rules."""
         tests_ignores = self._get_tests_ignores(ruff_per_file_ignores)
-        assert "ARG" in tests_ignores, (
-            f"ARG not in tests ignores: {tests_ignores}"
-        )
+        assert "ARG" in tests_ignores, f"ARG not in tests ignores: {tests_ignores}"
 
     def test_tests_ignores_include_t20(self, ruff_per_file_ignores: dict[str, list[str]]) -> None:
         """tests/ ignores MUST include T20 rules."""
         tests_ignores = self._get_tests_ignores(ruff_per_file_ignores)
-        assert "T20" in tests_ignores, (
-            f"T20 not in tests ignores: {tests_ignores}"
-        )
+        assert "T20" in tests_ignores, f"T20 not in tests ignores: {tests_ignores}"
 
     @staticmethod
     def _get_tests_ignores(per_file_ignores: dict[str, list[str]]) -> list[str]:
