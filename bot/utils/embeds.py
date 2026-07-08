@@ -7,6 +7,7 @@ with the NebulosaBot color scheme and localized footer.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 import discord
 
@@ -131,3 +132,36 @@ def warning_embed(
         A styled yellow embed.
     """
     return _make_embed(title, description, COLOR_WARNING, guild_id=guild_id)
+
+
+def build_ticket_embed(
+    ticket: Any,
+    *,
+    claimed_by: discord.User | discord.Member | None = None,
+    guild_id: str | None = None,
+) -> discord.Embed:
+    """Build the welcome / info embed for a ticket channel."""
+    if isinstance(ticket, dict):
+        number = ticket.get("ticketNumber", "?")
+        status = ticket.get("status", "open")
+        author_id = ticket.get("authorId", "unknown")
+    else:
+        number = ticket.ticket_number
+        status = ticket.status
+        author_id = ticket.author_id
+
+    if status == "claimed":
+        color = COLOR_INFO
+        title = t(guild_id, "tickets.open.welcome_claimed_title", number=number)
+        description = t(guild_id, "tickets.open.welcome_claimed_description")
+        if claimed_by is not None:
+            description += t(guild_id, "tickets.open.welcome_claimed_by", user=claimed_by.mention)
+    else:
+        color = COLOR_SUCCESS
+        title = t(guild_id, "tickets.open.welcome_title", number=number)
+        description = t(guild_id, "tickets.open.welcome_description")
+
+    embed = discord.Embed(title=title, description=description, color=color, timestamp=datetime.now(UTC))
+    embed.add_field(name=t(guild_id, "tickets.open.author_field"), value=f"<@{author_id}>", inline=True)
+    embed.set_footer(text=t(guild_id, "tickets.open.footer"))
+    return embed
