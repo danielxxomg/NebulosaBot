@@ -320,9 +320,9 @@ class TestSubscriberStop:
 
         await sub.stop()
 
-        assert health.cancelled() or health.done()
-        assert poll.cancelled() or poll.done()
-        assert watchdog.cancelled() or watchdog.done()
+        assert health is not None and (health.cancelled() or health.done())
+        assert poll is not None and (poll.cancelled() or poll.done())
+        assert watchdog is not None and (watchdog.cancelled() or watchdog.done())
 
     @pytest.mark.asyncio
     async def test_stop_idempotent_when_not_started(self, cache: TTLCache) -> None:
@@ -1219,7 +1219,7 @@ class TestPollSelectEnforcement:
             # Wire .gt/.lte back to client so the ticket chain reaches
             # the patched gt/lte mocks that record values.
             r.gt = MagicMock(return_value=r)
-            r.lte = MagicMock(side_effect=lambda col, val: (lte_values.append(val), r)[-1])
+            r.lte = MagicMock(side_effect=lambda col, val, _r=r, _lv=lte_values: (_lv.append(val), _r)[-1])
             return r
 
         client.table = MagicMock(side_effect=_table)
