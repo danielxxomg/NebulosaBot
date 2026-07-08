@@ -101,7 +101,8 @@
       "deploy_error_title": "Error de Persistencia",
       "deploy_error_description": "El panel fue enviado pero los IDs no pudieron guardarse. No sobrevivirá un reinicio del bot.",
       "permission_denied_title": "Permiso Denegado",
-      "permission_denied_description": "No tengo permiso para enviar mensajes aquí."
+      "permission_denied_description": "No tengo permiso para enviar mensajes aquí.",
+      "open_button": "Abrir Ticket"
     },
     "create": {
       "server_only_title": "Solo Servidores",
@@ -116,6 +117,8 @@
       "success_description": "La categoría de ticket **{name}** ha sido creada.\nID: `{id}`"
     },
     "list": {
+      "id_label": "ID",
+      "position_label": "Posición",
       "failed_title": "Error de Consulta",
       "failed_description": "No se pudieron obtener las categorías de tickets. Intenta de nuevo.",
       "empty_title": "Sin Categorías",
@@ -161,6 +164,8 @@
       "footer": "NebulosaBot • Tickets"
     },
     "actions": {
+      "claim_button": "Reclamar",
+      "close_button": "Cerrar",
       "claim_mods_only_title": "Solo Moderadores",
       "claim_mods_only_description": "Solo los moderadores pueden reclamar tickets.",
       "claim_failed_title": "Error al Reclamar",
@@ -169,7 +174,7 @@
       "claim_already_closed_description": "Este ticket ya está cerrado.",
       "claim_already_claimed_title": "Ya Reclamado",
       "claim_already_claimed_description": "Este ticket ya está reclamado por <@{user}>.",
-      "claim_generic_error_description": "Could not claim the ticket. Please try again.",
+      "claim_generic_error_description": "No se pudo reclamar el ticket. Intenta de nuevo.",
       "close_failed_title": "Error al Cerrar",
       "close_not_ticket_description": "Este canal no es un canal de ticket activo.",
       "close_already_closed_description": "Este ticket ya está cerrado.",
@@ -181,7 +186,7 @@
       "close_success_description": "El ticket ha sido cerrado.",
       "closed_channel_title": "Ticket Cerrado",
       "closed_channel_message": "Ticket cerrado",
-      "closed_channel_transcript": " — [Transcript]({url})"
+      "closed_channel_transcript": " — [Transcripción]({url})"
     },
     "subticket": {
       "help_title": "Sub-tickets",
@@ -224,6 +229,7 @@
       "not_ticket_description": "Este comando debe usarse en un canal de ticket.",
       "failed_title": "Error al Reabrir",
       "failed_description": "No se pudo reabrir el ticket. Intenta de nuevo.",
+      "not_closed_description": "Solo se pueden reabrir tickets cerrados. Estado actual: {status}",
       "success_title": "✅ Ticket Reabierto",
       "success_description": "El ticket ha sido reabierto en un nuevo canal."
     },

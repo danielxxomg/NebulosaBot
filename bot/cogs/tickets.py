@@ -58,8 +58,14 @@ class TicketPanelView(discord.ui.View):
     in ``setup_hook()``.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, guild_id: str | None = None) -> None:
         super().__init__(timeout=None)
+        # Localize button label when guild_id is provided (per-panel creation).
+        # Persistent view instances registered at startup use the default label.
+        if guild_id is not None:
+            for child in self.children:
+                if isinstance(child, discord.ui.Button) and child.custom_id == "ticket:open":
+                    child.label = t(guild_id, "tickets.panel.open_button")
 
     @discord.ui.button(
         label="Open Ticket",
@@ -124,8 +130,17 @@ class TicketActionsView(discord.ui.View):
     Register in ``setup_hook()`` with ``bot.add_view(TicketActionsView())``.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, guild_id: str | None = None) -> None:
         super().__init__(timeout=None)
+        # Localize button labels when guild_id is provided (per-ticket creation).
+        # Persistent view instances registered at startup use default labels.
+        if guild_id is not None:
+            for child in self.children:
+                if isinstance(child, discord.ui.Button):
+                    if child.custom_id == "ticket:claim":
+                        child.label = t(guild_id, "tickets.actions.claim_button")
+                    elif child.custom_id == "ticket:close":
+                        child.label = t(guild_id, "tickets.actions.close_button")
 
     # -- helpers -------------------------------------------------------
 
@@ -539,7 +554,7 @@ class _CategorySelect(discord.ui.Select):
         # --- Register actions view for this channel. ---
         # The persistent view is already registered globally; just attach
         # it to the welcome message.
-        actions_view = TicketActionsView()
+        actions_view = TicketActionsView(guild_id=guild_id)
         embed = _build_ticket_embed(ticket, guild_id=guild_id)
         await channel.send(
             content=author.mention,
@@ -871,7 +886,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         )
         embed.set_footer(text=t(guild_id, "tickets.open.footer"))
 
-        view = TicketPanelView()
+        view = TicketPanelView(guild_id=guild_id)
 
         try:
             message = await ctx.send(embed=embed, view=view)
@@ -1051,7 +1066,11 @@ class TicketsCog(commands.Cog, name="Tickets"):
         for cat in categories:
             emoji_str = f"{cat.emoji} " if cat.emoji else ""
             desc_str = f" — {cat.description}" if cat.description else ""
-            lines.append(f"{emoji_str}**{cat.name}**{desc_str}\n　↳ ID: `{cat.id}` · Position: {cat.position}")
+            id_label = t(guild_id, "tickets.list.id_label")
+            pos_label = t(guild_id, "tickets.list.position_label")
+            lines.append(
+                f"{emoji_str}**{cat.name}**{desc_str}\n　↳ {id_label}: `{cat.id}` · {pos_label}: {cat.position}"
+            )
 
         embed = discord.Embed(
             title=t(guild_id, "tickets.list.title"),
@@ -1500,14 +1519,14 @@ class TicketsCog(commands.Cog, name="Tickets"):
             )
             return
         except ValueError as e:
-            # Expected business-rule violation (non-closed, no category
-            # configured, ticket not found) — surface the service message
-            # verbatim. No logger.exception: this is a handled case, not an
-            # unexpected failure.
+            # Expected business-rule violation (non-closed status) —
+            # translate the error to the user's language via t() instead
+            # of surfacing the service's raw exception text.
+            status = ticket_row.get("status", "unknown")
             await ctx.send(
                 embed=error_embed(
                     t(guild_id, "tickets.reopen.failed_title"),
-                    str(e),
+                    t(guild_id, "tickets.reopen.not_closed_description", status=status),
                     guild_id=guild_id,
                 )
             )
