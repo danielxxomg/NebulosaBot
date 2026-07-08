@@ -73,7 +73,9 @@ class TestLoadLocales:
         assert i18n._locales["en"]["core"]["ping"]["title"] == "Pong!"
 
     def test_load_locales_missing_file_logs_warning(
-        self, tmp_path: Path, caplog: pytest.LogCaptureFixture,
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """If a locale file is missing, load_locales() MUST log a warning and continue."""
         from bot.core.i18n import load_locales
@@ -197,7 +199,8 @@ class TestTFunction:
         assert result == "WebSocket latency: **42 ms**"
 
     def test_t_missing_placeholder_logs_warning(
-        self, caplog: pytest.LogCaptureFixture,
+        self,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """When kwargs is missing a placeholder, t() MUST log a warning."""
         from bot.core.i18n import t

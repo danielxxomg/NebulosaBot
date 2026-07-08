@@ -183,7 +183,10 @@ class TestBananaCommand:
     @patch("bot.cogs.ocio.Path.exists", return_value=True)
     @patch("discord.File")
     async def test_banana_returns_embed_with_file(
-        self, mock_file: MagicMock, mock_exists: MagicMock, cog: OcioCog,
+        self,
+        mock_file: MagicMock,
+        mock_exists: MagicMock,
+        cog: OcioCog,
     ) -> None:
         """Normal banana sends embed + discord.File attachment."""
         ctx = _make_ctx()
@@ -208,7 +211,10 @@ class TestBananaCommand:
     @patch("bot.cogs.ocio.Path.exists", return_value=True)
     @patch("discord.File")
     async def test_banana_measurement_in_range(
-        self, mock_file: MagicMock, mock_exists: MagicMock, cog: OcioCog,
+        self,
+        mock_file: MagicMock,
+        mock_exists: MagicMock,
+        cog: OcioCog,
     ) -> None:
         """Measurement should be between 2 and 30 cm."""
         ctx = _make_ctx()
@@ -248,7 +254,10 @@ class TestBananaCommand:
     @patch("bot.cogs.ocio.Path.exists", return_value=True)
     @patch("discord.File")
     async def test_banana_works_in_dm(
-        self, mock_file: MagicMock, mock_exists: MagicMock, cog: OcioCog,
+        self,
+        mock_file: MagicMock,
+        mock_exists: MagicMock,
+        cog: OcioCog,
     ) -> None:
         """Banana should work in DM context."""
         ctx = _make_ctx(guild_id=None)

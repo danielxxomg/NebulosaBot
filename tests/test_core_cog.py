@@ -213,7 +213,8 @@ class TestHelpI18n:
 
     @pytest.mark.asyncio
     async def test_help_unknown_module_error_from_locale(
-        self, cog: CoreCog,
+        self,
+        cog: CoreCog,
     ) -> None:
         """Help error for unknown module MUST use t()."""
         cog.bot.get_cog = MagicMock(return_value=None)

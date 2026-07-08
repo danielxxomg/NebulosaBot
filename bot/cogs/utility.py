@@ -144,9 +144,7 @@ class UtilityCog(commands.Cog, name="Utility"):
             remaining = len(role_mentions) - 20
             role_mentions = role_mentions[:20]
             roles_text = (
-                ", ".join(role_mentions)
-                + " "
-                + t(guild_id, "utility.userinfo.roles_overflow", count=remaining)
+                ", ".join(role_mentions) + " " + t(guild_id, "utility.userinfo.roles_overflow", count=remaining)
             )
         elif role_mentions:
             roles_text = ", ".join(role_mentions)
