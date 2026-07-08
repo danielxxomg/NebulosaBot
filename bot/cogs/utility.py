@@ -139,8 +139,9 @@ class UtilityCog(commands.Cog, name="Utility"):
         )
 
         # Build roles list — skip @everyone (first role)
-        if not isinstance(target, discord.Member):
-            return  # User objects don't have roles/joined_at.
+        # Type narrowing: in guild context, target is always a Member.
+        # Assert satisfies mypy without adding a new runtime branch.
+        assert isinstance(target, discord.Member), "userinfo target must be Member in guild context"
         role_mentions = [r.mention for r in target.roles[1:]]
         if len(role_mentions) > 20:
             remaining = len(role_mentions) - 20

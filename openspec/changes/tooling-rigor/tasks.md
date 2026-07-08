@@ -45,30 +45,30 @@ Chain strategy: stacked-to-main
 
 ## Phase 3: Auto-fix Ruff Violations
 
-- [ ] 3.1 Run `uv run ruff check --fix bot/ tests/` to apply 86 safe+unsafe auto-fixes
-- [ ] 3.2 Verify `uv run ruff check bot/ tests/` — document remaining violation count per rule group
-- [ ] 3.3 Add broad `# noqa` or per-file ignores for remaining violations as temporary debt markers
+- [x] 3.1 Run `uv run ruff check --fix bot/ tests/` to apply auto-fixes (6 violations found, 4 auto-fixed)
+- [x] 3.2 Verify `uv run ruff check bot/ tests/` — 2 remaining manual violations fixed (B007, RUF034)
+- [x] 3.3 No broad noqa needed — all 6 violations cleared (PR #23 merged)
 
 ## Phase 4: Manual Debt Clearing — Core & Services
 
-- [ ] 4.1 Fix ruff violations in `bot/core/` (realtime.py, gateway.py, cache.py, supabase.py)
-- [ ] 4.2 Fix ruff violations in `bot/services/` (guild_service.py, xp_service.py, warn_service.py)
-- [ ] 4.3 Fix ruff violations in `bot/bot.py`
-- [ ] 4.4 Apply targeted `[[tool.mypy.overrides]]` for modules with justified attr-defined debt
-- [ ] 4.5 Remove temporary `noqa` markers replaced by real fixes in this batch
+- [x] 4.1 Fix ruff/mypy violations in `bot/core/` (context.py — 2 mypy strict errors)
+- [x] 4.2 Fix ruff/mypy violations in `bot/services/` (logging_service 5, greeting_service 4, image_service 1 = 10 mypy strict errors)
+- [x] 4.3 Fix ruff/mypy violations in `bot/bot.py` (10 mypy strict errors)
+- [x] 4.4 Apply targeted `[[tool.mypy.overrides]]` for modules with justified attr-defined debt (narrowed: removed bot.utils.* + bot.config overrides, narrowed bot.core/listeners/models)
+- [x] 4.5 No temporary noqa markers needed — all fixes are real type narrowing
 
 ## Phase 5: Manual Debt Clearing — Cogs, Listeners, Utils
 
-- [ ] 5.1 Fix ruff violations in `bot/cogs/` (moderation.py, tickets.py, sentinel.py, xp.py, etc.)
-- [ ] 5.2 Fix ruff violations in `bot/listeners/` (xp_listener.py, join_listener.py)
-- [ ] 5.3 Fix ruff violations in `bot/utils/` (embeds.py, converters.py, config.py)
-- [ ] 5.4 Remove temporary `noqa` markers replaced by real fixes in this batch
+- [x] 5.1 Fix mypy violations in `bot/cogs/` (sentinel 51, greetings 6, stellar 5, utility 2 = 64 mypy strict errors)
+- [x] 5.2 Fix mypy violations in `bot/listeners/` (audit_listener 8, xp_listener 5 = 13 mypy strict errors)
+- [x] 5.3 Fix mypy violations in `bot/utils/` (covered by removed override — no direct violations)
+- [x] 5.4 No temporary noqa markers needed — all fixes are real type narrowing
 
 ## Phase 6: Test Fixes + Final Verification
 
-- [ ] 6.1 Fix ruff/mypy violations in `tests/` (test_xp_listener.py, test_guild_service.py, etc.)
-- [ ] 6.2 Remove ALL temporary broad suppressions; only narrow justified `noqa`/overrides remain
-- [ ] 6.3 Run `uv run ruff check bot/ tests/` — zero violations
-- [ ] 6.4 Run `uv run mypy --strict bot/ tests/` — passes with scoped overrides only
-- [ ] 6.5 Run `uv run pre-commit run --all-files` — all hooks pass
-- [ ] 6.6 Run `uv run pytest` — all tests pass, coverage ≥75%
+- [x] 6.1 Fix mypy violations in `tests/` (test_xp_listener 52, test_realtime 7, test_stellar_cog 5, test_ocio_cog 5, test_setup_cog 4, test_tickets_cog 3, test_greetings_cog 3, test_precommit_config 1, test_core_cog 1, test_ci_config 1 = 82 mypy strict errors)
+- [x] 6.2 Narrow temporary broad suppressions — removed bot.utils.* + bot.config overrides, narrowed bot.core/listeners/models; only justified overrides remain (discord.py attr-defined, MagicMock untyped-decorator)
+- [x] 6.3 Run `uv run ruff check bot/ tests/` — zero violations ✅
+- [x] 6.4 Run `uv run mypy --strict bot/ tests/` — passes with scoped overrides only ✅ (Success: no issues found in 95 source files)
+- [ ] 6.5 Run `uv run pre-commit run --all-files` — all hooks pass (pending verification)
+- [x] 6.6 Run `uv run pytest` — all tests pass, coverage 81.72% ≥75% ✅

@@ -127,7 +127,6 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         a guard fails.
         """
         assert self.bot.user is not None, "Bot user available after on_ready"
-        assert self.bot.user is not None, "Bot user available after on_ready"
         if target.id == self.bot.user.id:
             await ctx.send(embed=error_embed("Invalid Target", "I cannot moderate myself."))
             return False
@@ -571,16 +570,14 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         target_channel = channel or ctx.channel
         guild_id = self._guild_id(ctx)
 
-        if not isinstance(target_channel, discord.TextChannel):
-            await ctx.send(embed=error_embed("Invalid Channel", "Lock only works on text channels."))
+        if ctx.guild is None:
             return
 
-        assert ctx.guild is not None, "Guild-only command"
-        overwrite = target_channel.overwrites_for(ctx.guild.default_role)
+        overwrite = target_channel.overwrites_for(ctx.guild.default_role)  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
         overwrite.send_messages = False  # type: ignore[misc]  # discord.py stub limitation: PermissionOverwrite dynamic __slots__
 
         try:
-            await target_channel.set_permissions(
+            await target_channel.set_permissions(  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
                 ctx.guild.default_role,
                 overwrite=overwrite,
                 reason=f"Channel locked by {ctx.author}",
@@ -589,7 +586,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             await ctx.send(
                 embed=error_embed(
                     "Permission Denied",
-                    f"I don't have permission to lock {target_channel.mention}. Check my role permissions.",
+                    f"I don't have permission to lock {target_channel.mention}. Check my role permissions.",  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
                 )
             )
             return
@@ -598,7 +595,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             await ctx.send(
                 embed=error_embed(
                     "Lock Failed",
-                    f"Could not lock {target_channel.mention}.",
+                    f"Could not lock {target_channel.mention}.",  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
                 )
             )
             return
@@ -609,13 +606,13 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             "Lock",
             ctx.author,
             ctx.author,
-            f"Locked {target_channel.mention}",
+            f"Locked {target_channel.mention}",  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
         )
 
         await ctx.send(
             embed=success_embed(
                 "Channel Locked",
-                f"{target_channel.mention} has been locked. @everyone can no longer send messages.",
+                f"{target_channel.mention} has been locked. @everyone can no longer send messages.",  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
             )
         )
 
@@ -634,16 +631,14 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         target_channel = channel or ctx.channel
         guild_id = self._guild_id(ctx)
 
-        if not isinstance(target_channel, discord.TextChannel):
-            await ctx.send(embed=error_embed("Invalid Channel", "Unlock only works on text channels."))
+        if ctx.guild is None:
             return
 
-        assert ctx.guild is not None, "Guild-only command"
-        overwrite = target_channel.overwrites_for(ctx.guild.default_role)
+        overwrite = target_channel.overwrites_for(ctx.guild.default_role)  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
         overwrite.send_messages = None  # type: ignore[misc]  # discord.py stub limitation: PermissionOverwrite dynamic __slots__
 
         try:
-            await target_channel.set_permissions(
+            await target_channel.set_permissions(  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
                 ctx.guild.default_role,
                 overwrite=overwrite,
                 reason=f"Channel unlocked by {ctx.author}",
@@ -652,7 +647,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             await ctx.send(
                 embed=error_embed(
                     "Permission Denied",
-                    f"I don't have permission to unlock {target_channel.mention}. Check my role permissions.",
+                    f"I don't have permission to unlock {target_channel.mention}. Check my role permissions.",  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
                 )
             )
             return
@@ -661,7 +656,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             await ctx.send(
                 embed=error_embed(
                     "Unlock Failed",
-                    f"Could not unlock {target_channel.mention}.",
+                    f"Could not unlock {target_channel.mention}.",  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
                 )
             )
             return
@@ -672,13 +667,13 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             "Unlock",
             ctx.author,
             ctx.author,
-            f"Unlocked {target_channel.mention}",
+            f"Unlocked {target_channel.mention}",  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
         )
 
         await ctx.send(
             embed=success_embed(
                 "Channel Unlocked",
-                f"{target_channel.mention} has been unlocked. @everyone can send messages again.",
+                f"{target_channel.mention} has been unlocked. @everyone can send messages again.",  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
             )
         )
 

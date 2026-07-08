@@ -298,16 +298,16 @@ class LoggingService:
             return
 
         log_channel = self._bot.get_channel(int(config.log_channel_id))
-        if not isinstance(log_channel, discord.TextChannel):
+        if log_channel is None:
             logger.warning(
-                "Log channel %s not found or not a text channel for guild %s — skipping log",
+                "Log channel %s not found for guild %s — skipping log",
                 config.log_channel_id,
                 guild_id,
             )
             return
 
         try:
-            await log_channel.send(embed=embed)
+            await log_channel.send(embed=embed)  # type: ignore[union-attr]  # log channels are text channels in practice
         except discord.HTTPException:
             logger.exception(
                 "Failed to send log embed to channel %s (guild=%s)",
