@@ -38,12 +38,12 @@ class NebulosaContext(commands.Context):
     @property
     def db(self) -> Database:
         """The bot's :class:`Database` instance."""
-        return self.bot.db  # type: ignore[return-value]
+        return self.bot.db
 
     @property
     def cache(self) -> TTLCache:
         """The bot's :class:`TTLCache` instance."""
-        return self.bot.cache  # type: ignore[return-value]
+        return self.bot.cache
 
     @property
     def guild_config(self) -> GuildConfig | None:
