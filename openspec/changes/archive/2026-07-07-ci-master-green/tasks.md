@@ -48,5 +48,5 @@ Chain strategy: size-exception
 
 ## Phase 4: Post-Merge Rebase (FOLLOW-UP — not this PR)
 
-- [ ] 4.1 **Rebase #18** — onto green master. Resolve format conflicts in 5 shared files: accept master format, preserve #18 logic, `ruff format` touched files, fixup commit if needed. *(Spec: PR #18 rebases without conflicts)*
-- [ ] 4.2 **Rebase #19/#20** — onto green master. Verify clean. *(Spec: PRs #19/#20 rebase without conflicts)*
+- [x] 4.1 **Rebase #18** — onto green master. Clean auto-rebase. Fixup commit for ruff format drift in 4 files. mypy clean, pytest 766 passed, CI ALL GREEN. *(Spec: PR #18 rebases without conflicts)*
+- [x] 4.2 **Rebase #19/#20** — onto green master. #19: clean rebase, fixup for 5 files, mypy strict errors are tooling-rigor's own scope (Phase 3+ pending). #20: 2 content conflicts resolved (core.py, test_ocio_cog.py — accepted i18n t() calls), fixup for 6 files, CI ALL GREEN. *(Spec: PRs #19/#20 rebase without conflicts)*
