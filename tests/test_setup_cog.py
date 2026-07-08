@@ -12,6 +12,7 @@ TDD cycle: RED → GREEN — tests specify expected behavior before implementati
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -99,9 +100,10 @@ class TestSetupPermissionGate:
 
     def test_setup_command_has_admin_check(self, setup_cog: SetupCog) -> None:
         """/setup MUST be gated by @is_admin() check."""
-        cmd = setup_cog.setup_command
+        cmd = setup_cog.setup_command  # type: ignore[var-annotated]
+        assert cmd is not None, "/setup command must exist"
         # hybrid_command with @is_admin() registers checks on the command
-        has_check = bool(cmd.checks) or (hasattr(cmd, "app_command") and bool(cmd.app_command.checks))
+        has_check = bool(cmd.checks) or (hasattr(cmd, "app_command") and bool(cmd.app_command.checks))  # type: ignore[union-attr]
         assert has_check, "/setup MUST be gated by @is_admin()"
 
     def test_setup_command_prefix_path_has_permission_check(self, setup_cog: SetupCog) -> None:
@@ -111,7 +113,7 @@ class TestSetupPermissionGate:
         slash path. A @commands.has_permissions() decorator on the command itself
         gates the prefix path too.
         """
-        cmd = setup_cog.setup_command
+        cmd: Any = setup_cog.setup_command
         # The command MUST have at least one check registered at the command level
         # (not only on app_command). commands.has_permissions registers on cmd.checks.
         assert cmd.checks, (
@@ -334,7 +336,7 @@ class TestSetupSpecScenarios:
         """
         import typing
 
-        cmd = setup_cog.setup_command
+        cmd: Any = setup_cog.setup_command
         # Resolve the language param's type annotation from the callback.
         annotations = typing.get_type_hints(cmd.callback, include_extras=True)
         lang_type = annotations.get("language")

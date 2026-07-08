@@ -134,7 +134,7 @@ class GreetingService:
         message_template = config.welcome_message or ""
         content = _format_template(message_template, member) if message_template else ""
 
-        await channel.send(content=content if content else None, file=file)
+        await channel.send(content=content if content else None, file=file)  # type: ignore[union-attr]  # greeting channels are text channels in practice
 
         logger.info(
             "dispatch_welcome: sent for guild %s, channel %s, member %s",
@@ -184,7 +184,7 @@ class GreetingService:
         message_template = config.goodbye_message or ""
         content = _format_template(message_template, member) if message_template else ""
 
-        await channel.send(content=content if content else None, file=file)
+        await channel.send(content=content if content else None, file=file)  # type: ignore[union-attr]  # greeting channels are text channels in practice
 
         logger.info(
             "dispatch_goodbye: sent for guild %s, channel %s, member %s",

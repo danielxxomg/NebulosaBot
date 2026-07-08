@@ -239,7 +239,7 @@ class TestSyncI18n:
         """Sync success embed title MUST use t()."""
         ctx = _make_ctx()
         ctx.defer = AsyncMock()
-        cog.bot.tree = AsyncMock()
+        cog.bot.tree = AsyncMock()  # type: ignore[misc]  # tree is read-only property on BotBase
         cog.bot.tree.sync = AsyncMock(return_value=[MagicMock()])
 
         # Mock is_admin check to pass

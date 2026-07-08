@@ -117,7 +117,7 @@ class TestDadosCommand:
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
-        assert "d20" in embed.description
+        assert "d20" in embed.description  # type: ignore[operator]
 
     @pytest.mark.asyncio
     async def test_dados_max_sides_100(
@@ -204,8 +204,8 @@ class TestBananaCommand:
         # Should send embed
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
-        assert "cm" in embed.description
-        assert "banana" in embed.title.lower() or "🍌" in embed.title
+        assert "cm" in embed.description  # type: ignore[operator]
+        assert "banana" in embed.title.lower() or "🍌" in embed.title  # type: ignore[union-attr, operator]
 
     @pytest.mark.asyncio
     @patch("bot.cogs.ocio.Path.exists", return_value=True)
@@ -248,7 +248,7 @@ class TestBananaCommand:
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
-        assert embed.color.value == 0xE74C3C  # COLOR_ERROR
+        assert embed.color.value == 0xE74C3C  # type: ignore[union-attr]  # COLOR_ERROR
 
     @pytest.mark.asyncio
     @patch("bot.cogs.ocio.Path.exists", return_value=True)
