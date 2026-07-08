@@ -26,10 +26,10 @@ type-full:
 	uv run mypy bot/ tests/
 
 test:
-	uv run pytest --cov-fail-under=70
+	uv run pytest --cov-fail-under=75
 
 cov:
-	uv run pytest --cov-fail-under=70 --cov-report=term --cov-report=html
+	uv run pytest --cov-fail-under=75 --cov-report=term --cov-report=html
 
 ci: lint type security test cov
 
