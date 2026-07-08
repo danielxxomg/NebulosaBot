@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import discord
@@ -17,6 +18,7 @@ from bot.cogs.tickets import TicketActionsView, TicketPanelView
 from bot.core.cache import TTLCache
 from bot.core.context import NebulosaContext
 from bot.core.database import Database, create_realtime_client
+from bot.core.i18n import load_locales
 from bot.core.realtime import RealtimeCacheSubscriber
 from bot.services.economy_service import EconomyService
 from bot.services.greeting_service import GreetingService
@@ -208,6 +210,10 @@ class NebulosaBot(commands.Bot):
         self.add_view(TicketPanelView())
         self.add_view(TicketActionsView())
         logger.info("Persistent ticket views registered")
+
+        # --- 3h. Load i18n locales ---
+        load_locales(Path("bot/locales"))
+        logger.info("i18n locales loaded")
 
         # --- 4. Load cogs ---
         await self.load_extension("bot.cogs.core")

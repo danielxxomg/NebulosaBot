@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from bot.core.i18n import set_guild_language
 from bot.models.guild import GuildConfig
 
 if TYPE_CHECKING:
@@ -70,6 +71,7 @@ class GuildService:
         cached = self._cache.get(cache_key)
         if cached is not None:
             logger.debug("GuildService cache HIT for guild %s", guild_id)
+            set_guild_language(guild_id, cached.language)
             return cached
 
         # --- cache miss → DB ---
@@ -87,6 +89,7 @@ class GuildService:
         # Populate cache and mod-role lookup.
         self._cache.set(cache_key, config, ttl=CACHE_TTL)
         self._sync_mod_role_cache(guild_id, config)
+        set_guild_language(guild_id, config.language)
 
         return config
 
@@ -139,6 +142,7 @@ class GuildService:
         cache_key = CACHE_KEY_TEMPLATE.format(guild_id=guild_id)
         self._cache.set(cache_key, config, ttl=CACHE_TTL)
         self._sync_mod_role_cache(guild_id, config)
+        set_guild_language(guild_id, config.language)
 
         logger.info(
             "New guild joined: %s — defaults inserted (prefix=%s, lang=%s)",
@@ -155,8 +159,13 @@ class GuildService:
         was already a member of — ``on_guild_join`` only fires for joins that
         happen during the running session. Delegates to
         :meth:`Database.ensure_guild_exists` (INSERT ... ON CONFLICT DO NOTHING).
+
+        After ensuring the row exists, loads the config through the
+        cache-first path so the i18n language map is published.
         """
         await self._db.ensure_guild_exists(guild_id)
+        # Load through cache-first path to publish guild language to i18n.
+        await self.get_config(guild_id)
 
     # ----------------------------------------------------------------
     # Internal
