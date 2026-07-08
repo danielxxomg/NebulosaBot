@@ -23,8 +23,10 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
+from bot.core.i18n import t
 from bot.models.ticket_category import TicketCategory
 from bot.services.ticket_invariants import parse_ticket_ref
+from bot.services.ticket_service import TicketCategoryNotConfiguredError
 from bot.utils.checks import is_mod, is_mod_check
 from bot.utils.embeds import (
     COLOR_INFO,
@@ -375,10 +377,12 @@ class _CategorySelect(discord.ui.Select):
             return
 
         if not config.ticket_category_id:
+            guild_id = str(guild.id)
             await interaction.followup.send(
                 embed=error_embed(
-                    "Not Configured",
-                    "The ticket category channel has not been configured. Ask an admin to set it up.",
+                    t(guild_id, "tickets.config_missing.title"),
+                    t(guild_id, "tickets.config_missing.description"),
+                    guild_id=guild_id,
                 ),
                 ephemeral=True,
             )
@@ -1170,10 +1174,12 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
 
         if not config.ticket_category_id:
+            guild_id = str(guild.id)
             await ctx.send(
                 embed=error_embed(
-                    "Not Configured",
-                    "The ticket category channel has not been configured.",
+                    t(guild_id, "tickets.config_missing.title"),
+                    t(guild_id, "tickets.config_missing.description"),
+                    guild_id=guild_id,
                 )
             )
             return
@@ -1372,6 +1378,16 @@ class TicketsCog(commands.Cog, name="Tickets"):
         ticket_id = ticket_row["id"]
         try:
             await self.bot.ticket_service.reopen_ticket(ticket_id, guild=ctx.guild)
+        except TicketCategoryNotConfiguredError:
+            guild_id = str(ctx.guild.id)
+            await ctx.send(
+                embed=error_embed(
+                    t(guild_id, "tickets.config_missing.title"),
+                    t(guild_id, "tickets.config_missing.description"),
+                    guild_id=guild_id,
+                )
+            )
+            return
         except ValueError as e:
             # Expected business-rule violation (non-closed, no category
             # configured, ticket not found) — surface the service message

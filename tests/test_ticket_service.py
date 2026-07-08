@@ -1449,3 +1449,65 @@ async def test_audit_guild_scope_query(mock_db: AsyncMock) -> None:
     rows = await mock_db.get_audit_rows("A", limit=10, offset=0)
     mock_db.get_audit_rows.assert_awaited_once_with("A", limit=10, offset=0)
     assert all(r["guildId"] == "A" for r in rows)
+
+
+# ===========================================================================
+# TicketCategoryNotConfiguredError — typed exception for reopen
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_reopen_no_category_raises_typed_exception(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """reopen_ticket MUST raise TicketCategoryNotConfiguredError (not raw
+    ValueError) when no ticket category is configured for the guild.
+    """
+    from bot.services.ticket_service import TicketCategoryNotConfiguredError
+
+    ticket_id = "ticket-uuid-003"
+    closed_row = _closed_ticket_row()
+    mock_db.get_ticket.return_value = closed_row
+    mock_db.get_guild.return_value = {
+        "id": "123456789",
+        "ticketCategoryId": None,
+        "modRoleId": None,
+    }
+
+    guild = _mock_guild_for_reopen(category_channel=None)
+
+    with pytest.raises(TicketCategoryNotConfiguredError):
+        await service.reopen_ticket(ticket_id, guild=guild)
+
+    guild.create_text_channel.assert_not_awaited()
+    mock_db.update_ticket.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reopen_deleted_category_raises_typed_exception(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """reopen_ticket MUST raise TicketCategoryNotConfiguredError when the
+    configured Discord category channel no longer exists.
+    """
+    from bot.services.ticket_service import TicketCategoryNotConfiguredError
+
+    ticket_id = "ticket-uuid-003"
+    closed_row = _closed_ticket_row()
+    mock_db.get_ticket.return_value = closed_row
+    mock_db.get_guild.return_value = {
+        "id": "123456789",
+        "ticketCategoryId": "100000000",
+        "modRoleId": None,
+    }
+
+    guild = _mock_guild_for_reopen(category_channel=None)
+    guild.get_channel = MagicMock(return_value=None)
+
+    with pytest.raises(TicketCategoryNotConfiguredError):
+        await service.reopen_ticket(ticket_id, guild=guild)
+
+    guild.create_text_channel.assert_not_awaited()
+    mock_db.update_ticket.assert_not_awaited()

@@ -237,6 +237,9 @@ class NebulosaBot(commands.Bot):
         await self.load_extension("bot.cogs.ocio")
         logger.info("Cog loaded: OcioCog")
 
+        await self.load_extension("bot.cogs.setup")
+        logger.info("Cog loaded: SetupCog")
+
         await self.load_extension("bot.listeners.xp_listener")
         logger.info("Listener loaded: XPListener")
 
