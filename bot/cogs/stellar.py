@@ -5,6 +5,9 @@ Provides hybrid commands for the guild economy system:
   - /coins [member] — check coin balance (self or target)
   - /leaderboard <xp|coins> — top-10 leaderboard embed
   - /rank [member] — generate and send a rank card image
+
+NOTE: Slash command descriptions are Discord UI metadata, not runtime responses.
+They remain in English; t() localizes runtime responses only.
 """
 
 from __future__ import annotations

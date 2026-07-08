@@ -267,3 +267,132 @@ No CRITICAL assertion-quality issues found in the remediation tests. The new `te
 ### Final Verdict
 
 PASS WITH WARNINGS — the three previous CRITICAL findings are resolved, all local gates pass, and PR #25 has no failing/pending checks. Remaining items are non-blocking quality/runtime-warning concerns.
+
+---
+
+## Verification Report — PR3 Sentinel + Stellar + Greetings
+
+**Change**: `i18n-and-ephemeral-standard` — PR3 Sentinel + Stellar + Greetings  
+**Branch**: `feat/i18n-pr3-sentinel`  
+**Commit verified**: `d53f8cb`  
+**PR**: #26  
+**Mode**: Strict TDD  
+**Verdict**: FAIL  
+**Ready to merge**: No — PR #26 CI is green, but local required broad mypy gate fails and source audit found remaining hardcoded user-facing English strings in the migrated cogs.
+
+### Completeness
+
+| Metric | Value |
+|--------|-------|
+| Phase 3 tasks total | 7 |
+| Phase 3 tasks checked complete | 7 |
+| Phase 3 tasks incomplete | 0 |
+| Apply-progress artifact | Found: Engram #737 `sdd/i18n-and-ephemeral-standard/apply-progress` |
+| PR3 TDD evidence table | Found, but reported test counts do not match the codebase: apply-progress says 18 sentinel + 11 stellar tests; actual collected tests are 15 sentinel + 10 stellar = 25 total |
+
+### Build & Tests Execution
+
+| Gate | Command | Result | Evidence |
+|------|---------|--------|----------|
+| Ruff | `uv run ruff check .` | ✅ PASS | `All checks passed!` |
+| Ruff format | `uv run ruff format --check .` | ✅ PASS | `99 files already formatted` |
+| Mypy broad | `uv run mypy --strict bot/ tests/` | ❌ FAIL | 4 errors in `tests/test_i18n.py`, `tests/test_tickets_i18n.py`, `tests/test_utility_i18n.py`, `tests/test_ocio_i18n.py`: generator fixtures annotated as `None` instead of `Generator` |
+| Pytest | `uv run pytest` | ✅ PASS | `908 passed, 3 skipped, 3 warnings`; total coverage `82.14%` |
+| TypeScript | `npm exec tsc -- --noEmit` in `dashboard/` | ✅ PASS | exit 0, no output |
+| Vitest | `npm exec vitest -- run` in `dashboard/` | ✅ PASS | `16 passed`; `235 passed`; existing React `act(...)` and Node localStorage warnings |
+| PR #26 CI | `gh pr checks 26` | ✅ PASS | Vercel, dashboard-tests, and qa-matrix for Python 3.11/3.12/3.13/3.14 passed; weekly pip-audit jobs skipped |
+
+Runtime warnings observed but non-blocking by themselves:
+- `pytest`: 3 existing `AsyncMockMixin._execute_mock_call was never awaited` RuntimeWarnings in ticket-service tests.
+- `vitest`: existing React `act(...)` warnings from `AuditPanel` inside `tickets-page` tests, plus Node localStorage experimental warning.
+
+### TDD Compliance
+
+| Check | Result | Details |
+|-------|--------|---------|
+| TDD evidence reported | ✅ | Apply-progress contains `### TDD Cycle Evidence` for PR3. |
+| RED reported | ⚠️ | Apply-progress reports 29 failing tests before implementation; historical RED cannot be re-run from current code. |
+| Test files exist | ✅ | `tests/test_sentinel_i18n.py` and `tests/test_stellar_i18n.py` exist. |
+| GREEN confirmed | ✅ | `uv run pytest tests/test_sentinel_i18n.py tests/test_stellar_i18n.py -q --no-cov` passes: `25 passed`; full pytest also passes. |
+| TDD count integrity | ❌ | Apply-progress reports 18 sentinel + 11 stellar tests, but AST/test collection confirms 15 sentinel + 10 stellar tests. |
+| Triangulation | ⚠️ | ES/EN coverage exists for key command paths, but not all user-facing metadata/button/default strings found by audit. |
+| Safety net | ✅ | Full Python and dashboard suites were re-run. |
+
+### Test Layer Distribution
+
+| Layer | Tests | Files | Notes |
+|-------|-------|-------|-------|
+| Unit | 25 PR3 i18n tests | `tests/test_sentinel_i18n.py`, `tests/test_stellar_i18n.py` | Distinctive locale-marker assertions against cogs/helper output. |
+| Unit/regression | Existing sentinel/stellar/greetings tests | `tests/test_sentinel_cog.py`, `tests/test_stellar_cog.py`, `tests/test_greetings_cog.py` | Full suite passes with real locale fixture. |
+| Dashboard regression | 235 tests | `dashboard/__tests__/*` | Unchanged by PR3; all pass. |
+
+### Changed File Coverage
+
+| File | Line % | Rating | Notes |
+|------|--------|--------|-------|
+| `bot/cogs/sentinel.py` | 73% | ⚠️ Low | Below strict-tdd changed-file 80% warning threshold. |
+| `bot/cogs/stellar.py` | 96% | ✅ Excellent | Strong coverage. |
+| `bot/cogs/greetings.py` | 90% | ✅ Excellent | Strong coverage. |
+| `bot/locales/es.json` | N/A | ➖ | Data file; key completeness checked below. |
+| `bot/locales/en.json` | N/A | ➖ | Data file; key completeness checked below. |
+
+### Spec Compliance Matrix
+
+| Requirement | Scenario | Covering test / evidence | Result |
+|-------------|----------|--------------------------|--------|
+| Phase 3 task 3.1 — add locale keys | Sentinel/stellar/greetings keys exist in both locales | JSON parse + key audit | ✅ COMPLIANT |
+| Phase 3 task 3.2 — migrate sentinel response embeds | Sentinel response embeds use `t()` | `tests/test_sentinel_i18n.py` + pytest pass | ⚠️ PARTIAL |
+| Phase 3 task 3.3 — migrate stellar response embeds | Stellar response embeds use `t()` | `tests/test_stellar_i18n.py` + pytest pass | ⚠️ PARTIAL |
+| Phase 3 task 3.4 — migrate greetings permission/card errors | Greetings error embeds use `t()` | Source audit + full pytest pass | ✅ COMPLIANT |
+| Phase 3 task 3.5 — remaining services analysis | Services documented as N/A | Apply-progress service analysis | ✅ COMPLIANT |
+| Sentinel spec — modlogs ephemeral/default permissions | `/modlogs` ephemeral and default permission hints | Phase 4 tasks 4.7, 4.9, 4.10 remain unchecked/out of PR3 slice | ➖ SKIPPED for PR3 merge readiness; not archive-ready |
+
+### Correctness / Static Evidence
+
+| Focus | Status | Evidence |
+|-------|--------|----------|
+| Locale completeness | ✅ | Extracted 85 `t()` calls from the 3 migrated cogs; 80 unique static keys exist in both `es.json` and `en.json`. Dynamic keys `sentinel.modlogs.no_modlogs_description(_filtered)` and `stellar.leaderboard.{xp,coins}_title` also exist in both locales. |
+| Behavior preservation | ✅ | Diff is primarily `t()` import/calls, `guild_id` plumbing, and locale-key selection. Full regression tests pass. |
+| PR #26 CI | ✅ | GitHub checks for PR #26 are all passing except skipped weekly pip-audit jobs. |
+| Required local broad mypy gate | ❌ | `uv run mypy --strict bot/ tests/` fails locally with 4 fixture annotation errors. |
+| Source grep audit | ❌ | Hardcoded user-facing English candidates remain in slash command descriptions, app-command parameter descriptions, and paginator button labels. |
+
+### Grep / Hardcoded String Audit
+
+Blocking user-facing English candidates found in migrated cogs:
+- `bot/cogs/sentinel.py:59`, `:72` — paginator button labels `"◀ Previous"`, `"Next ▶"` remain hardcoded.
+- `bot/cogs/sentinel.py:199-200`, `:322-323`, `:374-378`, `:442-443`, `:478-479`, `:525-529`, `:592-594`, `:653-655`, `:716-720` — slash command and parameter descriptions remain hardcoded English.
+- `bot/cogs/stellar.py:51`, `:89-90`, `:129-131`, `:192-194` — slash command and parameter descriptions remain hardcoded English.
+- `bot/cogs/greetings.py:85`, `:136` — slash command descriptions remain hardcoded English.
+
+Non-blocking observations:
+- Internal logging strings, docstrings, filenames, command names, enum/status literals, and Discord audit-log reasons were not treated as blocking user-facing response copy for this PR3 audit.
+- If slash command metadata localization is intentionally out of runtime `t()` scope, document that exception explicitly; otherwise these are user-visible strings.
+
+### Assertion Quality
+
+**Assertion quality**: ✅ No CRITICAL assertion-quality issues found in `tests/test_sentinel_i18n.py` or `tests/test_stellar_i18n.py`.
+
+The PR3 i18n tests use production cog callbacks/helpers and distinctive locale marker values. Non-null assertions are paired with concrete value assertions in the same test. No tautologies, ghost loops, or assertion-without-production-call patterns were detected.
+
+### Issues Found
+
+**CRITICAL**
+1. Required local gate `uv run mypy --strict bot/ tests/` fails with 4 errors in modified i18n fixture files.
+2. Grep/source audit found remaining hardcoded user-facing English strings in the migrated cogs: paginator button labels and slash/app-command descriptions in `sentinel.py`, `stellar.py`, and `greetings.py`.
+3. Strict TDD evidence count is inconsistent: apply-progress claims 29 PR3 tests, but actual test collection finds 25 PR3 i18n tests.
+
+**WARNING**
+1. `bot/cogs/sentinel.py` changed-file coverage is 73%, below the strict-tdd 80% changed-file warning threshold.
+2. Existing pytest AsyncMock RuntimeWarnings remain in ticket-service tests.
+3. Existing Vitest React `act(...)` warnings remain in dashboard tests; Vitest also reports a Node localStorage experimental warning.
+4. Sentinel spec requirements for `modlogs` ephemeral responses and default permission hints remain Phase 4 work; PR3 can be slice-verified, but the overall SDD change is not archive-ready.
+
+**SUGGESTION**
+1. Add explicit tests or a documented exception for slash command metadata localization.
+2. If command metadata localization is in scope, use Discord app-command localization APIs rather than runtime `t()`.
+3. Update apply-progress with corrected PR3 test counts after remediation.
+
+### Final Verdict
+
+FAIL — PR #26 CI is green and runtime pytest/ruff/dashboard gates pass, but the local required broad mypy gate fails, the hardcoded-string audit found user-visible English strings in migrated cogs, and Strict TDD evidence has a test-count mismatch. Not ready to merge until those blockers are resolved or explicitly scoped out by the orchestrator/user.

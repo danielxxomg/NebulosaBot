@@ -13,6 +13,7 @@ Strict TDD: RED phase — tests written BEFORE the i18n migration.
 from __future__ import annotations
 
 import json
+from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -32,7 +33,7 @@ _GUILD_ID = 123456789
 
 
 @pytest.fixture(autouse=True)
-def _load_i18n(tmp_path: Path) -> None:
+def _load_i18n(tmp_path: Path) -> Generator[None, None, None]:
     """Load custom locale overrides."""
     from bot.core import i18n as i18n_mod
 

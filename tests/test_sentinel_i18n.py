@@ -89,6 +89,8 @@ _ES_MARKERS = {
     "sentinel.modlogs.field_value": "MODLOGS_FIELD_ES_{moderator}_{reason}_{date}",
     "sentinel.modlogs.revoked": "MODLOGS_REVOKED_ES",
     "sentinel.modlogs.footer": "MODLOGS_FOOTER_ES_{id}",
+    "sentinel.modlogs.prev_button": "MODLOGS_PREV_ES",
+    "sentinel.modlogs.next_button": "MODLOGS_NEXT_ES",
 }
 
 _EN_MARKERS = {
@@ -147,6 +149,8 @@ _EN_MARKERS = {
     "sentinel.modlogs.field_value": "MODLOGS_FIELD_EN_{moderator}_{reason}_{date}",
     "sentinel.modlogs.revoked": "MODLOGS_REVOKED_EN",
     "sentinel.modlogs.footer": "MODLOGS_FOOTER_EN_{id}",
+    "sentinel.modlogs.prev_button": "MODLOGS_PREV_EN",
+    "sentinel.modlogs.next_button": "MODLOGS_NEXT_EN",
 }
 
 
@@ -732,3 +736,42 @@ class TestHandleModErrorI18n:
 
         embed = ctx.send.call_args.kwargs.get("embed")
         assert "ERR_PERM_TITLE_ES" in embed.title
+
+
+# ---------------------------------------------------------------------------
+# Paginator button labels — i18n
+# ---------------------------------------------------------------------------
+
+
+class TestPaginatorButtonI18n:
+    """_ModlogsPaginator button labels are localized via t()."""
+
+    def test_paginator_es_buttons(self) -> None:
+        """ES guild gets Spanish paginator button labels."""
+        import discord
+
+        from bot.cogs.sentinel import _ModlogsPaginator
+
+        page = discord.Embed(title="test")
+        view = _ModlogsPaginator([page, page], guild_id=str(_GUILD_ID_ES))
+
+        buttons = [c for c in view.children if isinstance(c, discord.ui.Button)]
+        labels = {b.custom_id: b.label for b in buttons}
+
+        assert labels["modlogs_prev"] == "MODLOGS_PREV_ES"
+        assert labels["modlogs_next"] == "MODLOGS_NEXT_ES"
+
+    def test_paginator_en_buttons(self) -> None:
+        """EN guild gets English paginator button labels."""
+        import discord
+
+        from bot.cogs.sentinel import _ModlogsPaginator
+
+        page = discord.Embed(title="test")
+        view = _ModlogsPaginator([page, page], guild_id=str(_GUILD_ID_EN))
+
+        buttons = [c for c in view.children if isinstance(c, discord.ui.Button)]
+        labels = {b.custom_id: b.label for b in buttons}
+
+        assert labels["modlogs_prev"] == "MODLOGS_PREV_EN"
+        assert labels["modlogs_next"] == "MODLOGS_NEXT_EN"

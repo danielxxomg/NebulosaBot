@@ -362,6 +362,8 @@
       "title": "📋 Modlogs de {name}",
       "field_value": "**Moderador:** <@{moderator}>\n**Razón:** {reason}\n**Fecha:** {date}",
       "revoked": "\n*(Revocado)*",
+      "prev_button": "◀ Anterior",
+      "next_button": "Siguiente ▶",
       "footer": "NebulosaBot • Sentinel • {id}"
     }
   },
