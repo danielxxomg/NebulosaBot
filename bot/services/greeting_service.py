@@ -108,9 +108,9 @@ class GreetingService:
             return
 
         channel = member.guild.get_channel(int(config.welcome_channel_id))
-        if channel is None:
+        if not isinstance(channel, discord.TextChannel):
             logger.warning(
-                "dispatch_welcome: channel %s not found for guild %s",
+                "dispatch_welcome: channel %s not found or not a text channel for guild %s",
                 config.welcome_channel_id,
                 guild_id,
             )
@@ -158,9 +158,9 @@ class GreetingService:
             return
 
         channel = member.guild.get_channel(int(config.goodbye_channel_id))
-        if channel is None:
+        if not isinstance(channel, discord.TextChannel):
             logger.warning(
-                "dispatch_goodbye: channel %s not found for guild %s",
+                "dispatch_goodbye: channel %s not found or not a text channel for guild %s",
                 config.goodbye_channel_id,
                 guild_id,
             )

@@ -267,6 +267,7 @@ class LoggingService:
 
     async def _should_log(self, guild_id: str) -> bool:
         """Return ``True`` if logging is enabled and a log channel is configured."""
+        assert self._bot.guild_service is not None, "GuildService initialised in setup_hook"
         config = await self._bot.guild_service.get_config(guild_id)
         if not config.log_enabled:
             return False
@@ -291,14 +292,15 @@ class LoggingService:
 
     async def _send_log(self, guild_id: str, embed: discord.Embed) -> None:
         """Resolve the log channel and send *embed*."""
+        assert self._bot.guild_service is not None, "GuildService initialised in setup_hook"
         config = await self._bot.guild_service.get_config(guild_id)
         if not config.log_channel_id:
             return
 
         log_channel = self._bot.get_channel(int(config.log_channel_id))
-        if log_channel is None:
+        if not isinstance(log_channel, discord.TextChannel):
             logger.warning(
-                "Log channel %s not found for guild %s — skipping log",
+                "Log channel %s not found or not a text channel for guild %s — skipping log",
                 config.log_channel_id,
                 guild_id,
             )
