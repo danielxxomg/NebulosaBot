@@ -1912,3 +1912,77 @@ class TestReopenByTicketRef:
 
         mock_db.get_ticket_by_channel.assert_awaited_once()
         mock_db.get_ticket_by_number.assert_not_awaited()
+
+
+# ===========================================================================
+# Actionable error messages — config missing flows
+# ===========================================================================
+
+
+class TestConfigMissingErrorMessages:
+    """Error embeds when ticket_category_id is None MUST mention /setup,
+    /create_category, and the dashboard URL.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _load_locales(self):
+        """Load i18n locales so t() resolves real keys."""
+        from pathlib import Path
+
+        from bot.core.i18n import load_locales, set_guild_language
+
+        load_locales(Path("bot/locales"))
+        set_guild_language("123456789", "en")
+        yield
+
+    async def test_category_select_callback_config_missing_mentions_setup(
+        self,
+        ticket_bot: MagicMock,
+        ticket_interaction: MagicMock,
+        ticket_guild: MagicMock,
+        mock_db,
+    ) -> None:
+        """_CategorySelect.callback with ticket_category_id=None → actionable error."""
+        ticket_interaction.client = ticket_bot
+
+        config = MagicMock()
+        config.ticket_category_id = None
+        config.mod_role_id = None
+        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
+
+        select = _CategorySelect(options=[], guild=ticket_guild)
+        select._values = ["cat-uuid-001"]
+
+        await select.callback(ticket_interaction)
+
+        ticket_interaction.followup.send.assert_awaited_once()
+        call_kwargs = ticket_interaction.followup.send.call_args
+        embed = call_kwargs.kwargs.get("embed")
+        assert embed is not None
+        desc = embed.description or ""
+        assert "/setup" in desc
+        assert "/create_category" in desc
+        assert "dashboard" in desc.lower() or "https://" in desc
+
+    async def test_subticket_create_config_missing_mentions_setup(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """/subticket create with ticket_category_id=None → actionable error."""
+        config = MagicMock()
+        config.ticket_category_id = None
+        config.mod_role_id = None
+        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
+
+        await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
+
+        slash_ctx.send.assert_awaited_once()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+        desc = embed.description or ""
+        assert "/setup" in desc
+        assert "/create_category" in desc
+        assert "dashboard" in desc.lower() or "https://" in desc

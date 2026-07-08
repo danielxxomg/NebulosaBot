@@ -76,11 +76,10 @@ export default async function GuildConfigPage({ params }: GuildConfigPageProps) 
     },
     {
       name: "ticketCategoryId",
-      label: "Ticket Category ID",
+      label: "Discord Category Channel ID (right-click \u2192 Copy Channel ID)",
       type: "text",
       defaultValue: guild.ticketCategoryId ?? "",
-      placeholder: "UUID",
-      hint: "Default ticket category UUID for new tickets.",
+      placeholder: "123456789012345678",
     },
     {
       name: "logEnabled",

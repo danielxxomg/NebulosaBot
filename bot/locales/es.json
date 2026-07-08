@@ -77,6 +77,20 @@
       "roles_overflow": "... y {count} más"
     }
   },
+  "setup": {
+    "success_title": "✅ Configuración Guardada",
+    "success_description": "La configuración del servidor se ha actualizado correctamente.",
+    "error_title": "Error en Configuración",
+    "error_guild_only": "Este comando solo puede usarse en un servidor.",
+    "error_config_load": "No se pudo cargar la configuración del servidor. Intenta de nuevo.",
+    "error_save": "No se pudo guardar la configuración del servidor. Intenta de nuevo."
+  },
+  "tickets": {
+    "config_missing": {
+      "title": "No Configurado",
+      "description": "La categoría de canales de tickets no ha sido configurada. Un administrador debe ejecutar `/setup` para establecer una categoría de tickets, o usar `/create_category` para crear una. También puedes configurarlo en el dashboard: https://nebulosabot-dashboard.vercel.app"
+    }
+  },
   "ocio": {
     "dados": {
       "title": "🎲 Tirada de Dados",

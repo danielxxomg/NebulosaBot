@@ -38,6 +38,14 @@ MAX_RETRIES = 3
 NOTE_CAP = 50  # v1 per-ticket staff note limit (see design.md non-goals)
 
 
+class TicketCategoryNotConfiguredError(ValueError):
+    """Raised when the guild's ticket Discord category is not configured or is deleted.
+
+    The cog catches this and surfaces an actionable i18n embed mentioning
+    /setup, /create_category, and the dashboard URL.
+    """
+
+
 class TicketService:
     """Manages ticket lifecycle with sequential numbering and cache sync.
 
@@ -461,7 +469,7 @@ class TicketService:
         if category_channel is None:
             err = f"No ticket category configured for guild {guild.id} — cannot reopen ticket {ticket_id}"
             await self._db.insert_audit_row(guild_id, ticket_id, "reopen", None, "denied", err)
-            raise ValueError(err)
+            raise TicketCategoryNotConfiguredError(err)
 
         # Build permission overwrites (everyone denied, bot + author + mod).
         overwrites: dict[
