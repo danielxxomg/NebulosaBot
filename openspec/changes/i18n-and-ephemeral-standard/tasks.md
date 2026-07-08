@@ -52,13 +52,13 @@ Chain strategy: stacked-to-main
 
 ## Phase 3: Sentinel + Remaining Services (PR 3)
 
-- [ ] 3.1 Add sentinel/stellar/greetings locale keys to `es.json` and `en.json`
-- [ ] 3.2 Migrate `bot/cogs/sentinel.py` — replace hardcoded strings with `t()`
-- [ ] 3.3 Migrate `bot/cogs/stellar.py` — replace hardcoded strings with `t()`
-- [ ] 3.4 Migrate `bot/cogs/greetings.py` — replace hardcoded strings with `t()`
-- [ ] 3.5 Migrate `bot/services/economy_service.py`, `greeting_service.py`, `infraction_service.py`, `logging_service.py`, `image_service.py` — replace user-facing strings with `t()`
-- [ ] 3.6 RED: Test sentinel commands return localized strings; stellar economy strings localized
-- [ ] 3.7 GREEN + REFACTOR: Verify tests pass with `uv run pytest`
+- [x] 3.1 Add sentinel/stellar/greetings locale keys to `es.json` and `en.json`
+- [x] 3.2 Migrate `bot/cogs/sentinel.py` — replace hardcoded strings with `t()`
+- [x] 3.3 Migrate `bot/cogs/stellar.py` — replace hardcoded strings with `t()`
+- [x] 3.4 Migrate `bot/cogs/greetings.py` — replace hardcoded strings with `t()`
+- [x] 3.5 Migrate `bot/services/economy_service.py`, `greeting_service.py`, `infraction_service.py`, `logging_service.py`, `image_service.py` — replace user-facing strings with `t()`
+- [x] 3.6 RED: Test sentinel commands return localized strings; stellar economy strings localized
+- [x] 3.7 GREEN + REFACTOR: Verify tests pass with `uv run pytest`
 
 ## Phase 4: Ephemeral + Permissions + Prefix (PR 4)
 
