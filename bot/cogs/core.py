@@ -136,7 +136,7 @@ class CoreCog(commands.Cog, name="Core"):
         cache_keys = 0
         if self.bot.cache is not None:
             try:
-                cache_keys = len(self.bot.cache._store)
+                cache_keys = self.bot.cache.size
             except Exception:
                 pass
 

@@ -201,3 +201,84 @@ class TestNoWebhookServer:
         """NebulosaBot MUST NOT define _start_webhook / _stop_webhook."""
         assert not hasattr(NebulosaBot, "_start_webhook")
         assert not hasattr(NebulosaBot, "_stop_webhook")
+
+
+# ---------------------------------------------------------------------------
+# on_ready — concurrent guild backfill via asyncio.gather
+# ---------------------------------------------------------------------------
+
+
+class TestOnReadyConcurrentBackfill:
+    """on_ready MUST backfill guild configs concurrently via asyncio.gather."""
+
+    @pytest.mark.asyncio
+    async def test_on_ready_calls_ensure_guild_for_all_guilds(self) -> None:
+        """on_ready MUST call ensure_guild_exists once per guild."""
+        bot = _make_bot()
+        bot.guild_service = MagicMock()
+        bot.guild_service.ensure_guild_exists = AsyncMock()
+
+        # Simulate 3 guilds by patching the guilds property.
+        guild_a = MagicMock()
+        guild_a.id = 111
+        guild_b = MagicMock()
+        guild_b.id = 222
+        guild_c = MagicMock()
+        guild_c.id = 333
+
+        with patch.object(type(bot), "guilds", new_callable=lambda: property(lambda _self: [guild_a, guild_b, guild_c])):
+            await bot.on_ready()
+
+        assert bot.guild_service.ensure_guild_exists.await_count == 3
+        # Verify each guild_id was passed.
+        called_ids = {
+            call.args[0] for call in bot.guild_service.ensure_guild_exists.call_args_list
+        }
+        assert called_ids == {"111", "222", "333"}
+
+    @pytest.mark.asyncio
+    async def test_on_ready_backfill_is_concurrent(self) -> None:
+        """on_ready backfill MUST use asyncio.gather (not sequential await).
+
+        Uses a barrier: each task signals it started, then waits for ALL tasks
+        to start before completing. With sequential await, the first task
+        completes before the second starts (barrier never resolves).
+        With gather, all tasks start concurrently and the barrier releases.
+        """
+        import asyncio
+
+        bot = _make_bot()
+
+        num_guilds = 3
+        started = asyncio.Event()
+        start_count = 0
+        completed_ids: list[str] = []
+
+        async def barrier_ensure(guild_id: str) -> None:
+            nonlocal start_count
+            completed_ids.append(guild_id)
+            start_count += 1
+            if start_count == num_guilds:
+                started.set()
+            # Block until all tasks have started (only works with concurrency).
+            await started.wait()
+
+        bot.guild_service = MagicMock()
+        bot.guild_service.ensure_guild_exists = barrier_ensure
+
+        guilds = []
+        for gid in [111, 222, 333]:
+            g = MagicMock()
+            g.id = gid
+            guilds.append(g)
+
+        with patch.object(type(bot), "guilds", new_callable=lambda: property(lambda _self: guilds)):
+            # With sequential await, this DEADLOCKS (barrier never resolves
+            # because the first task blocks waiting for task 2+3 which never start).
+            # With gather, all 3 start concurrently and the barrier releases.
+            # Use a timeout to fail gracefully if sequential (deadlock).
+            await asyncio.wait_for(bot.on_ready(), timeout=2.0)
+
+        # All guilds must be backfilled.
+        assert len(completed_ids) == 3
+        assert set(completed_ids) == {"111", "222", "333"}

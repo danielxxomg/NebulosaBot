@@ -18,13 +18,19 @@ logger = logging.getLogger(__name__)
 def is_admin() -> Any:
     """Require the Administrator permission.
 
+    Registers checks on BOTH the slash path (``app_commands.check``) and the
+    prefix path (``commands.check``) so hybrid commands are fully gated without
+    needing a separate ``@commands.has_permissions(administrator=True)``.
+
     Usage:
         @commands.hybrid_command(name="sync")
         @is_admin()
         async def sync(self, ctx): ...
     """
+    import discord as _discord
+    from discord.ext import commands as _commands
 
-    async def predicate(interaction: discord.Interaction) -> bool:
+    async def _app_predicate(interaction: _discord.Interaction) -> bool:
         if not interaction.guild:
             raise app_commands.NoPrivateMessage("This command can only be used in a server.")
 
@@ -33,7 +39,22 @@ def is_admin() -> Any:
 
         return True
 
-    return app_commands.check(predicate)
+    async def _prefix_predicate(ctx: _commands.Context) -> bool:  # type: ignore[type-arg]
+        if not ctx.guild:
+            raise _commands.NoPrivateMessage("This command can only be used in a server.")
+
+        if not isinstance(ctx.author, _discord.Member) or not ctx.author.guild_permissions.administrator:
+            raise _commands.MissingPermissions(["administrator"])
+
+        return True
+
+    def decorator(func: Any) -> Any:
+        return _commands.check(_prefix_predicate)(app_commands.check(_app_predicate)(func))
+
+    # Expose predicates for testing.
+    decorator.predicate = _app_predicate  # type: ignore[attr-defined]
+    decorator.prefix_predicate = _prefix_predicate  # type: ignore[attr-defined]
+    return decorator
 
 
 async def is_mod_check(interaction: discord.Interaction) -> bool:
