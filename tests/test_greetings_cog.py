@@ -225,8 +225,8 @@ class TestWelcomeTestCommand:
         call_kwargs = ctx.send.call_args[1]
         embed = call_kwargs["embed"]
         assert isinstance(embed, discord.Embed)
-        assert embed.color.value == 0xE74C3C  # COLOR_ERROR
-        assert "Permission" in embed.title or "permission" in embed.title.lower()
+        assert embed.color.value == 0xE74C3C  # type: ignore[union-attr]  # COLOR_ERROR
+        assert "Permission" in embed.title or "permission" in embed.title.lower()  # type: ignore[operator, union-attr]
 
     @pytest.mark.asyncio
     async def test_welcome_test_card_generation_error(
