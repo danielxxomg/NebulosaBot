@@ -89,8 +89,8 @@ class TestDailyCommand:
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
-        assert embed.color.value == 0x2ECC71  # COLOR_SUCCESS
-        assert "130" in embed.description  # coins_awarded
+        assert embed.color.value == 0x2ECC71  # type: ignore[union-attr]  # COLOR_SUCCESS
+        assert "130" in embed.description  # type: ignore[operator]
         assert call_args[1]["ephemeral"] is True
 
     @pytest.mark.asyncio
@@ -233,7 +233,7 @@ class TestLeaderboardCommand:
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
-        assert "#1" in embed.description or "1." in embed.description
+        assert "#1" in embed.description or "1." in embed.description  # type: ignore[operator]
 
     @pytest.mark.asyncio
     async def test_leaderboard_coins_displays_top_10(
@@ -268,7 +268,7 @@ class TestLeaderboardCommand:
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
-        assert embed.color.value == 0xE74C3C  # COLOR_ERROR or similar
+        assert embed.color.value == 0xE74C3C  # type: ignore[union-attr]  # COLOR_ERROR or similar
 
     @pytest.mark.asyncio
     async def test_leaderboard_error_handling(
@@ -417,7 +417,7 @@ class TestRankCommand:
         import discord
 
         assert isinstance(embed, discord.Embed)
-        assert embed.color.value == 0xE74C3C  # COLOR_ERROR
+        assert embed.color.value == 0xE74C3C  # type: ignore[union-attr]  # COLOR_ERROR
 
     @pytest.mark.asyncio
     async def test_rank_error_handling(
