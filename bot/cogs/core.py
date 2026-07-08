@@ -148,9 +148,7 @@ class CoreCog(commands.Cog, name="Core"):
 
         embed.add_field(
             name=t(guild_id, "core.status.db_field"),
-            value=t(guild_id, "core.status.db_connected")
-            if db_healthy
-            else t(guild_id, "core.status.db_unreachable"),
+            value=t(guild_id, "core.status.db_connected") if db_healthy else t(guild_id, "core.status.db_unreachable"),
             inline=True,
         )
         embed.add_field(

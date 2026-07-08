@@ -119,7 +119,10 @@ class TestBananaI18n:
     @patch("bot.cogs.ocio.Path.exists", return_value=True)
     @patch("discord.File")
     async def test_banana_title_from_locale(
-        self, mock_file: MagicMock, mock_exists: MagicMock, cog: OcioCog,
+        self,
+        mock_file: MagicMock,
+        mock_exists: MagicMock,
+        cog: OcioCog,
     ) -> None:
         """Banana embed title MUST use t()."""
         ctx = _make_ctx()
@@ -132,7 +135,10 @@ class TestBananaI18n:
     @patch("bot.cogs.ocio.Path.exists", return_value=True)
     @patch("discord.File")
     async def test_banana_description_from_locale(
-        self, mock_file: MagicMock, mock_exists: MagicMock, cog: OcioCog,
+        self,
+        mock_file: MagicMock,
+        mock_exists: MagicMock,
+        cog: OcioCog,
     ) -> None:
         """Banana embed description MUST use t() with interpolated size."""
         ctx = _make_ctx()
@@ -144,7 +150,9 @@ class TestBananaI18n:
     @pytest.mark.asyncio
     @patch("bot.cogs.ocio.Path.exists", return_value=False)
     async def test_banana_error_from_locale(
-        self, mock_exists: MagicMock, cog: OcioCog,
+        self,
+        mock_exists: MagicMock,
+        cog: OcioCog,
     ) -> None:
         """Banana missing asset error MUST use t()."""
         ctx = _make_ctx()
