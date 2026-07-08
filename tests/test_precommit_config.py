@@ -53,18 +53,14 @@ class TestPrecommitHookOrder:
         assert "ruff-format" in hook_ids, f"ruff-format hook not found. Hooks: {hook_ids}"
         ruff_idx = hook_ids.index("ruff")
         format_idx = hook_ids.index("ruff-format")
-        assert ruff_idx < format_idx, (
-            f"ruff (index {ruff_idx}) must come before ruff-format (index {format_idx})"
-        )
+        assert ruff_idx < format_idx, f"ruff (index {ruff_idx}) must come before ruff-format (index {format_idx})"
 
     def test_ruff_format_before_mypy(self, hook_ids: list[str]) -> None:
         """ruff-format MUST appear before mypy."""
         assert "mypy" in hook_ids, f"mypy hook not found. Hooks: {hook_ids}"
         format_idx = hook_ids.index("ruff-format")
         mypy_idx = hook_ids.index("mypy")
-        assert format_idx < mypy_idx, (
-            f"ruff-format (index {format_idx}) must come before mypy (index {mypy_idx})"
-        )
+        assert format_idx < mypy_idx, f"ruff-format (index {format_idx}) must come before mypy (index {mypy_idx})"
 
 
 # ---------------------------------------------------------------------------
@@ -105,9 +101,7 @@ class TestPrecommitFilesPattern:
         assert ruff_hook is not None
         files = ruff_hook.get("files", "")
         # Hardcoded allowlists contain specific .py filenames
-        assert ".py" not in files, (
-            f"ruff files appears to be a hardcoded allowlist: {files}"
-        )
+        assert ".py" not in files, f"ruff files appears to be a hardcoded allowlist: {files}"
 
     @staticmethod
     def _find_hook(hooks: list[dict], hook_id: str) -> dict | None:

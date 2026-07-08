@@ -46,9 +46,7 @@ class TestMypyStrict:
 
     def test_strict_is_true(self, mypy_config: dict) -> None:
         """strict MUST be True."""
-        assert mypy_config.get("strict") is True, (
-            f"Expected mypy strict=true, got {mypy_config.get('strict')}"
-        )
+        assert mypy_config.get("strict") is True, f"Expected mypy strict=true, got {mypy_config.get('strict')}"
 
 
 # ---------------------------------------------------------------------------
@@ -71,22 +69,15 @@ class TestMypyOverrides:
 
     def test_bot_bot_override_exists(self, mypy_overrides: list[dict]) -> None:
         """An override for bot.bot MUST exist."""
-        bot_bot_overrides = [
-            o for o in mypy_overrides if o.get("module") == "bot.bot"
-        ]
+        bot_bot_overrides = [o for o in mypy_overrides if o.get("module") == "bot.bot"]
         assert len(bot_bot_overrides) >= 1, (
-            f"No override found for 'bot.bot'. "
-            f"Existing overrides: {[o.get('module') for o in mypy_overrides]}"
+            f"No override found for 'bot.bot'. Existing overrides: {[o.get('module') for o in mypy_overrides]}"
         )
 
     def test_bot_bot_override_disables_attr_defined(self, mypy_overrides: list[dict]) -> None:
         """bot.bot override MUST disable attr-defined error code."""
-        bot_bot_overrides = [
-            o for o in mypy_overrides if o.get("module") == "bot.bot"
-        ]
+        bot_bot_overrides = [o for o in mypy_overrides if o.get("module") == "bot.bot"]
         assert len(bot_bot_overrides) >= 1, "No override for bot.bot"
         override = bot_bot_overrides[0]
         disabled = override.get("disable_error_code", [])
-        assert "attr-defined" in disabled, (
-            f"bot.bot override must disable 'attr-defined', got: {disabled}"
-        )
+        assert "attr-defined" in disabled, f"bot.bot override must disable 'attr-defined', got: {disabled}"

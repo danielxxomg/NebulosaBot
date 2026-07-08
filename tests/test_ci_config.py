@@ -47,9 +47,7 @@ class TestCIMatrix:
     def test_matrix_includes_313(self, matrix: dict) -> None:
         """Matrix MUST include Python 3.13."""
         versions = matrix.get("python-version", [])
-        assert "3.13" in versions, (
-            f"Python 3.13 not in matrix. Current: {versions}"
-        )
+        assert "3.13" in versions, f"Python 3.13 not in matrix. Current: {versions}"
 
     def test_matrix_includes_311(self, matrix: dict) -> None:
         """Matrix MUST include Python 3.11."""
@@ -69,9 +67,7 @@ class TestCIMatrix:
     def test_four_versions_in_matrix(self, matrix: dict) -> None:
         """Matrix MUST have exactly 4 Python versions."""
         versions = matrix.get("python-version", [])
-        assert len(versions) == 4, (
-            f"Expected 4 Python versions, got {len(versions)}: {versions}"
-        )
+        assert len(versions) == 4, f"Expected 4 Python versions, got {len(versions)}: {versions}"
 
 
 # ---------------------------------------------------------------------------
@@ -85,9 +81,7 @@ class TestCIFailFast:
     def test_fail_fast_disabled(self, qa_matrix_job: dict) -> None:
         """strategy.fail-fast MUST be false."""
         fail_fast = qa_matrix_job.get("strategy", {}).get("fail-fast")
-        assert fail_fast is False, (
-            f"Expected fail-fast=false, got {fail_fast}"
-        )
+        assert fail_fast is False, f"Expected fail-fast=false, got {fail_fast}"
 
 
 # ---------------------------------------------------------------------------
@@ -110,10 +104,6 @@ class TestCICoverageGate:
                     test_step = step
                     break
 
-        assert test_step is not None, (
-            "No pytest step found in qa-matrix job"
-        )
+        assert test_step is not None, "No pytest step found in qa-matrix job"
         run_cmd = test_step.get("run", "")
-        assert "--cov-fail-under=75" in run_cmd, (
-            f"--cov-fail-under=75 not in pytest command: {run_cmd}"
-        )
+        assert "--cov-fail-under=75" in run_cmd, f"--cov-fail-under=75 not in pytest command: {run_cmd}"

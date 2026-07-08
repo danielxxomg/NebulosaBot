@@ -43,15 +43,11 @@ class TestMakefileCov:
 
     def test_cov_target_has_fail_under_75(self, cov_target: str) -> None:
         """cov target MUST include --cov-fail-under=75."""
-        assert "--cov-fail-under=75" in cov_target, (
-            f"--cov-fail-under=75 not in cov target:\n{cov_target}"
-        )
+        assert "--cov-fail-under=75" in cov_target, f"--cov-fail-under=75 not in cov target:\n{cov_target}"
 
     def test_cov_target_has_cov_report(self, cov_target: str) -> None:
         """cov target MUST include --cov-report for output."""
-        assert "--cov-report" in cov_target, (
-            f"--cov-report not in cov target:\n{cov_target}"
-        )
+        assert "--cov-report" in cov_target, f"--cov-report not in cov target:\n{cov_target}"
 
 
 # ---------------------------------------------------------------------------
@@ -64,9 +60,7 @@ class TestMakefileTest:
 
     def test_test_target_has_fail_under_75(self, test_target: str) -> None:
         """test target MUST include --cov-fail-under=75."""
-        assert "--cov-fail-under=75" in test_target, (
-            f"--cov-fail-under=75 not in test target:\n{test_target}"
-        )
+        assert "--cov-fail-under=75" in test_target, f"--cov-fail-under=75 not in test target:\n{test_target}"
 
 
 # ---------------------------------------------------------------------------
