@@ -3,6 +3,9 @@
 Listens for member join/leave events and delegates to
 :class:`~bot.services.greeting_service.GreetingService` for card generation
 and delivery.  Provides admin-only test commands to preview cards.
+
+NOTE: Slash command descriptions are Discord UI metadata, not runtime responses.
+They remain in English; t() localizes runtime responses only.
 """
 
 from __future__ import annotations

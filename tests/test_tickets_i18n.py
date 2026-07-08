@@ -9,6 +9,7 @@ Strict TDD: RED phase — tests written BEFORE the i18n migration.
 from __future__ import annotations
 
 import json
+from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -79,7 +80,7 @@ def _category_row(guild_id: str = _ES_GUILD_ID) -> dict:
 
 
 @pytest.fixture(autouse=True)
-def _load_ticket_i18n(tmp_path: Path) -> None:
+def _load_ticket_i18n(tmp_path: Path) -> Generator[None, None, None]:
     """Load distinctive locale overrides for ticket strings.
 
     Uses strings that are DIFFERENT from the current hardcoded English

@@ -4,6 +4,9 @@ Provides 9 hybrid moderation commands: warn, unwarn, mute, unmute, kick,
 ban, lock, unlock, and modlogs.  All commands are permission-gated via
 ``@is_mod()`` or ``@is_admin()`` and log actions to the configured
 mod-log channel when enabled.
+
+NOTE: Slash command descriptions are Discord UI metadata, not runtime responses.
+They remain in English; t() localizes runtime responses only.
 """
 
 from __future__ import annotations
@@ -48,15 +51,22 @@ class _ModlogsPaginator(discord.ui.View):
 
     __slots__ = ("_current", "_pages")
 
-    def __init__(self, pages: list[discord.Embed]) -> None:
+    def __init__(self, pages: list[discord.Embed], guild_id: str = "") -> None:
         super().__init__(timeout=120)
         self._pages = pages
         self._current = 0
+        # Localize button labels at runtime (decorators provide English defaults).
+        for child in self.children:
+            if isinstance(child, discord.ui.Button):
+                if child.custom_id == "modlogs_prev":
+                    child.label = t(guild_id, "sentinel.modlogs.prev_button")
+                elif child.custom_id == "modlogs_next":
+                    child.label = t(guild_id, "sentinel.modlogs.next_button")
         self._update_buttons()
 
     # -- button callbacks ----------------------------------------------
 
-    @discord.ui.button(label="◀ Previous", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="◀ Previous", style=discord.ButtonStyle.secondary, custom_id="modlogs_prev")
     async def prev_button(
         self,
         interaction: discord.Interaction,
@@ -69,7 +79,7 @@ class _ModlogsPaginator(discord.ui.View):
             view=self,
         )
 
-    @discord.ui.button(label="Next ▶", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Next ▶", style=discord.ButtonStyle.secondary, custom_id="modlogs_next")
     async def next_button(
         self,
         interaction: discord.Interaction,
@@ -769,7 +779,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         if len(pages) == 1:
             await ctx.send(embed=pages[0])
         else:
-            view = _ModlogsPaginator(pages)
+            view = _ModlogsPaginator(pages, guild_id=guild_id)
             await ctx.send(embed=pages[0], view=view)
 
 
