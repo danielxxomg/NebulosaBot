@@ -326,9 +326,7 @@ class NebulosaBot(commands.Bot):
 
         if ctx.guild is not None and self.guild_service is not None:
             try:
-                ctx._guild_config = await self.guild_service.get_config(
-                    str(ctx.guild.id)
-                )
+                ctx._guild_config = await self.guild_service.get_config(str(ctx.guild.id))
             except Exception:
                 logger.exception(
                     "Failed to pre-fetch guild config for context (guild=%s)",
