@@ -77,6 +77,14 @@
       "roles_overflow": "... and {count} more"
     }
   },
+  "setup": {
+    "success_title": "✅ Configuration Saved",
+    "success_description": "Guild settings have been updated successfully.",
+    "error_title": "Setup Failed",
+    "error_guild_only": "This command can only be used in a server.",
+    "error_config_load": "Could not load guild configuration. Please try again.",
+    "error_save": "Could not save guild configuration. Please try again."
+  },
   "ocio": {
     "dados": {
       "title": "🎲 Dice Roll",
