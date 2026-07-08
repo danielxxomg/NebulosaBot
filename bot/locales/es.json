@@ -85,6 +85,12 @@
     "error_config_load": "No se pudo cargar la configuración del servidor. Intenta de nuevo.",
     "error_save": "No se pudo guardar la configuración del servidor. Intenta de nuevo."
   },
+  "tickets": {
+    "config_missing": {
+      "title": "No Configurado",
+      "description": "La categoría de canales de tickets no ha sido configurada. Un administrador debe ejecutar `/setup` para establecer una categoría de tickets, o usar `/create_category` para crear una. También puedes configurarlo en el dashboard: https://nebulosabot-dashboard.vercel.app"
+    }
+  },
   "ocio": {
     "dados": {
       "title": "🎲 Tirada de Dados",
