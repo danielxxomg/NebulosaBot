@@ -15,10 +15,8 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Reset fixture — clears module-level i18n state between tests
@@ -174,10 +172,9 @@ class TestTFunction:
 
     def test_t_missing_key_fallback_to_es(self) -> None:
         """When en locale lacks a key, t() MUST fall back to es."""
-        from bot.core.i18n import t
-
         # Add a key only to es
         from bot.core import i18n
+        from bot.core.i18n import t
 
         i18n._locales["es"]["only_es"] = {"key": "Solo español"}
 

@@ -296,7 +296,7 @@ class TestUserinfoCommand:
         id_field = "ID" if "ID" in fields else "Identificador"
         assert id_field in fields
         assert str(ctx.author.id) in fields[id_field]
-        roles_field = "Roles" if "Roles" in fields else "Roles"
+        roles_field = "Roles"
         assert roles_field in fields
         joined_field = "Joined" if "Joined" in fields else "Se Unió"
         assert joined_field in fields

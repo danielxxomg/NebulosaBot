@@ -1078,7 +1078,7 @@ class TestCloseLogging:
             sub._status_since = 930.0  # 70s ago
 
             # First 3 unhealthy cycles: WARNING level
-            for i in range(3):
+            for _ in range(3):
                 with caplog.at_level(logging.WARNING, logger="bot.core.realtime"):
                     await sub._health_check_once()
 
