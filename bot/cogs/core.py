@@ -37,7 +37,7 @@ class _HelpPaginator(discord.ui.View):
     first/last page.
     """
 
-    __slots__ = ("_current", "_pages", "_guild_id")
+    __slots__ = ("_current", "_guild_id", "_pages")
 
     def __init__(
         self,
