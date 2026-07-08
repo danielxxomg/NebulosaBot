@@ -23,6 +23,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
+from bot.core.i18n import t
 from bot.models.ticket_category import TicketCategory
 from bot.services.ticket_invariants import parse_ticket_ref
 from bot.services.ticket_service import TicketCategoryNotConfiguredError
@@ -34,7 +35,6 @@ from bot.utils.embeds import (
     info_embed,
     success_embed,
 )
-from bot.core.i18n import t
 
 if TYPE_CHECKING:
     from bot.bot import NebulosaBot
