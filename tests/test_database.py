@@ -201,7 +201,7 @@ class TestConnect:
 
         mock_client.table.return_value.select.return_value.limit.return_value.execute = mock_execute
 
-        with patch("bot.core.database.acreate_client", return_value=mock_client) as mock_create:
+        with patch("bot.core.db.base.acreate_client", return_value=mock_client) as mock_create:
             # acreate_client is async — return the mock directly (it's awaited)
             mock_create.return_value = mock_client
             await database.connect()
@@ -220,7 +220,7 @@ class TestConnect:
 
         mock_client.table.return_value.select.return_value.limit.return_value.execute = mock_execute_fail
 
-        with patch("bot.core.database.acreate_client", return_value=mock_client):
+        with patch("bot.core.db.base.acreate_client", return_value=mock_client):
             await database.connect()
 
         # Client is still set even if health check fails.
@@ -1487,3 +1487,102 @@ class TestGetRecentNotesForDedup:
         """get_recent_notes_for_dedup() MUST raise RuntimeError if connect() wasn't called."""
         with pytest.raises(RuntimeError, match="connect"):
             await disconnected_db.get_recent_notes_for_dedup("t1", "authorA")
+
+
+# ===========================================================================
+# PR3: Database facade — import compatibility + mixin method presence
+# ===========================================================================
+
+
+class TestDatabaseFacade:
+    """Verify the Database facade preserves import paths and method surface.
+
+    After the PR3 mixin split, ``from bot.core.database import Database``
+    MUST continue to work, and every domain method MUST be accessible on
+    the class so that no downstream import breaks.
+    """
+
+    def test_import_database_from_core_database(self) -> None:
+        """from bot.core.database import Database MUST succeed after mixin split."""
+        from bot.core.database import Database as Db
+
+        assert Db is not None
+
+    def test_import_create_realtime_client(self) -> None:
+        """from bot.core.database import create_realtime_client MUST still work."""
+        from bot.core.database import create_realtime_client
+
+        assert callable(create_realtime_client)
+
+    def test_database_has_all_expected_methods(self) -> None:
+        """Database instance MUST expose every domain method from all mixins."""
+        db = Database(url="https://test.supabase.co", key="test-key")
+
+        expected_methods = [
+            # base
+            "connect",
+            "health_check",
+            # guild
+            "get_guild",
+            "upsert_guild",
+            "ensure_guild_exists",
+            "update_guild_panel",
+            # member
+            "get_member",
+            "update_member_warnings",
+            # infraction
+            "insert_infraction",
+            "get_infractions",
+            "get_active_warnings",
+            "deactivate_infraction",
+            # ticket
+            "insert_ticket",
+            "get_tickets_by_parent",
+            "get_ticket",
+            "get_ticket_by_channel",
+            "get_ticket_by_number",
+            "update_ticket",
+            "get_stale_tickets",
+            "get_max_ticket_number",
+            "get_open_ticket_channel_ids",
+            "update_ticket_last_activity",
+            # ticket_note
+            "insert_ticket_note",
+            "get_ticket_notes",
+            "delete_ticket_note",
+            "get_recent_notes_for_dedup",
+            # ticket_category
+            "insert_ticket_category",
+            "get_ticket_categories",
+            "get_ticket_category",
+            "delete_ticket_category",
+            "count_open_tickets_by_category",
+            # ticket_audit
+            "insert_audit_row",
+            "get_audit_rows",
+            # economy
+            "get_economy_config",
+            "upsert_economy_config",
+            "update_member_xp",
+            "update_member_coins",
+            "update_member_daily",
+            "get_leaderboard",
+            "get_member_rank",
+            # greeting
+            "get_greeting_config",
+            "upsert_greeting_config",
+        ]
+
+        for method_name in expected_methods:
+            assert hasattr(db, method_name), f"Database missing method: {method_name}"
+            assert callable(getattr(db, method_name)), f"Database.{method_name} is not callable"
+
+    def test_database_preserves_slots(self) -> None:
+        """Database MUST have __slots__ (inherited from DatabaseBase)."""
+        db = Database(url="https://test.supabase.co", key="test-key")
+        assert hasattr(Database, "__slots__")
+        # Verify the slot names are correct
+        assert "_client" in Database.__slots__
+        assert "_url" in Database.__slots__
+        assert "_key" in Database.__slots__
+        assert "_on_write" in Database.__slots__

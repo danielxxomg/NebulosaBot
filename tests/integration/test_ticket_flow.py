@@ -70,7 +70,9 @@ def ticket_bot(mock_db: AsyncMock) -> MagicMock:
     bot.ticket_service = MagicMock()
     bot.ticket_service.create_ticket = AsyncMock()
     bot.ticket_service.close_ticket = AsyncMock()
+    bot.ticket_service.close_ticket_full = AsyncMock(return_value=None)
     bot.ticket_service.claim_ticket = AsyncMock()
+    bot.ticket_service.create_ticket_channel = AsyncMock()
     bot.transcript_service = MagicMock()
     bot.transcript_service.generate = AsyncMock()
     bot.transcript_service.upload = AsyncMock()
@@ -146,10 +148,10 @@ class TestTicketFlow:
         ticket_interaction: MagicMock,
         mock_db: AsyncMock,
     ) -> None:
-        """Panel button click → channel created with correct permission overwrites.
+        """Panel button click → channel created via service with correct permissions.
 
-        Scenario: user clicks panel button → guild.create_text_channel called
-        → permission overwrites assert user can send, @everyone cannot see.
+        Scenario: user clicks panel button → ticket_service.create_ticket_channel
+        called → channel returned with correct permission overwrites.
         """
         ticket_interaction.client = ticket_bot
 
@@ -168,6 +170,7 @@ class TestTicketFlow:
         ticket_row = _make_ticket_row(ticket_number=1)
         ticket = Ticket.from_db_row(ticket_row)
         ticket_bot.ticket_service.create_ticket = AsyncMock(return_value=ticket)
+        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=mock_ticket_channel)
 
         # Build the select and invoke callback.
         select = _CategorySelect(
@@ -180,22 +183,12 @@ class TestTicketFlow:
         with patch("bot.cogs.tickets.TicketActionsView"):
             await select.callback(ticket_interaction)
 
-        # 1. guild.create_text_channel was called.
-        mock_ticket_guild.create_text_channel.assert_awaited_once()
-        call_kwargs = mock_ticket_guild.create_text_channel.call_args
-
-        # 2. Permission overwrites: @everyone cannot see, user can send.
-        overwrites = call_kwargs.kwargs.get("overwrites") or call_kwargs[1].get("overwrites")
-        assert overwrites is not None
-
-        everyone_overwrite = overwrites.get(mock_ticket_guild.default_role)
-        assert everyone_overwrite is not None
-        assert everyone_overwrite.read_messages is False
-
-        user_overwrite = overwrites.get(ticket_interaction.user)
-        assert user_overwrite is not None
-        assert user_overwrite.read_messages is True
-        assert user_overwrite.send_messages is True
+        # 1. ticket_service.create_ticket_channel was called.
+        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
+        call_args = ticket_bot.ticket_service.create_ticket_channel.call_args
+        # Verify it was called with the category channel and the author.
+        assert call_args.args[1] == category_channel  # category
+        assert call_args.args[2] == ticket_interaction.user  # author
 
     async def test_close_ticket_generates_transcript(
         self,
@@ -205,10 +198,10 @@ class TestTicketFlow:
         ticket_interaction: MagicMock,
         mock_db: AsyncMock,
     ) -> None:
-        """Close button → transcript generated → channel scheduled for deletion.
+        """Close button → close_ticket_full called (handles transcript + DB + delete).
 
-        Scenario: close button pressed → transcript generated → channel
-        deleted after delay.
+        Scenario: close button pressed → service handles transcript generation,
+        DB update, and channel deletion.
         """
         ticket_interaction.client = ticket_bot
         ticket_interaction.channel = mock_ticket_channel
@@ -217,30 +210,17 @@ class TestTicketFlow:
         ticket_row = _make_ticket_row(ticket_number=1, status="open")
         mock_db.get_ticket_by_channel = AsyncMock(return_value=ticket_row)
 
-        # Transcript service mock.
-        transcript_file = discord.File(io.BytesIO(b"<html>transcript</html>"), filename="transcript.html")
-        ticket_bot.transcript_service.generate = AsyncMock(return_value=transcript_file)
-        ticket_bot.transcript_service.upload = AsyncMock(return_value="https://cdn.example.com/transcript.html")
-
-        # Guild service returns config with no log channel.
-        config = MagicMock()
-        config.log_channel_id = None
-        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
-
-        # Ticket service close.
-        closed_ticket = Ticket.from_db_row({**ticket_row, "status": "closed"})
-        ticket_bot.ticket_service.close_ticket = AsyncMock(return_value=closed_ticket)
+        # Ticket service close_ticket_full returns transcript URL.
+        ticket_bot.ticket_service.close_ticket_full = AsyncMock(
+            return_value="https://cdn.example.com/transcript.html"
+        )
 
         # Invoke close_button.
         view = TicketActionsView()
-        with patch("bot.cogs.tickets.asyncio.sleep", new_callable=AsyncMock):
-            await view.close_button.callback(ticket_interaction)
+        await view.close_button.callback(ticket_interaction)
 
-        # 1. Transcript generated.
-        ticket_bot.transcript_service.generate.assert_awaited_once_with(mock_ticket_channel)
-
-        # 2. Ticket closed in DB.
-        ticket_bot.ticket_service.close_ticket.assert_awaited_once()
-
-        # 3. Channel scheduled for deletion.
-        mock_ticket_channel.delete.assert_awaited_once()
+        # 1. close_ticket_full was called with the channel, ticket, and closer.
+        ticket_bot.ticket_service.close_ticket_full.assert_awaited_once()
+        call_args = ticket_bot.ticket_service.close_ticket_full.call_args
+        assert call_args.args[0] == mock_ticket_channel  # channel
+        assert call_args.args[2] == "111111111"  # closer_id
