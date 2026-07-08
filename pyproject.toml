@@ -116,39 +116,31 @@ known-first-party = ["bot"]
 [tool.mypy]
 strict = true
 python_version = "3.11"
-# Per-file overrides for known debt modules (narrower than project-wide suppression).
-# PR1: broad overrides to pass immediately; PR2-PR5 will progressively narrow.
+# Per-file overrides — narrowed in tooling-rigor PR3 (Phase 4-6).
+# Only genuinely justified overrides remain (discord.py stub limitations).
 [[tool.mypy.overrides]]
 module = "bot.bot"
 disable_error_code = ["attr-defined"]
 
 [[tool.mypy.overrides]]
 module = "bot.cogs.*"
-disable_error_code = ["attr-defined", "no-any-return", "no-untyped-def", "assignment", "arg-type", "type-arg", "untyped-decorator", "no-untyped-call", "unused-ignore"]
+disable_error_code = ["attr-defined", "no-untyped-def", "arg-type", "type-arg", "untyped-decorator", "no-untyped-call", "unused-ignore"]
 
 [[tool.mypy.overrides]]
 module = "bot.services.*"
-disable_error_code = ["attr-defined", "no-any-return", "no-untyped-def", "assignment", "arg-type", "type-arg"]
+disable_error_code = ["attr-defined", "no-any-return", "no-untyped-def", "arg-type", "type-arg"]
 
 [[tool.mypy.overrides]]
 module = "bot.core.*"
-disable_error_code = ["attr-defined", "no-any-return", "no-untyped-def", "assignment", "arg-type", "type-arg"]
+disable_error_code = ["no-any-return", "type-arg"]
 
 [[tool.mypy.overrides]]
 module = "bot.listeners.*"
-disable_error_code = ["attr-defined", "no-any-return", "no-untyped-def", "assignment", "arg-type"]
-
-[[tool.mypy.overrides]]
-module = "bot.utils.*"
-disable_error_code = ["attr-defined", "no-any-return", "no-untyped-def", "assignment", "arg-type"]
+disable_error_code = ["assignment", "arg-type"]
 
 [[tool.mypy.overrides]]
 module = "bot.models.*"
-disable_error_code = ["attr-defined", "no-any-return", "no-untyped-def", "assignment", "arg-type", "type-arg"]
-
-[[tool.mypy.overrides]]
-module = "bot.config"
-disable_error_code = ["attr-defined", "no-any-return", "no-untyped-def", "assignment", "arg-type"]
+disable_error_code = ["type-arg"]
 
 [[tool.mypy.overrides]]
 module = "tests.*"

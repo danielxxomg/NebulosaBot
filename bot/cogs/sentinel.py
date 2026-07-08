@@ -137,7 +137,12 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             return False
 
         # Role hierarchy: the bot's top role must be above the target's.
-        if ctx.guild is not None and ctx.guild.me is not None and ctx.guild.me.top_role <= target.top_role and target != ctx.guild.owner:
+        if (
+            ctx.guild is not None
+            and ctx.guild.me is not None
+            and ctx.guild.me.top_role <= target.top_role
+            and target != ctx.guild.owner
+        ):
             await ctx.send(
                 embed=error_embed(
                     "Role Hierarchy",
