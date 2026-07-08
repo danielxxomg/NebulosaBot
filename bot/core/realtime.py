@@ -78,9 +78,7 @@ def _record_for_event(data: dict) -> dict:
     return data.get("record") or {}
 
 
-def _normalize_cdc_payload(
-    payload: dict, table_hint: str | None = None
-) -> tuple[str | None, dict]:
+def _normalize_cdc_payload(payload: dict, table_hint: str | None = None) -> tuple[str | None, dict]:
     """Normalize a CDC payload from the realtime-py SDK.
 
     The SDK (v2.31.0+) delivers callbacks with the envelope
