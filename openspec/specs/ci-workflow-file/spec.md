@@ -28,21 +28,31 @@ The CI workflow file MUST trigger on `push` (any branch) and `pull_request` (tar
 - WHEN the scheduled time arrives
 - THEN the workflow executes including `pip-audit`
 
-### Requirement: Matrix with Python 3.11, 3.12, 3.14
+### Requirement: Matrix with Python 3.11, 3.12, 3.13, 3.14
 
-The workflow MUST define a strategy matrix with Python versions 3.11, 3.12, and 3.14. Fail-fast MUST be disabled.
+The workflow MUST define a strategy matrix with Python versions 3.11, 3.12, 3.13, and 3.14. Fail-fast MUST be disabled.
 
-#### Scenario: Three Python versions in matrix
+#### Scenario: Four Python versions in matrix
 
-- GIVEN the matrix is defined with `[3.11, 3.12, 3.14]`
+- GIVEN the matrix is defined with `[3.11, 3.12, 3.13, 3.14]`
 - WHEN the workflow runs
-- THEN three parallel jobs are created, one per Python version
+- THEN four parallel jobs are created, one per Python version
 
 #### Scenario: One failure does not cancel others
 
 - GIVEN fail-fast is disabled
 - WHEN the Python 3.11 job fails
-- THEN the Python 3.12 and 3.14 jobs continue to completion
+- THEN the Python 3.12, 3.13, and 3.14 jobs continue to completion
+
+### Requirement: Coverage gate enforced in workflow
+
+The workflow MUST enforce a coverage floor of 75% via `--cov-fail-under=75` passed to pytest. The gate value MUST match `pyproject.toml` `addopts`.
+
+#### Scenario: Coverage gate blocks CI
+
+- GIVEN `--cov-fail-under=75` is passed to pytest in the workflow
+- WHEN total `bot/` coverage is below 75%
+- THEN the job fails with a coverage shortfall message
 
 ### Requirement: PYTHONASYNCIODEBUG=1 in environment
 
