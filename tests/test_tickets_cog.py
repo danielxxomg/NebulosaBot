@@ -397,7 +397,7 @@ class TestBuildTicketEmbed:
         """Open ticket embed has correct title and color."""
         ticket = Ticket.from_db_row(_ticket_row(status="open"))
         embed = _build_ticket_embed(ticket)
-        assert "Ticket" in embed.title
+        assert embed.title is not None and "Ticket" in embed.title
         assert embed.color is not None
 
     def test_claimed_ticket_embed(self) -> None:
@@ -406,13 +406,13 @@ class TestBuildTicketEmbed:
         claimed_by = MagicMock()
         claimed_by.mention = "<@999999>"
         embed = _build_ticket_embed(ticket, claimed_by=claimed_by)
-        assert "Claimed" in embed.title
+        assert embed.title is not None and "Claimed" in embed.title
 
     def test_embed_from_dict_row(self) -> None:
         """_build_ticket_embed handles raw dict (not Ticket model)."""
         row = _ticket_row(status="open")
         embed = _build_ticket_embed(row)
-        assert "Ticket" in embed.title
+        assert embed.title is not None and "Ticket" in embed.title
 
 
 # ---------------------------------------------------------------------------

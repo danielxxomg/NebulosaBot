@@ -100,8 +100,9 @@ class TestSetupPermissionGate:
     def test_setup_command_has_admin_check(self, setup_cog: SetupCog) -> None:
         """/setup MUST be gated by @is_admin() check."""
         cmd = setup_cog.setup_command
+        assert cmd is not None, "/setup command must exist"
         # hybrid_command with @is_admin() registers checks on the command
-        has_check = bool(cmd.checks) or (hasattr(cmd, "app_command") and bool(cmd.app_command.checks))
+        has_check = bool(cmd.checks) or (hasattr(cmd, "app_command") and bool(cmd.app_command.checks))  # type: ignore[union-attr]
         assert has_check, "/setup MUST be gated by @is_admin()"
 
     def test_setup_command_prefix_path_has_permission_check(self, setup_cog: SetupCog) -> None:

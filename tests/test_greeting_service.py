@@ -14,6 +14,7 @@ from __future__ import annotations
 import io
 from unittest.mock import AsyncMock, MagicMock
 
+import discord
 import pytest
 
 from bot.core.cache import TTLCache
@@ -75,7 +76,7 @@ def make_mock_member(
 ) -> MagicMock:
     """Build a mock discord.Member with a guild that has a mock channel."""
     # Mock the channel that dispatch will send to.
-    mock_channel = MagicMock()
+    mock_channel = MagicMock(spec=discord.TextChannel)
     mock_channel.send = AsyncMock()
 
     member = MagicMock()

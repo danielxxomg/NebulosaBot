@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _CI_YML = _PROJECT_ROOT / ".github" / "workflows" / "ci.yml"
