@@ -6,10 +6,15 @@ Wires together the database, cache, services, and cogs during
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+# Concurrency cap for on_ready guild backfill. Bounded to avoid overwhelming
+# Supabase with concurrent requests when the bot is in many guilds at once.
+BACKFILL_CONCURRENCY_LIMIT = 50
 
 import discord
 from discord.ext import commands
@@ -439,6 +444,18 @@ class NebulosaBot(commands.Bot):
         # Backfill guild config for guilds the bot was already a member of at
         # startup (on_guild_join only fires for joins during the session).
         if self.guild_service is not None:
-            for guild in self.guilds:
-                await self.guild_service.ensure_guild_exists(str(guild.id))
+            tasks: list[Coroutine[Any, Any, None]] = [
+                self.guild_service.ensure_guild_exists(str(guild.id))
+                for guild in self.guilds
+            ]
+            if len(tasks) > BACKFILL_CONCURRENCY_LIMIT:
+                semaphore = asyncio.Semaphore(BACKFILL_CONCURRENCY_LIMIT)
+
+                async def _bounded(coro: Coroutine[Any, Any, None]) -> None:
+                    async with semaphore:
+                        await coro
+
+                tasks = [_bounded(t) for t in tasks]
+            # return_exceptions=True so one bad guild doesn't abort backfill.
+            await asyncio.gather(*tasks, return_exceptions=True)
             logger.info("Backfilled guild config for %d guild(s)", len(self.guilds))

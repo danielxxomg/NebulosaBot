@@ -226,7 +226,8 @@ class TestWelcomeTestCommand:
         embed = call_kwargs["embed"]
         assert isinstance(embed, discord.Embed)
         assert embed.color.value == 0xE74C3C  # type: ignore[union-attr]  # COLOR_ERROR
-        assert "Permission" in embed.title or "permission" in embed.title.lower()  # type: ignore[operator, union-attr]
+        title_lower = embed.title.lower() if embed.title else ""  # type: ignore[union-attr]
+        assert "permission" in title_lower or "permiso" in title_lower
 
     @pytest.mark.asyncio
     async def test_welcome_test_card_generation_error(

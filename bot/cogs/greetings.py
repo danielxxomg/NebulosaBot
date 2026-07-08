@@ -87,7 +87,6 @@ class GreetingsCog(commands.Cog, name="Greetings"):
         name="welcome_test",
         description="Send a test welcome card in this channel (admin only)",
     )
-    @commands.has_permissions(administrator=True)
     @app_commands.default_permissions(administrator=True)
     async def welcome_test(self, ctx: commands.Context) -> None:  # type: ignore[override]
         """Generate and send a sample welcome card."""
@@ -138,7 +137,6 @@ class GreetingsCog(commands.Cog, name="Greetings"):
         name="goodbye_test",
         description="Send a test goodbye card in this channel (admin only)",
     )
-    @commands.has_permissions(administrator=True)
     @app_commands.default_permissions(administrator=True)
     async def goodbye_test(self, ctx: commands.Context) -> None:  # type: ignore[override]
         """Generate and send a sample goodbye card."""

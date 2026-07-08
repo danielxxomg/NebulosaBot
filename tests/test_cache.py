@@ -146,6 +146,36 @@ async def test_invalidate_guild_empty_noop(cache: TTLCache) -> None:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# size property
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_cache_size_empty(cache: TTLCache) -> None:
+    """size MUST return 0 on an empty cache."""
+    assert cache.size == 0
+
+
+@pytest.mark.asyncio
+async def test_cache_size_after_inserts(cache: TTLCache) -> None:
+    """size MUST return the number of entries after N inserts."""
+    cache.set("a", 1)
+    cache.set("b", 2)
+    cache.set("c", 3)
+    assert cache.size == 3
+
+
+@pytest.mark.asyncio
+async def test_cache_size_after_invalidate(cache: TTLCache) -> None:
+    """size MUST decrease after invalidation."""
+    cache.set("x", 10)
+    cache.set("y", 20)
+    assert cache.size == 2
+    cache.invalidate("x")
+    assert cache.size == 1
+
+
 @pytest.mark.asyncio
 async def test_guild_isolation(cache: TTLCache) -> None:
     """Keys from guild A MUST NOT affect guild B keys and vice versa."""

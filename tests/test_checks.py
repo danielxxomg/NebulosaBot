@@ -29,12 +29,20 @@ from bot.utils.checks import is_admin, is_mod, is_mod_check
 def _unwrap_predicate(
     factory: Callable[[], Any],
 ) -> Callable[..., Any]:
-    """Extract the inner predicate function from an app_commands.check wrapper.
+    """Extract the inner predicate function from a check decorator factory.
 
-    Patches ``app_commands.check`` so it becomes a transparent pass-through,
-    returning the raw predicate async function that factories like
-    ``is_admin()`` and ``is_mod()`` would normally wrap.
+    For factories that expose a ``.predicate`` attribute (like ``is_admin()``
+    after the dual-check enhancement), returns that directly.
+
+    For legacy factories (like ``is_mod()``) that return an
+    ``app_commands.check`` wrapper, patches ``app_commands.check`` so it
+    becomes a transparent pass-through, returning the raw predicate.
     """
+    result = factory()
+    # New-style: is_admin() exposes .predicate directly.
+    if hasattr(result, "predicate"):
+        return result.predicate  # type: ignore[return-value]
+    # Legacy: is_mod() returns app_commands.check(predicate).
     with patch("bot.utils.checks.app_commands.check") as mock_check:
         mock_check.side_effect = lambda pred: pred
         return factory()

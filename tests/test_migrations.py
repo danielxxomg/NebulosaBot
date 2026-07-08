@@ -697,3 +697,52 @@ def test_migration_007_is_idempotent() -> None:
         "Migration 007 must be idempotent — use a DO block with EXCEPTION handling "
         "or check pg_publication_tables before ALTER PUBLICATION"
     )
+
+
+# ===========================================================================
+# Migration 008 — ticket_note RLS (reproducibility, idempotent)
+# ===========================================================================
+
+MIGRATION_008 = MIGRATIONS_DIR / "008_ticket_note_rls.sql"
+
+
+def test_migration_008_file_exists() -> None:
+    """Migration 008 artifact MUST exist at migrations/008_ticket_note_rls.sql."""
+    assert MIGRATION_008.is_file(), f"Migration file missing: {MIGRATION_008}"
+
+
+def test_migration_008_enables_rls_on_ticket_note() -> None:
+    """ALTER TABLE ticket_note ENABLE ROW LEVEL SECURITY MUST be present."""
+    sql = MIGRATION_008.read_text()
+    assert re.search(
+        r"ALTER\s+TABLE\s+ticket_note\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY",
+        sql,
+        re.IGNORECASE,
+    ), "ENABLE ROW LEVEL SECURITY on ticket_note missing"
+
+
+def test_migration_008_is_idempotent() -> None:
+    """ALTER TABLE ... ENABLE RLS is inherently idempotent in PostgreSQL.
+
+    Re-running the statement on a table that already has RLS enabled is a
+    no-op — no error is raised. This test verifies the migration contains
+    only safe, re-runnable statements.
+    """
+    sql = MIGRATION_008.read_text()
+
+    # Must NOT contain any CREATE/DROP/INSERT/UPDATE/DELETE — only ALTER.
+    assert not re.search(r"\bCREATE\s+TABLE\b", sql, re.IGNORECASE), (
+        "Migration 008 must not CREATE TABLE — only ALTER TABLE ENABLE RLS"
+    )
+    assert not re.search(r"\bDROP\s+TABLE\b", sql, re.IGNORECASE), (
+        "Migration 008 must not DROP TABLE — only ALTER TABLE ENABLE RLS"
+    )
+    assert not re.search(r"\bINSERT\s+INTO\b", sql, re.IGNORECASE), (
+        "Migration 008 must not INSERT — only ALTER TABLE ENABLE RLS"
+    )
+    assert not re.search(r"\bUPDATE\s+\w+", sql, re.IGNORECASE), (
+        "Migration 008 must not UPDATE — only ALTER TABLE ENABLE RLS"
+    )
+    assert not re.search(r"\bDELETE\s+FROM\b", sql, re.IGNORECASE), (
+        "Migration 008 must not DELETE — only ALTER TABLE ENABLE RLS"
+    )

@@ -34,6 +34,11 @@ class TTLCache:
     # Public API
     # ------------------------------------------------------------------
 
+    @property
+    def size(self) -> int:
+        """Return the number of entries currently in the cache (including expired)."""
+        return len(self._store)
+
     def get(self, key: str) -> Any | None:
         """Return the cached value for *key*, or ``None`` if missing/expired.
 
