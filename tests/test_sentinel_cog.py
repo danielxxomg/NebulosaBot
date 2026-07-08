@@ -372,7 +372,7 @@ class TestLockCommand:
         mock_guild,
     ) -> None:
         """lock → channel.set_permissions called for @everyone."""
-        channel = MagicMock()
+        channel = MagicMock(spec=discord.TextChannel)
         channel.mention = "<#111111>"
         channel.overwrites_for = MagicMock(return_value=discord.PermissionOverwrite())
         channel.set_permissions = AsyncMock()
@@ -406,7 +406,7 @@ class TestUnlockCommand:
         mock_guild,
     ) -> None:
         """unlock → channel.set_permissions called with send_messages=None."""
-        channel = MagicMock()
+        channel = MagicMock(spec=discord.TextChannel)
         channel.mention = "<#111111>"
         channel.overwrites_for = MagicMock(return_value=discord.PermissionOverwrite(send_messages=False))
         channel.set_permissions = AsyncMock()
