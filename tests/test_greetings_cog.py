@@ -130,7 +130,9 @@ class TestOnMemberJoin:
 
     @pytest.mark.asyncio
     async def test_calls_dispatch_welcome(
-        self, cog: GreetingsCog, mock_bot: MagicMock,
+        self,
+        cog: GreetingsCog,
+        mock_bot: MagicMock,
     ) -> None:
         """on_member_join must delegate to greeting_service.dispatch_welcome."""
         member = _make_member()
@@ -139,7 +141,9 @@ class TestOnMemberJoin:
 
     @pytest.mark.asyncio
     async def test_ignore_bot_members(
-        self, cog: GreetingsCog, mock_bot: MagicMock,
+        self,
+        cog: GreetingsCog,
+        mock_bot: MagicMock,
     ) -> None:
         """Bot members should not trigger welcome cards."""
         member = _make_member()
@@ -158,7 +162,9 @@ class TestOnMemberRemove:
 
     @pytest.mark.asyncio
     async def test_calls_dispatch_goodbye(
-        self, cog: GreetingsCog, mock_bot: MagicMock,
+        self,
+        cog: GreetingsCog,
+        mock_bot: MagicMock,
     ) -> None:
         """on_member_remove must delegate to greeting_service.dispatch_goodbye."""
         member = _make_member()
@@ -167,7 +173,9 @@ class TestOnMemberRemove:
 
     @pytest.mark.asyncio
     async def test_ignore_bot_members(
-        self, cog: GreetingsCog, mock_bot: MagicMock,
+        self,
+        cog: GreetingsCog,
+        mock_bot: MagicMock,
     ) -> None:
         """Bot members should not trigger goodbye cards."""
         member = _make_member()
@@ -186,7 +194,9 @@ class TestWelcomeTestCommand:
 
     @pytest.mark.asyncio
     async def test_admin_can_use_welcome_test(
-        self, cog: GreetingsCog, mock_bot: MagicMock,
+        self,
+        cog: GreetingsCog,
+        mock_bot: MagicMock,
     ) -> None:
         """Admin users must be able to trigger a welcome test card."""
         ctx = _make_context(admin=True)
@@ -202,7 +212,9 @@ class TestWelcomeTestCommand:
 
     @pytest.mark.asyncio
     async def test_non_admin_blocked_from_welcome_test(
-        self, cog: GreetingsCog, mock_bot: MagicMock,
+        self,
+        cog: GreetingsCog,
+        mock_bot: MagicMock,
     ) -> None:
         """Non-admin users must receive an error when using /welcome_test."""
         ctx = _make_context(admin=False)
@@ -218,7 +230,9 @@ class TestWelcomeTestCommand:
 
     @pytest.mark.asyncio
     async def test_welcome_test_card_generation_error(
-        self, cog: GreetingsCog, mock_bot: MagicMock,
+        self,
+        cog: GreetingsCog,
+        mock_bot: MagicMock,
     ) -> None:
         """When card generation fails, an error embed is sent."""
         ctx = _make_context(admin=True)
@@ -243,7 +257,9 @@ class TestGoodbyeTestCommand:
 
     @pytest.mark.asyncio
     async def test_admin_can_use_goodbye_test(
-        self, cog: GreetingsCog, mock_bot: MagicMock,
+        self,
+        cog: GreetingsCog,
+        mock_bot: MagicMock,
     ) -> None:
         """Admin users must be able to trigger a goodbye test card."""
         ctx = _make_context(admin=True)
@@ -258,7 +274,9 @@ class TestGoodbyeTestCommand:
 
     @pytest.mark.asyncio
     async def test_non_admin_blocked_from_goodbye_test(
-        self, cog: GreetingsCog, mock_bot: MagicMock,
+        self,
+        cog: GreetingsCog,
+        mock_bot: MagicMock,
     ) -> None:
         """Non-admin users must receive an error when using /goodbye_test."""
         ctx = _make_context(admin=False)
@@ -271,7 +289,9 @@ class TestGoodbyeTestCommand:
 
     @pytest.mark.asyncio
     async def test_goodbye_test_card_generation_error(
-        self, cog: GreetingsCog, mock_bot: MagicMock,
+        self,
+        cog: GreetingsCog,
+        mock_bot: MagicMock,
     ) -> None:
         """When card generation fails, an error embed is sent."""
         ctx = _make_context(admin=True)

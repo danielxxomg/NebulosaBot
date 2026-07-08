@@ -50,11 +50,7 @@ class UtilityCog(commands.Cog, name="Utility"):
         """Reply with an embed showing the targeted member's avatar."""
         target = member or ctx.author
 
-        avatar_url = (
-            target.display_avatar.url
-            if target.display_avatar.url
-            else target.default_avatar.url
-        )
+        avatar_url = target.display_avatar.url if target.display_avatar.url else target.default_avatar.url
 
         embed = discord.Embed(
             title=f"{target.display_name}'s Avatar",

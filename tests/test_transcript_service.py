@@ -154,10 +154,7 @@ async def test_generate_respects_message_cap(
 ) -> None:
     """generate() MUST cap requests at MAX_MESSAGES (5000), even if caller asks for more."""
     # Create more than MAX_MESSAGES mock messages.
-    messages = [
-        _make_mock_message(f"User{i:04d}", "0000", f"Message {i}")
-        for i in range(MAX_MESSAGES + 100)
-    ]
+    messages = [_make_mock_message(f"User{i:04d}", "0000", f"Message {i}") for i in range(MAX_MESSAGES + 100)]
 
     channel = _make_mock_channel(name="overflow", messages=messages[:MAX_MESSAGES])
     # We cap at 5000 regardless — the mock truncates to MAX_MESSAGES.
@@ -198,9 +195,7 @@ async def test_generate_escapes_html(
     transcript_service: TranscriptService,
 ) -> None:
     """Message content with HTML special chars MUST be escaped."""
-    messages = [
-        _make_mock_message("Hacker", "0001", content='<script>alert("xss")</script>')
-    ]
+    messages = [_make_mock_message("Hacker", "0001", content='<script>alert("xss")</script>')]
     channel = _make_mock_channel(name="xss-test", messages=messages)
 
     file = await transcript_service.generate(channel)

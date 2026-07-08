@@ -42,8 +42,8 @@ class GreetingService:
         self,
         db: Database,
         cache: TTLCache,
-    image_service: ImageService,
-) -> None:
+        image_service: ImageService,
+    ) -> None:
         self._db = db
         self._cache = cache
         self._image_service = image_service
@@ -111,14 +111,13 @@ class GreetingService:
         if channel is None:
             logger.warning(
                 "dispatch_welcome: channel %s not found for guild %s",
-                config.welcome_channel_id, guild_id,
+                config.welcome_channel_id,
+                guild_id,
             )
             return
 
         if not config.welcome_card_enabled:
-            await _send_text_only_if_message(
-                channel, config.welcome_message or "", member
-            )
+            await _send_text_only_if_message(channel, config.welcome_message or "", member)
             return
 
         avatar_url = _resolve_avatar_url(member)
@@ -139,7 +138,9 @@ class GreetingService:
 
         logger.info(
             "dispatch_welcome: sent for guild %s, channel %s, member %s",
-            guild_id, config.welcome_channel_id, member.name,
+            guild_id,
+            config.welcome_channel_id,
+            member.name,
         )
 
     async def dispatch_goodbye(self, member: discord.Member) -> None:
@@ -160,14 +161,13 @@ class GreetingService:
         if channel is None:
             logger.warning(
                 "dispatch_goodbye: channel %s not found for guild %s",
-                config.goodbye_channel_id, guild_id,
+                config.goodbye_channel_id,
+                guild_id,
             )
             return
 
         if not config.goodbye_card_enabled:
-            await _send_text_only_if_message(
-                channel, config.goodbye_message or "", member
-            )
+            await _send_text_only_if_message(channel, config.goodbye_message or "", member)
             return
 
         avatar_url = _resolve_avatar_url(member)
@@ -188,7 +188,9 @@ class GreetingService:
 
         logger.info(
             "dispatch_goodbye: sent for guild %s, channel %s, member %s",
-            guild_id, config.goodbye_channel_id, member.name,
+            guild_id,
+            config.goodbye_channel_id,
+            member.name,
         )
 
 
@@ -213,9 +215,7 @@ def _format_template(template: str, member) -> str:
         return template
 
 
-async def _send_text_only_if_message(
-    channel, message_template: str, member
-) -> None:
+async def _send_text_only_if_message(channel, message_template: str, member) -> None:
     """Send a formatted text-only message to *channel* when the template is set.
 
     Used by the card-disabled path: no file is attached, and nothing is sent

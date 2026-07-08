@@ -80,9 +80,7 @@ class InfractionService:
         escalation = await self.check_escalation(guild_id, target_id)
         return infraction, escalation
 
-    async def unwarn(
-        self, guild_id: str, target_id: str
-    ) -> Infraction | None:
+    async def unwarn(self, guild_id: str, target_id: str) -> Infraction | None:
         """Deactivate the most recent active WARN and decrement warnings.
 
         Returns:
@@ -125,9 +123,7 @@ class InfractionService:
         )
         return [Infraction.from_db_row(r) for r in rows]
 
-    async def check_escalation(
-        self, guild_id: str, target_id: str
-    ) -> EscalationAction | None:
+    async def check_escalation(self, guild_id: str, target_id: str) -> EscalationAction | None:
         """Evaluate whether the member's warning count triggers auto-escalation.
 
         Thresholds (hardcoded):

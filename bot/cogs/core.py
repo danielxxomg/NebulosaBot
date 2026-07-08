@@ -139,8 +139,7 @@ class CoreCog(commands.Cog, name="Core"):
         )
         embed.add_field(
             name="Cache",
-            value=f"✅ {cache_keys} key(s) in memory" if self.bot.cache is not None
-            else "❌ Not initialised",
+            value=f"✅ {cache_keys} key(s) in memory" if self.bot.cache is not None else "❌ Not initialised",
             inline=True,
         )
 
@@ -149,11 +148,7 @@ class CoreCog(commands.Cog, name="Core"):
         if ctx.guild is not None:
             config = ctx.guild_config
             if config is not None:
-                guild_label = (
-                    f"✅ Loaded\n"
-                    f"Prefix: `{config.prefix}`\n"
-                    f"Language: `{config.language}`"
-                )
+                guild_label = f"✅ Loaded\nPrefix: `{config.prefix}`\nLanguage: `{config.language}`"
             else:
                 guild_label = "⚠️ Not loaded"
 
@@ -261,9 +256,7 @@ def _resolve_prefix(ctx: NebulosaContext) -> str:
     return "nb!"
 
 
-def _build_cog_help_embed(
-    bot: NebulosaBot, cog_name: str, prefix: str
-) -> discord.Embed | None:
+def _build_cog_help_embed(bot: NebulosaBot, cog_name: str, prefix: str) -> discord.Embed | None:
     """Build a single embed for *cog_name* showing its commands.
 
     Returns ``None`` if the cog is not loaded or has no commands.
@@ -280,10 +273,7 @@ def _build_cog_help_embed(
 
     embed = discord.Embed(
         title=f"📚 {cog_name} Commands",
-        description=(
-            f"{len(visible)} command(s) available.\n"
-            f"Prefix: `{prefix}`  •  Slash: `/`"
-        ),
+        description=(f"{len(visible)} command(s) available.\nPrefix: `{prefix}`  •  Slash: `/`"),
         color=COLOR_INFO,
         timestamp=datetime.now(UTC),
     )
@@ -294,10 +284,7 @@ def _build_cog_help_embed(
         suffix = " [prefix + slash]" if is_hybrid else " [prefix]"
 
         embed.add_field(
-            name=(
-                f"`{prefix}{cmd.name}` / `/{cmd.name}`" if is_hybrid
-                else f"`{prefix}{cmd.name}`"
-            ),
+            name=(f"`{prefix}{cmd.name}` / `/{cmd.name}`" if is_hybrid else f"`{prefix}{cmd.name}`"),
             value=f"{desc}{suffix}",
             inline=False,
         )

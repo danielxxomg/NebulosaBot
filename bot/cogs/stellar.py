@@ -54,9 +54,7 @@ class StellarCog(commands.Cog, name="Stellar"):
         user_id = str(ctx.author.id)
 
         try:
-            success, coins_awarded, streak = (
-                await self.bot.economy_service.claim_daily(guild_id, user_id)
-            )
+            success, coins_awarded, streak = await self.bot.economy_service.claim_daily(guild_id, user_id)
         except Exception:
             logger.exception("Daily claim failed for user %s", user_id)
             await ctx.send(
@@ -71,14 +69,12 @@ class StellarCog(commands.Cog, name="Stellar"):
         if success:
             embed = success_embed(
                 "Daily Reward Claimed! 🎁",
-                f"You received **{coins_awarded} coins**!\n"
-                f"Streak: **{streak} day{'s' if streak != 1 else ''}** 🔥",
+                f"You received **{coins_awarded} coins**!\nStreak: **{streak} day{'s' if streak != 1 else ''}** 🔥",
             )
         else:
             embed = warning_embed(
                 "Daily Cooldown ⏳",
-                f"You already claimed your daily reward.\n"
-                f"Current streak: **{streak}** — come back tomorrow!",
+                f"You already claimed your daily reward.\nCurrent streak: **{streak}** — come back tomorrow!",
             )
 
         await ctx.send(embed=embed, ephemeral=True)
@@ -87,9 +83,7 @@ class StellarCog(commands.Cog, name="Stellar"):
     # /coins
     # ------------------------------------------------------------------
 
-    @commands.hybrid_command(
-        name="coins", description="Check your coin balance or someone else's"
-    )
+    @commands.hybrid_command(name="coins", description="Check your coin balance or someone else's")
     @app_commands.describe(member="The member to check (defaults to yourself)")
     async def coins(
         self,
@@ -117,9 +111,7 @@ class StellarCog(commands.Cog, name="Stellar"):
         if target == ctx.author:
             description = f"You have **{balance} coins** 💰"
         else:
-            description = (
-                f"**{target.display_name}** has **{balance} coins** 💰"
-            )
+            description = f"**{target.display_name}** has **{balance} coins** 💰"
 
         embed = info_embed("Coin Balance", description)
         await ctx.send(embed=embed, ephemeral=True)
@@ -132,9 +124,7 @@ class StellarCog(commands.Cog, name="Stellar"):
         name="leaderboard",
         description="View the server leaderboard by XP or coins",
     )
-    @app_commands.describe(
-        lb_type="Leaderboard type: 'xp' or 'coins' (default: xp)"
-    )
+    @app_commands.describe(lb_type="Leaderboard type: 'xp' or 'coins' (default: xp)")
     async def leaderboard(
         self,
         ctx: commands.Context,
@@ -148,9 +138,7 @@ class StellarCog(commands.Cog, name="Stellar"):
             sort_by = "xp"
 
         try:
-            rows = await self.bot.economy_service.get_leaderboard(
-                guild_id, sort_by=sort_by, limit=10, offset=0
-            )
+            rows = await self.bot.economy_service.get_leaderboard(guild_id, sort_by=sort_by, limit=10, offset=0)
         except Exception:
             logger.exception("Leaderboard query failed for guild %s", guild_id)
             await ctx.send(
@@ -165,8 +153,7 @@ class StellarCog(commands.Cog, name="Stellar"):
         if not rows:
             embed = error_embed(
                 "Leaderboard Empty",
-                f"No members with {'XP' if sort_by == 'xp' else 'coins'} "
-                f"in this server yet. Start chatting to earn!",
+                f"No members with {'XP' if sort_by == 'xp' else 'coins'} in this server yet. Start chatting to earn!",
             )
             await ctx.send(embed=embed, ephemeral=True)
             return
@@ -189,7 +176,6 @@ class StellarCog(commands.Cog, name="Stellar"):
         embed.set_footer(text=f"Top {len(rows)} members")
 
         await ctx.send(embed=embed, ephemeral=True)
-
 
     # ------------------------------------------------------------------
     # /rank
@@ -214,9 +200,7 @@ class StellarCog(commands.Cog, name="Stellar"):
         await ctx.defer(ephemeral=True)
 
         try:
-            rank_info = await self.bot.economy_service.get_rank_info(
-                guild_id, user_id
-            )
+            rank_info = await self.bot.economy_service.get_rank_info(guild_id, user_id)
         except Exception:
             logger.exception("Rank info query failed for user %s", user_id)
             await ctx.send(
@@ -232,8 +216,7 @@ class StellarCog(commands.Cog, name="Stellar"):
             await ctx.send(
                 embed=error_embed(
                     "No Rank Data",
-                    f"**{target.display_name}** has no stats yet.\n"
-                    "Start chatting to earn XP and level up!",
+                    f"**{target.display_name}** has no stats yet.\nStart chatting to earn XP and level up!",
                 ),
                 ephemeral=True,
             )

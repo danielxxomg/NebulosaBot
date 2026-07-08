@@ -377,7 +377,11 @@ async def test_ti019_audit_every_success() -> None:
     db.get_max_ticket_number.return_value = 5
     db.insert_ticket.return_value = {**_contract_ticket_row(ticket_id="child-uuid"), "ticketNumber": 6}
     await service.create_subticket(
-        "parent-uuid-001", "111111111", None, "666666666", guild_id="123456789",
+        "parent-uuid-001",
+        "111111111",
+        None,
+        "666666666",
+        guild_id="123456789",
     )
 
     # --- reopen → success (closed→open, new channel) ----------------------
@@ -404,9 +408,14 @@ async def test_ti019_audit_every_success() -> None:
     assert rows, "no audit rows written"
     assert all(r[1] == "success" for r in rows), rows
     expected_actions = {
-        "claim", "close", "transfer",
-        "note_add", "note_list", "note_delete",
-        "subticket_create", "reopen",
+        "claim",
+        "close",
+        "transfer",
+        "note_add",
+        "note_list",
+        "note_delete",
+        "subticket_create",
+        "reopen",
     }
     assert set(actions) == expected_actions, actions
     assert len(rows) == len(expected_actions), (actions, rows)
@@ -515,7 +524,10 @@ async def test_ti022_create_any_user() -> None:
     for actor in ("user-regular", "admin", "mod", "author"):
         db.insert_ticket.return_value = {**row, "authorId": actor}
         ticket = await service.create_ticket(
-            guild_id="123456789", author_id=actor, category_id=None, channel_id="444444444",
+            guild_id="123456789",
+            author_id=actor,
+            category_id=None,
+            channel_id="444444444",
         )
         assert ticket.author_id == actor
     db.insert_ticket.assert_awaited()
@@ -792,15 +804,11 @@ def test_ti036_action_view_render() -> None:
     from bot.cogs.tickets import TicketActionsView, _build_ticket_embed
 
     view = TicketActionsView()
-    buttons = {
-        c.custom_id: c for c in view.children if hasattr(c, "custom_id")
-    }
+    buttons = {c.custom_id: c for c in view.children if hasattr(c, "custom_id")}
     assert "ticket:claim" in buttons, "claim button missing"
     assert "ticket:close" in buttons, "close button missing"
 
-    embed = _build_ticket_embed(
-        {"ticketNumber": 7, "status": "open", "authorId": "x"}
-    )
+    embed = _build_ticket_embed({"ticketNumber": 7, "status": "open", "authorId": "x"})
     assert isinstance(embed, discord.Embed)
     assert "7" in (embed.title or ""), embed.title
 

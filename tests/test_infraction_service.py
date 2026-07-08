@@ -103,9 +103,7 @@ async def test_warn_persists_infraction_and_increments_warnings(
     )
 
     # Warnings counter was bumped.
-    mock_db.update_member_warnings.assert_awaited_once_with(
-        GUILD_ID, TARGET_ID, delta=1
-    )
+    mock_db.update_member_warnings.assert_awaited_once_with(GUILD_ID, TARGET_ID, delta=1)
 
     # Returned infraction matches the row.
     assert infraction.id == sample_infraction_row["id"]
@@ -135,9 +133,7 @@ async def test_unwarn_deactivates_last_active_warning(
     assert result is not None
     assert result.id == sample_infraction_row["id"]
     mock_db.deactivate_infraction.assert_awaited_once_with(sample_infraction_row["id"])
-    mock_db.update_member_warnings.assert_awaited_once_with(
-        GUILD_ID, TARGET_ID, delta=-1
-    )
+    mock_db.update_member_warnings.assert_awaited_once_with(GUILD_ID, TARGET_ID, delta=-1)
 
 
 @pytest.mark.asyncio

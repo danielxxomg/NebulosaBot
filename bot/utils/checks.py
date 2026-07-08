@@ -26,9 +26,7 @@ def is_admin():
 
     async def predicate(interaction: discord.Interaction) -> bool:
         if not interaction.guild:
-            raise app_commands.NoPrivateMessage(
-                "This command can only be used in a server."
-            )
+            raise app_commands.NoPrivateMessage("This command can only be used in a server.")
 
         if not interaction.user.guild_permissions.administrator:  # type: ignore[union-attr]
             raise app_commands.MissingPermissions(["administrator"])
@@ -95,9 +93,7 @@ def is_mod():
         # DM guard surfaces the specific NoPrivateMessage exception —
         # is_mod_check only returns False for DMs (never raises).
         if not interaction.guild:
-            raise app_commands.NoPrivateMessage(
-                "This command can only be used in a server."
-            )
+            raise app_commands.NoPrivateMessage("This command can only be used in a server.")
 
         if await is_mod_check(interaction):
             return True
@@ -109,8 +105,7 @@ def is_mod():
         if mod_role_id is None:
             # No mod role configured — only admins pass (spec: unconfigured mod role).
             raise app_commands.CheckFailure(
-                "No moderator role is configured for this server. "
-                "Only administrators can use this command."
+                "No moderator role is configured for this server. Only administrators can use this command."
             )
 
         raise app_commands.MissingRole(mod_role_id)

@@ -1267,9 +1267,7 @@ class TestNoteListPrivacy:
         ticket_bot.ticket_service.get_notes = AsyncMock(return_value=self._notes_with())
 
         slash_ctx.interaction = None
-        slash_ctx.author.send = AsyncMock(
-            side_effect=discord.Forbidden(MagicMock(), "Cannot DM user")
-        )
+        slash_ctx.author.send = AsyncMock(side_effect=discord.Forbidden(MagicMock(), "Cannot DM user"))
 
         with patch("bot.cogs.tickets.logger.exception") as mock_exc:
             await tickets_cog.note_list.callback(tickets_cog, slash_ctx)
@@ -1307,9 +1305,7 @@ class TestNoteListPrivacy:
         assert call_kwargs.get("ephemeral") is True
         embed = call_kwargs.get("embed")
         assert embed is not None
-        assert "No" in (embed.title or "") or "no staff notes" in (
-            embed.description or ""
-        ).lower()
+        assert "No" in (embed.title or "") or "no staff notes" in (embed.description or "").lower()
         # No DM needed for slash — the ephemeral reply suffices.
         slash_ctx.author.send.assert_not_awaited()
 
@@ -1339,9 +1335,7 @@ class TestNoteListPrivacy:
         slash_ctx.author.send.assert_awaited_once()
         dm_embed = slash_ctx.author.send.call_args.kwargs.get("embed")
         assert dm_embed is not None
-        assert "No" in (dm_embed.title or "") or "no staff notes" in (
-            dm_embed.description or ""
-        ).lower()
+        assert "No" in (dm_embed.title or "") or "no staff notes" in (dm_embed.description or "").lower()
 
         # Channel gets a confirmation-only embed — MUST NOT leak the
         # empty-state wording ('No Notes' / 'no staff notes yet').
@@ -1384,9 +1378,7 @@ class TestReopenStatusGuard:
         # The service guard raises ValueError with the actual status; the
         # cog catches it and surfaces the message verbatim.
         ticket_bot.ticket_service.reopen_ticket = AsyncMock(
-            side_effect=ValueError(
-                f"Solo se pueden reabrir tickets cerrados. Estado actual: {status}"
-            )
+            side_effect=ValueError(f"Solo se pueden reabrir tickets cerrados. Estado actual: {status}")
         )
 
         await tickets_cog.reopen.callback(tickets_cog, slash_ctx)
@@ -1437,9 +1429,7 @@ class TestSubticketParentOwnerAccess:
         mock_db.get_ticket_by_channel = AsyncMock(return_value=parent_row)
         mock_db.get_max_ticket_number = AsyncMock(return_value=5)
 
-        subticket = Ticket.from_db_row(
-            {**_ticket_row(ticket_number=6), "parentId": parent_row["id"]}
-        )
+        subticket = Ticket.from_db_row({**_ticket_row(ticket_number=6), "parentId": parent_row["id"]})
         ticket_bot.ticket_service.create_subticket = AsyncMock(return_value=subticket)
         return parent_row
 
@@ -1547,9 +1537,7 @@ class TestSubticketParentOwnerAccess:
         """B3 triangulation: parent owner cannot be resolved → error, no channel."""
         self._wire_subticket_base(slash_ctx, ticket_bot, mock_db, "222222222")
         slash_ctx.guild.get_member = MagicMock(return_value=None)
-        slash_ctx.guild.fetch_member = AsyncMock(
-            side_effect=discord.NotFound(MagicMock(), "Member not found")
-        )
+        slash_ctx.guild.fetch_member = AsyncMock(side_effect=discord.NotFound(MagicMock(), "Member not found"))
 
         with patch("bot.cogs.tickets.logger.exception"):
             await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
@@ -1584,9 +1572,7 @@ class TestDBErrorHandling:
     ) -> None:
         """B4.1: get_notes raises → error_embed + logger.exception, no leak."""
         mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
-        ticket_bot.ticket_service.get_notes = AsyncMock(
-            side_effect=Exception("DB down")
-        )
+        ticket_bot.ticket_service.get_notes = AsyncMock(side_effect=Exception("DB down"))
 
         with patch("bot.cogs.tickets.logger.exception") as mock_exc:
             await tickets_cog.note_list.callback(tickets_cog, slash_ctx)
@@ -1612,9 +1598,7 @@ class TestDBErrorHandling:
         ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
         category_channel = MagicMock(spec=discord.CategoryChannel)
         slash_ctx.guild.get_channel = MagicMock(return_value=category_channel)
-        mock_db.get_ticket_by_channel = AsyncMock(
-            side_effect=Exception("DB down")
-        )
+        mock_db.get_ticket_by_channel = AsyncMock(side_effect=Exception("DB down"))
 
         with patch("bot.cogs.tickets.logger.exception") as mock_exc:
             await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
@@ -1634,9 +1618,7 @@ class TestDBErrorHandling:
         mock_db,
     ) -> None:
         """B4.3: get_ticket_by_channel raises in /reopen → error_embed."""
-        mock_db.get_ticket_by_channel = AsyncMock(
-            side_effect=Exception("DB down")
-        )
+        mock_db.get_ticket_by_channel = AsyncMock(side_effect=Exception("DB down"))
         ticket_bot.ticket_service.reopen_ticket = AsyncMock()
 
         with patch("bot.cogs.tickets.logger.exception") as mock_exc:
@@ -1656,15 +1638,11 @@ class TestDBErrorHandling:
         mock_db,
     ) -> None:
         """B4 triangulation: get_ticket_by_channel raises in /transfer → error_embed."""
-        mock_db.get_ticket_by_channel = AsyncMock(
-            side_effect=Exception("DB down")
-        )
+        mock_db.get_ticket_by_channel = AsyncMock(side_effect=Exception("DB down"))
         ticket_bot.ticket_service.transfer_ticket = AsyncMock()
 
         with patch("bot.cogs.tickets.logger.exception") as mock_exc:
-            await tickets_cog.transfer.callback(
-                tickets_cog, slash_ctx, member=MagicMock(spec=discord.Member)
-            )
+            await tickets_cog.transfer.callback(tickets_cog, slash_ctx, member=MagicMock(spec=discord.Member))
 
         ticket_bot.ticket_service.transfer_ticket.assert_not_awaited()
         embed = slash_ctx.send.call_args.kwargs.get("embed")
@@ -1680,15 +1658,11 @@ class TestDBErrorHandling:
         mock_db,
     ) -> None:
         """B4 triangulation: get_ticket_by_channel raises in /note add → error_embed."""
-        mock_db.get_ticket_by_channel = AsyncMock(
-            side_effect=Exception("DB down")
-        )
+        mock_db.get_ticket_by_channel = AsyncMock(side_effect=Exception("DB down"))
         ticket_bot.ticket_service.create_note = AsyncMock()
 
         with patch("bot.cogs.tickets.logger.exception") as mock_exc:
-            await tickets_cog.note_add.callback(
-                tickets_cog, slash_ctx, content="a note"
-            )
+            await tickets_cog.note_add.callback(tickets_cog, slash_ctx, content="a note")
 
         ticket_bot.ticket_service.create_note.assert_not_awaited()
         embed = slash_ctx.send.call_args.kwargs.get("embed")
@@ -1712,9 +1686,7 @@ class TestDBErrorHandling:
         slash_ctx.guild.get_channel = MagicMock(return_value=category_channel)
         mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row(ticket_number=5))
         mock_db.get_max_ticket_number = AsyncMock(side_effect=Exception("DB down"))
-        slash_ctx.guild.get_member = MagicMock(
-            return_value=_parent_owner_member(111111111)
-        )
+        slash_ctx.guild.get_member = MagicMock(return_value=_parent_owner_member(111111111))
 
         with patch("bot.cogs.tickets.logger.exception") as mock_exc:
             await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)

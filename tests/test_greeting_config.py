@@ -126,10 +126,15 @@ class TestToDbDict:
         )
         result = config.to_db_dict()
         expected_keys = {
-            "guildId", "welcomeEnabled", "goodbyeEnabled",
-            "welcomeChannelId", "goodbyeChannelId",
-            "welcomeMessage", "goodbyeMessage",
-            "welcomeCardEnabled", "goodbyeCardEnabled",
+            "guildId",
+            "welcomeEnabled",
+            "goodbyeEnabled",
+            "welcomeChannelId",
+            "goodbyeChannelId",
+            "welcomeMessage",
+            "goodbyeMessage",
+            "welcomeCardEnabled",
+            "goodbyeCardEnabled",
         }
         assert set(result.keys()) == expected_keys
         assert result["guildId"] == "123456789"
