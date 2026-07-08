@@ -47,33 +47,33 @@ Chain strategy: stacked-to-main
 
 ## Phase 3: PR3 — DB Split: Mixin + Facade (~350 lines, MEDIUM risk)
 
-- [ ] 3.1 [GREEN] Create `bot/core/db/__init__.py` (empty), `bot/core/db/base.py` with `DatabaseBase` class: `__slots__ = ('_client', '_url', '_key', '_on_write')`, properties for `_client` access, `_unwrap()` static, `_on_write()` method.
-- [ ] 3.2 [GREEN] Create `bot/core/db/guild_db.py` — `GuildDBMixin(DatabaseBase)` with `get_guild`, `upsert_guild`, `ensure_guild_exists`, `update_guild_panel` (4 methods). Methods moved from `database.py`. Mixin defines NO `__slots__`.
-- [ ] 3.3 [GREEN] Create `bot/core/db/member_db.py` — `MemberDBMixin(DatabaseBase)` with `get_member`, `update_member_warnings` (2 methods).
-- [ ] 3.4 [GREEN] Create `bot/core/db/infraction_db.py` — `InfractionDBMixin(DatabaseBase)` with `insert_infraction`, `get_infractions`, `get_active_warnings`, `deactivate_infraction` (4 methods).
-- [ ] 3.5 [GREEN] Create `bot/core/db/ticket_db.py` — `TicketDBMixin(DatabaseBase)` with `insert_ticket`, `get_ticket`, `get_ticket_by_channel`, `get_ticket_by_number`, `get_tickets_by_parent`, `update_ticket`, `get_stale_tickets`, `get_max_ticket_number`, `get_open_ticket_channel_ids`, `update_ticket_last_activity` (10 methods).
-- [ ] 3.6 [GREEN] Create `bot/core/db/ticket_note_db.py` — `TicketNoteDBMixin` with `insert_ticket_note`, `get_ticket_notes`, `delete_ticket_note`, `get_recent_notes_for_dedup` (4 methods).
-- [ ] 3.7 [GREEN] Create `bot/core/db/ticket_category_db.py` — `TicketCategoryDBMixin` with `insert_ticket_category`, `get_ticket_categories`, `get_ticket_category`, `delete_ticket_category`, `count_open_tickets_by_category` (5 methods).
-- [ ] 3.8 [GREEN] Create `bot/core/db/ticket_audit_db.py` — `TicketAuditDBMixin` with `insert_audit_row`, `get_audit_rows` (2 methods).
-- [ ] 3.9 [GREEN] Create `bot/core/db/economy_db.py` — `EconomyDBMixin` with `get_economy_config`, `upsert_economy_config`, `update_member_xp`, `update_member_coins`, `update_member_daily`, `get_leaderboard`, `get_member_rank` (7 methods).
-- [ ] 3.10 [GREEN] Create `bot/core/db/greeting_db.py` — `GreetingDBMixin` with `get_greeting_config`, `upsert_greeting_config` (2 methods).
-- [ ] 3.11 [GREEN] Replace `bot/core/database.py` with facade: `from bot.core.db.base import DatabaseBase; from bot.core.db.guild_db import GuildDBMixin; ...; class Database(DatabaseBase, GuildDBMixin, MemberDBMixin, InfractionDBMixin, TicketDBMixin, TicketNoteDBMixin, TicketCategoryDBMixin, TicketAuditDBMixin, EconomyDBMixin, GreetingDBMixin): pass`. Re-export all public names.
-- [ ] 3.12 [RED] Write import test in `tests/test_database.py` — `from bot.core.database import Database` works; `Database()` has all 42 methods (`hasattr` check). Ver: `uv run pytest tests/test_database.py -k test_database_import -x`
-- [ ] 3.13 Verify PR3: `uv run pytest && uv run mypy bot/ && grep -r "from bot.core.db\." bot/ | grep -v "from bot.core.database"` (no direct mixin imports outside database.py)
+- [x] 3.1 [GREEN] Create `bot/core/db/__init__.py` (empty), `bot/core/db/base.py` with `DatabaseBase` class: `__slots__ = ('_client', '_url', '_key', '_on_write')`, properties for `_client` access, `_unwrap()` static, `_on_write()` method.
+- [x] 3.2 [GREEN] Create `bot/core/db/guild_db.py` — `GuildDBMixin(DatabaseBase)` with `get_guild`, `upsert_guild`, `ensure_guild_exists`, `update_guild_panel` (4 methods). Methods moved from `database.py`. Mixin defines NO `__slots__`.
+- [x] 3.3 [GREEN] Create `bot/core/db/member_db.py` — `MemberDBMixin(DatabaseBase)` with `get_member`, `update_member_warnings` (2 methods).
+- [x] 3.4 [GREEN] Create `bot/core/db/infraction_db.py` — `InfractionDBMixin(DatabaseBase)` with `insert_infraction`, `get_infractions`, `get_active_warnings`, `deactivate_infraction` (4 methods).
+- [x] 3.5 [GREEN] Create `bot/core/db/ticket_db.py` — `TicketDBMixin(DatabaseBase)` with `insert_ticket`, `get_ticket`, `get_ticket_by_channel`, `get_ticket_by_number`, `get_tickets_by_parent`, `update_ticket`, `get_stale_tickets`, `get_max_ticket_number`, `get_open_ticket_channel_ids`, `update_ticket_last_activity` (10 methods).
+- [x] 3.6 [GREEN] Create `bot/core/db/ticket_note_db.py` — `TicketNoteDBMixin` with `insert_ticket_note`, `get_ticket_notes`, `delete_ticket_note`, `get_recent_notes_for_dedup` (4 methods).
+- [x] 3.7 [GREEN] Create `bot/core/db/ticket_category_db.py` — `TicketCategoryDBMixin` with `insert_ticket_category`, `get_ticket_categories`, `get_ticket_category`, `delete_ticket_category`, `count_open_tickets_by_category` (5 methods).
+- [x] 3.8 [GREEN] Create `bot/core/db/ticket_audit_db.py` — `TicketAuditDBMixin` with `insert_audit_row`, `get_audit_rows` (2 methods).
+- [x] 3.9 [GREEN] Create `bot/core/db/economy_db.py` — `EconomyDBMixin` with `get_economy_config`, `upsert_economy_config`, `update_member_xp`, `update_member_coins`, `update_member_daily`, `get_leaderboard`, `get_member_rank` (7 methods).
+- [x] 3.10 [GREEN] Create `bot/core/db/greeting_db.py` — `GreetingDBMixin` with `get_greeting_config`, `upsert_greeting_config` (2 methods).
+- [x] 3.11 [GREEN] Replace `bot/core/database.py` with facade: `from bot.core.db.base import DatabaseBase; from bot.core.db.guild_db import GuildDBMixin; ...; class Database(DatabaseBase, GuildDBMixin, MemberDBMixin, InfractionDBMixin, TicketDBMixin, TicketNoteDBMixin, TicketCategoryDBMixin, TicketAuditDBMixin, EconomyDBMixin, GreetingDBMixin): pass`. Re-export all public names.
+- [x] 3.12 [RED] Write import test in `tests/test_database.py` — `from bot.core.database import Database` works; `Database()` has all 42 methods (`hasattr` check). Ver: `uv run pytest tests/test_database.py -k test_database_import -x`
+- [x] 3.13 Verify PR3: `uv run pytest && uv run mypy bot/ && grep -r "from bot.core.db\." bot/ | grep -v "from bot.core.database"` (no direct mixin imports outside database.py)
 
 ## Phase 4: PR4 — tickets.py Extraction (~600 lines, MEDIUM risk)
 
-- [ ] 4.1 [GREEN] Create `bot/views/tickets.py` — move `TicketPanelView`, `TicketActionsView`, `_CategorySelectView`, `_CategorySelect` from `bot/cogs/tickets.py`. Keep `timeout=None` + static `custom_id`. Preserve all imports.
-- [ ] 4.2 [GREEN] Add `build_ticket_embed()` to `bot/utils/embeds.py` — moved from `_build_ticket_embed` in `tickets.py`. Uses `COLOR_INFO`, `COLOR_SUCCESS`, `t()`.
-- [ ] 4.3 [GREEN] Create `bot/utils/ticket_helpers.py` — add `resolve_ticket_for_channel(bot, channel_id, guild_id, action) -> dict | None`. Dedupes 7 lookup locations in tickets.py.
-- [ ] 4.4 [GREEN] Add to `bot/services/ticket_service.py`: `create_ticket_channel(guild, author, category_id, guild_config, mod_role)` — extracts channel creation logic from `_CategorySelect.callback` and `subticket_create` (deduped).
-- [ ] 4.5 [GREEN] Add to `bot/services/ticket_service.py`: `close_ticket_full(guild, ticket, bot)` — extracts close flow from `_close_one_ticket` and `TicketActionsView.close_button`.
-- [ ] 4.6 [GREEN] Add to `bot/services/ticket_service.py`: `create_ticket`, `close_ticket`, `claim_ticket`, `transfer_ticket`, `create_subticket`, `add_note`, `list_notes`, `deploy_panel`, `check_stale_tickets` (delegate thin wrappers where not already present).
-- [ ] 4.7 [GREEN] Update `bot/bot.py` `setup_hook` — change `add_view` imports from `bot.cogs.tickets` to `bot.views.tickets`. Ver: bot startup does not error.
-- [ ] 4.8 [REFACTOR] Shrink `bot/cogs/tickets.py` — keep ONLY: `TicketsCog` class, `__init__`, `cog_load/cog_unload`, `on_message` (delegating to service), thin command definitions (parse args → call `TicketService` → send embed), `auto_close` task (delegating to service). Target: 350–450 lines.
-- [ ] 4.9 [RED] Write test in `tests/test_tickets_extraction.py` — `wc -l bot/cogs/tickets.py` < 500. Also: `from bot.views.tickets import TicketPanelView, TicketActionsView` works. Ver: `uv run pytest tests/test_tickets_extraction.py -x`
-- [ ] 4.10 [RED] Write tests for each new `TicketService` method (`create_ticket_channel`, `close_ticket_full`, `resolve_ticket_for_channel`) using existing Discord mocks. Ver: `uv run pytest tests/test_ticket_service.py -x`
-- [ ] 4.11 Verify PR4: `uv run pytest && wc -l bot/cogs/tickets.py` (< 500) && `uv run ruff check bot/views/tickets.py bot/services/ticket_service.py`
+- [x] 4.1 [GREEN] Create `bot/views/tickets.py` — move `TicketPanelView`, `TicketActionsView`, `_CategorySelectView`, `_CategorySelect` from `bot/cogs/tickets.py`. Keep `timeout=None` + static `custom_id`. Preserve all imports.
+- [x] 4.2 [GREEN] Add `build_ticket_embed()` to `bot/utils/embeds.py` — moved from `_build_ticket_embed` in `tickets.py`. Uses `COLOR_INFO`, `COLOR_SUCCESS`, `t()`.
+- [x] 4.3 [GREEN] Create `bot/utils/ticket_helpers.py` — add `resolve_ticket_for_channel(bot, channel_id, guild_id, action) -> dict | None`. Dedupes 7 lookup locations in tickets.py.
+- [x] 4.4 [GREEN] Add to `bot/services/ticket_service.py`: `create_ticket_channel(guild, author, category_id, guild_config, mod_role)` — extracts channel creation logic from `_CategorySelect.callback` and `subticket_create` (deduped).
+- [x] 4.5 [GREEN] Add to `bot/services/ticket_service.py`: `close_ticket_full(guild, ticket, bot)` — extracts close flow from `_close_one_ticket` and `TicketActionsView.close_button`.
+- [x] 4.6 [GREEN] Add to `bot/services/ticket_service.py`: `create_ticket`, `close_ticket`, `claim_ticket`, `transfer_ticket`, `create_subticket`, `add_note`, `list_notes`, `deploy_panel`, `check_stale_tickets` (delegate thin wrappers where not already present).
+- [x] 4.7 [GREEN] Update `bot/bot.py` `setup_hook` — change `add_view` imports from `bot.cogs.tickets` to `bot.views.tickets`. Ver: bot startup does not error.
+- [x] 4.8 [REFACTOR] Shrink `bot/cogs/tickets.py` — keep ONLY: `TicketsCog` class, `__init__`, `cog_load/cog_unload`, `on_message` (delegating to service), thin command definitions (parse args → call `TicketService` → send embed), `auto_close` task (delegating to service). Target: 350–450 lines.
+- [x] 4.9 [RED] Write test in `tests/test_tickets_extraction.py` — `wc -l bot/cogs/tickets.py` < 500. Also: `from bot.views.tickets import TicketPanelView, TicketActionsView` works. Ver: `uv run pytest tests/test_tickets_extraction.py -x`
+- [x] 4.10 [RED] Write tests for each new `TicketService` method (`create_ticket_channel`, `close_ticket_full`, `resolve_ticket_for_channel`) using existing Discord mocks. Ver: `uv run pytest tests/test_ticket_service.py -x`
+- [x] 4.11 Verify PR4: `uv run pytest && wc -l bot/cogs/tickets.py` (< 500) && `uv run ruff check bot/views/tickets.py bot/services/ticket_service.py`
 
 ## Phase 5: PR5 — Shared Utils + DB Optimizations (~200 lines, LOW-MED risk)
 
