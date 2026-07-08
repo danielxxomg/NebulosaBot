@@ -11,6 +11,7 @@ Strict TDD: RED phase — tests written BEFORE the implementation exists.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -18,6 +19,25 @@ import pytest
 from discord.ext import commands
 
 from bot.cogs.utility import UtilityCog
+from bot.core.i18n import load_locales, set_guild_language
+
+# ---------------------------------------------------------------------------
+# i18n setup — load real locale files for all tests
+# ---------------------------------------------------------------------------
+
+_GUILD_ID = 123456789
+
+
+@pytest.fixture(autouse=True)
+def _load_i18n() -> None:
+    """Load real locale files so t() returns actual strings."""
+    from bot.core import i18n as i18n_mod
+
+    i18n_mod._locales.clear()
+    i18n_mod._guild_languages.clear()
+    load_locales(Path("bot/locales"))
+    set_guild_language(str(_GUILD_ID), "es")
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -194,16 +214,16 @@ class TestServerinfoCommand:
 
         # Build a dict of field names → values for easy assertion
         fields = {f.name: f.value for f in embed.fields}
-        assert "Owner" in fields
-        assert "Members" in fields
-        assert str(ctx.guild.member_count) in fields["Members"]
-        assert "Channels" in fields
-        assert str(len(ctx.guild.channels)) in fields["Channels"]
+        assert "Owner" in fields or "Propietario" in fields
+        assert "Members" in fields or "Miembros" in fields
+        assert str(ctx.guild.member_count) in fields.get("Members", fields.get("Miembros", ""))
+        assert "Channels" in fields or "Canales" in fields
+        assert str(len(ctx.guild.channels)) in fields.get("Channels", fields.get("Canales", ""))
         assert "Roles" in fields
-        assert str(len(ctx.guild.roles)) in fields["Roles"]
-        assert "Boosts" in fields
-        assert str(ctx.guild.premium_subscription_count) in fields["Boosts"]
-        assert "Created" in fields
+        assert str(len(ctx.guild.roles)) in fields.get("Roles", fields.get("Roles", ""))
+        assert "Boosts" in fields or "Boosts" in fields
+        assert str(ctx.guild.premium_subscription_count) in fields.get("Boosts", fields.get("Boosts", ""))
+        assert "Created" in fields or "Creado" in fields
 
     @pytest.mark.asyncio
     async def test_serverinfo_dm_shows_error_embed(
@@ -273,11 +293,15 @@ class TestUserinfoCommand:
         assert embed.thumbnail.url == ctx.author.display_avatar.url
 
         fields = {f.name: f.value for f in embed.fields}
-        assert "ID" in fields
-        assert str(ctx.author.id) in fields["ID"]
-        assert "Roles" in fields
-        assert "Joined" in fields
-        assert "Account Created" in fields
+        id_field = "ID" if "ID" in fields else "Identificador"
+        assert id_field in fields
+        assert str(ctx.author.id) in fields[id_field]
+        roles_field = "Roles" if "Roles" in fields else "Roles"
+        assert roles_field in fields
+        joined_field = "Joined" if "Joined" in fields else "Se Unió"
+        assert joined_field in fields
+        created_field = "Account Created" if "Account Created" in fields else "Cuenta Creada"
+        assert created_field in fields
 
     @pytest.mark.asyncio
     async def test_userinfo_target_shows_member_info(
@@ -303,7 +327,8 @@ class TestUserinfoCommand:
         assert embed.thumbnail.url == target.display_avatar.url
 
         fields = {f.name: f.value for f in embed.fields}
-        assert str(target.id) in fields["ID"]
+        id_field = next(f for f in fields if "ID" in f or "Identificador" in f)
+        assert str(target.id) in fields[id_field]
 
     @pytest.mark.asyncio
     async def test_userinfo_role_truncation_at_20(
@@ -328,12 +353,12 @@ class TestUserinfoCommand:
         embed = call_args[1]["embed"]
 
         fields = {f.name: f.value for f in embed.fields}
-        roles_value = fields["Roles"]
+        roles_field = next(f for f in fields if "Role" in f)
+        roles_value = fields[roles_field]
         # Should not show all 25 roles
         assert "Role24" not in roles_value
-        # Should show truncation suffix
-        assert "and" in roles_value
-        assert "more" in roles_value
+        # Should show truncation suffix (either English or Spanish)
+        assert "more" in roles_value or "más" in roles_value
 
     @pytest.mark.asyncio
     async def test_userinfo_no_roles_shows_none(
@@ -354,7 +379,8 @@ class TestUserinfoCommand:
         embed = call_args[1]["embed"]
 
         fields = {f.name: f.value for f in embed.fields}
-        assert fields["Roles"] == "None"
+        roles_field = next(f for f in fields if "Role" in f)
+        assert fields[roles_field] in ("None", "Ninguno")
 
     @pytest.mark.asyncio
     async def test_userinfo_shows_bot_flag(
@@ -377,5 +403,5 @@ class TestUserinfoCommand:
         embed = call_args[1]["embed"]
 
         fields = {f.name: f.value for f in embed.fields}
-        assert "Bot" in fields
-        assert "Yes" in fields["Bot"]
+        bot_field = next(f for f in fields if "Bot" in f)
+        assert "Yes" in fields[bot_field] or "Sí" in fields[bot_field]

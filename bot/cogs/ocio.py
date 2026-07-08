@@ -15,6 +15,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from bot.core.i18n import t
 from bot.utils.embeds import error_embed, info_embed
 
 if TYPE_CHECKING:
@@ -49,29 +50,35 @@ class OcioCog(commands.Cog, name="Ocio"):
         sides: app_commands.Range[int, 2, 100] = 6,
     ) -> None:
         """Roll a die with *sides* faces and reply with the result."""
+        guild_id = ctx.guild.id if ctx.guild else None
         result = random.randint(1, sides)
         embed = info_embed(
-            "🎲 Dice Roll",
-            f"You rolled a **{result}** (d{sides})",
+            t(guild_id, "ocio.dados.title"),
+            t(guild_id, "ocio.dados.description", result=result, sides=sides),
+            guild_id=guild_id,
         )
         await ctx.send(embed=embed)
 
     @commands.hybrid_command(name="banana", description="Measure something in bananas.")
     async def banana(self, ctx: commands.Context) -> None:
         """Reply with a banana image and a random measurement (2-30 cm)."""
+        guild_id = ctx.guild.id if ctx.guild else None
+
         if not _BANANA_IMAGE_PATH.exists():
             await ctx.send(
                 embed=error_embed(
-                    "Image Missing",
-                    "The banana image asset is not available. Please contact the bot owner.",
+                    t(guild_id, "ocio.banana.error_title"),
+                    t(guild_id, "ocio.banana.error_description"),
+                    guild_id=guild_id,
                 )
             )
             return
 
         size = random.randint(2, 30)
         embed = info_embed(
-            "🍌 Banana",
-            f"This banana is **{size} cm**",
+            t(guild_id, "ocio.banana.title"),
+            t(guild_id, "ocio.banana.description", size=size),
+            guild_id=guild_id,
         )
         file = discord.File(str(_BANANA_IMAGE_PATH), filename="banana.webp")
         embed.set_image(url="attachment://banana.webp")
