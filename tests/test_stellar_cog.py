@@ -96,7 +96,8 @@ class TestDailyCommand:
         assert isinstance(embed, discord.Embed)
         assert embed.color.value == 0x2ECC71  # type: ignore[union-attr]  # COLOR_SUCCESS
         assert "130" in embed.description  # type: ignore[operator]
-        assert call_args[1]["ephemeral"] is True
+        # Economy commands must be permanent (NOT ephemeral)
+        assert call_args[1].get("ephemeral") is not True
 
     @pytest.mark.asyncio
     async def test_daily_cooldown_embed(

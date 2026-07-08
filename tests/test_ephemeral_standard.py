@@ -16,12 +16,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
-from discord import app_commands
 from discord.ext import commands
 
 from bot.bot import NebulosaBot, _build_prefix_callable
 from bot.cogs.core import CoreCog
 from bot.cogs.sentinel import SentinelCog
+from bot.cogs.stellar import StellarCog
 from bot.cogs.tickets import TicketsCog
 from bot.config import BotConfig
 
@@ -466,7 +466,7 @@ class TestDefaultPermissions:
     """Test that @app_commands.default_permissions is applied correctly."""
 
     @staticmethod
-    def _get_default_perms(cmd) -> app_commands.Permissions | None:
+    def _get_default_perms(cmd) -> discord.Permissions | None:
         """Extract default_permissions from a command's app_command."""
         if hasattr(cmd, "app_command") and cmd.app_command is not None:
             return cmd.app_command.default_permissions
@@ -548,3 +548,79 @@ class TestDefaultPermissions:
         perms = self._get_default_perms(cog.ban)
         assert perms is not None, "ban missing default_permissions"
         assert perms.ban_members is True
+
+
+# ===========================================================================
+# Economy commands — MUST be permanent (NOT ephemeral)
+# ===========================================================================
+
+
+class TestEconomyCommandsPermanent:
+    """Test that economy/fun commands respond permanently (NOT ephemeral)."""
+
+    @staticmethod
+    def _has_ephemeral_calls(mock_send: AsyncMock) -> bool:
+        """Check if any call to mock_send included ephemeral=True."""
+        return any(call.kwargs.get("ephemeral") is True for call in mock_send.call_args_list)
+
+    @pytest.mark.asyncio
+    async def test_daily_is_permanent(self) -> None:
+        """daily command MUST respond permanently (NOT ephemeral)."""
+        bot = MagicMock()
+        bot.economy_service = MagicMock()
+        bot.economy_service.claim_daily = AsyncMock(return_value=(True, 100, 1))
+
+        cog = StellarCog(bot)
+        ctx = MagicMock()
+        ctx.guild = MagicMock()
+        ctx.guild.id = 123456789
+        ctx.author = MagicMock()
+        ctx.author.id = 111111111
+        ctx.send = AsyncMock()
+        ctx.interaction = MagicMock()  # slash invocation
+
+        await cog.daily.callback(cog, ctx)
+
+        assert not self._has_ephemeral_calls(ctx.send), "daily MUST respond permanently (NOT ephemeral)"
+
+    @pytest.mark.asyncio
+    async def test_coins_is_permanent(self) -> None:
+        """coins command MUST respond permanently (NOT ephemeral)."""
+        bot = MagicMock()
+        bot.economy_service = MagicMock()
+        bot.economy_service.get_balance = AsyncMock(return_value=500)
+
+        cog = StellarCog(bot)
+        ctx = MagicMock()
+        ctx.guild = MagicMock()
+        ctx.guild.id = 123456789
+        ctx.author = MagicMock()
+        ctx.author.id = 111111111
+        ctx.send = AsyncMock()
+        ctx.interaction = MagicMock()  # slash invocation
+
+        await cog.coins.callback(cog, ctx, member=None)
+
+        assert not self._has_ephemeral_calls(ctx.send), "coins MUST respond permanently (NOT ephemeral)"
+
+    @pytest.mark.asyncio
+    async def test_leaderboard_is_permanent(self) -> None:
+        """leaderboard command MUST respond permanently (NOT ephemeral)."""
+        bot = MagicMock()
+        bot.economy_service = MagicMock()
+        bot.economy_service.get_leaderboard = AsyncMock(
+            return_value=[{"userId": "111111111", "xp": 1000, "coins": 500}]
+        )
+
+        cog = StellarCog(bot)
+        ctx = MagicMock()
+        ctx.guild = MagicMock()
+        ctx.guild.id = 123456789
+        ctx.author = MagicMock()
+        ctx.author.id = 111111111
+        ctx.send = AsyncMock()
+        ctx.interaction = MagicMock()  # slash invocation
+
+        await cog.leaderboard.callback(cog, ctx, lb_type="xp")
+
+        assert not self._has_ephemeral_calls(ctx.send), "leaderboard MUST respond permanently (NOT ephemeral)"
