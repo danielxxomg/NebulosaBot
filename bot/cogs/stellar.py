@@ -17,6 +17,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from bot.core.i18n import t
 from bot.utils.embeds import (
     COLOR_INFO,
     error_embed,
@@ -60,22 +61,23 @@ class StellarCog(commands.Cog, name="Stellar"):
             logger.exception("Daily claim failed for user %s", user_id)
             await ctx.send(
                 embed=error_embed(
-                    "Daily Claim Failed",
-                    "An unexpected error occurred. Please try again later.",
+                    t(guild_id, "stellar.daily.failed_title"),
+                    t(guild_id, "stellar.daily.failed_description"),
                 ),
                 ephemeral=True,
             )
             return
 
         if success:
+            plural = "s" if streak != 1 else ""
             embed = success_embed(
-                "Daily Reward Claimed! 🎁",
-                f"You received **{coins_awarded} coins**!\nStreak: **{streak} day{'s' if streak != 1 else ''}** 🔥",
+                t(guild_id, "stellar.daily.success_title"),
+                t(guild_id, "stellar.daily.success_description", coins=coins_awarded, streak=streak, plural=plural),
             )
         else:
             embed = warning_embed(
-                "Daily Cooldown ⏳",
-                f"You already claimed your daily reward.\nCurrent streak: **{streak}** — come back tomorrow!",
+                t(guild_id, "stellar.daily.cooldown_title"),
+                t(guild_id, "stellar.daily.cooldown_description", streak=streak),
             )
 
         await ctx.send(embed=embed, ephemeral=True)
@@ -103,19 +105,19 @@ class StellarCog(commands.Cog, name="Stellar"):
             logger.exception("Balance query failed for user %s", user_id)
             await ctx.send(
                 embed=error_embed(
-                    "Balance Check Failed",
-                    "Could not retrieve coin balance. Please try again.",
+                    t(guild_id, "stellar.coins.failed_title"),
+                    t(guild_id, "stellar.coins.failed_description"),
                 ),
                 ephemeral=True,
             )
             return
 
         if target == ctx.author:
-            description = f"You have **{balance} coins** 💰"
+            description = t(guild_id, "stellar.coins.self_description", balance=balance)
         else:
-            description = f"**{target.display_name}** has **{balance} coins** 💰"
+            description = t(guild_id, "stellar.coins.target_description", name=target.display_name, balance=balance)
 
-        embed = info_embed("Coin Balance", description)
+        embed = info_embed(t(guild_id, "stellar.coins.balance_title"), description)
         await ctx.send(embed=embed, ephemeral=True)
 
     # ------------------------------------------------------------------
@@ -146,17 +148,18 @@ class StellarCog(commands.Cog, name="Stellar"):
             logger.exception("Leaderboard query failed for guild %s", guild_id)
             await ctx.send(
                 embed=error_embed(
-                    "Leaderboard Error",
-                    "Could not load the leaderboard. Please try again later.",
+                    t(guild_id, "stellar.leaderboard.error_title"),
+                    t(guild_id, "stellar.leaderboard.error_description"),
                 ),
                 ephemeral=True,
             )
             return
 
         if not rows:
+            type_label = "XP" if sort_by == "xp" else "coins"
             embed = error_embed(
-                "Leaderboard Empty",
-                f"No members with {'XP' if sort_by == 'xp' else 'coins'} in this server yet. Start chatting to earn!",
+                t(guild_id, "stellar.leaderboard.empty_title"),
+                t(guild_id, "stellar.leaderboard.empty_description", type=type_label),
             )
             await ctx.send(embed=embed, ephemeral=True)
             return
@@ -170,13 +173,13 @@ class StellarCog(commands.Cog, name="Stellar"):
             trophy = "🥇" if idx == 1 else "🥈" if idx == 2 else "🥉" if idx == 3 else f"#{idx}"
             lines.append(f"{trophy} <@{user_id}> — **{value:,}** {emoji_type}")
 
-        title = f"{'XP' if sort_by == 'xp' else 'Coin'} Leaderboard"
+        title_key = "stellar.leaderboard.xp_title" if sort_by == "xp" else "stellar.leaderboard.coins_title"
         embed = discord.Embed(
-            title=title,
+            title=t(guild_id, title_key),
             description="\n".join(lines),
             color=COLOR_INFO,
         )
-        embed.set_footer(text=f"Top {len(rows)} members")
+        embed.set_footer(text=t(guild_id, "stellar.leaderboard.footer", count=len(rows)))
 
         await ctx.send(embed=embed, ephemeral=True)
 
@@ -209,8 +212,8 @@ class StellarCog(commands.Cog, name="Stellar"):
             logger.exception("Rank info query failed for user %s", user_id)
             await ctx.send(
                 embed=error_embed(
-                    "Rank Card Error",
-                    "Could not retrieve rank data. Please try again later.",
+                    t(guild_id, "stellar.rank.failed_title"),
+                    t(guild_id, "stellar.rank.failed_description"),
                 ),
                 ephemeral=True,
             )
@@ -219,8 +222,8 @@ class StellarCog(commands.Cog, name="Stellar"):
         if rank_info is None:
             await ctx.send(
                 embed=error_embed(
-                    "No Rank Data",
-                    f"**{target.display_name}** has no stats yet.\nStart chatting to earn XP and level up!",
+                    t(guild_id, "stellar.rank.no_data_title"),
+                    t(guild_id, "stellar.rank.no_data_description", name=target.display_name),
                 ),
                 ephemeral=True,
             )

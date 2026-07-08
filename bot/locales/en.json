@@ -284,5 +284,129 @@
       "error_title": "Image Missing",
       "error_description": "The banana image asset is not available. Please contact the bot owner."
     }
+  },
+  "sentinel": {
+    "validate": {
+      "self_target_title": "Invalid Target",
+      "self_target_description": "I cannot moderate myself.",
+      "cannot_self_description": "You cannot {action} yourself.",
+      "role_hierarchy_title": "Role Hierarchy",
+      "role_hierarchy_description": "I cannot {action} {mention} — their highest role is above or equal to mine."
+    },
+    "error": {
+      "permission_denied_title": "Permission Denied",
+      "permission_denied_description": "I don't have permission to {action} {mention}. Check my role position and server permissions.",
+      "action_failed_title": "Action Failed",
+      "action_failed_description": "Failed to {action} {mention}. Discord returned an error.",
+      "unexpected_title": "Unexpected Error",
+      "unexpected_description": "An unexpected error occurred while trying to {action} {mention}."
+    },
+    "warn": {
+      "failed_title": "Warn Failed",
+      "failed_description": "Could not record the warning. Please try again.",
+      "success_title": "Member Warned",
+      "success_description": "{mention} has been warned.\n**Reason:** {reason}",
+      "auto_mute_description": "\n⚠️ {mention} has been **automatically muted** for 1 hour ({threshold} warnings).",
+      "auto_mute_failed_description": "\n⚠️ Auto-mute failed — I lack permission to timeout {mention}.",
+      "auto_kick_description": "\n🚫 {mention} has been **automatically kicked** ({threshold} warnings).",
+      "auto_kick_failed_description": "\n⚠️ Auto-kick failed — I lack permission to kick {mention}."
+    },
+    "unwarn": {
+      "failed_title": "Unwarn Failed",
+      "failed_description": "Could not remove the warning. Please try again.",
+      "no_warnings_title": "No Warnings",
+      "no_warnings_description": "{mention} has no active warnings to remove.",
+      "success_title": "Warning Revoked",
+      "success_description": "Removed the most recent warning from {mention}."
+    },
+    "mute": {
+      "success_title": "Member Muted",
+      "success_description": "{mention} has been muted for **{duration}**.\n**Reason:** {reason}"
+    },
+    "unmute": {
+      "success_title": "Member Unmuted",
+      "success_description": "{mention}'s timeout has been removed."
+    },
+    "kick": {
+      "success_title": "Member Kicked",
+      "success_description": "{mention} has been kicked.\n**Reason:** {reason}"
+    },
+    "ban": {
+      "success_title": "Member Banned",
+      "success_description": "{mention} has been banned.\n**Reason:** {reason}"
+    },
+    "lock": {
+      "permission_denied_title": "Permission Denied",
+      "permission_denied_description": "I don't have permission to lock {channel}. Check my role permissions.",
+      "failed_title": "Lock Failed",
+      "failed_description": "Could not lock {channel}.",
+      "success_title": "Channel Locked",
+      "success_description": "{channel} has been locked. @everyone can no longer send messages."
+    },
+    "unlock": {
+      "permission_denied_title": "Permission Denied",
+      "permission_denied_description": "I don't have permission to unlock {channel}. Check my role permissions.",
+      "failed_title": "Unlock Failed",
+      "failed_description": "Could not unlock {channel}.",
+      "success_title": "Channel Unlocked",
+      "success_description": "{channel} has been unlocked. @everyone can send messages again."
+    },
+    "modlogs": {
+      "failed_title": "Modlogs Failed",
+      "failed_description": "Could not retrieve moderation history. Please try again.",
+      "no_modlogs_title": "No Modlogs",
+      "no_modlogs_description": "{mention} has no moderation history.",
+      "no_modlogs_description_filtered": "{mention} has no moderation history matching the filters.",
+      "page_infractions": "{total} infraction(s) total",
+      "page_info": " — page {page}/{total_pages}",
+      "title": "📋 Modlogs for {name}",
+      "field_value": "**Moderator:** <@{moderator}>\n**Reason:** {reason}\n**Date:** {date}",
+      "revoked": "\n*(Revoked)*",
+      "footer": "NebulosaBot • Sentinel • {id}"
+    }
+  },
+  "stellar": {
+    "daily": {
+      "failed_title": "Daily Claim Failed",
+      "failed_description": "An unexpected error occurred. Please try again later.",
+      "success_title": "Daily Reward Claimed! 🎁",
+      "success_description": "You received **{coins} coins**!\nStreak: **{streak} day{plural}** 🔥",
+      "cooldown_title": "Daily Cooldown ⏳",
+      "cooldown_description": "You already claimed your daily reward.\nCurrent streak: **{streak}** — come back tomorrow!"
+    },
+    "coins": {
+      "failed_title": "Balance Check Failed",
+      "failed_description": "Could not retrieve coin balance. Please try again.",
+      "balance_title": "Coin Balance",
+      "self_description": "You have **{balance} coins** 💰",
+      "target_description": "**{name}** has **{balance} coins** 💰"
+    },
+    "leaderboard": {
+      "error_title": "Leaderboard Error",
+      "error_description": "Could not load the leaderboard. Please try again later.",
+      "empty_title": "Leaderboard Empty",
+      "empty_description": "No members with {type} in this server yet. Start chatting to earn!",
+      "xp_title": "XP Leaderboard",
+      "coins_title": "Coin Leaderboard",
+      "footer": "Top {count} members"
+    },
+    "rank": {
+      "failed_title": "Rank Card Error",
+      "failed_description": "Could not retrieve rank data. Please try again later.",
+      "no_data_title": "No Rank Data",
+      "no_data_description": "**{name}** has no stats yet.\nStart chatting to earn XP and level up!"
+    }
+  },
+  "greetings": {
+    "permission_denied_title": "Permission Denied",
+    "permission_denied_description": "You need Administrator permission to use this command.",
+    "welcome_test": {
+      "failed_title": "Card Generation Failed",
+      "failed_description": "Could not generate the welcome card. Please try again."
+    },
+    "goodbye_test": {
+      "failed_title": "Card Generation Failed",
+      "failed_description": "Could not generate the goodbye card. Please try again."
+    }
   }
 }
