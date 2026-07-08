@@ -243,3 +243,60 @@ class TestBananaCommand:
         assert "file" in call_args[1]
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
+
+
+# ---------------------------------------------------------------------------
+# S1 — banana.webp asset path
+# ---------------------------------------------------------------------------
+
+
+class TestBananaWebpAsset:
+    """Tests for S1 — banana image loaded from assets/images/banana.webp."""
+
+    @pytest.mark.asyncio
+    @patch("bot.cogs.ocio.Path.exists", return_value=True)
+    async def test_banana_file_uses_webp_filename(
+        self,
+        mock_exists: MagicMock,
+        cog: OcioCog,
+    ) -> None:
+        """discord.File MUST use filename='banana.webp'."""
+        ctx = _make_ctx()
+
+        await cog.banana.callback(cog, ctx)
+
+        call_args = ctx.send.call_args
+        sent_file = call_args[1]["file"]
+        assert isinstance(sent_file, discord.File)
+        # Check the filename passed to discord.File
+        assert sent_file.filename == "banana.webp"
+
+    @pytest.mark.asyncio
+    @patch("bot.cogs.ocio.Path.exists", return_value=True)
+    async def test_banana_embed_uses_webp_attachment_url(
+        self,
+        mock_exists: MagicMock,
+        cog: OcioCog,
+    ) -> None:
+        """Embed image URL MUST use attachment://banana.webp."""
+        ctx = _make_ctx()
+
+        await cog.banana.callback(cog, ctx)
+
+        call_args = ctx.send.call_args
+        embed = call_args[1]["embed"]
+        # The embed image URL should reference banana.webp
+        assert embed.image.url == "attachment://banana.webp"
+
+    @pytest.mark.asyncio
+    @patch("bot.cogs.ocio.Path.exists", return_value=True)
+    async def test_banana_uses_assets_images_path(
+        self,
+        mock_exists: MagicMock,
+        cog: OcioCog,
+    ) -> None:
+        """Path existence check MUST use assets/images/banana.webp."""
+        from bot.cogs.ocio import _BANANA_IMAGE_PATH
+
+        assert "banana.webp" in str(_BANANA_IMAGE_PATH)
+        assert "assets/images" in str(_BANANA_IMAGE_PATH)
