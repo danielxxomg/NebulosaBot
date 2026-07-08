@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import discord
 from discord.ext import commands
@@ -41,7 +41,7 @@ _FALLBACK_PREFIX = "nb!"
 
 def _build_prefix_callable(
     bot: NebulosaBot,
-) -> Callable:
+) -> Callable[..., Any]:
     """Return an async callable that resolves the prefix per-message.
 
     Closure over *bot* so it can access ``guild_service`` at runtime.
@@ -52,6 +52,8 @@ def _build_prefix_callable(
             return _FALLBACK_PREFIX
 
         try:
+            if bot_ref.guild_service is None:
+                return _FALLBACK_PREFIX
             config = await bot_ref.guild_service.get_config(str(message.guild.id))
             return config.prefix or _FALLBACK_PREFIX
         except Exception:
@@ -309,12 +311,12 @@ class NebulosaBot(commands.Bot):
     # Context
     # ==================================================================
 
-    async def get_context(
+    async def get_context(  # type: ignore[override]  # intentional: only Message, not Interaction
         self,
         message: discord.Message,
         *,
-        cls: type[commands.Context] = NebulosaContext,
-    ) -> commands.Context:
+        cls: type[commands.Context[NebulosaBot]] = NebulosaContext,
+    ) -> commands.Context[NebulosaBot]:
         """Create a :class:`NebulosaContext` with pre-fetched guild config.
 
         For guild messages the ``guild_config`` attribute is populated
@@ -324,7 +326,7 @@ class NebulosaBot(commands.Bot):
 
         if ctx.guild is not None and self.guild_service is not None:
             try:
-                ctx._guild_config = await self.guild_service.get_config(  # type: ignore[attr-defined]
+                ctx._guild_config = await self.guild_service.get_config(
                     str(ctx.guild.id)
                 )
             except Exception:
@@ -332,7 +334,7 @@ class NebulosaBot(commands.Bot):
                     "Failed to pre-fetch guild config for context (guild=%s)",
                     ctx.guild.id,
                 )
-                ctx._guild_config = None  # type: ignore[attr-defined]
+                ctx._guild_config = None
 
         return ctx
 
@@ -353,7 +355,7 @@ class NebulosaBot(commands.Bot):
         """
         # Delegate to per-command handlers if they exist.
         if interaction.command is not None:
-            cog = interaction.command.cog
+            cog = interaction.command.cog  # type: ignore[union-attr]  # both Command and ContextMenu have .cog
             if cog is not None and cog.has_app_command_error_handler():
                 return
 
@@ -369,7 +371,7 @@ class NebulosaBot(commands.Bot):
 
     async def on_command_error(
         self,
-        ctx: commands.Context,
+        ctx: commands.Context[NebulosaBot],  # type: ignore[override]  # supertype uses Context[BotT]
         error: commands.CommandError,
     ) -> None:
         """Global prefix-command error handler — channel embeds.
