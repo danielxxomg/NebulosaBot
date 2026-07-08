@@ -546,23 +546,15 @@ def test_migration_006_is_idempotent() -> None:
     sql = _migration_006_text()
 
     # All DROP CONSTRAINT must use IF EXISTS
-    drop_constraints = re.findall(
-        r'DROP\s+CONSTRAINT\s+(IF\s+EXISTS\s+)?"?\w+"?', sql, re.IGNORECASE
-    )
+    drop_constraints = re.findall(r'DROP\s+CONSTRAINT\s+(IF\s+EXISTS\s+)?"?\w+"?', sql, re.IGNORECASE)
     for stmt in drop_constraints:
-        assert "IF EXISTS" in stmt.upper(), (
-            f"Non-idempotent DROP CONSTRAINT: {stmt!r} — MUST use IF EXISTS"
-        )
+        assert "IF EXISTS" in stmt.upper(), f"Non-idempotent DROP CONSTRAINT: {stmt!r} — MUST use IF EXISTS"
 
     # DROP TABLE must use IF EXISTS
-    drop_tables = re.findall(
-        r"DROP\s+TABLE\s+(IF\s+EXISTS\s+)?", sql, re.IGNORECASE
-    )
+    drop_tables = re.findall(r"DROP\s+TABLE\s+(IF\s+EXISTS\s+)?", sql, re.IGNORECASE)
     assert drop_tables, "Expected at least one DROP TABLE statement"
     for stmt in drop_tables:
-        assert "IF EXISTS" in stmt.upper(), (
-            "Non-idempotent DROP TABLE — MUST use IF EXISTS"
-        )
+        assert "IF EXISTS" in stmt.upper(), "Non-idempotent DROP TABLE — MUST use IF EXISTS"
 
 
 # ===========================================================================

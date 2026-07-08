@@ -718,8 +718,7 @@ class TestHealthCheck:
 
                 assert sub._poll_fallback_enabled is True
                 assert any(
-                    "unhealthy" in r.message.lower() or "poll fallback" in r.message.lower()
-                    for r in caplog.records
+                    "unhealthy" in r.message.lower() or "poll fallback" in r.message.lower() for r in caplog.records
                 ), "Expected a WARNING log about unhealthy state or poll fallback"
         finally:
             # _health_check_once now recreates the poll task when enabling the

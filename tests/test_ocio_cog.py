@@ -256,7 +256,9 @@ class TestBananaWebpAsset:
     @pytest.mark.asyncio
     @patch("bot.cogs.ocio.Path.exists", return_value=True)
     async def test_banana_file_uses_webp_filename(
-        self, mock_exists: MagicMock, cog: OcioCog,
+        self,
+        mock_exists: MagicMock,
+        cog: OcioCog,
     ) -> None:
         """discord.File MUST use filename='banana.webp'."""
         ctx = _make_ctx()
@@ -272,7 +274,9 @@ class TestBananaWebpAsset:
     @pytest.mark.asyncio
     @patch("bot.cogs.ocio.Path.exists", return_value=True)
     async def test_banana_embed_uses_webp_attachment_url(
-        self, mock_exists: MagicMock, cog: OcioCog,
+        self,
+        mock_exists: MagicMock,
+        cog: OcioCog,
     ) -> None:
         """Embed image URL MUST use attachment://banana.webp."""
         ctx = _make_ctx()
@@ -287,7 +291,9 @@ class TestBananaWebpAsset:
     @pytest.mark.asyncio
     @patch("bot.cogs.ocio.Path.exists", return_value=True)
     async def test_banana_uses_assets_images_path(
-        self, mock_exists: MagicMock, cog: OcioCog,
+        self,
+        mock_exists: MagicMock,
+        cog: OcioCog,
     ) -> None:
         """Path existence check MUST use assets/images/banana.webp."""
         from bot.cogs.ocio import _BANANA_IMAGE_PATH
