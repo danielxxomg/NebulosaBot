@@ -104,6 +104,21 @@ class TestSetupPermissionGate:
         has_check = bool(cmd.checks) or (hasattr(cmd, "app_command") and bool(cmd.app_command.checks))
         assert has_check, "/setup MUST be gated by @is_admin()"
 
+    def test_setup_command_prefix_path_has_permission_check(self, setup_cog: SetupCog) -> None:
+        """/setup prefix path MUST be gated by a permission check (not only app_command).
+
+        CRITICAL 1 fix: hybrid commands with @app_commands.check() only gate the
+        slash path. A @commands.has_permissions() decorator on the command itself
+        gates the prefix path too.
+        """
+        cmd = setup_cog.setup_command
+        # The command MUST have at least one check registered at the command level
+        # (not only on app_command). commands.has_permissions registers on cmd.checks.
+        assert cmd.checks, (
+            "/setup prefix path is NOT gated — cmd.checks is empty. "
+            "Add @commands.has_permissions(administrator=True) to gate both slash and prefix paths."
+        )
+
 
 # ---------------------------------------------------------------------------
 # 1.2 — Required param + save
@@ -281,3 +296,93 @@ class TestSetupI18nResponse:
         admin_ctx.send.assert_awaited_once()
         call_kwargs = admin_ctx.send.call_args.kwargs
         assert call_kwargs.get("ephemeral") is True
+
+
+# ---------------------------------------------------------------------------
+# CRITICAL 5 — Spec scenario coverage tests
+# ---------------------------------------------------------------------------
+
+
+class TestSetupSpecScenarios:
+    """Tests covering spec scenarios not yet exercised: required param,
+    language validation, and i18n response language switching."""
+
+    def test_ticket_category_param_is_required(self, setup_cog: SetupCog) -> None:
+        """ticket_category MUST be a required parameter (no default value).
+
+        Spec: "WHEN /setup is invoked without ticket_category THEN the command
+        is rejected by Discord's parameter validation."
+        Discord enforces this via the parameter having no default — verify the
+        command signature exposes it as required.
+        """
+        import inspect
+
+        sig = inspect.signature(setup_cog.setup_command.callback)
+        param = sig.parameters["ticket_category"]
+        # A required param has no default value (param.default is inspect.Parameter.empty).
+        assert param.default is inspect.Parameter.empty, (
+            f"ticket_category must be required (no default). Got default={param.default!r}"
+        )
+
+    def test_language_param_rejects_invalid_choice(self, setup_cog: SetupCog) -> None:
+        """language param MUST only accept 'es' or 'en'.
+
+        Spec: "WHEN /setup ticket_category:#Tickets language:xx is invoked
+        THEN the command is rejected (invalid choice)."
+        Discord enforces this via Literal['es', 'en'] type annotation — verify
+        the annotation constrains choices.
+        """
+        import typing
+
+        cmd = setup_cog.setup_command
+        # Resolve the language param's type annotation from the callback.
+        annotations = typing.get_type_hints(cmd.callback, include_extras=True)
+        lang_type = annotations.get("language")
+        assert lang_type is not None, "language param must have a type annotation"
+
+        # Optional[Literal['es', 'en']] is Union[Literal['es', 'en'], NoneType].
+        # Get the inner Literal args.
+        origin = getattr(lang_type, "__origin__", None)
+        if origin is typing.Union:
+            # Extract Literal from Union[..., None]
+            args = [a for a in lang_type.__args__ if a is not type(None)]
+            lang_type = args[0] if args else lang_type
+
+        literal_args = getattr(lang_type, "__args__", None)
+        assert literal_args is not None, f"language must be Literal type, got {lang_type}"
+        assert set(literal_args) == {"es", "en"}, (
+            f"language choices must be exactly {{'es', 'en'}}, got {set(literal_args)}"
+        )
+
+    async def test_setup_response_differs_by_guild_language(
+        self,
+        setup_cog: SetupCog,
+        admin_ctx: MagicMock,
+        setup_bot: MagicMock,
+        ticket_category_channel: MagicMock,
+    ) -> None:
+        """Success embed text MUST differ between es and en guilds.
+
+        Spec: "GIVEN a guild configured with language=en WHEN /setup completes
+        successfully THEN the confirmation embed text is in English" (and vice
+        versa for es). The implementation calls t() with the guild_id — verify
+        t() is invoked with the correct guild_id so the i18n system resolves
+        the right locale.
+        """
+        existing_config = GuildConfig(id="123456789", language="en")
+        setup_bot.guild_service.get_config = AsyncMock(return_value=existing_config)
+
+        with patch("bot.cogs.setup.t", return_value="translated") as mock_t:
+            await setup_cog.setup_command.callback(
+                setup_cog,
+                admin_ctx,
+                ticket_category=ticket_category_channel,
+            )
+
+        # t() must be called with the guild_id (not None) so the guild
+        # language (en) is used, not the default (es).
+        for call in mock_t.call_args_list:
+            guild_id_arg = call.args[0]
+            assert guild_id_arg == "123456789", (
+                f"t() must receive guild_id='123456789' to resolve the guild's language. Got guild_id={guild_id_arg!r}"
+            )
