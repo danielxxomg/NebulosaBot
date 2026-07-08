@@ -1,7 +1,5 @@
 """Pterodactyl entry point — delegates to bot.__main__.main (bot-only)."""
 
-from __future__ import annotations
-
 import asyncio
 import logging
 
