@@ -37,6 +37,7 @@ class SetupCog(commands.Cog, name="Setup"):
         name="setup",
         description="Configure guild settings (ticket category, mod role, log channel, language)",
     )
+    @commands.has_permissions(administrator=True)
     @is_admin()
     async def setup_command(
         self,
