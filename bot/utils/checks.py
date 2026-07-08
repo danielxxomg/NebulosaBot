@@ -15,7 +15,7 @@ from discord import app_commands
 logger = logging.getLogger(__name__)
 
 
-def is_admin():
+def is_admin() -> Any:
     """Require the Administrator permission.
 
     Usage:
@@ -66,7 +66,7 @@ async def is_mod_check(interaction: discord.Interaction) -> bool:
     return _user_has_role(interaction.user, mod_role_id)
 
 
-def is_mod():
+def is_mod() -> Any:
     """Require the configured Moderator role or Administrator permission.
 
     Decorator form of :func:`is_mod_check` for ``@app_commands.check()`` on

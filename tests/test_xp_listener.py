@@ -9,6 +9,10 @@ Covers:
 Strict TDD: RED phase — tests written BEFORE the implementation exists.
 """
 
+# mypy: disable-error-code="union-attr,operator"
+# Test file: heavy MagicMock usage causes false-positive union-attr errors
+# on service attributes (EconomyService | None) and mock return_value chains.
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
@@ -79,7 +83,7 @@ class TestXpListenerGuard:
 
         await listener.on_message(mock_message)
 
-        listener.bot.economy_service.gain_xp.assert_not_called()
+        listener.bot.economy_service.gain_xp.assert_not_called()  # type: ignore[union-attr]
 
     @pytest.mark.asyncio
     async def test_ignores_dm_messages(
@@ -95,7 +99,7 @@ class TestXpListenerGuard:
 
         await listener.on_message(msg)
 
-        listener.bot.economy_service.gain_xp.assert_not_called()
+        listener.bot.economy_service.gain_xp.assert_not_called()  # type: ignore[union-attr]
 
 
 # ---------------------------------------------------------------------------
