@@ -208,6 +208,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
 
     @commands.hybrid_command(name="warn", description="Warn a member")
     @app_commands.describe(member="The member to warn", reason="Reason for the warning")
+    @app_commands.default_permissions(moderate_members=True)
     @is_mod()
     async def warn(self, ctx: commands.Context, member: discord.Member, *, reason: str) -> None:
         """Issue a warning and check for auto-escalation."""
@@ -331,6 +332,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
 
     @commands.hybrid_command(name="unwarn", description="Remove the most recent warning from a member")
     @app_commands.describe(member="The member to unwarn")
+    @app_commands.default_permissions(moderate_members=True)
     @is_mod()
     async def unwarn(self, ctx: commands.Context, member: discord.Member) -> None:
         """Deactivate the most recent active warning."""
@@ -387,6 +389,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         duration='Duration (e.g. "1h", "30m", "1h30m"). Default: 1h',
         reason="Reason for the mute",
     )
+    @app_commands.default_permissions(moderate_members=True)
     @is_mod()
     async def mute(
         self,
@@ -451,6 +454,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
 
     @commands.hybrid_command(name="unmute", description="Remove a member's timeout")
     @app_commands.describe(member="The member to unmute")
+    @app_commands.default_permissions(moderate_members=True)
     @is_mod()
     async def unmute(self, ctx: commands.Context, member: discord.Member) -> None:
         """Remove the timeout from *member*."""
@@ -487,6 +491,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
 
     @commands.hybrid_command(name="kick", description="Kick a member from the server")
     @app_commands.describe(member="The member to kick", reason="Reason for the kick")
+    @app_commands.default_permissions(moderate_members=True)
     @is_mod()
     async def kick(self, ctx: commands.Context, member: discord.Member, *, reason: str) -> None:
         """Kick *member* from the guild."""
@@ -538,6 +543,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         reason="Reason for the ban",
         delete_days="Days of messages to delete (0-7, default: 0)",
     )
+    @app_commands.default_permissions(ban_members=True)
     @is_admin()
     async def ban(
         self,
@@ -602,6 +608,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         description="Lock a channel (deny send_messages for @everyone)",
     )
     @app_commands.describe(channel="The channel to lock (default: current channel)")
+    @app_commands.default_permissions(moderate_members=True)
     @is_mod()
     async def lock(
         self,
@@ -663,6 +670,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         description="Unlock a channel (allow send_messages for @everyone)",
     )
     @app_commands.describe(channel="The channel to unlock (default: current channel)")
+    @app_commands.default_permissions(moderate_members=True)
     @is_mod()
     async def unlock(
         self,
@@ -729,6 +737,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         type="Filter by infraction type (WARN, MUTE, KICK, BAN)",
         after="Show only infractions after this date (ISO, e.g. 2026-01-01)",
     )
+    @app_commands.default_permissions(moderate_members=True)
     @is_mod()
     async def modlogs(
         self,
@@ -755,7 +764,8 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                 embed=error_embed(
                     t(guild_id, "sentinel.modlogs.failed_title"),
                     t(guild_id, "sentinel.modlogs.failed_description"),
-                )
+                ),
+                ephemeral=True,
             )
             return
 
@@ -770,17 +780,18 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                 embed=info_embed(
                     t(guild_id, "sentinel.modlogs.no_modlogs_title"),
                     t(guild_id, desc_key, mention=member.mention),
-                )
+                ),
+                ephemeral=True,
             )
             return
 
         pages = _build_modlog_pages(member, infractions, guild_id=guild_id)
 
         if len(pages) == 1:
-            await ctx.send(embed=pages[0])
+            await ctx.send(embed=pages[0], ephemeral=True)
         else:
             view = _ModlogsPaginator(pages, guild_id=guild_id)
-            await ctx.send(embed=pages[0], view=view)
+            await ctx.send(embed=pages[0], view=view, ephemeral=True)
 
 
 # ======================================================================
