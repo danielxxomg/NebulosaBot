@@ -8,19 +8,19 @@ Enforce linting, type checking, security scanning, coverage gates, and dependenc
 
 ### Requirement: Matrix CI on push and pull request
 
-The CI pipeline MUST run on every push to any branch and on every pull request targeting `master`. The matrix MUST include Python 3.11, 3.12, and 3.14.
+The CI pipeline MUST run on every push to any branch and on every pull request targeting `master`. The matrix MUST include Python 3.11, 3.12, 3.13, and 3.14.
 
 #### Scenario: Push triggers full matrix
 
 - GIVEN a developer pushes a commit to any branch
 - WHEN GitHub Actions receives the push event
-- THEN jobs run for Python 3.11, 3.12, and 3.14 in parallel
+- THEN jobs run for Python 3.11, 3.12, 3.13, and 3.14 in parallel
 
 #### Scenario: PR triggers full matrix
 
 - GIVEN a pull request is opened targeting `master`
 - WHEN GitHub Actions receives the PR event
-- THEN jobs run for Python 3.11, 3.12, and 3.14 in parallel
+- THEN jobs run for Python 3.11, 3.12, 3.13, and 3.14 in parallel
 
 #### Scenario: Fail-fast disabled
 
@@ -58,19 +58,13 @@ Each matrix cell MUST execute ruff check, ruff format --check, mypy, bandit, and
 
 ### Requirement: Coverage gate ratchet
 
-The CI MUST enforce a coverage floor that ratchets per PR slice: 55% after PR1, 60% after PR2, 70% after PR3. The gate value is read from `pyproject.toml` `addopts`.
+The CI MUST enforce a coverage floor of 75%. The gate value is read from `pyproject.toml` `addopts`.
 
-#### Scenario: PR1 baseline gate
+#### Scenario: Coverage gate at 75%
 
-- GIVEN the PR1 slice is merged and `addopts` sets `--cov-fail-under=55`
-- WHEN CI runs on the next push
-- THEN coverage at or above 55% passes; below 55% fails
-
-#### Scenario: PR3 strict gate
-
-- GIVEN the PR3 slice is merged and `addopts` sets `--cov-fail-under=70`
-- WHEN CI runs on the next push
-- THEN coverage at or above 70% passes; below 70% fails
+- GIVEN `pyproject.toml` `addopts` sets `--cov-fail-under=75`
+- WHEN CI runs on any push or PR
+- THEN coverage at or above 75% passes; below 75% fails
 
 ### Requirement: asyncio debug enabled in CI
 
