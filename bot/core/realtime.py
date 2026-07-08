@@ -43,6 +43,7 @@ HEALTH_INTERVAL: float = 60.0  # status log / fallback toggle cadence
 POLL_INTERVAL: float = 30.0  # poll fallback cadence when WS is down
 WATCHDOG_DELAY: float = 30.0  # warn if zero CDC events in this window
 UNHEALTHY_THRESHOLD: float = 60.0  # >60 s unhealthy -> enable poll fallback
+REALTIME_UNHEALTHY_ERROR_CYCLES: int = 3  # consecutive unhealthy cycles before ERROR
 
 CHANNEL_NAME = "cache-sync"
 SUBSCRIBED_TABLES: tuple[str, ...] = (
@@ -61,17 +62,48 @@ ClientFactory = Callable[[str, str], Awaitable[Any]]
 # ------------------------------------------------------------------
 
 
-def _record_for_event(payload: dict) -> dict:
-    """Return the record dict relevant to *payload*.
+def _record_for_event(data: dict) -> dict:
+    """Return the record dict relevant to *data*.
 
     INSERT/UPDATE (and any non-DELETE type) read from ``record``; DELETE
     reads from ``old_record`` because the live ``record`` is empty on
     deletion.  A missing ``old_record`` yields an empty dict so callers
     can treat the result uniformly.
+
+    *data* is the inner data dict (already extracted from the SDK's
+    ``{data: ..., ids: [...]}`` envelope by :func:`_normalize_cdc_payload`).
     """
-    if payload.get("type") == "DELETE":
-        return payload.get("old_record") or {}
-    return payload.get("record") or {}
+    if data.get("type") == "DELETE":
+        return data.get("old_record") or {}
+    return data.get("record") or {}
+
+
+def _normalize_cdc_payload(payload: dict, table_hint: str | None = None) -> tuple[str | None, dict]:
+    """Normalize a CDC payload from the realtime-py SDK.
+
+    The SDK (v2.31.0+) delivers callbacks with the envelope
+    ``{data: {type, schema, table, record, old_record, ...}, ids: [...]}``.
+    This helper extracts the inner ``data`` dict, resolves the source table,
+    and selects the appropriate record (``old_record`` for DELETE events).
+
+    Args:
+        payload: The raw callback payload from the SDK.
+        table_hint: The table name from the ``on_postgres_changes``
+            registration (used as fallback when ``data.table`` is missing).
+
+    Returns:
+        A ``(table, record)`` tuple where *table* is the resolved source
+        table (or ``table_hint`` as fallback) and *record* is the relevant
+        row dict.
+    """
+    data = payload.get("data", {})
+    # If there's no data envelope, treat the payload itself as the data
+    # (backward compatibility with legacy flat payloads).
+    if not data or not isinstance(data, dict):
+        data = payload
+    table = data.get("table") or table_hint
+    record = _record_for_event(data)
+    return table, record
 
 
 def _extract_guild_id(table: str, record: dict) -> str | None:
@@ -254,6 +286,7 @@ class RealtimeCacheSubscriber:
         "_pending_tasks",
         "_poll_fallback_enabled",
         "_poll_task",
+        "_received_count",
         "_started",
         "_status",
         "_status_since",
@@ -261,6 +294,7 @@ class RealtimeCacheSubscriber:
         "_subscribed_at",
         "_supabase_key",
         "_supabase_url",
+        "_unhealthy_cycles",
         "_watchdog_task",
         "recent_writes",
         "ticket_guild_cache",
@@ -286,6 +320,8 @@ class RealtimeCacheSubscriber:
         self._status_since: float = 0.0
         self._subscribed_at: float = 0.0
         self._event_count: int = 0
+        self._received_count: int = 0
+        self._unhealthy_cycles: int = 0
         self._poll_fallback_enabled: bool = False
         # Poll from epoch zero so the first cycle covers the full history.
         self._last_check: str = "1970-01-01T00:00:00+00:00"
@@ -339,10 +375,12 @@ class RealtimeCacheSubscriber:
                 event="*",
                 schema="public",
                 table=table,
-                callback=self._cdc_callback,
+                callback=lambda payload, t=table: self._cdc_callback(payload, t),
             )
 
         await self._channel.subscribe(self._on_subscribe)
+
+        self._wire_close_logging()
 
         self._health_task = asyncio.create_task(self._health_loop())
         self._poll_task = asyncio.create_task(self._poll_loop())
@@ -429,6 +467,42 @@ class RealtimeCacheSubscriber:
             self._poll_task = asyncio.create_task(self._poll_loop())
 
     # ------------------------------------------------------------------
+    # Close logging (C4)
+    # ------------------------------------------------------------------
+
+    def _wire_close_logging(self) -> None:
+        """Wrap SDK close hooks for bot-level logging.
+
+        Wraps ``client._on_connect_error(e)`` to log WebSocket close
+        code/reason from the exception object.  Wraps
+        ``channel.on_close()`` to record the CLOSED status.
+        """
+        if self._client is not None:
+            original_on_connect_error = self._client._on_connect_error
+
+            async def _wrapped_on_connect_error(e: object) -> None:
+                code = getattr(e, "code", "unknown")
+                reason = getattr(e, "reason", "")
+                logger.info(
+                    "WebSocket closed: code=%s reason=%s",
+                    code,
+                    reason,
+                )
+                await original_on_connect_error(e)
+
+            self._client._on_connect_error = _wrapped_on_connect_error
+
+        if self._channel is not None:
+            original_on_close = self._channel.on_close
+
+            def _wrapped_on_close() -> None:
+                self._status = "CLOSED"
+                logger.info("Realtime channel CLOSED")
+                original_on_close()
+
+            self._channel.on_close = _wrapped_on_close
+
+    # ------------------------------------------------------------------
     # Public integration hook
     # ------------------------------------------------------------------
 
@@ -440,7 +514,7 @@ class RealtimeCacheSubscriber:
     # CDC callback + handler
     # ------------------------------------------------------------------
 
-    def _cdc_callback(self, payload: dict) -> None:
+    def _cdc_callback(self, payload: dict, table_hint: str | None = None) -> None:
         """Sync SDK callback — schedule the async handler on the loop.
 
         The Supabase Realtime SDK invokes postgres_changes callbacks
@@ -450,17 +524,27 @@ class RealtimeCacheSubscriber:
         garbage collection.
         """
         try:
-            task = asyncio.create_task(self._handle_cdc(payload))
+            task = asyncio.create_task(self._handle_cdc(payload, table_hint))
             self._pending_tasks.add(task)
             task.add_done_callback(self._pending_tasks.discard)
         except RuntimeError:
             # No running loop (e.g. during shutdown) — drop the event.
             logger.debug("Dropping CDC event — no running event loop")
 
-    async def _handle_cdc(self, payload: dict) -> None:
+    async def _handle_cdc(self, payload: dict, table_hint: str | None = None) -> None:
         """Route a CDC payload to the correct guild invalidation."""
-        table = payload.get("table")
-        record = _record_for_event(payload)
+        self._received_count += 1
+        table, record = _normalize_cdc_payload(payload, table_hint)
+
+        # Guard: _normalize_cdc_payload may return table=None when both the
+        # payload data and the table_hint are missing/empty.  Treat this the
+        # same as an unresolvable guild_id — log and skip.
+        if table is None:
+            logger.warning(
+                "CDC event with unresolvable table — skipping",
+            )
+            return
+
         guild_id = _extract_guild_id(table, record)
 
         if guild_id is None and table == "ticket_note":
@@ -553,6 +637,7 @@ class RealtimeCacheSubscriber:
                 self._subscribed_at = now
             self._status_since = now
             self._poll_fallback_enabled = False
+            self._unhealthy_cycles = 0
             # Reset poll timestamp so the next fallback cycle covers
             # the full history window if the WS drops again.
             self._last_check = "1970-01-01T00:00:00+00:00"
@@ -581,12 +666,20 @@ class RealtimeCacheSubscriber:
         if self._status == "SUBSCRIBED":
             logger.debug("Realtime healthy — status=SUBSCRIBED")
             self._poll_fallback_enabled = False
+            self._unhealthy_cycles = 0
         elif self._status in ("CHANNEL_ERROR", "TIMED_OUT"):
-            if now - self._status_since > UNHEALTHY_THRESHOLD:
+            self._unhealthy_cycles += 1
+            if self._unhealthy_cycles >= REALTIME_UNHEALTHY_ERROR_CYCLES:
+                logger.error(
+                    "Realtime unhealthy for %d consecutive cycles — escalating",
+                    self._unhealthy_cycles,
+                )
+            elif now - self._status_since > UNHEALTHY_THRESHOLD:
                 logger.warning(
                     "Realtime unhealthy for %.0fs — enabling poll fallback",
                     now - self._status_since,
                 )
+            if now - self._status_since > UNHEALTHY_THRESHOLD:
                 self._poll_fallback_enabled = True
                 # Spec R4 symmetry: recovery cancels the poll task, so a later
                 # unhealthy spell MUST recreate it — otherwise the fallback
@@ -676,7 +769,7 @@ class RealtimeCacheSubscriber:
             return
         now = time.monotonic()
         elapsed = now - self._subscribed_at
-        if elapsed >= WATCHDOG_DELAY and self._event_count == 0:
+        if elapsed >= WATCHDOG_DELAY and self._received_count == 0:
             logger.warning(
                 "No CDC events received — check that supabase_realtime publication includes the required tables"
             )

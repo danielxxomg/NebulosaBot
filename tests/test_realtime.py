@@ -216,6 +216,7 @@ def _make_client_mock(channel: MagicMock | None = None) -> MagicMock:
     client.remove_all_channels = AsyncMock()
     client.close = AsyncMock()
     client.aclose = AsyncMock()
+    client._on_connect_error = AsyncMock()
     return client
 
 
@@ -448,8 +449,10 @@ class TestCdcDispatch:
         assert cache.get("G-db:config") is None
 
     @pytest.mark.asyncio
-    async def test_ticket_note_unresolvable_skips_invalidation(self, cache: TTLCache) -> None:
-        """ticket_note unresolved (cache miss + DB None) MUST skip, not invalidate wrong guild."""
+    async def test_ticket_note_unresolvable_skips_invalidation(self, cache: TTLCache, caplog) -> None:
+        """ticket_note unresolved (cache miss + DB None) MUST skip and log a warning."""
+        import logging
+
         client = _make_client_mock()
         ticket_resp = MagicMock()
         ticket_resp.data = []  # DB returns nothing
@@ -461,10 +464,15 @@ class TestCdcDispatch:
         sub = _make_subscriber(cache, client)
         cache.set("some:config", "v")
 
-        await sub._handle_cdc(_cdc_payload(table="ticket_note", record={"ticketId": "T3"}))
+        with caplog.at_level(logging.WARNING, logger="bot.core.realtime"):
+            await sub._handle_cdc(_cdc_payload(table="ticket_note", record={"ticketId": "T3"}))
 
         # Nothing invalidated.
         assert cache.get("some:config") == "v"
+        # Warning about unresolvable guild_id MUST be logged.
+        assert any("could not resolve" in r.message.lower() or "guild_id" in r.message for r in caplog.records), (
+            "Expected a WARNING log about unresolvable guild_id"
+        )
 
     @pytest.mark.asyncio
     async def test_cdc_event_increments_counter(self, cache: TTLCache) -> None:
@@ -476,6 +484,98 @@ class TestCdcDispatch:
         await sub._handle_cdc(_cdc_payload(table="guild", record={"id": "G2"}))
 
         assert sub._event_count == 2
+
+
+# ===========================================================================
+# C3 — Payload normalization (nested SDK payload)
+# ===========================================================================
+
+
+class TestNormalizeCdcPayload:
+    """_normalize_cdc_payload — handles nested SDK payloads from realtime-py 2.31.0."""
+
+    @pytest.mark.asyncio
+    async def test_nested_sdk_payload_invalidates_guild(self, cache: TTLCache) -> None:
+        """SDK delivers payload as {data: {type, table, record}, ids: [...]}.
+        _handle_cdc MUST normalize to extract table and record from data."""
+        client = _make_client_mock()
+        sub = _make_subscriber(cache, client)
+        cache.set("G-nested:config", "v")
+
+        sdk_payload = {
+            "data": {
+                "type": "UPDATE",
+                "table": "guild",
+                "schema": "public",
+                "record": {"id": "G-nested"},
+                "old_record": {},
+                "commit_timestamp": "2025-06-15T10:00:00Z",
+            },
+            "ids": [1],
+        }
+        await sub._handle_cdc(sdk_payload)
+
+        assert cache.get("G-nested:config") is None  # invalidated
+
+    @pytest.mark.asyncio
+    async def test_table_hint_fallback_when_data_table_missing(self, cache: TTLCache) -> None:
+        """When data.table is None/missing, table_hint from callback registration MUST be used."""
+        client = _make_client_mock()
+        sub = _make_subscriber(cache, client)
+        cache.set("G-hint:config", "v")
+
+        sdk_payload = {
+            "data": {
+                "type": "INSERT",
+                "table": None,
+                "schema": "public",
+                "record": {"guildId": "G-hint"},
+                "old_record": {},
+            },
+            "ids": [2],
+        }
+        await sub._handle_cdc(sdk_payload, table_hint="greeting_config")
+
+        assert cache.get("G-hint:config") is None  # invalidated via table_hint
+
+    @pytest.mark.asyncio
+    async def test_delete_nested_sdk_uses_old_record(self, cache: TTLCache) -> None:
+        """DELETE event in nested SDK format MUST read old_record from data."""
+        client = _make_client_mock()
+        sub = _make_subscriber(cache, client)
+        cache.set("G-del-nested:config", "v")
+
+        sdk_payload = {
+            "data": {
+                "type": "DELETE",
+                "table": "guild",
+                "schema": "public",
+                "record": {},
+                "old_record": {"id": "G-del-nested"},
+            },
+            "ids": [3],
+        }
+        await sub._handle_cdc(sdk_payload)
+
+        assert cache.get("G-del-nested:config") is None
+
+    @pytest.mark.asyncio
+    async def test_legacy_top_level_payload_still_works(self, cache: TTLCache) -> None:
+        """Legacy top-level payload format MUST still work for backward compatibility."""
+        client = _make_client_mock()
+        sub = _make_subscriber(cache, client)
+        cache.set("G-legacy:config", "v")
+
+        legacy_payload = {
+            "type": "INSERT",
+            "table": "guild",
+            "schema": "public",
+            "record": {"id": "G-legacy"},
+            "old_record": {},
+        }
+        await sub._handle_cdc(legacy_payload)
+
+        assert cache.get("G-legacy:config") is None  # still works
 
 
 # ===========================================================================
@@ -586,33 +686,50 @@ class TestHealthCheck:
     """_health_check_once — logs status; enables poll fallback after >60s unhealthy."""
 
     @pytest.mark.asyncio
-    async def test_healthy_subscribed_logs_debug(self, cache: TTLCache) -> None:
+    async def test_healthy_subscribed_logs_debug(self, cache: TTLCache, caplog) -> None:
+        """Spec: healthy subscription MUST log a DEBUG message."""
+        import logging
+
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
         sub._status = "SUBSCRIBED"
 
-        await sub._health_check_once()
+        with caplog.at_level(logging.DEBUG, logger="bot.core.realtime"):
+            await sub._health_check_once()
 
         assert sub._poll_fallback_enabled is False
+        assert any("healthy" in r.message.lower() or "subscribed" in r.message.lower() for r in caplog.records), (
+            "Expected a DEBUG log about healthy/subscribed status"
+        )
 
     @pytest.mark.asyncio
-    async def test_channel_error_over_60s_enables_fallback(self, cache: TTLCache) -> None:
+    async def test_channel_error_over_60s_enables_fallback(self, cache: TTLCache, caplog) -> None:
+        """Spec: disconnected state >60s MUST log a WARNING and enable poll fallback."""
+        import logging
+
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
         sub._status = "CHANNEL_ERROR"
         try:
             with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
                 sub._status_since = 930.0  # 70s ago
-                await sub._health_check_once()
+                with caplog.at_level(logging.WARNING, logger="bot.core.realtime"):
+                    await sub._health_check_once()
 
                 assert sub._poll_fallback_enabled is True
+                assert any(
+                    "unhealthy" in r.message.lower() or "poll fallback" in r.message.lower() for r in caplog.records
+                ), "Expected a WARNING log about unhealthy state or poll fallback"
         finally:
             # _health_check_once now recreates the poll task when enabling the
             # fallback — clean it up so no background task leaks past the test.
             await sub.stop()
 
     @pytest.mark.asyncio
-    async def test_recovery_disables_fallback(self, cache: TTLCache) -> None:
+    async def test_recovery_disables_fallback(self, cache: TTLCache, caplog) -> None:
+        """Spec: reconnection to SUBSCRIBED MUST disable poll fallback and log."""
+        import logging
+
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
         sub._poll_fallback_enabled = True
@@ -621,10 +738,14 @@ class TestHealthCheck:
             sub._status_since = 930.0
 
         # Recover — sync callback, no await.
-        sub._on_subscribe("SUBSCRIBED", None)
+        with caplog.at_level(logging.INFO, logger="bot.core.realtime"):
+            sub._on_subscribe("SUBSCRIBED", None)
         await sub._health_check_once()
 
         assert sub._poll_fallback_enabled is False
+        assert any("subscribed" in r.message.lower() for r in caplog.records), (
+            "Expected an INFO log about SUBSCRIBED reconnection"
+        )
 
 
 # ===========================================================================
@@ -807,7 +928,7 @@ class TestMigrationWatchdog:
 
         with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
             sub._subscribed_at = 965.0
-            sub._event_count = 3
+            sub._received_count = 3
             with caplog.at_level(logging.WARNING, logger="bot.core.realtime"):
                 await sub._watchdog_check_once()
 
@@ -827,6 +948,159 @@ class TestMigrationWatchdog:
                 await sub._watchdog_check_once()
 
         assert not any("publication" in r.message for r in caplog.records)
+
+
+# ===========================================================================
+# C2 — Received counter (counts all CDC events, even skipped ones)
+# ===========================================================================
+
+
+class TestReceivedCounter:
+    """_received_count MUST increment for every CDC event, even skipped ones."""
+
+    @pytest.mark.asyncio
+    async def test_received_count_increments_for_valid_event(self, cache: TTLCache) -> None:
+        """Valid CDC event increments both _received_count and _event_count."""
+        client = _make_client_mock()
+        sub = _make_subscriber(cache, client)
+
+        await sub._handle_cdc(_cdc_payload(table="guild", record={"id": "G1"}))
+
+        assert sub._received_count == 1
+        assert sub._event_count == 1
+
+    @pytest.mark.asyncio
+    async def test_received_count_increments_for_skipped_event(self, cache: TTLCache) -> None:
+        """Skipped CDC event (no guild_id) increments _received_count but NOT _event_count."""
+        client = _make_client_mock()
+        sub = _make_subscriber(cache, client)
+
+        # ticket_note with no ticketId and no guildId — will be skipped
+        await sub._handle_cdc(_cdc_payload(table="ticket_note", record={}))
+
+        assert sub._received_count == 1
+        assert sub._event_count == 0  # NOT incremented (skipped)
+
+    @pytest.mark.asyncio
+    async def test_received_count_increments_for_self_echo(self, cache: TTLCache) -> None:
+        """Self-echo event increments _received_count but NOT _event_count."""
+        client = _make_client_mock()
+        sub = _make_subscriber(cache, client)
+        await sub.mark_recent_write("guild", "G-echo")
+
+        await sub._handle_cdc(_cdc_payload(table="guild", record={"id": "G-echo"}))
+
+        assert sub._received_count == 1
+        assert sub._event_count == 0  # NOT incremented (self-echo skipped)
+
+    @pytest.mark.asyncio
+    async def test_watchdog_uses_received_count(self, cache: TTLCache, caplog) -> None:
+        """Watchdog MUST check _received_count, not _event_count."""
+        client = _make_client_mock()
+        sub = _make_subscriber(cache, client)
+        sub._status = "SUBSCRIBED"
+        import logging
+
+        # Send a skipped event — _received_count=1, _event_count=0
+        await sub._handle_cdc(_cdc_payload(table="ticket_note", record={}))
+        assert sub._received_count == 1
+        assert sub._event_count == 0
+
+        with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
+            sub._subscribed_at = 965.0  # 35s ago
+            with caplog.at_level(logging.WARNING, logger="bot.core.realtime"):
+                await sub._watchdog_check_once()
+
+        # Watchdog should NOT warn because _received_count > 0
+        assert not any("publication" in r.message for r in caplog.records)
+
+
+# ===========================================================================
+# C4 — Close logging + health escalation
+# ===========================================================================
+
+
+class TestCloseLogging:
+    """C4 — WebSocket close code/reason logging and health escalation."""
+
+    @pytest.mark.asyncio
+    async def test_on_connect_error_logs_close_code(self, cache: TTLCache, caplog) -> None:
+        """When WebSocket closes, close code and reason MUST be logged."""
+        import logging
+
+        client = _make_client_mock()
+        sub = _make_subscriber(cache, client)
+        await sub.start()
+
+        # start() already calls _wire_close_logging, so client._on_connect_error
+        # is now the wrapped version.  The wrapped version delegates to the
+        # original, so calling it with a mock exception should log and delegate.
+        mock_exc = MagicMock()
+        mock_exc.code = 1006
+        mock_exc.reason = "connection lost"
+
+        with caplog.at_level(logging.INFO, logger="bot.core.realtime"):
+            await client._on_connect_error(mock_exc)
+
+        assert any("1006" in r.message for r in caplog.records)
+        assert any("connection lost" in r.message for r in caplog.records)
+        await sub.stop()
+
+    @pytest.mark.asyncio
+    async def test_channel_on_close_records_closed_state(self, cache: TTLCache, caplog) -> None:
+        """Channel on_close wrapper MUST record CLOSED state."""
+        import logging
+
+        client = _make_client_mock()
+        channel = client.channel.return_value
+        sub = _make_subscriber(cache, client)
+        await sub.start()
+
+        # start() already calls _wire_close_logging, so channel.on_close
+        # is now the wrapped version.
+        with caplog.at_level(logging.INFO, logger="bot.core.realtime"):
+            channel.on_close()
+
+        assert sub._status == "CLOSED"
+        await sub.stop()
+
+    @pytest.mark.asyncio
+    async def test_health_escalation_after_three_unhealthy_cycles(self, cache: TTLCache, caplog) -> None:
+        """After 3 consecutive unhealthy cycles, log level escalates to ERROR."""
+        import logging
+
+        client = _make_client_mock()
+        sub = _make_subscriber(cache, client)
+        sub._status = "CHANNEL_ERROR"
+        sub._unhealthy_cycles = 0
+
+        with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
+            sub._status_since = 930.0  # 70s ago
+
+            # First 3 unhealthy cycles: WARNING level
+            for i in range(3):
+                with caplog.at_level(logging.WARNING, logger="bot.core.realtime"):
+                    await sub._health_check_once()
+
+            # 4th cycle: should escalate to ERROR
+            caplog.clear()
+            with caplog.at_level(logging.ERROR, logger="bot.core.realtime"):
+                await sub._health_check_once()
+
+        assert any("escalat" in r.message.lower() or "unhealthy" in r.message.lower() for r in caplog.records)
+        assert sub._unhealthy_cycles >= 3
+        await sub.stop()
+
+    @pytest.mark.asyncio
+    async def test_unhealthy_cycles_reset_on_subscribed(self, cache: TTLCache) -> None:
+        """When status returns to SUBSCRIBED, _unhealthy_cycles MUST reset to 0."""
+        client = _make_client_mock()
+        sub = _make_subscriber(cache, client)
+        sub._unhealthy_cycles = 5
+
+        sub._on_subscribe("SUBSCRIBED", None)
+
+        assert sub._unhealthy_cycles == 0
 
 
 # ===========================================================================
