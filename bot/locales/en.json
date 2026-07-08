@@ -101,7 +101,8 @@
       "deploy_error_title": "Persistence Error",
       "deploy_error_description": "The panel was sent but the IDs could not be saved. It will not survive a bot restart.",
       "permission_denied_title": "Permission Denied",
-      "permission_denied_description": "I don't have permission to send messages here."
+      "permission_denied_description": "I don't have permission to send messages here.",
+      "open_button": "Open Ticket"
     },
     "create": {
       "server_only_title": "Server Only",
@@ -116,6 +117,8 @@
       "success_description": "Ticket category **{name}** has been created.\nID: `{id}`"
     },
     "list": {
+      "id_label": "ID",
+      "position_label": "Position",
       "failed_title": "Query Failed",
       "failed_description": "Could not retrieve ticket categories. Please try again.",
       "empty_title": "No Categories",
@@ -161,6 +164,8 @@
       "footer": "NebulosaBot • Tickets"
     },
     "actions": {
+      "claim_button": "Claim",
+      "close_button": "Close",
       "claim_mods_only_title": "Mods Only",
       "claim_mods_only_description": "Only moderators can claim tickets.",
       "claim_failed_title": "Claim Failed",
@@ -224,6 +229,7 @@
       "not_ticket_description": "This command must be used in a ticket channel.",
       "failed_title": "Reopen Failed",
       "failed_description": "Could not reopen the ticket. Please try again.",
+      "not_closed_description": "Only closed tickets can be reopened. Current status: {status}",
       "success_title": "✅ Ticket Reopened",
       "success_description": "The ticket has been reopened in a new channel."
     },

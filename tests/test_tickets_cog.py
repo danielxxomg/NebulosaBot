@@ -1384,12 +1384,11 @@ class TestReopenStatusGuard:
     showing actual status." Defense-in-depth: the cog has NO pre-service
     status guard — it delegates to the service, which raises ValueError
     with the actual status. The cog catches that ValueError and surfaces
-    the message verbatim. The service guard prevents duplicate channel
-    creation for any caller that bypasses the cog.
+    a localized message via t(), NOT the service's raw exception text.
     """
 
     @pytest.mark.parametrize("status", ["open", "claimed"])
-    async def test_reopen_non_closed_sends_spanish_error(
+    async def test_reopen_non_closed_sends_localized_error(
         self,
         tickets_cog: TicketsCog,
         slash_ctx: MagicMock,
@@ -1397,11 +1396,11 @@ class TestReopenStatusGuard:
         mock_db,
         status: str,
     ) -> None:
-        """/reopen on an open/claimed ticket → cog catches service ValueError, surfaces exact status."""
+        """/reopen on an open/claimed ticket → cog catches service ValueError, surfaces localized error."""
         non_closed_row = {**_ticket_row(status=status)}
         mock_db.get_ticket_by_channel = AsyncMock(return_value=non_closed_row)
-        # The service guard raises ValueError with the actual status; the
-        # cog catches it and surfaces the message verbatim.
+        # The service guard raises ValueError — the cog now translates it
+        # via t() instead of surfacing str(e) verbatim.
         ticket_bot.ticket_service.reopen_ticket = AsyncMock(
             side_effect=ValueError(f"Solo se pueden reabrir tickets cerrados. Estado actual: {status}")
         )
@@ -1411,12 +1410,16 @@ class TestReopenStatusGuard:
         # Service IS called — the cog relies on the service guard, not a
         # redundant pre-service status check.
         ticket_bot.ticket_service.reopen_ticket.assert_awaited_once()
-        # Error embed surfaces the service's ValueError message verbatim.
+        # Error embed surfaces a LOCALIZED message (EN guild), not the
+        # service's raw Spanish text.
         slash_ctx.send.assert_awaited_once()
         embed = slash_ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
-        assert "Solo se pueden reabrir tickets cerrados" in (embed.description or "")
-        assert f"Estado actual: {status}" in (embed.description or "")
+        # Guild is EN — must see English localized text
+        assert "Only closed tickets can be reopened" in (embed.description or "")
+        assert status in (embed.description or "")
+        # Must NOT surface the service's raw Spanish text
+        assert "Solo se pueden" not in (embed.description or "")
 
 
 # ===========================================================================

@@ -114,6 +114,7 @@ def _load_ticket_i18n(tmp_path: Path) -> None:
                 "deploy_error_description": "PANEL_ERR_DESC_ES",
                 "permission_denied_title": "PANEL_PERM_ES",
                 "permission_denied_description": "PANEL_PERM_DESC_ES",
+                "open_button": "OPEN_BTN_ES",
             },
             "create": {
                 "server_only_title": "CREATE_GUILD_ONLY_ES",
@@ -128,6 +129,8 @@ def _load_ticket_i18n(tmp_path: Path) -> None:
                 "success_description": "CREATE_OK_DESC_{name}_{id}_ES",
             },
             "list": {
+                "id_label": "LIST_ID_ES",
+                "position_label": "LIST_POS_ES",
                 "failed_title": "LIST_ERR_ES",
                 "failed_description": "LIST_ERR_DESC_ES",
                 "empty_title": "LIST_EMPTY_ES",
@@ -173,6 +176,8 @@ def _load_ticket_i18n(tmp_path: Path) -> None:
                 "footer": "OPEN_FOOTER_ES",
             },
             "actions": {
+                "claim_button": "CLAIM_BTN_ES",
+                "close_button": "CLOSE_BTN_ES",
                 "claim_mods_only_title": "CLAIM_MOD_ES",
                 "claim_mods_only_description": "CLAIM_MOD_DESC_ES",
                 "claim_failed_title": "CLAIM_FAIL_ES",
@@ -236,6 +241,7 @@ def _load_ticket_i18n(tmp_path: Path) -> None:
                 "not_ticket_description": "REOPEN_NO_TICKET_DESC_ES",
                 "failed_title": "REOPEN_FAIL_ES",
                 "failed_description": "REOPEN_FAIL_DESC_ES",
+                "not_closed_description": "REOPEN_NOT_CLOSED_{status}_ES",
                 "success_title": "REOPEN_OK_ES",
                 "success_description": "REOPEN_OK_DESC_ES",
             },
@@ -305,6 +311,7 @@ def _load_ticket_i18n(tmp_path: Path) -> None:
                 "deploy_error_description": "PANEL_ERR_DESC_EN",
                 "permission_denied_title": "PANEL_PERM_EN",
                 "permission_denied_description": "PANEL_PERM_DESC_EN",
+                "open_button": "OPEN_BTN_EN",
             },
             "create": {
                 "server_only_title": "CREATE_GUILD_ONLY_EN",
@@ -319,6 +326,8 @@ def _load_ticket_i18n(tmp_path: Path) -> None:
                 "success_description": "CREATE_OK_DESC_{name}_{id}_EN",
             },
             "list": {
+                "id_label": "LIST_ID_EN",
+                "position_label": "LIST_POS_EN",
                 "failed_title": "LIST_ERR_EN",
                 "failed_description": "LIST_ERR_DESC_EN",
                 "empty_title": "LIST_EMPTY_EN",
@@ -364,6 +373,8 @@ def _load_ticket_i18n(tmp_path: Path) -> None:
                 "footer": "OPEN_FOOTER_EN",
             },
             "actions": {
+                "claim_button": "CLAIM_BTN_EN",
+                "close_button": "CLOSE_BTN_EN",
                 "claim_mods_only_title": "CLAIM_MOD_EN",
                 "claim_mods_only_description": "CLAIM_MOD_DESC_EN",
                 "claim_failed_title": "CLAIM_FAIL_EN",
@@ -427,6 +438,7 @@ def _load_ticket_i18n(tmp_path: Path) -> None:
                 "not_ticket_description": "REOPEN_NO_TICKET_DESC_EN",
                 "failed_title": "REOPEN_FAIL_EN",
                 "failed_description": "REOPEN_FAIL_DESC_EN",
+                "not_closed_description": "REOPEN_NOT_CLOSED_{status}_EN",
                 "success_title": "REOPEN_OK_EN",
                 "success_description": "REOPEN_OK_DESC_EN",
             },
@@ -1098,3 +1110,142 @@ class TestTicketEmbedI18n:
         assert embed.title is not None
         assert "OPEN_CLAIMED_" in embed.title
         assert embed.description is not None and "OPEN_CLAIMED_DESC_ES" in embed.description
+
+
+# ---------------------------------------------------------------------------
+# CRITICAL 1 fix: Button labels are localized when guild_id is provided
+# ---------------------------------------------------------------------------
+
+
+class TestButtonLabelI18n:
+    """Test persistent view button labels use t() when guild_id is provided."""
+
+    def test_panel_view_open_button_es(self) -> None:
+        """TicketPanelView with ES guild_id → button label localized to ES."""
+        view = TicketPanelView(guild_id=_ES_GUILD_ID)
+        buttons = [c for c in view.children if isinstance(c, discord.ui.Button)]
+        assert len(buttons) == 1
+        assert buttons[0].label == "OPEN_BTN_ES"
+
+    def test_panel_view_open_button_en(self) -> None:
+        """TicketPanelView with EN guild_id → button label localized to EN."""
+        view = TicketPanelView(guild_id=_EN_GUILD_ID)
+        buttons = [c for c in view.children if isinstance(c, discord.ui.Button)]
+        assert len(buttons) == 1
+        assert buttons[0].label == "OPEN_BTN_EN"
+
+    def test_panel_view_no_guild_default(self) -> None:
+        """TicketPanelView without guild_id → default label preserved."""
+        view = TicketPanelView()
+        buttons = [c for c in view.children if isinstance(c, discord.ui.Button)]
+        assert len(buttons) == 1
+        assert buttons[0].label == "Open Ticket"
+
+    def test_actions_view_buttons_es(self) -> None:
+        """TicketActionsView with ES guild_id → claim/close labels localized."""
+        view = TicketActionsView(guild_id=_ES_GUILD_ID)
+        buttons = {c.custom_id: c for c in view.children if isinstance(c, discord.ui.Button)}
+        assert buttons["ticket:claim"].label == "CLAIM_BTN_ES"
+        assert buttons["ticket:close"].label == "CLOSE_BTN_ES"
+
+    def test_actions_view_buttons_en(self) -> None:
+        """TicketActionsView with EN guild_id → claim/close labels localized."""
+        view = TicketActionsView(guild_id=_EN_GUILD_ID)
+        buttons = {c.custom_id: c for c in view.children if isinstance(c, discord.ui.Button)}
+        assert buttons["ticket:claim"].label == "CLAIM_BTN_EN"
+        assert buttons["ticket:close"].label == "CLOSE_BTN_EN"
+
+    def test_actions_view_no_guild_default(self) -> None:
+        """TicketActionsView without guild_id → default labels preserved."""
+        view = TicketActionsView()
+        buttons = {c.custom_id: c for c in view.children if isinstance(c, discord.ui.Button)}
+        assert buttons["ticket:claim"].label == "Claim"
+        assert buttons["ticket:close"].label == "Close"
+
+
+# ---------------------------------------------------------------------------
+# CRITICAL 2 fix: reopen error uses t() instead of service's raw Spanish text
+# ---------------------------------------------------------------------------
+
+
+class TestReopenNotClosedI18n:
+    """Test /reopen ValueError surfaces localized error, not service's raw text."""
+
+    async def test_reopen_not_closed_es(
+        self,
+        cog_es: TicketsCog,
+        ticket_bot: MagicMock,
+    ) -> None:
+        """/reopen on open ticket → localized ES error (not Spanish raw text)."""
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = int(_ES_GUILD_ID)
+        ctx = _make_ctx(guild)
+
+        row = _ticket_row(status="open", guild_id=_ES_GUILD_ID)
+        ticket_bot.db.get_ticket_by_channel = AsyncMock(return_value=row)
+
+        ticket_bot.ticket_service.reopen_ticket = AsyncMock(
+            side_effect=ValueError("Solo se pueden reabrir tickets cerrados. Estado actual: open")
+        )
+
+        await cog_es.reopen.callback(cog_es, ctx)
+
+        embed = ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+        # Must use t() localized string, NOT the raw Spanish service text
+        assert "REOPEN_NOT_CLOSED_open_ES" in embed.description
+        assert "Solo se pueden" not in embed.description
+
+    async def test_reopen_not_closed_en(
+        self,
+        cog_en: TicketsCog,
+        ticket_bot: MagicMock,
+    ) -> None:
+        """/reopen on open ticket → localized EN error (English guild gets English)."""
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = int(_EN_GUILD_ID)
+        ctx = _make_ctx(guild)
+
+        row = _ticket_row(status="open", guild_id=_EN_GUILD_ID)
+        ticket_bot.db.get_ticket_by_channel = AsyncMock(return_value=row)
+
+        ticket_bot.ticket_service.reopen_ticket = AsyncMock(
+            side_effect=ValueError("Solo se pueden reabrir tickets cerrados. Estado actual: open")
+        )
+
+        await cog_en.reopen.callback(cog_en, ctx)
+
+        embed = ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+        # Must use t() localized EN string
+        assert "REOPEN_NOT_CLOSED_open_EN" in embed.description
+        assert "Solo se pueden" not in embed.description
+
+
+# ---------------------------------------------------------------------------
+# CRITICAL 3 fix: es.json translations — no English text for fixed keys
+# ---------------------------------------------------------------------------
+
+
+class TestEsJsonTranslations:
+    """Test that es.json has Spanish text, not English, for the fixed keys."""
+
+    def test_claim_generic_error_is_spanish(self) -> None:
+        """es.json claim_generic_error_description must be Spanish."""
+        es_path = Path("bot/locales/es.json")
+        data = json.loads(es_path.read_text(encoding="utf-8"))
+        value = data["tickets"]["actions"]["claim_generic_error_description"]
+        # Must NOT be the English text
+        assert "Could not claim" not in value
+        # Must contain Spanish words
+        assert "reclamar" in value.lower() or "intent" in value.lower()
+
+    def test_closed_channel_transcript_is_spanish(self) -> None:
+        """es.json closed_channel_transcript must use Spanish 'Transcripción'."""
+        es_path = Path("bot/locales/es.json")
+        data = json.loads(es_path.read_text(encoding="utf-8"))
+        value = data["tickets"]["actions"]["closed_channel_transcript"]
+        # Must NOT use English "Transcript"
+        assert "Transcript" not in value
+        # Must use Spanish equivalent
+        assert "Transcripción" in value or "transcripción" in value
