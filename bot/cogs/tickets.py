@@ -1231,9 +1231,10 @@ class TicketsCog(commands.Cog, name="Tickets"):
         if str(author.id) == parent_author_id:
             parent_owner: discord.Member = author
         else:
-            parent_owner = await self._resolve_parent_owner(guild, parent_author_id, ctx)
-            if parent_owner is None:
+            resolved = await self._resolve_parent_owner(guild, parent_author_id, ctx)
+            if resolved is None:
                 return
+            parent_owner = resolved
 
         # Build permission overwrites.
         overwrites: dict[
