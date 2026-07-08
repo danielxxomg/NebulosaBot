@@ -43,12 +43,12 @@ Chain strategy: stacked-to-main
 
 ## Phase 2: Tickets Migration (PR 2)
 
-- [ ] 2.1 Add ticket-related locale keys to `es.json` and `en.json` (panel, category, subticket strings)
-- [ ] 2.2 Migrate `bot/cogs/tickets.py` — replace all hardcoded strings with `t()` calls
-- [ ] 2.3 Migrate `bot/services/ticket_service.py` — replace user-facing strings with `t()`
-- [ ] 2.4 Migrate `bot/services/transcript_service.py` — replace user-facing strings with `t()`
-- [ ] 2.5 RED: Test ticket commands return localized strings for es/en guilds
-- [ ] 2.6 GREEN + REFACTOR: Verify tests pass with `uv run pytest`
+- [x] 2.1 Add ticket-related locale keys to `es.json` and `en.json` (panel, category, subticket strings)
+- [x] 2.2 Migrate `bot/cogs/tickets.py` — replace all hardcoded strings with `t()` calls
+- [x] 2.3 Migrate `bot/services/ticket_service.py` — replace user-facing strings with `t()`
+- [x] 2.4 Migrate `bot/services/transcript_service.py` — replace user-facing strings with `t()`
+- [x] 2.5 RED: Test ticket commands return localized strings for es/en guilds
+- [x] 2.6 GREEN + REFACTOR: Verify tests pass with `uv run pytest`
 
 ## Phase 3: Sentinel + Remaining Services (PR 3)
 
