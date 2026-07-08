@@ -111,7 +111,8 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     @staticmethod
     def _guild_id(ctx: commands.Context) -> str:
         """Return the guild ID as a string for the current context."""
-        return str(ctx.guild.id)  # type: ignore[union-attr]
+        assert ctx.guild is not None, "Guild-only command"
+        return str(ctx.guild.id)
 
     async def _validate_target(
         self,
@@ -125,6 +126,8 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         appropriate error embed to *ctx* and returns ``False`` when
         a guard fails.
         """
+        assert self.bot.user is not None, "Bot user available after on_ready"
+        assert self.bot.user is not None, "Bot user available after on_ready"
         if target.id == self.bot.user.id:
             await ctx.send(embed=error_embed("Invalid Target", "I cannot moderate myself."))
             return False
@@ -134,7 +137,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             return False
 
         # Role hierarchy: the bot's top role must be above the target's.
-        if ctx.guild is not None and ctx.guild.me.top_role <= target.top_role and target != ctx.guild.owner:
+        if ctx.guild is not None and ctx.guild.me is not None and ctx.guild.me.top_role <= target.top_role and target != ctx.guild.owner:
             await ctx.send(
                 embed=error_embed(
                     "Role Hierarchy",
@@ -195,6 +198,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         moderator_id = str(ctx.author.id)
 
         try:
+            assert self.bot.infraction_service is not None, "InfractionService initialised in setup_hook"
             infraction, escalation = await self.bot.infraction_service.warn(
                 guild_id,
                 target_id,
@@ -211,12 +215,13 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             )
             return
 
+        assert self.bot.logging_service is not None, "LoggingService initialised in setup_hook"
         await self.bot.logging_service.log_moderation_action(
             guild_id,
             "Warn",
             member,
             ctx.author,
-            reason,  # type: ignore[arg-type]
+            reason,
         )
 
         # Report escalation if triggered.
@@ -228,6 +233,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                         timedelta(seconds=escalation.duration),
                         reason=f"Auto-escalation: {escalation.threshold} warnings",
                     )
+                    assert self.bot.db is not None, "Database initialised in setup_hook"
                     await self.bot.db.insert_infraction(
                         guild_id=guild_id,
                         target_id=target_id,
@@ -235,11 +241,12 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                         type="MUTE",
                         reason=(f"Auto-escalation after {escalation.threshold} warnings"),
                     )
+                    assert self.bot.logging_service is not None, "LoggingService initialised in setup_hook"
                     await self.bot.logging_service.log_moderation_action(
                         guild_id,
                         "Mute (Auto-escalation)",
                         member,
-                        ctx.author,  # type: ignore[arg-type]
+                        ctx.author,
                         f"{escalation.threshold} warnings reached",
                     )
                     escalation_msg = (
@@ -253,6 +260,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                     await member.kick(
                         reason=(f"Auto-escalation: {escalation.threshold} warnings"),
                     )
+                    assert self.bot.db is not None, "Database initialised in setup_hook"
                     await self.bot.db.insert_infraction(
                         guild_id=guild_id,
                         target_id=target_id,
@@ -260,11 +268,12 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                         type="KICK",
                         reason=(f"Auto-escalation after {escalation.threshold} warnings"),
                     )
+                    assert self.bot.logging_service is not None, "LoggingService initialised in setup_hook"
                     await self.bot.logging_service.log_moderation_action(
                         guild_id,
                         "Kick (Auto-escalation)",
                         member,
-                        ctx.author,  # type: ignore[arg-type]
+                        ctx.author,
                         f"{escalation.threshold} warnings reached",
                     )
                     escalation_msg = (
@@ -292,6 +301,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         target_id = str(member.id)
 
         try:
+            assert self.bot.infraction_service is not None, "InfractionService initialised in setup_hook"
             result = await self.bot.infraction_service.unwarn(guild_id, target_id)
         except Exception:
             logger.exception("InfractionService.unwarn() failed")
@@ -312,11 +322,12 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             )
             return
 
+        assert self.bot.logging_service is not None, "LoggingService initialised in setup_hook"
         await self.bot.logging_service.log_moderation_action(
             guild_id,
             "Unwarn",
             member,
-            ctx.author,  # type: ignore[arg-type]
+            ctx.author,
             f"Revoked warning (ID: {result.id})",
         )
         await ctx.send(
@@ -365,6 +376,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
 
         # Create MUTE infraction for audit trail.
         try:
+            assert self.bot.db is not None, "Database initialised in setup_hook"
             await self.bot.db.insert_infraction(
                 guild_id=guild_id,
                 target_id=target_id,
@@ -375,12 +387,13 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         except Exception:
             logger.exception("Failed to insert MUTE infraction (non-fatal)")
 
+        assert self.bot.logging_service is not None, "LoggingService initialised in setup_hook"
         await self.bot.logging_service.log_moderation_action(
             guild_id,
             "Mute",
             member,
             ctx.author,
-            reason,  # type: ignore[arg-type]
+            reason,
         )
 
         await ctx.send(
@@ -406,11 +419,12 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             await self._handle_mod_error(ctx, exc, "unmute", member)
             return
 
+        assert self.bot.logging_service is not None, "LoggingService initialised in setup_hook"
         await self.bot.logging_service.log_moderation_action(
             guild_id,
             "Unmute",
             member,
-            ctx.author,  # type: ignore[arg-type]
+            ctx.author,
             "Timeout removed",
         )
 
@@ -445,6 +459,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
 
         # Create KICK infraction for audit trail.
         try:
+            assert self.bot.db is not None, "Database initialised in setup_hook"
             await self.bot.db.insert_infraction(
                 guild_id=guild_id,
                 target_id=target_id,
@@ -455,12 +470,13 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         except Exception:
             logger.exception("Failed to insert KICK infraction (non-fatal)")
 
+        assert self.bot.logging_service is not None, "LoggingService initialised in setup_hook"
         await self.bot.logging_service.log_moderation_action(
             guild_id,
             "Kick",
             member,
             ctx.author,
-            reason,  # type: ignore[arg-type]
+            reason,
         )
 
         await ctx.send(
@@ -504,6 +520,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
 
         # Create BAN infraction for audit trail.
         try:
+            assert self.bot.db is not None, "Database initialised in setup_hook"
             await self.bot.db.insert_infraction(
                 guild_id=guild_id,
                 target_id=target_id,
@@ -514,12 +531,13 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         except Exception:
             logger.exception("Failed to insert BAN infraction (non-fatal)")
 
+        assert self.bot.logging_service is not None, "LoggingService initialised in setup_hook"
         await self.bot.logging_service.log_moderation_action(
             guild_id,
             "Ban",
             member,
             ctx.author,
-            reason,  # type: ignore[arg-type]
+            reason,
         )
 
         await ctx.send(
@@ -548,11 +566,13 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         target_channel = channel or ctx.channel
         guild_id = self._guild_id(ctx)
 
-        if ctx.guild is None:
+        if not isinstance(target_channel, discord.TextChannel):
+            await ctx.send(embed=error_embed("Invalid Channel", "Lock only works on text channels."))
             return
 
+        assert ctx.guild is not None, "Guild-only command"
         overwrite = target_channel.overwrites_for(ctx.guild.default_role)
-        overwrite.send_messages = False
+        overwrite.send_messages = False  # type: ignore[misc]  # discord.py stub limitation: PermissionOverwrite dynamic __slots__
 
         try:
             await target_channel.set_permissions(
@@ -578,11 +598,12 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             )
             return
 
+        assert self.bot.logging_service is not None, "LoggingService initialised in setup_hook"
         await self.bot.logging_service.log_moderation_action(
             guild_id,
             "Lock",
-            ctx.author,  # type: ignore[arg-type]
-            ctx.author,  # type: ignore[arg-type]
+            ctx.author,
+            ctx.author,
             f"Locked {target_channel.mention}",
         )
 
@@ -608,11 +629,13 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         target_channel = channel or ctx.channel
         guild_id = self._guild_id(ctx)
 
-        if ctx.guild is None:
+        if not isinstance(target_channel, discord.TextChannel):
+            await ctx.send(embed=error_embed("Invalid Channel", "Unlock only works on text channels."))
             return
 
+        assert ctx.guild is not None, "Guild-only command"
         overwrite = target_channel.overwrites_for(ctx.guild.default_role)
-        overwrite.send_messages = None  # Clear override — inherit.
+        overwrite.send_messages = None  # type: ignore[misc]  # discord.py stub limitation: PermissionOverwrite dynamic __slots__
 
         try:
             await target_channel.set_permissions(
@@ -638,11 +661,12 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             )
             return
 
+        assert self.bot.logging_service is not None, "LoggingService initialised in setup_hook"
         await self.bot.logging_service.log_moderation_action(
             guild_id,
             "Unlock",
-            ctx.author,  # type: ignore[arg-type]
-            ctx.author,  # type: ignore[arg-type]
+            ctx.author,
+            ctx.author,
             f"Unlocked {target_channel.mention}",
         )
 
@@ -676,6 +700,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         target_id = str(member.id)
 
         try:
+            assert self.bot.infraction_service is not None, "InfractionService initialised in setup_hook"
             infractions = await self.bot.infraction_service.get_modlogs(
                 guild_id,
                 target_id,
