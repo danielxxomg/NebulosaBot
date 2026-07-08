@@ -18,7 +18,7 @@ from bot.cogs.tickets import TicketActionsView, TicketPanelView
 from bot.core.cache import TTLCache
 from bot.core.context import NebulosaContext
 from bot.core.database import Database, create_realtime_client
-from bot.core.i18n import load_locales
+from bot.core.i18n import load_locales, t
 from bot.core.realtime import RealtimeCacheSubscriber
 from bot.services.economy_service import EconomyService
 from bot.services.greeting_service import GreetingService
@@ -47,21 +47,19 @@ def _build_prefix_callable(
     Closure over *bot* so it can access ``guild_service`` at runtime.
     """
 
-    async def get_prefix(bot_ref: NebulosaBot, message: discord.Message) -> str:
-        if message.guild is None:
-            return _FALLBACK_PREFIX
-
-        try:
-            if bot_ref.guild_service is None:
-                return _FALLBACK_PREFIX
-            config = await bot_ref.guild_service.get_config(str(message.guild.id))
-            return config.prefix or _FALLBACK_PREFIX
-        except Exception:
-            logger.exception(
-                "Failed to resolve prefix for guild %s — using fallback",
-                message.guild.id,
-            )
-            return _FALLBACK_PREFIX
+    async def get_prefix(bot_ref: NebulosaBot, message: discord.Message) -> list[str]:
+        prefix = _FALLBACK_PREFIX
+        if message.guild is not None:
+            try:
+                if bot_ref.guild_service is not None:
+                    config = await bot_ref.guild_service.get_config(str(message.guild.id))
+                    prefix = config.prefix or _FALLBACK_PREFIX
+            except Exception:
+                logger.exception(
+                    "Failed to resolve prefix for guild %s — using fallback",
+                    message.guild.id,
+                )
+        return [prefix, ","]
 
     return get_prefix
 
@@ -372,10 +370,12 @@ class NebulosaBot(commands.Bot):
         ctx: commands.Context[NebulosaBot],  # type: ignore[override]  # supertype uses Context[BotT]
         error: commands.CommandError,
     ) -> None:
-        """Global prefix-command error handler — channel embeds.
+        """Global prefix-command error handler — DM-first with channel fallback.
 
-        Sends the error as a visible embed in the channel (non-ephemeral)
-        so other users can see why the command failed.
+        For prefix commands in a guild channel, the error embed is DM'd to the
+        invoking user so it doesn't pollute the channel.  If the DM fails
+        (user has DMs disabled), the embed falls back to the channel with a
+        note.  In DMs (no guild), the error is sent directly.
         """
         # Ignore commands that have local error handlers.
         if hasattr(ctx.command, "on_error"):
@@ -389,11 +389,40 @@ class NebulosaBot(commands.Bot):
         if isinstance(error, ignored):
             return
 
-        embed = error_embed("Command Error", str(error))
+        guild_id = ctx.guild.id if ctx.guild else None
+        embed = error_embed(
+            t(guild_id, "common.error.command_error_title"),
+            str(error),
+            guild_id=guild_id,
+        )
+
+        # In a guild channel: try DM first, fall back to channel.
+        if ctx.guild is not None:
+            try:
+                await ctx.author.send(embed=embed)
+                return
+            except (discord.HTTPException, discord.Forbidden):
+                logger.debug(
+                    "DM failed for user %s — falling back to channel",
+                    ctx.author.id,
+                )
+                # Channel fallback with a note.
+                fallback_embed = error_embed(
+                    t(guild_id, "common.error.command_error_title"),
+                    t(guild_id, "common.error.dm_failed_description"),
+                    guild_id=guild_id,
+                )
+                try:
+                    await ctx.send(embed=fallback_embed)
+                except discord.HTTPException:
+                    logger.exception("Failed to send command error embed in channel")
+            return
+
+        # In DMs: send directly.
         try:
             await ctx.send(embed=embed)
         except discord.HTTPException:
-            logger.exception("Failed to send command error embed in channel")
+            logger.exception("Failed to send command error embed in DM")
 
     # ==================================================================
     # Events

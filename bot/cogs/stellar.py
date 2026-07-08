@@ -67,7 +67,6 @@ class StellarCog(commands.Cog, name="Stellar"):
                     t(guild_id, "stellar.daily.failed_title"),
                     t(guild_id, "stellar.daily.failed_description"),
                 ),
-                ephemeral=True,
             )
             return
 
@@ -83,7 +82,7 @@ class StellarCog(commands.Cog, name="Stellar"):
                 t(guild_id, "stellar.daily.cooldown_description", streak=streak),
             )
 
-        await ctx.send(embed=embed, ephemeral=True)
+        await ctx.send(embed=embed)
 
     # ------------------------------------------------------------------
     # /coins
@@ -111,7 +110,6 @@ class StellarCog(commands.Cog, name="Stellar"):
                     t(guild_id, "stellar.coins.failed_title"),
                     t(guild_id, "stellar.coins.failed_description"),
                 ),
-                ephemeral=True,
             )
             return
 
@@ -121,7 +119,7 @@ class StellarCog(commands.Cog, name="Stellar"):
             description = t(guild_id, "stellar.coins.target_description", name=target.display_name, balance=balance)
 
         embed = info_embed(t(guild_id, "stellar.coins.balance_title"), description)
-        await ctx.send(embed=embed, ephemeral=True)
+        await ctx.send(embed=embed)
 
     # ------------------------------------------------------------------
     # /leaderboard
@@ -154,7 +152,6 @@ class StellarCog(commands.Cog, name="Stellar"):
                     t(guild_id, "stellar.leaderboard.error_title"),
                     t(guild_id, "stellar.leaderboard.error_description"),
                 ),
-                ephemeral=True,
             )
             return
 
@@ -164,7 +161,7 @@ class StellarCog(commands.Cog, name="Stellar"):
                 t(guild_id, "stellar.leaderboard.empty_title"),
                 t(guild_id, "stellar.leaderboard.empty_description", type=type_label),
             )
-            await ctx.send(embed=embed, ephemeral=True)
+            await ctx.send(embed=embed)
             return
 
         # Build description lines: "#1 <@id> — {value} XP/coins"
@@ -184,7 +181,7 @@ class StellarCog(commands.Cog, name="Stellar"):
         )
         embed.set_footer(text=t(guild_id, "stellar.leaderboard.footer", count=len(rows)))
 
-        await ctx.send(embed=embed, ephemeral=True)
+        await ctx.send(embed=embed)
 
     # ------------------------------------------------------------------
     # /rank
