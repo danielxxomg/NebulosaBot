@@ -850,6 +850,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         title="Optional title for the panel embed",
         description_text="Optional description for the panel embed",
     )
+    @app_commands.default_permissions(administrator=True)
     @is_mod()
     async def ticket_panel(
         self,
@@ -871,7 +872,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
                 embed=error_embed(
                     t(guild_id, "tickets.panel.server_only_title"),
                     t(guild_id, "tickets.panel.server_only_description"),
-                )
+                ),
+                ephemeral=True,
             )
             return
 
@@ -889,6 +891,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         view = TicketPanelView(guild_id=guild_id)
 
         try:
+            # Panel deployment is public — users must see it to open tickets.
             message = await ctx.send(embed=embed, view=view)
         except discord.Forbidden:
             await ctx.send(
@@ -896,7 +899,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
                     t(guild_id, "tickets.panel.permission_denied_title"),
                     t(guild_id, "tickets.panel.permission_denied_description"),
                     guild_id=guild_id,
-                )
+                ),
+                ephemeral=True,
             )
             return
 
@@ -920,7 +924,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
                     t(guild_id, "tickets.panel.deploy_error_title"),
                     t(guild_id, "tickets.panel.deploy_error_description"),
                     guild_id=guild_id,
-                )
+                ),
+                ephemeral=True,
             )
             return
 
@@ -930,7 +935,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
                 t(guild_id, "tickets.panel.success_description"),
                 guild_id=guild_id,
             ),
-            delete_after=10,
+            ephemeral=True,
         )
 
     # -- /create_category -----------------------------------------------
@@ -945,6 +950,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         description="Optional short description",
         position="Display order (lower = first). Auto-increments if omitted",
     )
+    @app_commands.default_permissions(administrator=True)
     @is_mod()
     async def create_category(
         self,
@@ -975,7 +981,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
                         t(guild_id, "tickets.create.duplicate_title"),
                         t(guild_id, "tickets.create.duplicate_description", name=name),
                         guild_id=guild_id,
-                    )
+                    ),
+                    ephemeral=True,
                 )
                 return
 
@@ -990,7 +997,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
                     t(guild_id, "tickets.create.check_failed_title"),
                     t(guild_id, "tickets.create.check_failed_description"),
                     guild_id=guild_id,
-                )
+                ),
+                ephemeral=True,
             )
             return
 
@@ -1010,7 +1018,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
                     t(guild_id, "tickets.create.failed_title"),
                     t(guild_id, "tickets.create.failed_description"),
                     guild_id=guild_id,
-                )
+                ),
+                ephemeral=True,
             )
             return
 
@@ -1019,7 +1028,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
                 t(guild_id, "tickets.create.success_title"),
                 t(guild_id, "tickets.create.success_description", name=category.name, id=category.id),
                 guild_id=guild_id,
-            )
+            ),
+            ephemeral=True,
         )
 
     # -- /list_categories -----------------------------------------------
@@ -1028,6 +1038,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         name="list_categories",
         description="List all active ticket categories",
     )
+    @app_commands.default_permissions(administrator=True)
     @is_mod()
     async def list_categories(self, ctx: commands.Context) -> None:
         """List all active ticket categories for the guild."""
@@ -1047,7 +1058,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
                     t(guild_id, "tickets.list.failed_title"),
                     t(guild_id, "tickets.list.failed_description"),
                     guild_id=guild_id,
-                )
+                ),
+                ephemeral=True,
             )
             return
 
@@ -1057,7 +1069,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
                     t(guild_id, "tickets.list.empty_title"),
                     t(guild_id, "tickets.list.empty_description"),
                     guild_id=guild_id,
-                )
+                ),
+                ephemeral=True,
             )
             return
 
@@ -1079,7 +1092,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             timestamp=datetime.now(UTC),
         )
         embed.set_footer(text=t(guild_id, "tickets.open.footer"))
-        await ctx.send(embed=embed)
+        await ctx.send(embed=embed, ephemeral=True)
 
     # -- /delete_category -----------------------------------------------
 
@@ -1090,6 +1103,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @app_commands.describe(
         category_id="The UUID of the category to delete (from /list_categories)",
     )
+    @app_commands.default_permissions(administrator=True)
     @is_mod()
     async def delete_category(self, ctx: commands.Context, category_id: str) -> None:
         """Delete a ticket category by its UUID.
@@ -1111,7 +1125,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
                     t(guild_id, "tickets.delete.failed_title"),
                     t(guild_id, "tickets.delete.failed_description"),
                     guild_id=guild_id,
-                )
+                ),
+                ephemeral=True,
             )
             return
 
@@ -1121,7 +1136,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
                     t(guild_id, "tickets.delete.not_found_title"),
                     t(guild_id, "tickets.delete.not_found_description", id=category_id),
                     guild_id=guild_id,
-                )
+                ),
+                ephemeral=True,
             )
             return
 
@@ -1131,7 +1147,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
                     t(guild_id, "tickets.delete.wrong_guild_title"),
                     t(guild_id, "tickets.delete.wrong_guild_description"),
                     guild_id=guild_id,
-                )
+                ),
+                ephemeral=True,
             )
             return
 
@@ -1147,7 +1164,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
                     t(guild_id, "tickets.delete.failed_title"),
                     t(guild_id, "tickets.delete.failed_description"),
                     guild_id=guild_id,
-                )
+                ),
+                ephemeral=True,
             )
             return
 
@@ -1157,7 +1175,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
                     t(guild_id, "tickets.delete.in_use_title"),
                     t(guild_id, "tickets.delete.in_use_description", name=cat_name, count=open_count),
                     guild_id=guild_id,
-                )
+                ),
+                ephemeral=True,
             )
             return
 
@@ -1170,7 +1189,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
                     t(guild_id, "tickets.delete.failed_title"),
                     t(guild_id, "tickets.delete.failed_description"),
                     guild_id=guild_id,
-                )
+                ),
+                ephemeral=True,
             )
             return
 
@@ -1179,7 +1199,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
                 t(guild_id, "tickets.delete.success_title"),
                 t(guild_id, "tickets.delete.success_description", name=cat_name),
                 guild_id=guild_id,
-            )
+            ),
+            ephemeral=True,
         )
 
     # ==================================================================

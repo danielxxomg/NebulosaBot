@@ -3,7 +3,9 @@
     "footer": "NebulosaBot • {timestamp}",
     "error": {
       "title": "Error",
-      "unexpected_title": "Unexpected Error"
+      "unexpected_title": "Unexpected Error",
+      "command_error_title": "Command Error",
+      "dm_failed_description": "I couldn't DM you. Please enable DMs to receive command errors privately."
     },
     "success": {
       "title": "Success"

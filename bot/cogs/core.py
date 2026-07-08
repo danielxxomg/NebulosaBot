@@ -116,12 +116,13 @@ class CoreCog(commands.Cog, name="Core"):
             t(guild_id, "core.ping.description", latency=latency),
             guild_id=guild_id,
         )
-        await ctx.send(embed=embed)
+        await ctx.send(embed=embed, ephemeral=True)
 
     @commands.hybrid_command(
         name="status",
         description="Show database and cache health.",
     )
+    @app_commands.default_permissions(moderate_members=True)
     async def status(self, ctx: NebulosaContext) -> None:
         """Build a health-check embed covering DB, cache, and bot state."""
         guild_id = ctx.guild.id if ctx.guild else None
@@ -194,7 +195,7 @@ class CoreCog(commands.Cog, name="Core"):
             text=t(guild_id, "core.status.footer"),
             icon_url="https://i.imgur.com/fvE4b0c.png",
         )
-        await ctx.send(embed=embed)
+        await ctx.send(embed=embed, ephemeral=True)
 
     @commands.hybrid_command(
         name="help",
@@ -219,10 +220,11 @@ class CoreCog(commands.Cog, name="Core"):
                         t(guild_id, "core.help.no_module", module=module),
                         t(guild_id, "core.help.no_module_desc"),
                         guild_id=guild_id,
-                    )
+                    ),
+                    ephemeral=True,
                 )
                 return
-            await ctx.send(embed=embed)
+            await ctx.send(embed=embed, ephemeral=True)
             return
 
         # -- all-modules paginated help --
@@ -233,16 +235,17 @@ class CoreCog(commands.Cog, name="Core"):
                     t(guild_id, "core.help.title", module=""),
                     t(guild_id, "core.help.no_commands"),
                     guild_id=guild_id,
-                )
+                ),
+                ephemeral=True,
             )
             return
 
         if len(pages) == 1:
-            await ctx.send(embed=pages[0])
+            await ctx.send(embed=pages[0], ephemeral=True)
             return
 
         view = _HelpPaginator(pages, guild_id=guild_id)
-        await ctx.send(embed=pages[0], view=view)
+        await ctx.send(embed=pages[0], view=view, ephemeral=True)
 
     @commands.hybrid_command(
         name="sync",
