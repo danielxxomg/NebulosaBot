@@ -102,7 +102,7 @@ class FakeQueryBuilder:
     def offset(self, n: int) -> FakeQueryBuilder:
         return self
 
-    def execute(self) -> MagicMock:
+    async def execute(self) -> MagicMock:
         self._execute_count += 1
         data = self._result_queue.pop(0) if self._result_queue else self._result_data
 
@@ -189,15 +189,21 @@ class TestConnect:
 
     @pytest.mark.asyncio
     async def test_connect_sets_client(self) -> None:
-        """connect() MUST create a Supabase client and verify health."""
+        """connect() MUST create an async Supabase client and verify health."""
         database = Database(url="https://test.supabase.co", key="test-key")
 
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.data = [{"id": "1"}]
-        mock_client.table.return_value.select.return_value.limit.return_value.execute.return_value = mock_response
 
-        with patch("bot.core.database.create_client", return_value=mock_client):
+        async def mock_execute() -> MagicMock:
+            return mock_response
+
+        mock_client.table.return_value.select.return_value.limit.return_value.execute = mock_execute
+
+        with patch("bot.core.database.acreate_client", return_value=mock_client) as mock_create:
+            # acreate_client is async — return the mock directly (it's awaited)
+            mock_create.return_value = mock_client
             await database.connect()
 
         assert database._client is mock_client
@@ -208,11 +214,13 @@ class TestConnect:
         database = Database(url="https://test.supabase.co", key="test-key")
 
         mock_client = MagicMock()
-        mock_client.table.return_value.select.return_value.limit.return_value.execute.side_effect = Exception(
-            "connection refused"
-        )
 
-        with patch("bot.core.database.create_client", return_value=mock_client):
+        async def mock_execute_fail() -> MagicMock:
+            raise Exception("connection refused")
+
+        mock_client.table.return_value.select.return_value.limit.return_value.execute = mock_execute_fail
+
+        with patch("bot.core.database.acreate_client", return_value=mock_client):
             await database.connect()
 
         # Client is still set even if health check fails.
@@ -907,7 +915,7 @@ class TestGetMemberRank:
 
         call_count = 0
 
-        def patched_execute() -> MagicMock:
+        async def patched_execute() -> MagicMock:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
