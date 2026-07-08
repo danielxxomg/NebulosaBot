@@ -51,6 +51,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
         if member.bot:
             return
         try:
+            assert self.bot.greeting_service is not None, "GreetingService initialised in setup_hook"
             await self.bot.greeting_service.dispatch_welcome(member)
         except Exception:
             logger.exception(
@@ -65,6 +66,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
         if member.bot:
             return
         try:
+            assert self.bot.greeting_service is not None, "GreetingService initialised in setup_hook"
             await self.bot.greeting_service.dispatch_goodbye(member)
         except Exception:
             logger.exception(
@@ -85,7 +87,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
     @app_commands.default_permissions(administrator=True)
     async def welcome_test(self, ctx: commands.Context) -> None:  # type: ignore[override]
         """Generate and send a sample welcome card."""
-        if not ctx.author.guild_permissions.administrator:
+        if not isinstance(ctx.author, discord.Member) or not ctx.author.guild_permissions.administrator:
             await ctx.send(
                 embed=error_embed(
                     "Permission Denied",
@@ -99,6 +101,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
 
         try:
             avatar_url = _resolve_avatar_url(ctx.author)
+            assert self.bot.image_service is not None, "ImageService initialised in setup_hook"
             buffer: io.BytesIO = await asyncio.to_thread(
                 self.bot.image_service.generate_greeting_card,
                 username=ctx.author.display_name,
@@ -133,7 +136,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
     @app_commands.default_permissions(administrator=True)
     async def goodbye_test(self, ctx: commands.Context) -> None:  # type: ignore[override]
         """Generate and send a sample goodbye card."""
-        if not ctx.author.guild_permissions.administrator:
+        if not isinstance(ctx.author, discord.Member) or not ctx.author.guild_permissions.administrator:
             await ctx.send(
                 embed=error_embed(
                     "Permission Denied",
@@ -147,6 +150,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
 
         try:
             avatar_url = _resolve_avatar_url(ctx.author)
+            assert self.bot.image_service is not None, "ImageService initialised in setup_hook"
             buffer: io.BytesIO = await asyncio.to_thread(
                 self.bot.image_service.generate_greeting_card,
                 username=ctx.author.display_name,

@@ -139,6 +139,8 @@ class UtilityCog(commands.Cog, name="Utility"):
         )
 
         # Build roles list — skip @everyone (first role)
+        if not isinstance(target, discord.Member):
+            return  # User objects don't have roles/joined_at.
         role_mentions = [r.mention for r in target.roles[1:]]
         if len(role_mentions) > 20:
             remaining = len(role_mentions) - 20
