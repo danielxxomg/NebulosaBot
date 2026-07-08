@@ -12,14 +12,9 @@ from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-# Concurrency cap for on_ready guild backfill. Bounded to avoid overwhelming
-# Supabase with concurrent requests when the bot is in many guilds at once.
-BACKFILL_CONCURRENCY_LIMIT = 50
-
 import discord
 from discord.ext import commands
 
-from bot.cogs.tickets import TicketActionsView, TicketPanelView
 from bot.core.cache import TTLCache
 from bot.core.context import NebulosaContext
 from bot.core.database import Database, create_realtime_client
@@ -34,9 +29,14 @@ from bot.services.logging_service import LoggingService
 from bot.services.ticket_service import TicketService
 from bot.services.transcript_service import TranscriptService
 from bot.utils.embeds import error_embed
+from bot.views.tickets import TicketActionsView, TicketPanelView
 
 if TYPE_CHECKING:
     from bot.config import BotConfig
+
+# Concurrency cap for on_ready guild backfill. Bounded to avoid overwhelming
+# Supabase with concurrent requests when the bot is in many guilds at once.
+BACKFILL_CONCURRENCY_LIMIT = 50
 
 logger = logging.getLogger(__name__)
 

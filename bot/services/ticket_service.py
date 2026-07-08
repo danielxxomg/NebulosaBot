@@ -7,6 +7,7 @@ ticket channel IDs for fast O(1) ``on_message`` queries.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -28,6 +29,7 @@ from bot.services.ticket_invariants import (
 )
 
 if TYPE_CHECKING:
+    from bot.bot import NebulosaBot
     from bot.core.cache import TTLCache
     from bot.core.database import Database
     from bot.services.logging_service import LoggingService
@@ -36,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
 NOTE_CAP = 50  # v1 per-ticket staff note limit (see design.md non-goals)
+CHANNEL_DELETE_DELAY = 5  # seconds before deleting a closed ticket channel
 
 
 class TicketCategoryNotConfiguredError(ValueError):
@@ -737,3 +740,118 @@ class TicketService:
         await self._db.delete_ticket_note(note_id)
         await self._db.insert_audit_row(guild_id, ticket_id, "note_delete", author_id, "success", None)
         logger.info("Note %s deleted by %s", note_id, author_id)
+
+    # ----------------------------------------------------------------
+    # Orchestration helpers (PR4 extraction)
+    # ----------------------------------------------------------------
+
+    async def create_ticket_channel(
+        self,
+        guild: discord.Guild,
+        category: discord.CategoryChannel,
+        author: discord.Member,
+        channel_name: str,
+        *,
+        mod_role: discord.Role | None = None,
+    ) -> discord.TextChannel:
+        """Create a ticket Discord channel with standard permission overwrites.
+
+        Builds the standard ticket permission set (everyone denied, author
+        and bot can view/send, mod role can view/send if provided) and
+        creates a ``TextChannel`` under *category*.
+
+        Args:
+            guild: The Discord guild.
+            category: The category channel to create the ticket under.
+            author: The member who opened the ticket.
+            channel_name: Name for the new channel (e.g. ``ticket-0001``).
+            mod_role: Optional moderator role to grant access.
+
+        Returns:
+            The newly created :class:`discord.TextChannel`.
+
+        Raises:
+            discord.Forbidden: If the bot lacks permissions.
+            discord.HTTPException: If the channel creation fails.
+        """
+        overwrites: dict[
+            discord.Role | discord.Member | discord.Object,
+            discord.PermissionOverwrite,
+        ] = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            author: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+        }
+        if mod_role is not None:
+            overwrites[mod_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+
+        channel = await guild.create_text_channel(
+            name=channel_name,
+            category=category,
+            overwrites=overwrites,
+            reason=f"Ticket opened by {author}",
+        )
+        logger.info("Ticket channel created: %s (guild=%s, author=%s)", channel.id, guild.id, author.id)
+        return channel
+
+    async def close_ticket_full(
+        self,
+        channel: discord.TextChannel,
+        ticket: Ticket,
+        closed_by: str,
+        *,
+        bot: NebulosaBot,
+    ) -> str | None:
+        """Close a single ticket end-to-end: transcript -> upload -> DB -> delete.
+
+        Generates a transcript, uploads it to the guild's log channel (if
+        configured), closes the ticket in the database, and deletes the
+        Discord channel after a short delay.
+
+        Args:
+            channel: The ticket's Discord text channel.
+            ticket: The :class:`Ticket` model to close.
+            closed_by: Discord user snowflake of the closer.
+            bot: The :class:`~bot.bot.NebulosaBot` instance (used to
+                access ``transcript_service`` and ``guild_service``).
+
+        Returns:
+            The transcript URL if uploaded, ``None`` otherwise.
+        """
+        guild = channel.guild
+        transcript_url: str | None = None
+        transcript_service = bot.transcript_service
+        if transcript_service is not None:
+            try:
+                transcript_file = await transcript_service.generate(channel)
+                log_channel: discord.TextChannel | None = None
+                guild_service = bot.guild_service
+                if guild_service is not None:
+                    try:
+                        config = await guild_service.get_config(str(guild.id))
+                        if config.log_channel_id:
+                            ch = guild.get_channel(int(config.log_channel_id))
+                            if isinstance(ch, discord.TextChannel):
+                                log_channel = ch
+                    except (ValueError, TypeError):
+                        logger.warning(
+                            "Invalid log_channel_id %r in guild %s config",
+                            config.log_channel_id,
+                            guild.id,
+                        )
+                if log_channel is not None:
+                    transcript_url = await transcript_service.upload(transcript_file, log_channel)
+                else:
+                    logger.warning("No log channel configured for guild %s — skipping transcript upload", guild.id)
+            except discord.HTTPException:
+                logger.exception("Transcript generation failed for ticket %s", ticket.id)
+
+        await self.close_ticket(ticket.id, closed_by=closed_by, transcript_url=transcript_url)
+
+        await asyncio.sleep(CHANNEL_DELETE_DELAY)
+        try:
+            await channel.delete(reason=f"Ticket closed by {closed_by}")
+        except discord.HTTPException:
+            logger.exception("Failed to delete ticket channel %s", channel.id)
+
+        return transcript_url
