@@ -22,8 +22,12 @@ import discord
 import pytest
 
 from bot.cogs.sentinel import SentinelCog, _ModlogsPaginator
+from bot.core.i18n import load_locales, set_guild_language
 from bot.services.infraction_service import InfractionService
 from bot.services.logging_service import LoggingService
+
+# Ensure real locales are loaded for sentinel_cog tests.
+load_locales()
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -52,6 +56,9 @@ def _make_ctx(
 @pytest.fixture
 def sentinel_bot(mock_db) -> MagicMock:
     """Return a mock NebulosaBot wired for sentinel tests."""
+    # Ensure guild language is set so t() returns localized strings.
+    set_guild_language("123456789", "en")
+
     bot = MagicMock()
     bot.db = mock_db
     bot.infraction_service = InfractionService(db=mock_db)

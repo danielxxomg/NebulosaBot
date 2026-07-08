@@ -4,6 +4,9 @@ Provides 9 hybrid moderation commands: warn, unwarn, mute, unmute, kick,
 ban, lock, unlock, and modlogs.  All commands are permission-gated via
 ``@is_mod()`` or ``@is_admin()`` and log actions to the configured
 mod-log channel when enabled.
+
+NOTE: Slash command descriptions are Discord UI metadata, not runtime responses.
+They remain in English; t() localizes runtime responses only.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from bot.core.i18n import t
 from bot.utils.checks import is_admin, is_mod
 from bot.utils.embeds import (
     COLOR_INFO,
@@ -47,15 +51,22 @@ class _ModlogsPaginator(discord.ui.View):
 
     __slots__ = ("_current", "_pages")
 
-    def __init__(self, pages: list[discord.Embed]) -> None:
+    def __init__(self, pages: list[discord.Embed], guild_id: str = "") -> None:
         super().__init__(timeout=120)
         self._pages = pages
         self._current = 0
+        # Localize button labels at runtime (decorators provide English defaults).
+        for child in self.children:
+            if isinstance(child, discord.ui.Button):
+                if child.custom_id == "modlogs_prev":
+                    child.label = t(guild_id, "sentinel.modlogs.prev_button")
+                elif child.custom_id == "modlogs_next":
+                    child.label = t(guild_id, "sentinel.modlogs.next_button")
         self._update_buttons()
 
     # -- button callbacks ----------------------------------------------
 
-    @discord.ui.button(label="◀ Previous", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="◀ Previous", style=discord.ButtonStyle.secondary, custom_id="modlogs_prev")
     async def prev_button(
         self,
         interaction: discord.Interaction,
@@ -68,7 +79,7 @@ class _ModlogsPaginator(discord.ui.View):
             view=self,
         )
 
-    @discord.ui.button(label="Next ▶", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Next ▶", style=discord.ButtonStyle.secondary, custom_id="modlogs_next")
     async def next_button(
         self,
         interaction: discord.Interaction,
@@ -126,21 +137,32 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         appropriate error embed to *ctx* and returns ``False`` when
         a guard fails.
         """
+        guild_id = self._guild_id(ctx)
         assert self.bot.user is not None, "Bot user available after on_ready"
         if target.id == self.bot.user.id:
-            await ctx.send(embed=error_embed("Invalid Target", "I cannot moderate myself."))
+            await ctx.send(
+                embed=error_embed(
+                    t(guild_id, "sentinel.validate.self_target_title"),
+                    t(guild_id, "sentinel.validate.self_target_description"),
+                )
+            )
             return False
 
         if target.id == ctx.author.id:
-            await ctx.send(embed=error_embed("Invalid Target", f"You cannot {action} yourself."))
+            await ctx.send(
+                embed=error_embed(
+                    t(guild_id, "sentinel.validate.self_target_title"),
+                    t(guild_id, "sentinel.validate.cannot_self_description", action=action),
+                )
+            )
             return False
 
         # Role hierarchy: the bot's top role must be above the target's.
         if ctx.guild is not None and ctx.guild.me.top_role <= target.top_role and target != ctx.guild.owner:  # type: ignore[union-attr]  # guild.me is non-None when guild is non-None
             await ctx.send(
                 embed=error_embed(
-                    "Role Hierarchy",
-                    f"I cannot {action} {target.mention} — their highest role is above or equal to mine.",
+                    t(guild_id, "sentinel.validate.role_hierarchy_title"),
+                    t(guild_id, "sentinel.validate.role_hierarchy_description", action=action, mention=target.mention),
                 )
             )
             return False
@@ -155,28 +177,28 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         target: discord.Member,
     ) -> None:
         """Map common moderation exceptions to user-friendly embeds."""
+        guild_id = self._guild_id(ctx)
         if isinstance(error, discord.Forbidden):
             await ctx.send(
                 embed=error_embed(
-                    "Permission Denied",
-                    f"I don't have permission to {action} {target.mention}. "
-                    "Check my role position and server permissions.",
+                    t(guild_id, "sentinel.error.permission_denied_title"),
+                    t(guild_id, "sentinel.error.permission_denied_description", action=action, mention=target.mention),
                 )
             )
         elif isinstance(error, discord.HTTPException):
             logger.exception("HTTP error during %s on %s", action, target.id)
             await ctx.send(
                 embed=error_embed(
-                    "Action Failed",
-                    f"Failed to {action} {target.mention}. Discord returned an error.",
+                    t(guild_id, "sentinel.error.action_failed_title"),
+                    t(guild_id, "sentinel.error.action_failed_description", action=action, mention=target.mention),
                 )
             )
         else:
             logger.exception("Unexpected error during %s on %s", action, target.id)
             await ctx.send(
                 embed=error_embed(
-                    "Unexpected Error",
-                    f"An unexpected error occurred while trying to {action} {target.mention}.",
+                    t(guild_id, "sentinel.error.unexpected_title"),
+                    t(guild_id, "sentinel.error.unexpected_description", action=action, mention=target.mention),
                 )
             )
 
@@ -208,8 +230,8 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             logger.exception("InfractionService.warn() failed")
             await ctx.send(
                 embed=error_embed(
-                    "Warn Failed",
-                    "Could not record the warning. Please try again.",
+                    t(guild_id, "sentinel.warn.failed_title"),
+                    t(guild_id, "sentinel.warn.failed_description"),
                 )
             )
             return
@@ -248,12 +270,18 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                         ctx.author,
                         f"{escalation.threshold} warnings reached",
                     )
-                    escalation_msg = (
-                        f"\n⚠️ {member.mention} has been **automatically muted** "
-                        f"for 1 hour ({escalation.threshold} warnings)."
+                    escalation_msg = t(
+                        guild_id,
+                        "sentinel.warn.auto_mute_description",
+                        mention=member.mention,
+                        threshold=escalation.threshold,
                     )
                 except discord.Forbidden:
-                    escalation_msg = f"\n⚠️ Auto-mute failed — I lack permission to timeout {member.mention}."
+                    escalation_msg = t(
+                        guild_id,
+                        "sentinel.warn.auto_mute_failed_description",
+                        mention=member.mention,
+                    )
             elif escalation.action == "KICK":
                 try:
                     await member.kick(
@@ -275,16 +303,29 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                         ctx.author,
                         f"{escalation.threshold} warnings reached",
                     )
-                    escalation_msg = (
-                        f"\n🚫 {member.mention} has been **automatically kicked** ({escalation.threshold} warnings)."
+                    escalation_msg = t(
+                        guild_id,
+                        "sentinel.warn.auto_kick_description",
+                        mention=member.mention,
+                        threshold=escalation.threshold,
                     )
                 except discord.Forbidden:
-                    escalation_msg = f"\n⚠️ Auto-kick failed — I lack permission to kick {member.mention}."
+                    escalation_msg = t(
+                        guild_id,
+                        "sentinel.warn.auto_kick_failed_description",
+                        mention=member.mention,
+                    )
 
         await ctx.send(
             embed=success_embed(
-                "Member Warned",
-                f"{member.mention} has been warned.\n**Reason:** {reason}{escalation_msg}",
+                t(guild_id, "sentinel.warn.success_title"),
+                t(
+                    guild_id,
+                    "sentinel.warn.success_description",
+                    mention=member.mention,
+                    reason=reason,
+                )
+                + escalation_msg,
             )
         )
 
@@ -306,8 +347,8 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             logger.exception("InfractionService.unwarn() failed")
             await ctx.send(
                 embed=error_embed(
-                    "Unwarn Failed",
-                    "Could not remove the warning. Please try again.",
+                    t(guild_id, "sentinel.unwarn.failed_title"),
+                    t(guild_id, "sentinel.unwarn.failed_description"),
                 )
             )
             return
@@ -315,8 +356,8 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         if result is None:
             await ctx.send(
                 embed=info_embed(
-                    "No Warnings",
-                    f"{member.mention} has no active warnings to remove.",
+                    t(guild_id, "sentinel.unwarn.no_warnings_title"),
+                    t(guild_id, "sentinel.unwarn.no_warnings_description", mention=member.mention),
                 )
             )
             return
@@ -331,8 +372,8 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         )
         await ctx.send(
             embed=success_embed(
-                "Warning Revoked",
-                f"Removed the most recent warning from {member.mention}.",
+                t(guild_id, "sentinel.unwarn.success_title"),
+                t(guild_id, "sentinel.unwarn.success_description", mention=member.mention),
             )
         )
 
@@ -397,8 +438,14 @@ class SentinelCog(commands.Cog, name="Sentinel"):
 
         await ctx.send(
             embed=success_embed(
-                "Member Muted",
-                f"{member.mention} has been muted for **{duration}**.\n**Reason:** {reason}",
+                t(guild_id, "sentinel.mute.success_title"),
+                t(
+                    guild_id,
+                    "sentinel.mute.success_description",
+                    mention=member.mention,
+                    duration=duration,
+                    reason=reason,
+                ),
             )
         )
 
@@ -429,8 +476,8 @@ class SentinelCog(commands.Cog, name="Sentinel"):
 
         await ctx.send(
             embed=success_embed(
-                "Member Unmuted",
-                f"{member.mention}'s timeout has been removed.",
+                t(guild_id, "sentinel.unmute.success_title"),
+                t(guild_id, "sentinel.unmute.success_description", mention=member.mention),
             )
         )
 
@@ -480,8 +527,8 @@ class SentinelCog(commands.Cog, name="Sentinel"):
 
         await ctx.send(
             embed=success_embed(
-                "Member Kicked",
-                f"{member.mention} has been kicked.\n**Reason:** {reason}",
+                t(guild_id, "sentinel.kick.success_title"),
+                t(guild_id, "sentinel.kick.success_description", mention=member.mention, reason=reason),
             )
         )
 
@@ -541,8 +588,8 @@ class SentinelCog(commands.Cog, name="Sentinel"):
 
         await ctx.send(
             embed=success_embed(
-                "Member Banned",
-                f"{member.mention} has been banned.\n**Reason:** {reason}",
+                t(guild_id, "sentinel.ban.success_title"),
+                t(guild_id, "sentinel.ban.success_description", mention=member.mention, reason=reason),
             )
         )
 
@@ -580,8 +627,8 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         except discord.Forbidden:
             await ctx.send(
                 embed=error_embed(
-                    "Permission Denied",
-                    f"I don't have permission to lock {target_channel.mention}. Check my role permissions.",  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
+                    t(guild_id, "sentinel.lock.permission_denied_title"),
+                    t(guild_id, "sentinel.lock.permission_denied_description", channel=target_channel.mention),  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
                 )
             )
             return
@@ -589,8 +636,8 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             logger.exception("Unexpected error during lock")
             await ctx.send(
                 embed=error_embed(
-                    "Lock Failed",
-                    f"Could not lock {target_channel.mention}.",  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
+                    t(guild_id, "sentinel.lock.failed_title"),
+                    t(guild_id, "sentinel.lock.failed_description", channel=target_channel.mention),  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
                 )
             )
             return
@@ -606,8 +653,8 @@ class SentinelCog(commands.Cog, name="Sentinel"):
 
         await ctx.send(
             embed=success_embed(
-                "Channel Locked",
-                f"{target_channel.mention} has been locked. @everyone can no longer send messages.",  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
+                t(guild_id, "sentinel.lock.success_title"),
+                t(guild_id, "sentinel.lock.success_description", channel=target_channel.mention),  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
             )
         )
 
@@ -641,8 +688,8 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         except discord.Forbidden:
             await ctx.send(
                 embed=error_embed(
-                    "Permission Denied",
-                    f"I don't have permission to unlock {target_channel.mention}. Check my role permissions.",  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
+                    t(guild_id, "sentinel.unlock.permission_denied_title"),
+                    t(guild_id, "sentinel.unlock.permission_denied_description", channel=target_channel.mention),  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
                 )
             )
             return
@@ -650,8 +697,8 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             logger.exception("Unexpected error during unlock")
             await ctx.send(
                 embed=error_embed(
-                    "Unlock Failed",
-                    f"Could not unlock {target_channel.mention}.",  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
+                    t(guild_id, "sentinel.unlock.failed_title"),
+                    t(guild_id, "sentinel.unlock.failed_description", channel=target_channel.mention),  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
                 )
             )
             return
@@ -667,8 +714,8 @@ class SentinelCog(commands.Cog, name="Sentinel"):
 
         await ctx.send(
             embed=success_embed(
-                "Channel Unlocked",
-                f"{target_channel.mention} has been unlocked. @everyone can send messages again.",  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
+                t(guild_id, "sentinel.unlock.success_title"),
+                t(guild_id, "sentinel.unlock.success_description", channel=target_channel.mention),  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
             )
         )
 
@@ -706,27 +753,33 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             logger.exception("InfractionService.get_modlogs() failed")
             await ctx.send(
                 embed=error_embed(
-                    "Modlogs Failed",
-                    "Could not retrieve moderation history. Please try again.",
+                    t(guild_id, "sentinel.modlogs.failed_title"),
+                    t(guild_id, "sentinel.modlogs.failed_description"),
                 )
             )
             return
 
         if not infractions:
+            filters_active = bool(type or after)
+            desc_key = (
+                "sentinel.modlogs.no_modlogs_description_filtered"
+                if filters_active
+                else "sentinel.modlogs.no_modlogs_description"
+            )
             await ctx.send(
                 embed=info_embed(
-                    "No Modlogs",
-                    f"{member.mention} has no moderation history{' matching the filters' if type or after else ''}.",
+                    t(guild_id, "sentinel.modlogs.no_modlogs_title"),
+                    t(guild_id, desc_key, mention=member.mention),
                 )
             )
             return
 
-        pages = _build_modlog_pages(member, infractions)
+        pages = _build_modlog_pages(member, infractions, guild_id=guild_id)
 
         if len(pages) == 1:
             await ctx.send(embed=pages[0])
         else:
-            view = _ModlogsPaginator(pages)
+            view = _ModlogsPaginator(pages, guild_id=guild_id)
             await ctx.send(embed=pages[0], view=view)
 
 
@@ -753,6 +806,7 @@ async def teardown(bot: NebulosaBot) -> None:
 def _build_modlog_pages(
     member: discord.Member,
     infractions: list,
+    guild_id: str = "",
 ) -> list[discord.Embed]:
     """Build paginated embeds for /modlogs output.
 
@@ -767,12 +821,12 @@ def _build_modlog_pages(
         chunk = infractions[i : i + MODLOGS_PER_PAGE]
         page_num = (i // MODLOGS_PER_PAGE) + 1
 
-        description = f"{total} infraction(s) total"
+        description = t(guild_id, "sentinel.modlogs.page_infractions", total=total)
         if total_pages > 1:
-            description += f" — page {page_num}/{total_pages}"
+            description += t(guild_id, "sentinel.modlogs.page_info", page=page_num, total_pages=total_pages)
 
         embed = discord.Embed(
-            title=f"📋 Modlogs for {member.display_name}",
+            title=t(guild_id, "sentinel.modlogs.title", name=member.display_name),
             description=description,
             color=COLOR_INFO,
             timestamp=datetime.now(UTC),
@@ -782,9 +836,15 @@ def _build_modlog_pages(
         for inf in chunk:
             type_emoji = _type_emoji(inf.type)
             created = inf.created_at.strftime("%Y-%m-%d %H:%M UTC") if inf.created_at else "Unknown"
-            value = f"**Moderator:** <@{inf.moderator_id}>\n**Reason:** {inf.reason}\n**Date:** {created}"
+            value = t(
+                guild_id,
+                "sentinel.modlogs.field_value",
+                moderator=inf.moderator_id,
+                reason=inf.reason,
+                date=created,
+            )
             if not inf.active:
-                value += "\n*(Revoked)*"
+                value += t(guild_id, "sentinel.modlogs.revoked")
 
             embed.add_field(
                 name=f"{type_emoji} {inf.type}",
@@ -793,7 +853,7 @@ def _build_modlog_pages(
             )
 
         embed.set_footer(
-            text=f"NebulosaBot • Sentinel • {member.id}",
+            text=t(guild_id, "sentinel.modlogs.footer", id=member.id),
             icon_url=member.display_avatar.url,
         )
         pages.append(embed)

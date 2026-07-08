@@ -284,5 +284,131 @@
       "error_title": "Imagen No Encontrada",
       "error_description": "La imagen de banana no está disponible. Contacta al dueño del bot."
     }
+  },
+  "sentinel": {
+    "validate": {
+      "self_target_title": "Objetivo Inválido",
+      "self_target_description": "No puedo moderarme a mí mismo.",
+      "cannot_self_description": "No puedes {action} a ti mismo.",
+      "role_hierarchy_title": "Jerarquía de Roles",
+      "role_hierarchy_description": "No puedo {action} a {mention} — su rol más alto está por encima o al mismo nivel que el mío."
+    },
+    "error": {
+      "permission_denied_title": "Permiso Denegado",
+      "permission_denied_description": "No tengo permiso para {action} a {mention}. Verifica mi posición de roles y permisos del servidor.",
+      "action_failed_title": "Acción Fallida",
+      "action_failed_description": "Error al {action} a {mention}. Discord retornó un error.",
+      "unexpected_title": "Error Inesperado",
+      "unexpected_description": "Ocurrió un error inesperado al intentar {action} a {mention}."
+    },
+    "warn": {
+      "failed_title": "Advertencia Fallida",
+      "failed_description": "No se pudo registrar la advertencia. Intenta de nuevo.",
+      "success_title": "Miembro Advertido",
+      "success_description": "{mention} ha sido advertido.\n**Razón:** {reason}",
+      "auto_mute_description": "\n⚠️ {mention} ha sido **silenciado automáticamente** por 1 hora ({threshold} advertencias).",
+      "auto_mute_failed_description": "\n⚠️ Silenciamiento automático fallido — no tengo permiso para silenciar a {mention}.",
+      "auto_kick_description": "\n🚫 {mention} ha sido **expulsado automáticamente** ({threshold} advertencias).",
+      "auto_kick_failed_description": "\n⚠️ Expulsión automática fallida — no tengo permiso para expulsar a {mention}."
+    },
+    "unwarn": {
+      "failed_title": "Reversión Fallida",
+      "failed_description": "No se pudo eliminar la advertencia. Intenta de nuevo.",
+      "no_warnings_title": "Sin Advertencias",
+      "no_warnings_description": "{mention} no tiene advertencias activas para eliminar.",
+      "success_title": "Advertencia Revocada",
+      "success_description": "Se eliminó la advertencia más reciente de {mention}."
+    },
+    "mute": {
+      "success_title": "Miembro Silenciado",
+      "success_description": "{mention} ha sido silenciado por **{duration}**.\n**Razón:** {reason}"
+    },
+    "unmute": {
+      "success_title": "Miembro Desilenciado",
+      "success_description": "El silenciamiento de {mention} ha sido removido."
+    },
+    "kick": {
+      "success_title": "Miembro Expulsado",
+      "success_description": "{mention} ha sido expulsado.\n**Razón:** {reason}"
+    },
+    "ban": {
+      "success_title": "Miembro Baneado",
+      "success_description": "{mention} ha sido baneado.\n**Razón:** {reason}"
+    },
+    "lock": {
+      "permission_denied_title": "Permiso Denegado",
+      "permission_denied_description": "No tengo permiso para bloquear {channel}. Verifica mis permisos de rol.",
+      "failed_title": "Bloqueo Fallido",
+      "failed_description": "No se pudo bloquear {channel}.",
+      "success_title": "Canal Bloqueado",
+      "success_description": "{channel} ha sido bloqueado. @everyone ya no puede enviar mensajes."
+    },
+    "unlock": {
+      "permission_denied_title": "Permiso Denegado",
+      "permission_denied_description": "No tengo permiso para desbloquear {channel}. Verifica mis permisos de rol.",
+      "failed_title": "Desbloqueo Fallido",
+      "failed_description": "No se pudo desbloquear {channel}.",
+      "success_title": "Canal Desbloqueado",
+      "success_description": "{channel} ha sido desbloqueado. @everyone puede enviar mensajes de nuevo."
+    },
+    "modlogs": {
+      "failed_title": "Modlogs Fallido",
+      "failed_description": "No se pudo obtener el historial de moderación. Intenta de nuevo.",
+      "no_modlogs_title": "Sin Modlogs",
+      "no_modlogs_description": "{mention} no tiene historial de moderación.",
+      "no_modlogs_description_filtered": "{mention} no tiene historial de moderación que coincida con los filtros.",
+      "page_infractions": "{total} infracción(es) en total",
+      "page_info": " — página {page}/{total_pages}",
+      "title": "📋 Modlogs de {name}",
+      "field_value": "**Moderador:** <@{moderator}>\n**Razón:** {reason}\n**Fecha:** {date}",
+      "revoked": "\n*(Revocado)*",
+      "prev_button": "◀ Anterior",
+      "next_button": "Siguiente ▶",
+      "footer": "NebulosaBot • Sentinel • {id}"
+    }
+  },
+  "stellar": {
+    "daily": {
+      "failed_title": "Reclamo Diario Fallido",
+      "failed_description": "Ocurrió un error inesperado. Intenta de nuevo más tarde.",
+      "success_title": "¡Recompensa Diaria Reclamada! 🎁",
+      "success_description": "¡Recibiste **{coins} monedas**!\nRacha: **{streak} día{plural}** 🔥",
+      "cooldown_title": "Enfriamiento Diario ⏳",
+      "cooldown_description": "Ya reclamaste tu recompensa diaria.\nRacha actual: **{streak}** — ¡vuelve mañana!"
+    },
+    "coins": {
+      "failed_title": "Error de Consulta",
+      "failed_description": "No se pudo obtener el saldo de monedas. Intenta de nuevo.",
+      "balance_title": "Saldo de Monedas",
+      "self_description": "Tienes **{balance} monedas** 💰",
+      "target_description": "**{name}** tiene **{balance} monedas** 💰"
+    },
+    "leaderboard": {
+      "error_title": "Error de Clasificación",
+      "error_description": "No se pudo cargar la clasificación. Intenta de nuevo más tarde.",
+      "empty_title": "Clasificación Vacía",
+      "empty_description": "No hay miembros con {type} en este servidor aún. ¡Empieza a chatear para ganar!",
+      "xp_title": "Clasificación de XP",
+      "coins_title": "Clasificación de Monedas",
+      "footer": "Top {count} miembros"
+    },
+    "rank": {
+      "failed_title": "Error de Rango",
+      "failed_description": "No se pudieron obtener los datos de rango. Intenta de nuevo más tarde.",
+      "no_data_title": "Sin Datos de Rango",
+      "no_data_description": "**{name}** no tiene estadísticas aún.\n¡Empieza a chatear para ganar XP y subir de nivel!"
+    }
+  },
+  "greetings": {
+    "permission_denied_title": "Permiso Denegado",
+    "permission_denied_description": "Necesitas permiso de Administrador para usar este comando.",
+    "welcome_test": {
+      "failed_title": "Error al Generar Tarjeta",
+      "failed_description": "No se pudo generar la tarjeta de bienvenida. Intenta de nuevo."
+    },
+    "goodbye_test": {
+      "failed_title": "Error al Generar Tarjeta",
+      "failed_description": "No se pudo generar la tarjeta de despedida. Intenta de nuevo."
+    }
   }
 }

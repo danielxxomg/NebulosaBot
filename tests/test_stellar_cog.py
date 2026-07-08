@@ -18,6 +18,7 @@ import pytest
 from discord.ext import commands
 
 from bot.cogs.stellar import StellarCog
+from bot.core.i18n import load_locales, set_guild_language
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -27,6 +28,10 @@ from bot.cogs.stellar import StellarCog
 @pytest.fixture
 def mock_bot() -> MagicMock:
     """Return a mock NebulosaBot with economy_service and image_service attached."""
+    # Ensure real locales are loaded and guild language is set.
+    load_locales()
+    set_guild_language("123456789", "en")
+
     bot = MagicMock(spec=commands.Bot)
     bot.economy_service = MagicMock()
     bot.economy_service.claim_daily = AsyncMock()

@@ -9,6 +9,7 @@ Strict TDD: RED phase — tests written BEFORE the i18n migration.
 from __future__ import annotations
 
 import json
+from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -79,13 +80,17 @@ def _category_row(guild_id: str = _ES_GUILD_ID) -> dict:
 
 
 @pytest.fixture(autouse=True)
-def _load_ticket_i18n(tmp_path: Path) -> None:
+def _load_ticket_i18n(tmp_path: Path) -> Generator[None, None, None]:
     """Load distinctive locale overrides for ticket strings.
 
     Uses strings that are DIFFERENT from the current hardcoded English
     so tests can prove t() is being called.
     """
     from bot.core import i18n as i18n_mod
+
+    # Save original state.
+    orig_locales = dict(i18n_mod._locales)
+    orig_guild_langs = dict(i18n_mod._guild_languages)
 
     i18n_mod._locales.clear()
     i18n_mod._guild_languages.clear()
@@ -492,6 +497,14 @@ def _load_ticket_i18n(tmp_path: Path) -> None:
     load_locales(locale_dir)
     set_guild_language(_ES_GUILD_ID, "es")
     set_guild_language(_EN_GUILD_ID, "en")
+
+    yield
+
+    # Restore original state so other test modules are not affected.
+    i18n_mod._locales.clear()
+    i18n_mod._locales.update(orig_locales)
+    i18n_mod._guild_languages.clear()
+    i18n_mod._guild_languages.update(orig_guild_langs)
 
 
 @pytest.fixture
