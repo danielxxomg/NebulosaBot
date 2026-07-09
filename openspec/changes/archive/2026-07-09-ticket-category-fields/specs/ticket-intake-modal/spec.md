@@ -1,14 +1,12 @@
-# Ticket Intake Modal Specification
+# Delta for Ticket Intake Modal
 
-## Purpose
-
-Define the modal-based ticket intake flow that collects subject and description from users after category selection.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Modal shown after category selection
 
 The system SHALL respond to category selection with a `TicketIntakeModal` that includes Title (required, short, max 100 chars), Description (optional, paragraph, max 2000 chars), and 0–3 additional TextInputs constructed from the selected category's `field_definitions`. Extra fields SHALL be inserted after Description in the modal. The modal SHALL receive `field_definitions` as a constructor parameter.
+
+(Previously: modal showed only Title and Description with no dynamic fields)
 
 #### Scenario: Modal appears on category select
 
@@ -43,6 +41,8 @@ The system SHALL respond to category selection with a `TicketIntakeModal` that i
 ### Requirement: Modal validation and submission
 
 On `TicketIntakeModal.submit()`, the system SHALL validate that `subject` is not empty (1–100 chars), validate that all `required` custom fields are non-empty, then defer the interaction and run the existing channel creation flow with `subject`, `description`, and `custom_fields` passed through. `custom_fields` SHALL be a dict mapping each field definition `key` to the user's submitted value.
+
+(Previously: only subject and description were collected and passed through)
 
 #### Scenario: Submit with both fields
 
