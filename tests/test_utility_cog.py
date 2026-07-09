@@ -132,11 +132,11 @@ class TestAvatarCommand:
     """Tests for /avatar hybrid command."""
 
     @pytest.mark.asyncio
-    async def test_avatar_self_shows_author_thumbnail(
+    async def test_avatar_self_shows_author_image(
         self,
         cog: UtilityCog,
     ) -> None:
-        """Invoking /avatar without a target shows the caller's avatar."""
+        """Invoking /avatar without a target shows the caller's avatar as a large image."""
         ctx = _make_ctx()
 
         await cog.avatar.callback(cog, ctx, member=None)
@@ -145,15 +145,15 @@ class TestAvatarCommand:
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
-        assert embed.thumbnail.url == ctx.author.display_avatar.url
+        assert embed.image.url == f"{ctx.author.display_avatar.url}?size=1024"
         assert ctx.author.display_name in embed.title  # type: ignore[operator]
 
     @pytest.mark.asyncio
-    async def test_avatar_target_shows_member_thumbnail(
+    async def test_avatar_target_shows_member_image(
         self,
         cog: UtilityCog,
     ) -> None:
-        """Invoking /avatar @member shows the target's avatar."""
+        """Invoking /avatar @member shows the target's avatar as a large image."""
         ctx = _make_ctx()
         target = _make_member()
 
@@ -162,7 +162,7 @@ class TestAvatarCommand:
         ctx.send.assert_called_once()
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
-        assert embed.thumbnail.url == target.display_avatar.url
+        assert embed.image.url == f"{target.display_avatar.url}?size=1024"
         assert target.display_name in embed.title
 
     @pytest.mark.asyncio
@@ -170,7 +170,7 @@ class TestAvatarCommand:
         self,
         cog: UtilityCog,
     ) -> None:
-        """If a member has no custom avatar, default avatar is used."""
+        """If a member has no custom avatar, default avatar is used as a large image."""
         ctx = _make_ctx()
         ctx.author.display_avatar.url = None  # no custom avatar
 
@@ -180,7 +180,7 @@ class TestAvatarCommand:
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         # Should fall back to default_avatar
-        assert embed.thumbnail.url == ctx.author.default_avatar.url
+        assert embed.image.url == f"{ctx.author.default_avatar.url}?size=1024"
 
 
 # ---------------------------------------------------------------------------
