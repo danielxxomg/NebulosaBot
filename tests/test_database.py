@@ -1718,6 +1718,7 @@ class TestDatabaseFacade:
             "get_ticket_category",
             "delete_ticket_category",
             "count_open_tickets_by_category",
+            "update_ticket_category_field_definitions",
             # ticket_audit
             "insert_audit_row",
             "get_audit_rows",
@@ -1747,3 +1748,98 @@ class TestDatabaseFacade:
         assert "_url" in Database.__slots__
         assert "_key" in Database.__slots__
         assert "_on_write" in Database.__slots__
+
+
+# ===========================================================================
+# PR1: update_ticket_category_field_definitions — guild-scoped JSONB update
+# ===========================================================================
+
+
+class TestUpdateTicketCategoryFieldDefinitions:
+    """Verify Database.update_ticket_category_field_definitions() updates JSONB by id+guildId."""
+
+    @pytest.mark.asyncio
+    async def test_updates_field_definitions_by_id_and_guild(
+        self, db: Database, fake_client: FakeSupabaseClient
+    ) -> None:
+        """update_ticket_category_field_definitions() MUST update fieldDefinitions filtered by id AND guildId."""
+        defs = [{"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True}]
+        fake_client.set_table_data("ticket_category", [{"id": "cat-1", "fieldDefinitions": defs}])
+
+        await db.update_ticket_category_field_definitions("cat-1", "g1", defs)
+
+        update_calls = fake_client.get_table_calls("ticket_category")
+        assert len(update_calls) == 1
+        assert update_calls[0][0] == "update"
+        assert update_calls[0][1]["fieldDefinitions"] == defs
+
+    @pytest.mark.asyncio
+    async def test_filters_by_id_and_guild_id(
+        self, db: Database, fake_client: FakeSupabaseClient
+    ) -> None:
+        """update_ticket_category_field_definitions() MUST apply eq('id') AND eq('guildId')."""
+        fake_client.set_table_data("ticket_category", [])
+
+        await db.update_ticket_category_field_definitions("cat-1", "g1", [])
+
+        filters = fake_client.get_table_filters("ticket_category")
+        assert ("eq", "id", "cat-1") in filters, f"Missing id filter, got: {filters}"
+        assert ("eq", "guildId", "g1") in filters, f"Missing guildId filter, got: {filters}"
+
+    @pytest.mark.asyncio
+    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
+        """update_ticket_category_field_definitions() MUST raise RuntimeError if connect() wasn't called."""
+        with pytest.raises(RuntimeError, match="connect"):
+            await disconnected_db.update_ticket_category_field_definitions("cat-1", "g1", [])
+
+
+# ===========================================================================
+# PR1: insert_ticket with custom_fields
+# ===========================================================================
+
+
+class TestInsertTicketWithCustomFields:
+    """Verify Database.insert_ticket() handles the custom_fields parameter."""
+
+    @pytest.mark.asyncio
+    async def test_insert_ticket_with_custom_fields_stores_jsonb(
+        self, db: Database, fake_client: FakeSupabaseClient
+    ) -> None:
+        """insert_ticket(custom_fields=...) MUST include 'customFields' in the inserted row."""
+        fields = {"player_nick": "DarkSlayer42", "evidence_url": "https://imgur.com/abc"}
+        fake_client.set_table_data("ticket", [{"id": "t-cf", "customFields": fields}])
+
+        await db.insert_ticket("g1", "u1", "ch1", "cat-1", 1, custom_fields=fields)
+
+        insert_calls = fake_client.get_table_calls("ticket")
+        assert len(insert_calls) == 1
+        inserted_row = insert_calls[0][1]
+        assert inserted_row["customFields"] == fields
+
+    @pytest.mark.asyncio
+    async def test_insert_ticket_without_custom_fields_defaults_empty(
+        self, db: Database, fake_client: FakeSupabaseClient
+    ) -> None:
+        """insert_ticket() without custom_fields MUST insert customFields={} by default."""
+        fake_client.set_table_data("ticket", [{"id": "t-no-cf", "customFields": {}}])
+
+        await db.insert_ticket("g1", "u1", "ch1", None, 1)
+
+        insert_calls = fake_client.get_table_calls("ticket")
+        inserted_row = insert_calls[0][1]
+        assert inserted_row["customFields"] == {}
+
+
+# ===========================================================================
+# PR1: Ticket facade method presence check
+# ===========================================================================
+
+
+class TestDatabaseFacadePR1Methods:
+    """Verify Database exposes the new PR1 methods from the mixin."""
+
+    def test_database_has_update_ticket_category_field_definitions(self) -> None:
+        """Database MUST expose update_ticket_category_field_definitions()."""
+        db = Database(url="https://test.supabase.co", key="test-key")
+        assert hasattr(db, "update_ticket_category_field_definitions")
+        assert callable(getattr(db, "update_ticket_category_field_definitions"))
