@@ -48,12 +48,16 @@ class FakeQueryBuilder:
         self._orders: list[tuple[str, bool]] = []  # (column, desc)
         self._limits: list[int] = []
         self._execute_count: int = 0
+        self._count: int | None = None  # for count="exact" support
 
     # Chain methods — all return self
     def table(self, name: str) -> FakeQueryBuilder:
         return self
 
     def select(self, *args: Any, **kwargs: Any) -> FakeQueryBuilder:
+        # Capture count="exact" kwarg
+        if "count" in kwargs:
+            self._count = kwargs["count"]
         return self
 
     def insert(self, row: dict) -> FakeQueryBuilder:
@@ -108,6 +112,9 @@ class FakeQueryBuilder:
 
         response = MagicMock()
         response.data = data
+        # Set count attribute when count="exact" was used
+        if self._count == "exact":
+            response.count = len(data)
         return response
 
 
@@ -125,9 +132,31 @@ class FakeSupabaseClient:
 
     def __init__(self) -> None:
         self._tables: dict[str, FakeQueryBuilder] = defaultdict(FakeQueryBuilder)
+        self._rpc_calls: list[tuple[str, dict]] = []
+        self._rpc_result: Any = None
+        self._rpc_queue: list[Any] = []
 
     def table(self, name: str) -> FakeQueryBuilder:
         return self._tables[name]
+
+    def rpc(self, fn_name: str, params: dict | None = None) -> FakeQueryBuilder:
+        """Record an RPC call and return a FakeQueryBuilder with the result."""
+        self._rpc_calls.append((fn_name, params or {}))
+        builder = FakeQueryBuilder()
+        if self._rpc_queue:
+            result_data = self._rpc_queue.pop(0)
+        else:
+            result_data = self._rpc_result if self._rpc_result is not None else []
+        builder._result_data = result_data
+        return builder
+
+    def set_rpc_result(self, data: list[dict]) -> None:
+        """Set static result data for RPC calls."""
+        self._rpc_result = data
+
+    def set_rpc_queue(self, queue: list[list[dict]]) -> None:
+        """Set ordered result queue for RPC calls."""
+        self._rpc_queue = list(queue)
 
     def set_table_data(self, name: str, data: list[dict]) -> None:
         """Set static result data for a table."""
@@ -620,14 +649,12 @@ class TestGetTicketByChannel:
 
 
 class TestUpdateMemberXp:
-    """Verify Database.update_member_xp() increments XP correctly."""
+    """Verify Database.update_member_xp() increments XP via RPC."""
 
     @pytest.mark.asyncio
     async def test_update_member_xp_increments_existing(self, db: Database, fake_client: FakeSupabaseClient) -> None:
-        """update_member_xp() MUST add xp_delta to existing XP."""
-        existing = {"guildId": "g1", "userId": "u1", "xp": 100, "level": 5}
-        # Queue: first execute = get_member, second = update
-        fake_client.set_table_queue("member", [[existing], []])
+        """update_member_xp() MUST call rpc and return the new XP."""
+        fake_client.set_rpc_result([{"xp": 150, "level": 5}])
 
         result = await db.update_member_xp("g1", "u1", 50)
 
@@ -636,9 +663,8 @@ class TestUpdateMemberXp:
 
     @pytest.mark.asyncio
     async def test_update_member_xp_creates_new_member(self, db: Database, fake_client: FakeSupabaseClient) -> None:
-        """update_member_xp() MUST upsert when member doesn't exist."""
-        # Queue: first execute = get_member (not found), second = upsert
-        fake_client.set_table_queue("member", [[], []])
+        """update_member_xp() MUST call rpc which handles upsert on new member."""
+        fake_client.set_rpc_result([{"xp": 25, "level": 0}])
 
         result = await db.update_member_xp("g1", "u1", 25)
 
@@ -648,8 +674,7 @@ class TestUpdateMemberXp:
     @pytest.mark.asyncio
     async def test_update_member_xp_with_level_override(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """update_member_xp() MUST set level when new_level is provided."""
-        existing = {"guildId": "g1", "userId": "u1", "xp": 500, "level": 5}
-        fake_client.set_table_queue("member", [[existing], []])
+        fake_client.set_rpc_result([{"xp": 600, "level": 5}])
 
         result = await db.update_member_xp("g1", "u1", 100, new_level=6)
 
@@ -669,13 +694,12 @@ class TestUpdateMemberXp:
 
 
 class TestUpdateMemberCoins:
-    """Verify Database.update_member_coins() increments coins correctly."""
+    """Verify Database.update_member_coins() increments coins via RPC."""
 
     @pytest.mark.asyncio
     async def test_update_member_coins_increments_existing(self, db: Database, fake_client: FakeSupabaseClient) -> None:
-        """update_member_coins() MUST add coin_delta to existing coins."""
-        existing = {"guildId": "g1", "userId": "u1", "coins": 200}
-        fake_client.set_table_queue("member", [[existing], []])
+        """update_member_coins() MUST call rpc and return the new coins."""
+        fake_client.set_rpc_result([{"coins": 250}])
 
         result = await db.update_member_coins("g1", "u1", 50)
 
@@ -683,8 +707,8 @@ class TestUpdateMemberCoins:
 
     @pytest.mark.asyncio
     async def test_update_member_coins_creates_new_member(self, db: Database, fake_client: FakeSupabaseClient) -> None:
-        """update_member_coins() MUST upsert when member doesn't exist."""
-        fake_client.set_table_queue("member", [[], []])
+        """update_member_coins() MUST call rpc which handles upsert on new member."""
+        fake_client.set_rpc_result([{"coins": 100}])
 
         result = await db.update_member_coins("g1", "u1", 100)
 
@@ -692,9 +716,8 @@ class TestUpdateMemberCoins:
 
     @pytest.mark.asyncio
     async def test_update_member_coins_clamps_to_zero(self, db: Database, fake_client: FakeSupabaseClient) -> None:
-        """update_member_coins() MUST clamp coins to 0 when delta would go negative."""
-        existing = {"guildId": "g1", "userId": "u1", "coins": 10}
-        fake_client.set_table_queue("member", [[existing], []])
+        """update_member_coins() MUST clamp coins to 0 via SQL GREATEST."""
+        fake_client.set_rpc_result([{"coins": 0}])
 
         result = await db.update_member_coins("g1", "u1", -50)
 
@@ -707,37 +730,27 @@ class TestUpdateMemberCoins:
 
 
 class TestUpdateMemberDaily:
-    """Verify Database.update_member_daily() updates streak and timestamps."""
+    """Verify Database.update_member_daily() updates streak and timestamps via RPC."""
 
     @pytest.mark.asyncio
     async def test_update_member_daily_updates_existing(self, db: Database, fake_client: FakeSupabaseClient) -> None:
-        """update_member_daily() MUST update coins, streak, and timestamps."""
-        existing = {"guildId": "g1", "userId": "u1", "coins": 50}
-        fake_client.set_table_queue("member", [[existing], []])
+        """update_member_daily() MUST call rpc('set_member_daily') and return result."""
+        fake_client.set_rpc_result([{"coins": 150, "dailyStreak": 3, "lastDailyReset": "2024-06-15T00:00:00Z", "lastDaily": "2024-06-15T12:00:00Z"}])
 
         result = await db.update_member_daily("g1", "u1", 100, 3, "2024-06-15T00:00:00Z", "2024-06-15T12:00:00Z")
 
         assert result["coins"] == 150
-
-        # Verify update call included streak fields
-        update_calls = fake_client.get_table_calls("member")
-        update_ops = [c for c in update_calls if c[0] == "update"]
-        assert len(update_ops) == 1
-        assert update_ops[0][1]["dailyStreak"] == 3
+        assert result["dailyStreak"] == 3
 
     @pytest.mark.asyncio
     async def test_update_member_daily_creates_new_member(self, db: Database, fake_client: FakeSupabaseClient) -> None:
-        """update_member_daily() MUST upsert when member doesn't exist."""
-        fake_client.set_table_queue("member", [[], []])
+        """update_member_daily() MUST call rpc which handles upsert on new member."""
+        fake_client.set_rpc_result([{"coins": 50, "dailyStreak": 1, "lastDailyReset": "2024-06-15T00:00:00Z", "lastDaily": "2024-06-15T12:00:00Z"}])
 
         result = await db.update_member_daily("g1", "u1", 50, 1, "2024-06-15T00:00:00Z", "2024-06-15T12:00:00Z")
 
         assert result["coins"] == 50
-
-        upsert_calls = fake_client.get_table_calls("member")
-        upsert_ops = [c for c in upsert_calls if c[0] == "upsert"]
-        assert len(upsert_ops) == 1
-        assert upsert_ops[0][1]["dailyStreak"] == 1
+        assert result["dailyStreak"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -1487,6 +1500,154 @@ class TestGetRecentNotesForDedup:
         """get_recent_notes_for_dedup() MUST raise RuntimeError if connect() wasn't called."""
         with pytest.raises(RuntimeError, match="connect"):
             await disconnected_db.get_recent_notes_for_dedup("t1", "authorA")
+
+
+# ===========================================================================
+# PR5: count_open_tickets_by_category — uses count="exact" (5.4)
+# ===========================================================================
+
+
+class TestCountOpenTicketsByCategory:
+    """Verify Database.count_open_tickets_by_category() uses count="exact"."""
+
+    @pytest.mark.asyncio
+    async def test_returns_count_from_response(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """count_open_tickets_by_category() MUST return count from response, not len(data)."""
+        # With count="exact", the FakeQueryBuilder will set response.count = len(data)
+        fake_client.set_table_data("ticket", [{"id": "t1"}, {"id": "t2"}])
+
+        result = await db.count_open_tickets_by_category("cat-1")
+
+        assert result == 2
+
+    @pytest.mark.asyncio
+    async def test_returns_zero_when_no_tickets(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """count_open_tickets_by_category() MUST return 0 when no open tickets exist."""
+        fake_client.set_table_data("ticket", [])
+
+        result = await db.count_open_tickets_by_category("cat-empty")
+
+        assert result == 0
+
+    @pytest.mark.asyncio
+    async def test_filters_by_category_and_status(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """count_open_tickets_by_category() MUST filter by categoryId and status IN (open, claimed)."""
+        fake_client.set_table_data("ticket", [])
+
+        await db.count_open_tickets_by_category("cat-1")
+
+        filters = fake_client.get_table_filters("ticket")
+        assert ("eq", "categoryId", "cat-1") in filters
+        assert ("in_", "status", ["open", "claimed"]) in filters
+
+    @pytest.mark.asyncio
+    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
+        """count_open_tickets_by_category() MUST raise RuntimeError if connect() wasn't called."""
+        with pytest.raises(RuntimeError, match="connect"):
+            await disconnected_db.count_open_tickets_by_category("cat-1")
+
+
+# ===========================================================================
+# PR5: RPC member increment methods (5.7 — RED tests)
+# ===========================================================================
+
+
+class TestRpcIncrementMemberXp:
+    """Verify Database.update_member_xp() uses RPC for atomic increment."""
+
+    @pytest.mark.asyncio
+    async def test_calls_rpc_increment_member_xp(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """update_member_xp() MUST call rpc('increment_member_xp') once."""
+        fake_client.set_rpc_result([{"xp": 150, "level": 5}])
+
+        result = await db.update_member_xp("g1", "u1", 50)
+
+        assert len(fake_client._rpc_calls) == 1
+        assert fake_client._rpc_calls[0][0] == "increment_member_xp"
+        assert fake_client._rpc_calls[0][1]["p_guild_id"] == "g1"
+        assert fake_client._rpc_calls[0][1]["p_user_id"] == "u1"
+        assert fake_client._rpc_calls[0][1]["p_amount"] == 50
+        assert result["xp"] == 150
+
+    @pytest.mark.asyncio
+    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
+        """update_member_xp() MUST raise RuntimeError if connect() wasn't called."""
+        with pytest.raises(RuntimeError, match="connect"):
+            await disconnected_db.update_member_xp("g1", "u1", 10)
+
+
+class TestRpcIncrementMemberCoins:
+    """Verify Database.update_member_coins() uses RPC for atomic increment."""
+
+    @pytest.mark.asyncio
+    async def test_calls_rpc_increment_member_coins(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """update_member_coins() MUST call rpc('increment_member_coins') once."""
+        fake_client.set_rpc_result([{"coins": 250}])
+
+        result = await db.update_member_coins("g1", "u1", 50)
+
+        assert len(fake_client._rpc_calls) == 1
+        assert fake_client._rpc_calls[0][0] == "increment_member_coins"
+        assert fake_client._rpc_calls[0][1]["p_guild_id"] == "g1"
+        assert fake_client._rpc_calls[0][1]["p_user_id"] == "u1"
+        assert fake_client._rpc_calls[0][1]["p_amount"] == 50
+        assert result["coins"] == 250
+
+    @pytest.mark.asyncio
+    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
+        """update_member_coins() MUST raise RuntimeError if connect() wasn't called."""
+        with pytest.raises(RuntimeError, match="connect"):
+            await disconnected_db.update_member_coins("g1", "u1", 10)
+
+
+class TestRpcIncrementMemberWarnings:
+    """Verify Database.update_member_warnings() uses RPC for atomic increment."""
+
+    @pytest.mark.asyncio
+    async def test_calls_rpc_increment_member_warnings(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """update_member_warnings() MUST call rpc('increment_member_warnings') once."""
+        fake_client.set_rpc_result([{"warnings": 3}])
+
+        await db.update_member_warnings("g1", "u1", 1)
+
+        assert len(fake_client._rpc_calls) == 1
+        assert fake_client._rpc_calls[0][0] == "increment_member_warnings"
+        assert fake_client._rpc_calls[0][1]["p_guild_id"] == "g1"
+        assert fake_client._rpc_calls[0][1]["p_user_id"] == "u1"
+        assert fake_client._rpc_calls[0][1]["p_amount"] == 1
+
+    @pytest.mark.asyncio
+    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
+        """update_member_warnings() MUST raise RuntimeError if connect() wasn't called."""
+        with pytest.raises(RuntimeError, match="connect"):
+            await disconnected_db.update_member_warnings("g1", "u1", 1)
+
+
+class TestRpcSetMemberDaily:
+    """Verify Database.update_member_daily() uses RPC for atomic daily claim."""
+
+    @pytest.mark.asyncio
+    async def test_calls_rpc_set_member_daily(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """update_member_daily() MUST call rpc('set_member_daily') once."""
+        fake_client.set_rpc_result([{"coins": 150, "dailyStreak": 3, "lastDailyReset": "2024-06-15T00:00:00Z", "lastDaily": "2024-06-15T12:00:00Z"}])
+
+        result = await db.update_member_daily("g1", "u1", 100, 3, "2024-06-15T00:00:00Z", "2024-06-15T12:00:00Z")
+
+        assert len(fake_client._rpc_calls) == 1
+        assert fake_client._rpc_calls[0][0] == "set_member_daily"
+        params = fake_client._rpc_calls[0][1]
+        assert params["p_guild_id"] == "g1"
+        assert params["p_user_id"] == "u1"
+        assert params["p_coin_amount"] == 100
+        assert params["p_streak"] == 3
+        assert result["coins"] == 150
+        assert result["dailyStreak"] == 3
+
+    @pytest.mark.asyncio
+    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
+        """update_member_daily() MUST raise RuntimeError if connect() wasn't called."""
+        with pytest.raises(RuntimeError, match="connect"):
+            await disconnected_db.update_member_daily("g1", "u1", 50, 1, None, None)
 
 
 # ===========================================================================

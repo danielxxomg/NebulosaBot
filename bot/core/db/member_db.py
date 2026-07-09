@@ -37,41 +37,25 @@ class MemberDBMixin:
         return rows[0] if rows else None
 
     async def update_member_warnings(self: Any, guild_id: str, user_id: str, delta: int) -> None:
-        """Increment or decrement the warnings counter for a member.
+        """Increment or decrement the warnings counter atomically via RPC.
 
-        If the member does not have a row yet, an initial row with
-        ``warnings = delta`` is upserted.  This is safe for the first
-        warn action on a previously unknown member.
+        Calls the ``increment_member_warnings`` Postgres function which handles
+        the upsert + increment in a single round trip.
         """
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
 
-        existing = await self.get_member(guild_id, user_id)
-        if existing is not None:
-            new_warnings = max(existing.get("warnings", 0) + delta, 0)
-            logger.debug(
-                "DB update_member_warnings(%s/%s): %d → %d",
-                guild_id,
-                user_id,
-                existing.get("warnings", 0),
-                new_warnings,
-            )
-            await self._client.table("member").update({"warnings": new_warnings}).eq("guildId", guild_id).eq(
-                "userId", user_id
-            ).execute()
-        else:
-            # First interaction — create the row.
-            initial = max(delta, 0)
-            logger.debug(
-                "DB update_member_warnings(%s/%s): new member, warnings=%d",
-                guild_id,
-                user_id,
-                initial,
-            )
-            await self._client.table("member").upsert(
-                {
-                    "guildId": guild_id,
-                    "userId": user_id,
-                    "warnings": initial,
-                }
-            ).execute()
+        logger.debug(
+            "DB update_member_warnings(%s/%s): delta=%d",
+            guild_id,
+            user_id,
+            delta,
+        )
+        await self._client.rpc(
+            "increment_member_warnings",
+            {
+                "p_guild_id": guild_id,
+                "p_user_id": user_id,
+                "p_amount": delta,
+            },
+        ).execute()

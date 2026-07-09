@@ -18,75 +18,12 @@ from bot.core.context import NebulosaContext
 from bot.core.i18n import t
 from bot.utils.checks import is_admin
 from bot.utils.embeds import COLOR_INFO, COLOR_SUCCESS, error_embed, info_embed
+from bot.utils.paginator import EmbedPaginator
 
 if TYPE_CHECKING:
     from bot.bot import NebulosaBot
 
 logger = logging.getLogger(__name__)
-
-# ------------------------------------------------------------------
-# Help pagination — View with prev/next for multi-page embeds
-# ------------------------------------------------------------------
-
-
-class _HelpPaginator(discord.ui.View):
-    """Simple two-button paginator for the /help command.
-
-    Shows prev/next buttons that cycle through a list of pre-built
-    :class:`discord.Embed` pages.  Buttons disable themselves at the
-    first/last page.
-    """
-
-    __slots__ = ("_current", "_guild_id", "_pages")
-
-    def __init__(
-        self,
-        pages: list[discord.Embed],
-        *,
-        guild_id: int | None = None,
-    ) -> None:
-        super().__init__(timeout=120)  # auto-remove after 2 min idle
-        self._pages = pages
-        self._current = 0
-        self._guild_id = guild_id
-        self._update_buttons()
-
-    # -- button callbacks ----------------------------------------------
-
-    @discord.ui.button(label="◀ Previous", style=discord.ButtonStyle.secondary)
-    async def prev_button(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button,
-    ) -> None:
-        self._current = max(0, self._current - 1)
-        self._update_buttons()
-        await interaction.response.edit_message(
-            embed=self._pages[self._current],
-            view=self,
-        )
-
-    @discord.ui.button(label="Next ▶", style=discord.ButtonStyle.secondary)
-    async def next_button(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button,
-    ) -> None:
-        self._current = min(len(self._pages) - 1, self._current + 1)
-        self._update_buttons()
-        await interaction.response.edit_message(
-            embed=self._pages[self._current],
-            view=self,
-        )
-
-    # -- helpers -------------------------------------------------------
-
-    def _update_buttons(self) -> None:
-        """Disable prev/next at boundaries."""
-        children = list(self.children)
-        if len(children) >= 2:
-            children[0].disabled = self._current == 0  # prev
-            children[1].disabled = self._current == len(self._pages) - 1  # next
 
 
 # ======================================================================
@@ -244,7 +181,7 @@ class CoreCog(commands.Cog, name="Core"):
             await ctx.send(embed=pages[0], ephemeral=True)
             return
 
-        view = _HelpPaginator(pages, guild_id=guild_id)
+        view = EmbedPaginator(pages, custom_id_prefix="help:")
         await ctx.send(embed=pages[0], view=view, ephemeral=True)
 
     @commands.hybrid_command(
