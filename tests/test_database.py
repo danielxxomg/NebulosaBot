@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from freezegun import freeze_time
@@ -1843,3 +1843,58 @@ class TestDatabaseFacadePR1Methods:
         db = Database(url="https://test.supabase.co", key="test-key")
         assert hasattr(db, "update_ticket_category_field_definitions")
         assert callable(getattr(db, "update_ticket_category_field_definitions"))
+
+
+# ===========================================================================
+# update_guild_panel — _on_write hook call after successful update
+# (ticket-panel-persistence, Phase 1)
+# ===========================================================================
+
+
+class TestUpdateGuildPanelOnWrite:
+    """Verify Database.update_guild_panel() calls _on_write hook after successful DB write."""
+
+    @pytest.mark.asyncio
+    async def test_calls_on_write_after_successful_update(
+        self, db: Database, fake_client: FakeSupabaseClient
+    ) -> None:
+        """update_guild_panel() MUST call self._on_write('guild', guild_id) after the DB write succeeds."""
+        on_write = AsyncMock()
+        db._on_write = on_write
+
+        await db.update_guild_panel("g1", "msg-123", "ch-456")
+
+        on_write.assert_awaited_once_with("guild", "g1")
+
+    @pytest.mark.asyncio
+    async def test_does_not_call_on_write_when_not_set(
+        self, db: Database, fake_client: FakeSupabaseClient
+    ) -> None:
+        """update_guild_panel() MUST NOT raise when _on_write is None."""
+        db._on_write = None
+
+        # Should not raise — just skip the hook.
+        await db.update_guild_panel("g1", "msg-123", "ch-456")
+
+    @pytest.mark.asyncio
+    async def test_supports_nullable_message_id_and_channel_id(
+        self, db: Database, fake_client: FakeSupabaseClient
+    ) -> None:
+        """update_guild_panel(message_id=None, channel_id=None) MUST clear the stored panel IDs."""
+        on_write = AsyncMock()
+        db._on_write = on_write
+
+        await db.update_guild_panel("g1", None, None)
+
+        update_calls = fake_client.get_table_calls("guild")
+        assert len(update_calls) == 1
+        assert update_calls[0][0] == "update"
+        assert update_calls[0][1]["ticketPanelMessageId"] is None
+        assert update_calls[0][1]["ticketPanelChannelId"] is None
+        on_write.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
+        """update_guild_panel() MUST raise RuntimeError if connect() wasn't called."""
+        with pytest.raises(RuntimeError, match="connect"):
+            await disconnected_db.update_guild_panel("g1", "msg", "ch")

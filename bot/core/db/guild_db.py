@@ -64,10 +64,13 @@ class GuildDBMixin:
             ignore_duplicates=True,
         ).execute()
 
-    async def update_guild_panel(self: Any, guild_id: str, message_id: str, channel_id: str) -> None:
+    async def update_guild_panel(
+        self: Any, guild_id: str, message_id: str | None, channel_id: str | None
+    ) -> None:
         """Persist the ticket panel message and channel IDs on the guild row.
 
         Called after deploying a panel so it survives bot restarts.
+        Passing ``None`` for either ID clears the stored value.
         """
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
@@ -84,3 +87,5 @@ class GuildDBMixin:
                 "ticketPanelChannelId": channel_id,
             }
         ).eq("id", guild_id).execute()
+        if self._on_write is not None:
+            await self._on_write("guild", guild_id)
