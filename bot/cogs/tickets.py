@@ -380,31 +380,31 @@ class TicketsCog(commands.Cog, name="Tickets"):
             await ctx.send(embed=_err(gid, "tickets.subticket.number_failed"))
             return
         try:
-            channel = await self.bot.ticket_service.create_ticket_channel(
-                guild, cat_ch, parent_owner, f"ticket-{tmax + 1:04d}", mod_role=mod_role
+            channel, subticket = await self.bot.ticket_service.create_ticket_channel(
+                guild,
+                cat_ch,
+                parent_owner,
+                f"ticket-{tmax + 1:04d}",
+                guild_id=gid,
+                parent_id=pid,
+                mod_role=mod_role,
             )
         except discord.HTTPException:
             logger.exception("Failed to create sub-ticket channel")
             await ctx.send(embed=_err(gid, "tickets.subticket.channel_failed"))
             return
-        try:
-            ticket = await self.bot.ticket_service.create_subticket(
-                parent_id=pid, author_id=parent_author_id, category_id=None, channel_id=str(channel.id), guild_id=gid
-            )
         except Exception:
             logger.exception("Failed to create sub-ticket in DB (parent=%s)", pid)
-            with contextlib.suppress(discord.HTTPException):
-                await channel.delete(reason="Sub-ticket creation failed")
             await ctx.send(embed=_err(gid, "tickets.subticket.creation_failed"))
             return
-        actual = f"ticket-{ticket.ticket_number:04d}"
+        actual = f"ticket-{subticket.ticket_number:04d}"
         if channel.name != actual:
             with contextlib.suppress(discord.HTTPException):
                 await channel.edit(name=actual)
-        await channel.send(content=parent_owner.mention, embed=build_ticket_embed(ticket, guild_id=gid))
+        await channel.send(content=parent_owner.mention, embed=build_ticket_embed(subticket, guild_id=gid))
         await ctx.send(embed=_ok(gid, "tickets.subticket.success", channel=channel.mention))
         logger.info(
-            "Sub-ticket #%d created (parent=%s, guild=%s, author=%s)", ticket.ticket_number, pid, guild.id, author.id
+            "Sub-ticket #%d created (parent=%s, guild=%s, author=%s)", subticket.ticket_number, pid, guild.id, author.id
         )
 
     @commands.hybrid_command(name="reopen")

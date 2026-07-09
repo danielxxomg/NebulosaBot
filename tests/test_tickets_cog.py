@@ -219,7 +219,7 @@ class TestCategorySelect:
 
         ticket = Ticket.from_db_row(_ticket_row(ticket_number=1))
         ticket_bot.ticket_service.create_ticket = AsyncMock(return_value=ticket)
-        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=mock_ticket_channel)
+        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, ticket))
 
         select = _CategorySelect(options=[], guild=ticket_guild)
         select._values = ["cat-uuid-001"]
@@ -251,7 +251,7 @@ class TestCategorySelect:
 
         ticket = Ticket.from_db_row(_ticket_row(ticket_number=1))
         ticket_bot.ticket_service.create_ticket = AsyncMock(return_value=ticket)
-        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=mock_ticket_channel)
+        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, ticket))
 
         select = _CategorySelect(options=[], guild=ticket_guild)
         select._values = ["cat-uuid-001"]
@@ -869,15 +869,13 @@ class TestSubticketCreate:
         category_channel = MagicMock(spec=discord.CategoryChannel)
         slash_ctx.guild.get_channel = MagicMock(return_value=category_channel)
 
-        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=mock_ticket_channel)
-
         subticket = Ticket.from_db_row({**_ticket_row(ticket_number=6), "parentId": parent_row["id"]})
-        ticket_bot.ticket_service.create_subticket = AsyncMock(return_value=subticket)
+        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, subticket))
 
         await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
 
-        ticket_bot.ticket_service.create_subticket.assert_awaited_once()
-        call_kwargs = ticket_bot.ticket_service.create_subticket.call_args.kwargs
+        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
+        call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
         assert call_kwargs["parent_id"] == parent_row["id"]
         assert call_kwargs["guild_id"] == "123456789"
         slash_ctx.send.assert_awaited()
@@ -935,13 +933,14 @@ class TestSubticketCreate:
         ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
         category_channel = MagicMock(spec=discord.CategoryChannel)
         slash_ctx.guild.get_channel = MagicMock(return_value=category_channel)
-        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=mock_ticket_channel)
-        ticket_bot.ticket_service.create_subticket = AsyncMock(side_effect=ValueError("Parent ticket not found"))
+        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(
+            side_effect=ValueError("Parent ticket not found")
+        )
 
         await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
 
-        # Orphan channel deleted.
-        mock_ticket_channel.delete.assert_awaited_once()
+        # Channel cleanup is now handled inside create_ticket_channel;
+        # the cog surfaces the error embed.
         embed = slash_ctx.send.call_args.kwargs.get("embed")
         assert "Failed" in embed.title
 
@@ -1445,7 +1444,7 @@ class TestSubticketParentOwnerAccess:
         subticket = Ticket.from_db_row({**_ticket_row(ticket_number=6), "parentId": parent_row["id"]})
         ticket_bot.ticket_service.create_subticket = AsyncMock(return_value=subticket)
         if mock_ticket_channel is not None:
-            ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=mock_ticket_channel)
+            ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, subticket))
         return parent_row
 
     async def test_overwrites_grant_parent_owner_not_invoker(
