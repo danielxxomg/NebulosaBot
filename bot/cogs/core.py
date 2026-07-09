@@ -14,6 +14,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from bot.constants import FALLBACK_PREFIX
 from bot.core.context import NebulosaContext
 from bot.core.i18n import t
 from bot.utils.checks import is_admin
@@ -240,7 +241,7 @@ def _resolve_prefix(ctx: NebulosaContext) -> str:
     """Return the active prefix for the context, or the fallback default."""
     if ctx.guild is not None and ctx.guild_config is not None:
         return ctx.guild_config.prefix
-    return "nb!"
+    return FALLBACK_PREFIX
 
 
 def _build_cog_help_embed(

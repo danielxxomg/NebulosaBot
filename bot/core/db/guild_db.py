@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from bot.constants import FALLBACK_PREFIX
 from bot.core.db.base import _unwrap
 from bot.models.guild import GuildConfig
 
@@ -58,7 +59,7 @@ class GuildDBMixin:
 
         logger.debug("DB ensure_guild_exists(%r)", guild_id)
         await self._client.table("guild").upsert(
-            {"id": guild_id, "prefix": "nb!", "language": "es", "active": True},
+            {"id": guild_id, "prefix": FALLBACK_PREFIX, "language": "es", "active": True},
             on_conflict="id",
             ignore_duplicates=True,
         ).execute()

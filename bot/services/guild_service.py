@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from bot.constants import FALLBACK_PREFIX
 from bot.core.i18n import set_guild_language
 from bot.models.guild import GuildConfig
 
@@ -84,7 +85,7 @@ class GuildService:
         else:
             # No row yet — use defaults. The row will be upserted on first
             # save or on_guild_join.
-            config = GuildConfig(id=guild_id, prefix="nb!", language="es")
+            config = GuildConfig(id=guild_id, prefix=FALLBACK_PREFIX, language="es")
 
         # Populate cache and mod-role lookup.
         self._cache.set(cache_key, config, ttl=CACHE_TTL)
@@ -135,7 +136,7 @@ class GuildService:
 
         Returns the newly created ``GuildConfig``.
         """
-        config = GuildConfig(id=guild_id, prefix="nb!", language="es")
+        config = GuildConfig(id=guild_id, prefix=FALLBACK_PREFIX, language="es")
 
         await self._db.upsert_guild(config)
 

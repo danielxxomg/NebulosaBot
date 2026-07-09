@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 import discord
 from discord.ext import commands
 
+from bot.constants import FALLBACK_PREFIX
 from bot.core.cache import TTLCache
 from bot.core.context import NebulosaContext
 from bot.core.database import Database, create_realtime_client
@@ -41,7 +42,6 @@ BACKFILL_CONCURRENCY_LIMIT = 50
 logger = logging.getLogger(__name__)
 
 # -- Sentry for missing guild config (used by get_prefix fallback) ----------
-_FALLBACK_PREFIX = "nb!"
 
 
 def _build_prefix_callable(
@@ -53,12 +53,12 @@ def _build_prefix_callable(
     """
 
     async def get_prefix(bot_ref: NebulosaBot, message: discord.Message) -> list[str]:
-        prefix = _FALLBACK_PREFIX
+        prefix = FALLBACK_PREFIX
         if message.guild is not None:
             try:
                 if bot_ref.guild_service is not None:
                     config = await bot_ref.guild_service.get_config(str(message.guild.id))
-                    prefix = config.prefix or _FALLBACK_PREFIX
+                    prefix = config.prefix or FALLBACK_PREFIX
             except Exception:
                 logger.exception(
                     "Failed to resolve prefix for guild %s — using fallback",
