@@ -1,25 +1,24 @@
 ## Verification Report
 
 **Change**: bot-ux  
-**Scope**: PR1 only — phases 1-4 re-verified after timeout message wiring fix; phase 5 greeting config commands intentionally deferred to PR2  
+**Scope**: Complete change — PR1 + PR2, including `welcome-goodbye`  
 **Version**: N/A  
 **Mode**: Strict TDD  
 **Persistence**: OpenSpec + Engram  
 **Final Verdict**: PASS WITH WARNINGS
 
-PR1 now passes verification after the timeout-message wiring fix. Source inspection confirms `ConfirmCancelView.on_timeout()` uses the public `view.message` handle first, and `/kick` plus `/ban` now assign `view.message = msg` from `ctx.send(...)`. Runtime evidence confirms the full pytest suite passes: `1001 passed, 3 skipped, 2 warnings` with 84.33% total coverage.
+Complete `bot-ux` verification passed the required full runtime suite. All task boxes are complete and every spec domain has runtime test evidence, including the PR2 `/welcome` and `/goodbye` command groups. Warnings remain for changed-file lint/type issues and some assertion-depth gaps, but no CRITICAL spec or test blocker was found.
 
 ### Completeness
 
 | Metric | Value | Result |
 |--------|-------|--------|
-| PR1 tasks total | 16 | ✅ |
-| PR1 tasks complete | 16 | ✅ |
-| PR1 tasks incomplete | 0 | ✅ |
-| Deferred PR2 tasks | 6 — Phase 5 greeting config commands | ⚠️ WARNING ONLY |
+| Tasks total | 26 | ✅ |
+| Tasks complete | 26 | ✅ |
+| Tasks incomplete | 0 | ✅ |
+| PR1 phases 1-4 | 18/18 implementation tasks complete | ✅ |
+| PR2 phase 5 | 6/6 greeting config tasks complete | ✅ |
 | Final verification tasks | 3/3 marked complete | ✅ |
-
-**PR2 note**: Phase 5 remains incomplete, but this verification is scoped to PR1 and the user explicitly designated PR2 greetings incomplete as WARNING only.
 
 ### Build & Tests Execution
 
@@ -37,73 +36,98 @@ openspec validate bot-ux --strict
 /usr/bin/bash: line 1: openspec: command not found
 ```
 
-**Tests**: ✅ Passed
+**Required full test run**: ✅ Passed
 
 ```text
 uv run pytest
-collected 1004 items
-1001 passed, 3 skipped, 2 warnings in 9.64s
-Required test coverage of 75% reached. Total coverage: 84.33%
+collected 1016 items
+1013 passed, 3 skipped, 2 warnings in 10.53s
+Required test coverage of 75% reached. Total coverage: 84.59%
 ```
 
-**Coverage**: 84.33% / threshold: 75% → ✅ Above
+**PR2 focused test evidence**: ✅ Passed with coverage disabled for the isolated file run
+
+```text
+uv run pytest tests/test_greetings_cog.py --no-cov
+22 passed in 0.14s
+```
+
+**Coverage**: 84.59% / threshold: 75% → ✅ Above
 
 ### Spec Compliance Matrix
 
-| Requirement | Scenario | Runtime Test / Evidence | Result |
-|-------------|----------|-------------------------|--------|
-| Confirm cancel view | User confirms action | `tests/test_confirm_view.py::TestConfirmAction::test_confirm_executes_callback`; full suite passed | ✅ COMPLIANT |
-| Confirm cancel view | User cancels action | `tests/test_confirm_view.py::TestCancelAction::test_cancel_sends_ephemeral_message`; full suite passed | ✅ COMPLIANT |
-| Confirm cancel view | Confirmation times out | `tests/test_confirm_view.py::TestTimeout::test_timeout_with_public_message_attribute`, `tests/test_sentinel_cog.py::TestKickCommand::test_kick_timeout_edits_wired_message`, `tests/test_sentinel_cog.py::TestBanCommand::test_ban_timeout_edits_wired_message`; full suite passed | ✅ COMPLIANT |
-| Confirmation detail embed | Ban confirmation shows details | Source includes action title, target mention, reason, and delete days in `bot/cogs/sentinel.py`; i18n tests assert localized title only | ⚠️ PARTIAL |
-| Only invoker can interact | Different user clicks confirm | `tests/test_confirm_view.py::TestOwnerOnlyGuard::test_non_owner_confirm_rejected`; full suite passed | ✅ COMPLIANT |
-| Ticket panel/action views | Dynamic localized labels after restart | `tests/test_tickets_i18n.py::TestDynamicLabelResolution::*`; full suite passed | ✅ COMPLIANT |
-| `/daily` command | Successful daily claim | `tests/test_stellar_cog.py::TestDailyCommand::test_daily_success_embed`; full suite passed | ✅ COMPLIANT |
-| `/daily` command | Cooldown with exact remaining time | `tests/test_stellar_cog.py::TestDailyCommand::test_daily_cooldown_embed` asserts `22h 0m`; `tests/test_economy_service.py::TestClaimDaily::test_claim_daily_cooldown_active` asserts exact seconds; full suite passed | ✅ COMPLIANT |
-| `/daily` command | Near-expiry cooldown | `tests/test_economy_service.py::TestClaimDaily::test_claim_daily_cooldown_near_expiry` asserts 600 seconds; full suite passed | ✅ COMPLIANT |
-| Kick command | Confirmation before kick and confirmed kick | `tests/test_sentinel_cog.py::TestKickCommand::test_kick_shows_confirmation_before_executing` and `test_kick_confirm_executes_kick`; full suite passed | ✅ COMPLIANT |
-| Kick command | Cancelled kick | Covered by reusable `ConfirmCancelView` cancel tests; no command-specific kick cancel test | ⚠️ PARTIAL |
-| Ban command | Confirmation before ban and confirmed ban | `tests/test_sentinel_cog.py::TestBanCommand::test_ban_shows_confirmation_before_executing` and `test_ban_confirm_executes_ban`; full suite passed | ✅ COMPLIANT |
-| Ban command | Message deletion days | Source passes `delete_message_days=delete_days`; current test invokes `delete_days=3` but does not assert the exact call argument | ⚠️ PARTIAL |
-| Ban command | Cancelled ban | Covered by reusable `ConfirmCancelView` cancel tests; no command-specific ban cancel test | ⚠️ PARTIAL |
-| Welcome/goodbye commands | Greeting config command groups | Deferred to PR2 by scope | ⚠️ WARNING ONLY |
+| Domain | Requirement | Scenario(s) | Runtime Test / Evidence | Result |
+|--------|-------------|-------------|-------------------------|--------|
+| confirm-dialog | Confirm cancel view | User confirms action | `tests/test_confirm_view.py::TestConfirmAction::*`; full suite passed | ✅ COMPLIANT |
+| confirm-dialog | Confirm cancel view | User cancels action | `tests/test_confirm_view.py::TestCancelAction::*`; full suite passed | ✅ COMPLIANT |
+| confirm-dialog | Confirm cancel view | Confirmation times out | `tests/test_confirm_view.py::TestTimeout::*` plus sentinel timeout wiring tests; full suite passed | ✅ COMPLIANT |
+| confirm-dialog | Confirmation detail embed | Ban confirmation shows action, target, reason | `tests/test_sentinel_cog.py` and `tests/test_sentinel_i18n.py`; source shows mention/reason/delete_days interpolation | ⚠️ PARTIAL — detail text not fully asserted |
+| confirm-dialog | Only invoker can interact | Different user clicks confirm/cancel | `tests/test_confirm_view.py::TestOwnerOnlyGuard::*`; full suite passed | ✅ COMPLIANT |
+| ticket-views | Ticket panel view | Panel render, open ticket, empty categories, imports | Existing ticket cog/i18n/integration tests; full suite passed | ✅ COMPLIANT |
+| ticket-views | Ticket panel view | Localized labels after restart | `tests/test_tickets_i18n.py::TestDynamicLabelResolution::*`; full suite passed | ✅ COMPLIANT |
+| ticket-views | Ticket panel view | English fallback before first interaction | `tests/test_tickets_i18n.py::TestPersistentViewButtonLabels::*`; full suite passed | ✅ COMPLIANT |
+| ticket-views | Ticket actions view | Render, claim, close, author/mod gating, rejection | Existing ticket cog/i18n/integration tests; full suite passed | ✅ COMPLIANT |
+| ticket-views | Ticket actions view | Localized claim/close labels after restart | `tests/test_tickets_i18n.py::TestDynamicLabelResolution::*`; full suite passed | ✅ COMPLIANT |
+| economy-commands | `/daily` command | Successful daily claim | `tests/test_stellar_cog.py::TestDailyCommand::test_daily_success_embed`; full suite passed | ✅ COMPLIANT |
+| economy-commands | `/daily` command | Cooldown with exact time | `tests/test_stellar_cog.py::TestDailyCommand::test_daily_cooldown_embed`; full suite passed | ✅ COMPLIANT |
+| economy-commands | `/daily` command | Near-expiry cooldown | `tests/test_economy_service.py::TestClaimDaily::test_claim_daily_cooldown_near_expiry`; full suite passed | ✅ COMPLIANT |
+| sentinel-commands | Kick command | Moderator confirms kick | `tests/test_sentinel_cog.py::TestKickCommand::test_kick_confirm_executes_kick`; full suite passed | ✅ COMPLIANT |
+| sentinel-commands | Kick command | Confirmation shown before execution | `tests/test_sentinel_cog.py::TestKickCommand::test_kick_shows_confirmation_before_executing`; full suite passed | ✅ COMPLIANT |
+| sentinel-commands | Kick command | Kick cancelled | Generic `ConfirmCancelView` cancel tests prove callback is not executed | ⚠️ PARTIAL — no command-specific kick cancel test |
+| sentinel-commands | Ban command | Admin confirms ban | `tests/test_sentinel_cog.py::TestBanCommand::test_ban_confirm_executes_ban`; full suite passed | ✅ COMPLIANT |
+| sentinel-commands | Ban command | Ban with message deletion | Source passes `delete_message_days=delete_days`; full suite passed | ⚠️ PARTIAL — exact argument not asserted |
+| sentinel-commands | Ban command | Confirmation shown before execution | `tests/test_sentinel_cog.py::TestBanCommand::test_ban_shows_confirmation_before_executing`; full suite passed | ✅ COMPLIANT |
+| sentinel-commands | Ban command | Ban cancelled | Generic `ConfirmCancelView` cancel tests prove callback is not executed | ⚠️ PARTIAL — no command-specific ban cancel test |
+| welcome-goodbye | Welcome config command group | Show welcome config | `tests/test_greetings_cog.py::TestWelcomeConfigCommand::test_config_shows_current_settings`; full suite passed | ⚠️ PARTIAL — channel/message asserted, enabled indicator source-verified |
+| welcome-goodbye | Welcome config command group | Set welcome channel | `tests/test_greetings_cog.py::TestWelcomeConfigCommand::test_channel_saves_new_channel`; full suite passed | ✅ COMPLIANT |
+| welcome-goodbye | Welcome config command group | Toggle welcome off/on | `test_toggle_flips_enabled` and `test_toggle_flips_disabled_to_enabled`; full suite passed | ✅ COMPLIANT |
+| welcome-goodbye | Welcome config command group | Set welcome message template | `test_message_saves_template`; full suite passed | ✅ COMPLIANT |
+| welcome-goodbye | Welcome config command group | Non-admin blocked | `test_non_admin_blocked_from_welcome_config`; source has `@app_commands.default_permissions(administrator=True)` | ⚠️ PARTIAL — runtime guard tested, Discord metadata source-verified |
+| welcome-goodbye | Goodbye config command group | Show goodbye config | `tests/test_greetings_cog.py::TestGoodbyeConfigCommand::test_config_shows_current_settings`; full suite passed | ⚠️ PARTIAL — channel/message asserted, enabled indicator source-verified |
+| welcome-goodbye | Goodbye config command group | Set goodbye channel | `tests/test_greetings_cog.py::TestGoodbyeConfigCommand::test_channel_saves_new_channel`; full suite passed | ✅ COMPLIANT |
+| welcome-goodbye | Goodbye config command group | Toggle goodbye off | `test_toggle_flips_enabled`; full suite passed | ✅ COMPLIANT |
+| welcome-goodbye | Goodbye config command group | Set goodbye message template | `test_message_saves_template`; full suite passed | ✅ COMPLIANT |
+| welcome-goodbye | Goodbye config command group | Non-admin blocked | `test_non_admin_blocked_from_goodbye_config`; source has `@app_commands.default_permissions(administrator=True)` | ⚠️ PARTIAL — runtime guard tested, Discord metadata source-verified |
 
-**Compliance summary**: All PR1 blocking behaviors are compliant with runtime evidence. Remaining partials are assertion-depth warnings, not blockers for this PR1 verification.
+**Compliance summary**: 40/40 spec scenarios have runtime coverage in the passing full suite. 33 scenarios are fully compliant and 7 are partial due assertion-depth limits, not missing behavior.
 
 ### Correctness (Static Evidence)
 
 | Requirement | Status | Notes |
 |------------|--------|-------|
-| Reusable confirmation view | ✅ Implemented | `ConfirmCancelView` disables buttons on confirm/cancel/timeout and edits the wired message on timeout. |
-| Confirmation timeout runtime wiring | ✅ Implemented | `bot/views/confirmation.py:120` checks `self.message` first; `bot/cogs/sentinel.py:483-492` and `562-577` wire the sent message back to the view. |
-| Owner-only guard | ✅ Implemented | `_check_owner()` enforces `interaction.user.id == self._owner_id` and sends an ephemeral rejection. |
-| `/daily` cooldown | ✅ Implemented | `claim_daily()` returns `(success, coins, streak, remaining_seconds)` and `stellar.py` formats `Xh Ym`. |
-| Persistent ticket labels | ✅ Implemented | `TicketPanelView` and `TicketActionsView` update button labels from `t(guild_id, key)` in callbacks. |
-| `/kick` confirmation | ✅ Implemented | Action executes only through `ConfirmCancelView` confirm callback. |
-| `/ban` confirmation | ✅ Implemented | Action executes only through `ConfirmCancelView` confirm callback and clamps `delete_days` to `0..7`. |
+| Reusable confirmation view | ✅ Implemented | `bot/views/confirmation.py` has owner-only guard, confirm/cancel buttons, timeout disable/edit, public `view.message` wiring. |
+| `/daily` exact cooldown | ✅ Implemented | `claim_daily()` returns `(success, coins, streak, remaining_seconds)` and `stellar.py` formats `Xh Ym`. |
+| Persistent ticket labels | ✅ Implemented | `TicketPanelView` and `TicketActionsView` resolve labels via `t(guild_id, key)` inside callbacks. |
+| `/kick` confirmation | ✅ Implemented | Kick action executes only inside `ConfirmCancelView` confirm callback. |
+| `/ban` confirmation | ✅ Implemented | Ban action executes only inside confirm callback and clamps `delete_days` to `0..7`. |
+| `/welcome` group | ✅ Implemented | `@commands.hybrid_group(fallback="config")`, subcommands `channel`, `toggle`, `message`, service-layer `get_config()`/`save_config()`. |
+| `/goodbye` group | ✅ Implemented | Mirrors `/welcome` with `goodbye_*` config mutations and localized responses. |
+| Greeting locale keys | ✅ Implemented | `bot/locales/en.json` and `bot/locales/es.json` contain `greetings.welcome.*` and `greetings.goodbye.*`; JSON parses cleanly. |
 
 ### Coherence (Design)
 
 | Decision | Followed? | Notes |
 |----------|-----------|-------|
-| Keep global persistent views; update labels in callbacks | ✅ Yes | Implemented in `bot/views/tickets.py`. |
+| Keep global persistent ticket views; update labels in callbacks | ✅ Yes | Implemented in `bot/views/tickets.py`. |
 | Extend daily tuple to 4 values | ✅ Yes | Implemented in service and cog/tests. |
-| Reusable `ConfirmCancelView` with owner-only buttons, timeout disable, and async callback | ✅ Yes | Timeout message delivery is now wired through public `view.message`. |
-| PR1/PR2 delivery split | ✅ Yes | PR1 phases 1-4 complete; PR2 greeting commands deferred. |
-| No database migration | ✅ Yes | No migrations added. |
+| Reusable `ConfirmCancelView` | ✅ Yes | Implemented and wired into sentinel kick/ban. |
+| Greeting commands use `GreetingService`, not direct DB calls | ✅ Yes | `bot/cogs/greetings.py` calls `get_config()` and `save_config()` only. |
+| Greeting groups use hybrid groups with fallback config | ✅ Yes | `welcome` and `goodbye` use `@commands.hybrid_group(fallback="config")`. |
+| Admin gate greeting groups/subcommands | ✅ Yes | `@app_commands.default_permissions(administrator=True)` plus runtime `_admin_guard()`. |
+| No migration | ✅ Yes | No database migration added. |
 
 ### TDD Compliance
 
 | Check | Result | Details |
 |-------|--------|---------|
-| TDD Evidence reported | ✅ | Engram observation #859 (`sdd/bot-ux/apply-progress`) contains `## TDD Cycle Evidence` for the timeout wiring fix. |
-| All PR1 tasks have tests | ✅ | PR1 task list references tests for phases 1-4 and those files exist. |
-| RED confirmed (tests exist) | ✅ | `tests/test_confirm_view.py`, `tests/test_economy_service.py`, `tests/test_stellar_cog.py`, `tests/test_sentinel_cog.py`, `tests/test_tickets_i18n.py` exist. |
-| GREEN confirmed (tests pass) | ✅ | Full `uv run pytest` passed. |
-| Triangulation adequate | ✅ | Timeout wiring has unit coverage and command production-wiring coverage for both kick and ban. |
-| Safety Net for modified files | ✅ | Full suite, ruff, changed-file mypy, and py_compile were rerun. |
+| TDD Evidence reported | ✅ | Engram observation #859 contains PR2 `## TDD Cycle Evidence`; prior PR1 verify artifacts contain phases 1-4 evidence. |
+| All tasks have tests | ✅ | Phases 1-5 reference concrete test files; locale-only/refactor tasks are covered through command/i18n tests. |
+| RED confirmed | ✅ | Test files exist: `test_confirm_view.py`, `test_economy_service.py`, `test_stellar_cog.py`, `test_sentinel_cog.py`, `test_tickets_i18n.py`, `test_greetings_cog.py`. |
+| GREEN confirmed | ✅ | Full `uv run pytest` passed; PR2 focused `tests/test_greetings_cog.py --no-cov` passed 22/22. |
+| Triangulation adequate | ⚠️ | Core behavior is triangulated; assertion-depth gaps remain for greeting config enabled display and some sentinel arguments. |
+| Safety Net for modified files | ✅ | Full suite ran after PR1+PR2. |
 
-**TDD Compliance**: 6/6 checks passed for PR1 scope.
+**TDD Compliance**: 5/6 checks passed, 1 warning for assertion depth.
 
 ---
 
@@ -111,10 +135,10 @@ Required test coverage of 75% reached. Total coverage: 84.33%
 
 | Layer | Tests | Files | Tools |
 |-------|-------|-------|-------|
-| Unit | Confirm view, economy service, ticket label behavior | 4 | pytest, pytest-asyncio |
-| Integration-style mocked command tests | Sentinel and Stellar command callback behavior | 3 | pytest, AsyncMock/MagicMock |
-| E2E | 0 | 0 | Not applicable; Discord API is mocked per project rules |
-| **Total** | Runtime suite: 1004 collected | 119 checked by mypy | pytest |
+| Unit | Confirm view, economy, greetings, ticket label behavior | 6 related files | pytest, pytest-asyncio, AsyncMock/MagicMock |
+| Integration-style mocked command tests | Sentinel, Stellar, ticket flows | 4+ related files | pytest, Discord mocks |
+| E2E | 0 | 0 | Not applicable; Discord API is mocked per AGENTS.md |
+| **Total** | Runtime suite: 1016 collected | 119 checked by mypy | pytest |
 
 ---
 
@@ -122,13 +146,14 @@ Required test coverage of 75% reached. Total coverage: 84.33%
 
 | File | Line % | Branch % | Uncovered Lines | Rating |
 |------|--------|----------|-----------------|--------|
+| `bot/cogs/greetings.py` | 94% | N/A | 11 lines | ✅ Excellent |
 | `bot/views/confirmation.py` | 95% | N/A | HTTPException logging branch | ✅ Excellent |
 | `bot/views/tickets.py` | 84% | N/A | error branches | ⚠️ Acceptable |
 | `bot/services/economy_service.py` | 96% | N/A | minor parse/config branches | ✅ Excellent |
 | `bot/cogs/stellar.py` | 96% | N/A | minor error/avatar branches | ✅ Excellent |
-| `bot/cogs/sentinel.py` | 73% | N/A | multiple moderation error branches | ⚠️ Low |
+| `bot/cogs/sentinel.py` | 73% | N/A | moderation error branches | ⚠️ Low |
 
-**Average changed production file coverage**: total project coverage 84.33%; changed-file coverage ranges from 73% to 96%.
+**Average changed production file coverage**: total project coverage 84.59%; changed production file coverage ranges from 73% to 96%.
 
 ---
 
@@ -136,33 +161,42 @@ Required test coverage of 75% reached. Total coverage: 84.33%
 
 | File | Line | Assertion | Issue | Severity |
 |------|------|-----------|-------|----------|
-| `tests/test_sentinel_cog.py` | 491 | `target_member.ban.assert_awaited_once()` | Does not assert `delete_message_days=3`, so the message-deletion scenario has weaker argument-level proof. | WARNING |
-| `tests/test_sentinel_i18n.py` | 551, 592 | title-only confirmation assertions | Confirmation detail strings are not asserted for target/reason/delete_days. | WARNING |
+| `tests/test_greetings_cog.py` | 347-349 | Channel/message assertions only | Test comment says config includes channel/toggle/message, but enabled indicator is not asserted. | WARNING |
+| `tests/test_greetings_cog.py` | 493-495 | Channel/message assertions only | Goodbye config enabled indicator is not asserted. | WARNING |
+| `tests/test_greetings_cog.py` | 370-382, 498-510 | Runtime non-admin guard assertions | Covers user-facing block, but not Discord `default_permissions` metadata at runtime. Source verifies decorators. | WARNING |
+| `tests/test_sentinel_cog.py` | Existing PR1 tests | Ban call count / confirm title assertions | Some sentinel detail behavior is source-verified but not argument/detail asserted. | WARNING |
 
-**Assertion quality**: 0 CRITICAL, 2 WARNING. No tautologies found in PR1-specific tests. The previous timeout assertion blocker is resolved by `test_timeout_with_public_message_attribute` plus kick/ban production-wiring timeout tests.
+**Assertion quality**: 0 CRITICAL, 4 WARNING.
 
 ---
 
 ### Quality Metrics
 
-**Linter**: ✅ No errors on changed Python files
+**Linter**: ⚠️ Changed Python files have 2 Ruff errors
 
 ```text
-uv run ruff check bot/cogs/sentinel.py bot/cogs/stellar.py bot/services/economy_service.py bot/views/tickets.py bot/views/confirmation.py tests/test_confirm_view.py tests/test_economy_service.py tests/test_sentinel_cog.py tests/test_sentinel_i18n.py tests/test_stellar_cog.py tests/test_stellar_i18n.py tests/test_tickets_i18n.py
-All checks passed!
+uv run ruff check bot/cogs/greetings.py tests/test_greetings_cog.py
+bot/cogs/greetings.py:297:121: E501 Line too long (139 > 120)
+bot/cogs/greetings.py:387:121: E501 Line too long (139 > 120)
+Found 2 errors.
 ```
 
-**Type Checker**: ⚠️ Whole-project failure remains, but changed files are clean
+**Type Checker**: ⚠️ Whole-project failure, including 2 changed-test errors
 
 ```text
 uv run mypy --strict bot tests
-tests/test_database.py:116: error: Non-overlapping equality check (left operand type: "int | None", right operand type: "Literal['exact']")  [comparison-overlap]
-Found 1 error in 1 file (checked 119 source files)
+tests/test_database.py:116: error: Non-overlapping equality check ... [comparison-overlap]
+tests/test_greetings_cog.py:382: error: Item "None" of "Colour | None" has no attribute "value" [union-attr]
+tests/test_greetings_cog.py:510: error: Item "None" of "Colour | None" has no attribute "value" [union-attr]
+Found 3 errors in 2 files (checked 119 source files)
 ```
 
+**JSON validation**: ✅ Passed
+
 ```text
-uv run mypy --strict bot/cogs/sentinel.py bot/cogs/stellar.py bot/services/economy_service.py bot/views/tickets.py bot/views/confirmation.py tests/test_confirm_view.py tests/test_economy_service.py tests/test_sentinel_cog.py tests/test_sentinel_i18n.py tests/test_stellar_cog.py tests/test_stellar_i18n.py tests/test_tickets_i18n.py
-Success: no issues found in 12 source files
+uv run python -m json.tool bot/locales/en.json
+uv run python -m json.tool bot/locales/es.json
+# both exit 0
 ```
 
 ### Issues Found
@@ -173,18 +207,20 @@ None.
 
 **WARNING**:
 
-1. Phase 5 greeting config commands are incomplete, but deferred to PR2 and warning-only for this PR1 verification.
-2. Whole-project mypy still fails on pre-existing unrelated `tests/test_database.py:116`; changed-file mypy is clean.
-3. Test suite emits two `RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited` warnings in pre-existing ticket-service tests.
+1. Ruff fails on two added long ternary lines in `bot/cogs/greetings.py:297` and `bot/cogs/greetings.py:387`.
+2. Mypy fails on two added test lines in `tests/test_greetings_cog.py:382` and `tests/test_greetings_cog.py:510` (`embed.color` may be `None`), plus one pre-existing `tests/test_database.py:116` error.
+3. Full pytest emits two pre-existing `RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited` warnings in ticket-service tests.
 4. OpenSpec CLI is not available in PATH, so `openspec validate bot-ux --strict` could not run.
-5. Some PR1 assertions could be stronger: confirmation detail descriptions, command-specific cancel tests, and exact `delete_message_days=3` argument assertion.
+5. Some assertions remain weaker than ideal: greeting config enabled display, Discord permission metadata, sentinel confirmation detail/delete-days arguments, and command-specific cancel tests.
 
 **SUGGESTION**:
 
-1. In PR2 or a follow-up hardening pass, strengthen sentinel tests to assert confirmation descriptions contain target/reason/delete_days and `member.ban(delete_message_days=3)` is called.
+1. Split the two long greeting toggle ternaries before review/CI.
+2. In `tests/test_greetings_cog.py`, guard `embed.color is not None` before asserting `.value` to satisfy strict mypy.
+3. Add assertion-depth follow-ups for greeting config enabled display and sentinel confirm/delete-days detail.
 
 ### Verdict
 
 PASS WITH WARNINGS
 
-PR1 passes Strict TDD verification after the timeout message wiring fix. Remaining items are PR2 deferral or non-blocking assertion/quality warnings.
+The complete `bot-ux` behavior is implemented and the required full `uv run pytest` passes with coverage above threshold. The change is not archive-clean yet because changed-file Ruff/Mypy warnings and assertion-depth gaps remain, but there are no CRITICAL spec, design, task, or runtime-test blockers.

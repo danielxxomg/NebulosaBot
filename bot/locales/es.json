@@ -411,6 +411,22 @@
     "goodbye_test": {
       "failed_title": "Error al Generar Tarjeta",
       "failed_description": "No se pudo generar la tarjeta de despedida. Intenta de nuevo."
+    },
+    "welcome": {
+      "config_title": "Configuración de Bienvenida",
+      "config_description": "**Canal:** {channel}\n**Habilitado:** {enabled}\n**Mensaje:** {message}",
+      "channel_set_description": "Canal de bienvenida configurado a {channel}.",
+      "toggle_enabled_description": "Los mensajes de bienvenida ahora están **habilitados**.",
+      "toggle_disabled_description": "Los mensajes de bienvenida ahora están **deshabilitados**.",
+      "message_set_description": "Plantilla de mensaje de bienvenida actualizada."
+    },
+    "goodbye": {
+      "config_title": "Configuración de Despedida",
+      "config_description": "**Canal:** {channel}\n**Habilitado:** {enabled}\n**Mensaje:** {message}",
+      "channel_set_description": "Canal de despedida configurado a {channel}.",
+      "toggle_enabled_description": "Los mensajes de despedida ahora están **habilitados**.",
+      "toggle_disabled_description": "Los mensajes de despedida ahora están **deshabilitados**.",
+      "message_set_description": "Plantilla de mensaje de despedida actualizada."
     }
   },
   "confirm": {

@@ -411,6 +411,22 @@
     "goodbye_test": {
       "failed_title": "Card Generation Failed",
       "failed_description": "Could not generate the goodbye card. Please try again."
+    },
+    "welcome": {
+      "config_title": "Welcome Configuration",
+      "config_description": "**Channel:** {channel}\n**Enabled:** {enabled}\n**Message:** {message}",
+      "channel_set_description": "Welcome channel set to {channel}.",
+      "toggle_enabled_description": "Welcome messages are now **enabled**.",
+      "toggle_disabled_description": "Welcome messages are now **disabled**.",
+      "message_set_description": "Welcome message template updated."
+    },
+    "goodbye": {
+      "config_title": "Goodbye Configuration",
+      "config_description": "**Channel:** {channel}\n**Enabled:** {enabled}\n**Message:** {message}",
+      "channel_set_description": "Goodbye channel set to {channel}.",
+      "toggle_enabled_description": "Goodbye messages are now **enabled**.",
+      "toggle_disabled_description": "Goodbye messages are now **disabled**.",
+      "message_set_description": "Goodbye message template updated."
     }
   },
   "confirm": {
