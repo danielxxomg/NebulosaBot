@@ -77,15 +77,15 @@ Chain strategy: stacked-to-main
 
 ## Phase 5: PR5 — Shared Utils + DB Optimizations (~200 lines, LOW-MED risk)
 
-- [ ] 5.1 [GREEN] Create `bot/utils/paginator.py` — `EmbedPaginator(discord.ui.View)` with `previous_button`, `next_button`, `stop_button`, configurable `timeout`, stable `custom_id`s for persistence. Replaces `_HelpPaginator` and `_ModlogsPaginator`.
-- [ ] 5.2 [GREEN] Replace `_HelpPaginator` in `bot/cogs/core.py` with `EmbedPaginator`. Ver: `uv run pytest tests/test_core_cog.py -x`
-- [ ] 5.3 [GREEN] Replace `_ModlogsPaginator` in `bot/cogs/sentinel.py` with `EmbedPaginator`. Ver: `uv run pytest tests/test_sentinel.py -x`
-- [ ] 5.4 [RED] Write test in `tests/test_database.py` — `count_open_tickets_by_category` returns count without fetching rows (mock verify: `execute` called once, `response.count` used, not `len(response.data)`). Ver: `uv run pytest tests/test_database.py -k test_count_exact -x`
-- [ ] 5.5 [GREEN] Fix `count_open_tickets_by_category` in `bot/core/db/ticket_category_db.py` — use `count="exact"` on select, read `response.count`. Ver: `uv run pytest tests/test_database.py -k test_count_exact -x`
-- [ ] 5.6 [GREEN] Create `migrations/009_member_increment_rpc.sql` with 4 PL/pgSQL functions: `increment_member_xp`, `increment_member_coins`, `increment_member_warnings`, `set_member_daily` — `SECURITY DEFINER`, quoted camelCase columns, `ON CONFLICT` upsert, `REVOKE`/`GRANT` for least privilege.
-- [ ] 5.7 [RED] Write tests in `tests/test_database.py` — RPC `increment_member_xp` returns updated value in 1 call (mock `_client.rpc(...).execute()`); upsert creates row on first call. Ver: `uv run pytest tests/test_database.py -k test_rpc_increment -x`
-- [ ] 5.8 [GREEN] Replace get+update N+1 pattern in 4 `MemberDBMixin`/`EconomyDBMixin` methods (`update_member_xp`, `update_member_coins`, `update_member_warnings`, `update_member_daily`) with `.rpc()` calls. Ver: `uv run pytest tests/test_database.py tests/test_economy_service.py -x`
-- [ ] 5.9 Verify PR5: `uv run pytest && uv run ruff check bot/ && uv run mypy bot/`
+- [x] 5.1 [GREEN] Create `bot/utils/paginator.py` — `EmbedPaginator(discord.ui.View)` with `previous_button`, `next_button`, `stop_button`, configurable `timeout`, stable `custom_id`s for persistence. Replaces `_HelpPaginator` and `_ModlogsPaginator`.
+- [x] 5.2 [GREEN] Replace `_HelpPaginator` in `bot/cogs/core.py` with `EmbedPaginator`. Ver: `uv run pytest tests/test_core_cog.py -x`
+- [x] 5.3 [GREEN] Replace `_ModlogsPaginator` in `bot/cogs/sentinel.py` with `EmbedPaginator`. Ver: `uv run pytest tests/test_sentinel.py -x`
+- [x] 5.4 [RED] Write test in `tests/test_database.py` — `count_open_tickets_by_category` returns count without fetching rows (mock verify: `execute` called once, `response.count` used, not `len(response.data)`). Ver: `uv run pytest tests/test_database.py -k test_count_exact -x`
+- [x] 5.5 [GREEN] Fix `count_open_tickets_by_category` in `bot/core/db/ticket_category_db.py` — use `count="exact"` on select, read `response.count`. Ver: `uv run pytest tests/test_database.py -k test_count_exact -x`
+- [x] 5.6 [GREEN] Create `migrations/009_member_increment_rpc.sql` with 4 PL/pgSQL functions: `increment_member_xp`, `increment_member_coins`, `increment_member_warnings`, `set_member_daily` — `SECURITY DEFINER`, quoted camelCase columns, `ON CONFLICT` upsert, `REVOKE`/`GRANT` for least privilege.
+- [x] 5.7 [RED] Write tests in `tests/test_database.py` — RPC `increment_member_xp` returns updated value in 1 call (mock `_client.rpc(...).execute()`); upsert creates row on first call. Ver: `uv run pytest tests/test_database.py -k test_rpc_increment -x`
+- [x] 5.8 [GREEN] Replace get+update N+1 pattern in 4 `MemberDBMixin`/`EconomyDBMixin` methods (`update_member_xp`, `update_member_coins`, `update_member_warnings`, `update_member_daily`) with `.rpc()` calls. Ver: `uv run pytest tests/test_database.py tests/test_economy_service.py -x`
+- [x] 5.9 Verify PR5: `uv run pytest && uv run ruff check bot/ && uv run mypy bot/`
 
 ---
 

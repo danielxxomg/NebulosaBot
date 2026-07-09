@@ -21,10 +21,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
-from bot.cogs.sentinel import SentinelCog, _ModlogsPaginator
+from bot.cogs.sentinel import SentinelCog
 from bot.core.i18n import load_locales, set_guild_language
 from bot.services.infraction_service import InfractionService
 from bot.services.logging_service import LoggingService
+from bot.utils.paginator import EmbedPaginator
 
 # Ensure real locales are loaded for sentinel_cog tests.
 load_locales()
@@ -471,12 +472,12 @@ class TestModlogsCommand:
 
 
 class TestModlogsPaginator:
-    """Tests for _ModlogsPaginator prev/next navigation."""
+    """Tests for EmbedPaginator used in /modlogs prev/next navigation."""
 
     def test_prev_button_disabled_at_start(self) -> None:
         """Prev button disabled on page 0."""
         pages = [discord.Embed(title=f"Page {i}") for i in range(3)]
-        view = _ModlogsPaginator(pages)
+        view = EmbedPaginator(pages, custom_id_prefix="modlogs:")
         children = list(view.children)
         assert children[0].disabled is True
         assert children[1].disabled is False
@@ -484,38 +485,38 @@ class TestModlogsPaginator:
     async def test_next_button_advances_page(self) -> None:
         """Next button advances to next page and updates embed."""
         pages = [discord.Embed(title=f"Page {i}") for i in range(3)]
-        view = _ModlogsPaginator(pages)
+        view = EmbedPaginator(pages, custom_id_prefix="modlogs:")
         interaction = MagicMock()
         interaction.response = MagicMock()
         interaction.response.edit_message = AsyncMock()
 
         await view.next_button.callback(interaction)
 
-        assert view._current == 1
+        assert view.current_page == 1
         interaction.response.edit_message.assert_awaited_once()
 
     async def test_prev_button_goes_back(self) -> None:
         """Prev button goes back after advancing."""
         pages = [discord.Embed(title=f"Page {i}") for i in range(3)]
-        view = _ModlogsPaginator(pages)
+        view = EmbedPaginator(pages, custom_id_prefix="modlogs:")
         interaction = MagicMock()
         interaction.response = MagicMock()
         interaction.response.edit_message = AsyncMock()
 
         # Advance to page 2.
-        view._current = 2
-        view._update_buttons()
+        view.current_page = 2
+        view.update_buttons()
 
         await view.prev_button.callback(interaction)
 
-        assert view._current == 1
+        assert view.current_page == 1
 
     def test_next_button_disabled_at_end(self) -> None:
         """Next button disabled on last page."""
         pages = [discord.Embed(title=f"Page {i}") for i in range(2)]
-        view = _ModlogsPaginator(pages)
-        view._current = 1
-        view._update_buttons()
+        view = EmbedPaginator(pages, custom_id_prefix="modlogs:")
+        view.current_page = 1
+        view.update_buttons()
         children = list(view.children)
         assert children[1].disabled is True
 
