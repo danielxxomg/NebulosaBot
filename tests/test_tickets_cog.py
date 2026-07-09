@@ -883,24 +883,23 @@ class TestSlashCommands:
         ticket_bot: MagicMock,
         mock_db,
     ) -> None:
-        """ticket_panel command deploys panel embed."""
+        """ticket_panel command delegates to deploy_ticket_panel helper."""
         ctx = MagicMock()
         ctx.guild = MagicMock()
         ctx.guild.id = 123456789
         ctx.send = AsyncMock()
         ctx.channel = MagicMock()
 
-        mock_message = MagicMock()
-        mock_message.id = 777777777
-        mock_message.channel = MagicMock()
-        mock_message.channel.id = 888888888
-        ctx.send = AsyncMock(return_value=mock_message)
-        mock_db.update_guild_panel = AsyncMock()
+        with patch("bot.cogs.tickets.deploy_ticket_panel", new_callable=AsyncMock) as mock_deploy:
+            await tickets_cog.ticket_panel.callback(tickets_cog, ctx)
 
-        await tickets_cog.ticket_panel.callback(tickets_cog, ctx)
-
+        mock_deploy.assert_awaited_once_with(
+            ctx.channel, "123456789", bot=ticket_bot,
+            title="Support Tickets",
+            description_text="Click the button below to open a support ticket. A staff member will assist you shortly.",
+        )
+        # Success embed sent.
         ctx.send.assert_awaited()
-        mock_db.update_guild_panel.assert_awaited_once()
 
     async def test_ticket_panel_no_guild(
         self,
