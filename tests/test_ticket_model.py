@@ -36,6 +36,8 @@ def _ticket_row(**overrides: object) -> dict:
         "closedAt": None,
         "lastActivity": "2026-07-01T10:00:00+00:00",
         "parentId": None,
+        "subject": None,
+        "description": None,
     }
     row.update(overrides)
     return row
@@ -165,6 +167,144 @@ def test_ticket_parent_id_round_trip_none() -> None:
     rebuilt = Ticket.from_db_row(ticket.to_db_dict())
 
     assert rebuilt.parent_id is None
+
+
+# ===========================================================================
+# Ticket — subject / description serialization
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# from_db_row — subject / description
+# ---------------------------------------------------------------------------
+
+
+def test_from_db_row_maps_populated_subject_and_description() -> None:
+    """from_db_row MUST map row['subject'] and row['description'] when populated."""
+    row = _ticket_row(subject="Login broken", description="Cannot access since Monday")
+
+    ticket = Ticket.from_db_row(row)
+
+    assert ticket.subject == "Login broken"
+    assert ticket.description == "Cannot access since Monday"
+
+
+def test_from_db_row_maps_null_subject_and_description() -> None:
+    """from_db_row MUST set subject=None and description=None when null."""
+    row = _ticket_row(subject=None, description=None)
+
+    ticket = Ticket.from_db_row(row)
+
+    assert ticket.subject is None
+    assert ticket.description is None
+
+
+def test_from_db_row_subject_description_defaults_none_when_missing() -> None:
+    """from_db_row MUST default subject/description to None when keys absent."""
+    row = _ticket_row()
+    row.pop("subject")
+    row.pop("description")
+
+    ticket = Ticket.from_db_row(row)
+
+    assert ticket.subject is None
+    assert ticket.description is None
+
+
+# ---------------------------------------------------------------------------
+# to_db_dict — subject / description
+# ---------------------------------------------------------------------------
+
+
+def test_to_db_dict_includes_populated_subject_and_description() -> None:
+    """to_db_dict MUST emit 'subject' and 'description' when set."""
+    ticket = Ticket(
+        id="t-subject",
+        ticket_number=11,
+        guild_id="g1",
+        author_id="a1",
+        channel_id="c1",
+        status="open",
+        created_at=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
+        last_activity=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
+        subject="Bug",
+        description="Details",
+    )
+
+    result = ticket.to_db_dict()
+
+    assert result["subject"] == "Bug"
+    assert result["description"] == "Details"
+
+
+def test_to_db_dict_includes_null_subject_and_description() -> None:
+    """to_db_dict MUST emit subject=None and description=None when unset."""
+    ticket = Ticket(
+        id="t-subject-null",
+        ticket_number=12,
+        guild_id="g1",
+        author_id="a1",
+        channel_id="c1",
+        status="open",
+        created_at=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
+        last_activity=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
+        subject=None,
+        description=None,
+    )
+
+    result = ticket.to_db_dict()
+
+    assert "subject" in result
+    assert result["subject"] is None
+    assert "description" in result
+    assert result["description"] is None
+
+
+# ---------------------------------------------------------------------------
+# Round-trip — subject / description survive from_db_row(to_db_dict(x))
+# ---------------------------------------------------------------------------
+
+
+def test_ticket_subject_description_round_trip_populated() -> None:
+    """Populated subject/description MUST survive a to_db_dict -> from_db_row round-trip."""
+    ticket = Ticket(
+        id="t-rt-subj",
+        ticket_number=13,
+        guild_id="g1",
+        author_id="a1",
+        channel_id="c1",
+        status="open",
+        created_at=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
+        last_activity=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
+        subject="Login broken",
+        description="Cannot access since Monday",
+    )
+
+    rebuilt = Ticket.from_db_row(ticket.to_db_dict())
+
+    assert rebuilt.subject == "Login broken"
+    assert rebuilt.description == "Cannot access since Monday"
+
+
+def test_ticket_subject_description_round_trip_none() -> None:
+    """Null subject/description MUST survive a to_db_dict -> from_db_row round-trip."""
+    ticket = Ticket(
+        id="t-rt-subj-none",
+        ticket_number=14,
+        guild_id="g1",
+        author_id="a1",
+        channel_id="c1",
+        status="open",
+        created_at=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
+        last_activity=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
+        subject=None,
+        description=None,
+    )
+
+    rebuilt = Ticket.from_db_row(ticket.to_db_dict())
+
+    assert rebuilt.subject is None
+    assert rebuilt.description is None
 
 
 # ===========================================================================
