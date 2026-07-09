@@ -80,21 +80,21 @@ The system MUST store the deployed ticket panel message ID and channel ID in the
 - WHEN the bot starts
 - THEN the stale IDs are cleared and a warning is logged
 
-### Requirement: Dashboard webhook notification
+### Requirement: Dashboard config sync via Realtime CDC
 
-The dashboard `updateGuildConfig()` Server Action MUST fire an asynchronous POST to the bot's webhook endpoint after a successful Supabase write. The webhook call MUST NOT block or fail the Supabase write.
+Dashboard guild config writes MUST NOT call any inbound bot webhook. Cache invalidation MUST rely on outbound Supabase Realtime CDC (`cache-sync-realtime`). The Server Action MUST complete after the Supabase write succeeds regardless of bot connectivity.
 
-#### Scenario: Webhook fired after config write
+#### Scenario: Config write does not call webhook
 
 - GIVEN the dashboard writes a guild config change to Supabase
 - WHEN the Supabase write succeeds
-- THEN a signed POST is sent to the webhook endpoint with `{"guild_id": G}` (guild_id only; the optional `entity` field is omitted because the bot performs a full `invalidate_guild`)
+- THEN the Server Action returns success without POSTing to a bot webhook endpoint
 
-#### Scenario: Webhook failure does not fail write
+#### Scenario: Bot invalidates via Realtime
 
-- GIVEN the webhook endpoint is unreachable or returns an error
-- WHEN `updateGuildConfig()` completes the Supabase write
-- THEN the Server Action returns success (fire-and-forget)
+- GIVEN the bot Realtime subscriber is connected
+- WHEN Supabase emits a `guild` UPDATE for guild G
+- THEN the bot invalidates the guild cache for G
 
 ### Requirement: Concurrent guild backfill on startup
 
