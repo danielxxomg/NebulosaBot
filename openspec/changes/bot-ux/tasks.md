@@ -56,12 +56,12 @@ Chain strategy: stacked-to-main
 
 ## Phase 5: Greeting Config Commands (PR 2)
 
-- [ ] 5.1 RED: update `tests/test_greetings_cog.py` — `/welcome config` returns embed with channel, toggle, message; `/welcome channel #x` saves; `/welcome toggle` flips; `/welcome message template` saves
-- [ ] 5.2 GREEN: modify `bot/cogs/greetings.py` — add `@commands.hybrid_group(fallback="config")` for `/welcome` with `config`, `channel`, `toggle`, `message` subcommands using `GreetingService`
-- [ ] 5.3 RED: update `tests/test_greetings_cog.py` — `/goodbye` group mirrors `/welcome` with same subcommands
-- [ ] 5.4 GREEN: modify `bot/cogs/greetings.py` — add `/goodbye` hybrid group with same pattern
-- [ ] 5.5 Add greeting config locale keys to `bot/locales/en.json` and `bot/locales/es.json`
-- [ ] 5.6 REFACTOR: extract shared admin guard and config embed builder if duplication exists
+- [x] 5.1 RED: update `tests/test_greetings_cog.py` — `/welcome config` returns embed with channel, toggle, message; `/welcome channel #x` saves; `/welcome toggle` flips; `/welcome message template` saves
+- [x] 5.2 GREEN: modify `bot/cogs/greetings.py` — add `@commands.hybrid_group(fallback="config")` for `/welcome` with `config`, `channel`, `toggle`, `message` subcommands using `GreetingService`
+- [x] 5.3 RED: update `tests/test_greetings_cog.py` — `/goodbye` group mirrors `/welcome` with same subcommands
+- [x] 5.4 GREEN: modify `bot/cogs/greetings.py` — add `/goodbye` hybrid group with same pattern
+- [x] 5.5 Add greeting config locale keys to `bot/locales/en.json` and `bot/locales/es.json`
+- [x] 5.6 REFACTOR: extract shared admin guard and config embed builder if duplication exists
 
 ## Phase 6: Final Verification
 
