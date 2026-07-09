@@ -20,6 +20,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.core.i18n import t
+from bot.services.greeting_service import _resolve_avatar_url
 from bot.utils.embeds import error_embed
 
 if TYPE_CHECKING:
@@ -178,20 +179,6 @@ class GreetingsCog(commands.Cog, name="Greetings"):
 
         file = discord.File(buffer, filename="goodbye.png")
         await ctx.send(file=file, ephemeral=True)
-
-
-# ------------------------------------------------------------------
-# Helpers
-# ------------------------------------------------------------------
-
-
-def _resolve_avatar_url(member: discord.Member | discord.User) -> str | None:
-    """Return the display avatar URL for *member*, or ``None`` on failure."""
-    try:
-        return str(member.display_avatar.url)
-    except Exception:
-        logger.debug("Could not resolve avatar URL for user %s", member.id, exc_info=True)
-        return None
 
 
 async def setup(bot: NebulosaBot) -> None:

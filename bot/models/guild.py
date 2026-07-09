@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from bot.constants import FALLBACK_PREFIX
+
 
 @dataclass
 class GuildConfig:
@@ -14,7 +16,7 @@ class GuildConfig:
     """
 
     id: str  # Discord guild ID (PK)
-    prefix: str = "nb!"
+    prefix: str = FALLBACK_PREFIX
     language: str = "es"
     mod_role_id: str | None = None
     log_channel_id: str | None = None
@@ -45,7 +47,7 @@ class GuildConfig:
         """Build a GuildConfig from a Supabase row (camelCase keys)."""
         return cls(
             id=row["id"],
-            prefix=row.get("prefix", "nb!"),
+            prefix=row.get("prefix", FALLBACK_PREFIX),
             language=row.get("language", "es"),
             mod_role_id=row.get("modRoleId"),
             log_channel_id=row.get("logChannelId"),
