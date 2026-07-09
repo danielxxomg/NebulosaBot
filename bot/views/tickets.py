@@ -26,6 +26,218 @@ logger = logging.getLogger(__name__)
 CHANNEL_DELETE_DELAY = 5  # seconds
 
 
+async def _create_ticket_after_modal(
+    interaction: discord.Interaction,
+    guild: discord.Guild,
+    category_id: str,
+    subject: str | None,
+    description: str | None,
+) -> None:
+    """Shared ticket creation flow used by TicketIntakeModal.on_submit.
+
+    Validates guild config, creates the channel via the service, sends the
+    welcome embed, pins it, and sends the ephemeral success followup.
+    """
+    bot: NebulosaBot = interaction.client  # type: ignore[assignment]
+    guild_id = str(guild.id)
+    assert bot.db is not None and bot.guild_service is not None and bot.ticket_service is not None
+
+    try:
+        config = await bot.guild_service.get_config(guild_id)
+    except Exception:
+        logger.exception("Failed to fetch guild config for ticket creation (guild=%s)", guild.id)
+        await interaction.followup.send(
+            embed=error_embed(
+                t(guild_id, "tickets.open.config_error_title"),
+                t(guild_id, "tickets.open.config_error_description"),
+                guild_id=guild_id,
+            ),
+            ephemeral=True,
+        )
+        return
+
+    if not config.ticket_category_id:
+        await interaction.followup.send(
+            embed=error_embed(
+                t(guild_id, "tickets.config_missing.title"),
+                t(guild_id, "tickets.config_missing.description"),
+                guild_id=guild_id,
+            ),
+            ephemeral=True,
+        )
+        return
+
+    ticket_category_channel = guild.get_channel(int(config.ticket_category_id))
+    if ticket_category_channel is None or not isinstance(ticket_category_channel, discord.CategoryChannel):
+        await interaction.followup.send(
+            embed=error_embed(
+                t(guild_id, "tickets.open.invalid_category_title"),
+                t(guild_id, "tickets.open.invalid_category_description"),
+                guild_id=guild_id,
+            ),
+            ephemeral=True,
+        )
+        return
+
+    mod_role: discord.Role | None = None
+    if config.mod_role_id:
+        with contextlib.suppress(ValueError, TypeError):
+            mod_role = guild.get_role(int(config.mod_role_id))
+
+    author = interaction.user
+    assert isinstance(author, discord.Member)
+    tentative_max = await bot.db.get_max_ticket_number(guild_id)
+    channel_name = f"ticket-{tentative_max + 1:04d}"
+
+    try:
+        channel, ticket = await bot.ticket_service.create_ticket_channel(
+            guild,
+            ticket_category_channel,
+            author,
+            channel_name,
+            guild_id=guild_id,
+            category_id=category_id,
+            mod_role=mod_role,
+            subject=subject,
+            description=description,
+        )
+    except discord.Forbidden:
+        await interaction.followup.send(
+            embed=error_embed(
+                t(guild_id, "tickets.open.permission_denied_title"),
+                t(guild_id, "tickets.open.permission_denied_description"),
+                guild_id=guild_id,
+            ),
+            ephemeral=True,
+        )
+        return
+    except discord.HTTPException:
+        logger.exception("Failed to create ticket channel")
+        await interaction.followup.send(
+            embed=error_embed(
+                t(guild_id, "tickets.open.channel_failed_title"),
+                t(guild_id, "tickets.open.channel_failed_description"),
+                guild_id=guild_id,
+            ),
+            ephemeral=True,
+        )
+        return
+    except Exception:
+        logger.exception("Failed to create ticket in DB")
+        await interaction.followup.send(
+            embed=error_embed(
+                t(guild_id, "tickets.open.creation_failed_title"),
+                t(guild_id, "tickets.open.creation_failed_description"),
+                guild_id=guild_id,
+            ),
+            ephemeral=True,
+        )
+        return
+
+    actions_view = TicketActionsView(guild_id=guild_id)
+    from bot.utils.embeds import build_ticket_embed
+
+    embed = build_ticket_embed(ticket, guild_id=guild_id)
+    message = await channel.send(content=author.mention, embed=embed, view=actions_view)
+
+    # Pin the welcome embed — failure is logged, not fatal.
+    try:
+        await message.pin()
+    except discord.HTTPException:
+        logger.warning("Failed to pin welcome message in ticket channel %s", channel.id)
+
+    await interaction.followup.send(
+        embed=success_embed(
+            t(guild_id, "tickets.open.success_title"),
+            t(guild_id, "tickets.open.success_description", channel=channel.mention),
+            guild_id=guild_id,
+        ),
+        ephemeral=True,
+    )
+    logger.info(
+        "Ticket #%d created (guild=%s, channel=%s, author=%s)",
+        ticket.ticket_number,
+        guild.id,
+        channel.id,
+        author.id,
+    )
+
+
+class TicketIntakeModal(discord.ui.Modal):
+    """Modal shown after category selection to collect ticket title and description."""
+
+    def __init__(
+        self,
+        guild: discord.Guild,
+        category_id: str,
+        category_name: str,
+    ) -> None:
+        guild_id = str(guild.id)
+        super().__init__(
+            title=t(guild_id, "tickets.modal.title", category=category_name),
+            timeout=120,
+        )
+        self._guild = guild
+        self._category_id = category_id
+
+        self.title_input = discord.ui.TextInput(
+            label=t(guild_id, "tickets.modal.subject_label"),
+            placeholder=t(guild_id, "tickets.modal.subject_placeholder"),
+            style=discord.TextStyle.short,
+            required=True,
+            max_length=100,
+        )
+        self.add_item(self.title_input)
+
+        self.description_input = discord.ui.TextInput(
+            label=t(guild_id, "tickets.modal.description_label"),
+            placeholder=t(guild_id, "tickets.modal.description_placeholder"),
+            style=discord.TextStyle.paragraph,
+            required=False,
+            max_length=2000,
+        )
+        self.add_item(self.description_input)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        subject = self.title_input.value.strip()
+        if not subject:
+            guild_id = str(self._guild.id)
+            await interaction.response.send_message(
+                embed=error_embed(
+                    t(guild_id, "tickets.modal.empty_title"),
+                    t(guild_id, "tickets.modal.empty_title_description"),
+                    guild_id=guild_id,
+                ),
+                ephemeral=True,
+            )
+            return
+
+        description_raw = self.description_input.value.strip() if self.description_input.value else None
+        description = description_raw or None
+
+        await interaction.response.defer(ephemeral=True)
+        await _create_ticket_after_modal(
+            interaction,
+            self._guild,
+            self._category_id,
+            subject=subject,
+            description=description,
+        )
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
+        logger.exception("TicketIntakeModal error (guild=%s)", self._guild.id, exc_info=error)
+        if not interaction.response.is_done():
+            guild_id = str(self._guild.id)
+            await interaction.response.send_message(
+                embed=error_embed(
+                    t(guild_id, "common.error.unexpected_title"),
+                    t(guild_id, "common.error.unexpected_description"),
+                    guild_id=guild_id,
+                ),
+                ephemeral=True,
+            )
+
+
 class TicketPanelView(discord.ui.View):
     """Persistent view for the ticket panel message."""
 
@@ -260,112 +472,15 @@ class _CategorySelect(discord.ui.Select[discord.ui.View]):
 
     async def callback(self, interaction: discord.Interaction) -> None:
         category_id = self.values[0]
-        bot: NebulosaBot = interaction.client  # type: ignore[assignment]
         guild = self._guild
         guild_id = str(guild.id)
-        assert bot.db is not None and bot.guild_service is not None and bot.ticket_service is not None
-        await interaction.response.defer(ephemeral=True)
-        try:
-            config = await bot.guild_service.get_config(guild_id)
-        except Exception:
-            logger.exception("Failed to fetch guild config for ticket creation (guild=%s)", guild.id)
-            await interaction.followup.send(
-                embed=error_embed(
-                    t(guild_id, "tickets.open.config_error_title"),
-                    t(guild_id, "tickets.open.config_error_description"),
-                    guild_id=guild_id,
-                ),
-                ephemeral=True,
-            )
-            return
-        if not config.ticket_category_id:
-            await interaction.followup.send(
-                embed=error_embed(
-                    t(guild_id, "tickets.config_missing.title"),
-                    t(guild_id, "tickets.config_missing.description"),
-                    guild_id=guild_id,
-                ),
-                ephemeral=True,
-            )
-            return
-        ticket_category_channel = guild.get_channel(int(config.ticket_category_id))
-        if ticket_category_channel is None or not isinstance(ticket_category_channel, discord.CategoryChannel):
-            await interaction.followup.send(
-                embed=error_embed(
-                    t(guild_id, "tickets.open.invalid_category_title"),
-                    t(guild_id, "tickets.open.invalid_category_description"),
-                    guild_id=guild_id,
-                ),
-                ephemeral=True,
-            )
-            return
-        mod_role: discord.Role | None = None
-        if config.mod_role_id:
-            with contextlib.suppress(ValueError, TypeError):
-                mod_role = guild.get_role(int(config.mod_role_id))
-        author = interaction.user
-        assert isinstance(author, discord.Member)
-        tentative_max = await bot.db.get_max_ticket_number(guild_id)
-        channel_name = f"ticket-{tentative_max + 1:04d}"
-        try:
-            channel, ticket = await bot.ticket_service.create_ticket_channel(
-                guild,
-                ticket_category_channel,
-                author,
-                channel_name,
-                guild_id=guild_id,
-                category_id=category_id,
-                mod_role=mod_role,
-            )
-        except discord.Forbidden:
-            await interaction.followup.send(
-                embed=error_embed(
-                    t(guild_id, "tickets.open.permission_denied_title"),
-                    t(guild_id, "tickets.open.permission_denied_description"),
-                    guild_id=guild_id,
-                ),
-                ephemeral=True,
-            )
-            return
-        except discord.HTTPException:
-            logger.exception("Failed to create ticket channel")
-            await interaction.followup.send(
-                embed=error_embed(
-                    t(guild_id, "tickets.open.channel_failed_title"),
-                    t(guild_id, "tickets.open.channel_failed_description"),
-                    guild_id=guild_id,
-                ),
-                ephemeral=True,
-            )
-            return
-        except Exception:
-            logger.exception("Failed to create ticket in DB")
-            await interaction.followup.send(
-                embed=error_embed(
-                    t(guild_id, "tickets.open.creation_failed_title"),
-                    t(guild_id, "tickets.open.creation_failed_description"),
-                    guild_id=guild_id,
-                ),
-                ephemeral=True,
-            )
-            return
-        actions_view = TicketActionsView(guild_id=guild_id)
-        from bot.utils.embeds import build_ticket_embed
 
-        embed = build_ticket_embed(ticket, guild_id=guild_id)
-        await channel.send(content=author.mention, embed=embed, view=actions_view)
-        await interaction.followup.send(
-            embed=success_embed(
-                t(guild_id, "tickets.open.success_title"),
-                t(guild_id, "tickets.open.success_description", channel=channel.mention),
-                guild_id=guild_id,
-            ),
-            ephemeral=True,
+        # Resolve category name from the select options.
+        category_name = next(
+            (opt.label for opt in self.options if opt.value == category_id),
+            category_id,
         )
-        logger.info(
-            "Ticket #%d created (guild=%s, channel=%s, author=%s)",
-            ticket.ticket_number,
-            guild.id,
-            channel.id,
-            author.id,
+
+        await interaction.response.send_modal(
+            TicketIntakeModal(guild, category_id, category_name)
         )

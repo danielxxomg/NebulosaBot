@@ -26,6 +26,9 @@ class TicketDBMixin:
         category_id: str | None,
         ticket_number: int,
         parent_id: str | None = None,
+        *,
+        subject: str | None = None,
+        description: str | None = None,
     ) -> dict:
         """Insert a new ticket row and return the persisted row.
 
@@ -49,6 +52,8 @@ class TicketDBMixin:
             "status": "open",
             "lastActivity": now,
             "parentId": parent_id,
+            "subject": subject,
+            "description": description,
         }
         logger.debug("DB insert_ticket(%s) number=%d parent=%s", ticket_id, ticket_number, parent_id)
         response = await self._client.table("ticket").insert(row).execute()

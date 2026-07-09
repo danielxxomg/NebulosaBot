@@ -184,6 +184,65 @@ async def test_create_ticket_retries_exhausted(
 
 
 # ---------------------------------------------------------------------------
+# create_ticket — subject / description passthrough
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_ticket_with_subject_and_description(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """create_ticket(subject=..., description=...) MUST forward to insert_ticket."""
+    mock_db.get_max_ticket_number.return_value = 0
+    mock_db.insert_ticket.return_value = {
+        **ticket_row,
+        "subject": "Login broken",
+        "description": "Cannot access since Monday",
+    }
+
+    ticket = await service.create_ticket(
+        guild_id="123456789",
+        author_id="111111111",
+        category_id=None,
+        channel_id="888888888",
+        subject="Login broken",
+        description="Cannot access since Monday",
+    )
+
+    call_kwargs = mock_db.insert_ticket.call_args.kwargs
+    assert call_kwargs["subject"] == "Login broken"
+    assert call_kwargs["description"] == "Cannot access since Monday"
+    assert ticket.subject == "Login broken"
+    assert ticket.description == "Cannot access since Monday"
+
+
+@pytest.mark.asyncio
+async def test_create_ticket_without_subject_and_description(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """create_ticket() without subject/description MUST pass None to insert_ticket."""
+    mock_db.get_max_ticket_number.return_value = 0
+    mock_db.insert_ticket.return_value = {**ticket_row, "subject": None, "description": None}
+
+    ticket = await service.create_ticket(
+        guild_id="123456789",
+        author_id="111111111",
+        category_id=None,
+        channel_id="888888888",
+    )
+
+    call_kwargs = mock_db.insert_ticket.call_args.kwargs
+    assert call_kwargs["subject"] is None
+    assert call_kwargs["description"] is None
+    assert ticket.subject is None
+    assert ticket.description is None
+
+
+# ---------------------------------------------------------------------------
 # close_ticket
 # ---------------------------------------------------------------------------
 

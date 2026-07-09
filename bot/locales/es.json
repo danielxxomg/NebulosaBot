@@ -92,6 +92,15 @@
       "title": "No Configurado",
       "description": "La categoría de canales de tickets no ha sido configurada. Un administrador debe ejecutar `/setup` para establecer una categoría de tickets, o usar `/create_category` para crear una. También puedes configurarlo en el dashboard: https://nebulosabot-dashboard.vercel.app"
     },
+    "modal": {
+      "title": "Abrir Ticket — {category}",
+      "subject_label": "Título",
+      "subject_placeholder": "¿De qué trata este ticket?",
+      "description_label": "Descripción (opcional)",
+      "description_placeholder": "Proporciona más detalles sobre tu problema...",
+      "empty_title": "Título Requerido",
+      "empty_title_description": "Por favor ingresa un título para tu ticket."
+    },
     "panel": {
       "server_only_title": "Solo Servidores",
       "server_only_description": "El panel de tickets solo puede desplegarse en un servidor.",
@@ -158,11 +167,13 @@
       "success_title": "✅ Ticket Creado",
       "success_description": "Tu ticket ha sido creado: {channel}",
       "welcome_title": "🎫 Ticket #{number}",
+      "welcome_title_with_subject": "🎫 #{number} — {subject}",
       "welcome_description": "¡Bienvenido! Un miembro del staff te atenderá pronto.\nDescribe tu problema y un moderador responderá.",
       "welcome_claimed_title": "🎫 Ticket #{number} — Reclamado",
       "welcome_claimed_description": "Un miembro del staff ha reclamado este ticket y te atenderá pronto.",
       "welcome_claimed_by": "\n**Reclamado por:** {user}",
       "author_field": "Autor",
+      "details_field": "Detalles",
       "footer": "NebulosaBot • Tickets"
     },
     "actions": {

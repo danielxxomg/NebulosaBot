@@ -145,10 +145,14 @@ def build_ticket_embed(
         number = ticket.get("ticketNumber", "?")
         status = ticket.get("status", "open")
         author_id = ticket.get("authorId", "unknown")
+        subject = ticket.get("subject")
+        description_text = ticket.get("description")
     else:
         number = ticket.ticket_number
         status = ticket.status
         author_id = ticket.author_id
+        subject = ticket.subject
+        description_text = ticket.description
 
     if status == "claimed":
         color = COLOR_INFO
@@ -158,10 +162,15 @@ def build_ticket_embed(
             description += t(guild_id, "tickets.open.welcome_claimed_by", user=claimed_by.mention)
     else:
         color = COLOR_SUCCESS
-        title = t(guild_id, "tickets.open.welcome_title", number=number)
+        if subject:
+            title = t(guild_id, "tickets.open.welcome_title_with_subject", number=number, subject=subject)
+        else:
+            title = t(guild_id, "tickets.open.welcome_title", number=number)
         description = t(guild_id, "tickets.open.welcome_description")
 
     embed = discord.Embed(title=title, description=description, color=color, timestamp=datetime.now(UTC))
     embed.add_field(name=t(guild_id, "tickets.open.author_field"), value=f"<@{author_id}>", inline=True)
+    if description_text:
+        embed.add_field(name=t(guild_id, "tickets.open.details_field"), value=description_text, inline=False)
     embed.set_footer(text=t(guild_id, "tickets.open.footer"))
     return embed

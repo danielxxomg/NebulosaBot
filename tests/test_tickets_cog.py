@@ -28,6 +28,7 @@ from bot.cogs.tickets import (
     _CategorySelect,
 )
 from bot.models.ticket import Ticket
+from bot.views.tickets import TicketIntakeModal
 
 # ---------------------------------------------------------------------------
 # i18n autouse fixture — load real locales so t() resolves correctly
@@ -197,37 +198,24 @@ class TestTicketPanelView:
 class TestCategorySelect:
     """Tests for _CategorySelect callback."""
 
-    async def test_category_select_creates_channel(
+    async def test_category_select_sends_modal(
         self,
         ticket_bot: MagicMock,
         ticket_interaction: MagicMock,
         ticket_guild: MagicMock,
-        mock_ticket_channel: MagicMock,
-        mock_db,
     ) -> None:
-        """Category selection → channel created via service with correct permissions."""
+        """Category selection → modal sent as first response (no defer)."""
         ticket_interaction.client = ticket_bot
-
-        config = MagicMock()
-        config.ticket_category_id = "100000000"
-        config.mod_role_id = None
-        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
-        mock_db.get_max_ticket_number = AsyncMock(return_value=0)
-
-        category_channel = MagicMock(spec=discord.CategoryChannel)
-        ticket_guild.get_channel = MagicMock(return_value=category_channel)
-
-        ticket = Ticket.from_db_row(_ticket_row(ticket_number=1))
-        ticket_bot.ticket_service.create_ticket = AsyncMock(return_value=ticket)
-        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, ticket))
 
         select = _CategorySelect(options=[], guild=ticket_guild)
         select._values = ["cat-uuid-001"]
 
-        with patch("bot.cogs.tickets.TicketActionsView"):
-            await select.callback(ticket_interaction)
+        ticket_interaction.response.send_modal = AsyncMock()
 
-        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
+        await select.callback(ticket_interaction)
+
+        ticket_interaction.response.send_modal.assert_awaited_once()
+        ticket_interaction.response.defer.assert_not_awaited()
 
     async def test_open_ticket_sends_initial_embed(
         self,
@@ -256,13 +244,179 @@ class TestCategorySelect:
         select = _CategorySelect(options=[], guild=ticket_guild)
         select._values = ["cat-uuid-001"]
 
-        with patch("bot.cogs.tickets.TicketActionsView"):
-            await select.callback(ticket_interaction)
+        ticket_interaction.response.send_modal = AsyncMock()
 
-        # Initial embed sent in new channel.
+        await select.callback(ticket_interaction)
+
+        # Modal is sent, not a direct embed.
+        ticket_interaction.response.send_modal.assert_awaited_once()
+
+
+class TestTicketIntakeModal:
+    """Tests for TicketIntakeModal — the intake form shown after category select."""
+
+    async def test_category_select_sends_modal_not_defer(
+        self,
+        ticket_bot: MagicMock,
+        ticket_interaction: MagicMock,
+        ticket_guild: MagicMock,
+    ) -> None:
+        """Category selection MUST send_modal as first response (no defer)."""
+        ticket_interaction.client = ticket_bot
+
+        select = _CategorySelect(options=[], guild=ticket_guild)
+        select._values = ["cat-uuid-001"]
+
+        # Patch send_modal so we can verify it was called instead of defer.
+        ticket_interaction.response.send_modal = AsyncMock()
+
+        await select.callback(ticket_interaction)
+
+        # send_modal called — NOT defer.
+        ticket_interaction.response.send_modal.assert_awaited_once()
+        ticket_interaction.response.defer.assert_not_awaited()
+
+    async def test_modal_submit_defers_then_creates_channel(
+        self,
+        ticket_bot: MagicMock,
+        ticket_interaction: MagicMock,
+        ticket_guild: MagicMock,
+        mock_ticket_channel: MagicMock,
+        mock_db,
+    ) -> None:
+        """Modal submit → defer(ephemeral) → create_ticket_channel → send+pin → success."""
+        ticket_interaction.client = ticket_bot
+
+        config = MagicMock()
+        config.ticket_category_id = "100000000"
+        config.mod_role_id = None
+        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
+
+        category_channel = MagicMock(spec=discord.CategoryChannel)
+        ticket_guild.get_channel = MagicMock(return_value=category_channel)
+
+        ticket = Ticket.from_db_row(_ticket_row(ticket_number=1))
+        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, ticket))
+        ticket_bot.db.get_max_ticket_number = AsyncMock(return_value=0)
+
+        # Build a mock modal interaction.
+        modal_interaction = MagicMock(spec=discord.Interaction)
+        modal_interaction.guild = ticket_guild
+        modal_interaction.user = MagicMock(spec=discord.Member)
+        modal_interaction.user.id = 111111111
+        modal_interaction.user.mention = "<@111111111>"
+        modal_interaction.client = ticket_bot
+        modal_interaction.guild_id = ticket_guild.id
+        modal_interaction.response = MagicMock()
+        modal_interaction.response.defer = AsyncMock()
+        modal_interaction.followup = MagicMock()
+        modal_interaction.followup.send = AsyncMock()
+
+        modal = TicketIntakeModal(
+            guild=ticket_guild,
+            category_id="cat-uuid-001",
+            category_name="Support",
+        )
+        # Simulate user filling in the modal fields.
+        modal.title_input = MagicMock(value="Login broken")
+        modal.description_input = MagicMock(value="Cannot access since Monday")
+
+        with patch("bot.views.tickets.TicketActionsView"):
+            await modal.on_submit(modal_interaction)
+
+        # 1. Defer was called first.
+        modal_interaction.response.defer.assert_awaited_once_with(ephemeral=True)
+
+        # 2. Channel created with subject and description.
+        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
+        call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
+        assert call_kwargs["subject"] == "Login broken"
+        assert call_kwargs["description"] == "Cannot access since Monday"
+
+    async def test_modal_submit_empty_title_shows_error(
+        self,
+        ticket_bot: MagicMock,
+        ticket_guild: MagicMock,
+    ) -> None:
+        """Modal submit with empty title → ephemeral error, no channel created."""
+        modal_interaction = MagicMock(spec=discord.Interaction)
+        modal_interaction.guild = ticket_guild
+        modal_interaction.user = MagicMock(spec=discord.Member)
+        modal_interaction.client = ticket_bot
+        modal_interaction.guild_id = ticket_guild.id
+        modal_interaction.response = MagicMock()
+        modal_interaction.response.send_message = AsyncMock()
+        modal_interaction.response.defer = AsyncMock()
+
+        modal = TicketIntakeModal(
+            guild=ticket_guild,
+            category_id="cat-uuid-001",
+            category_name="Support",
+        )
+        # Simulate empty title.
+        modal.title_input = MagicMock(value="")
+        modal.description_input = MagicMock(value="Some description")
+
+        await modal.on_submit(modal_interaction)
+
+        # Error sent, no defer, no channel creation.
+        modal_interaction.response.send_message.assert_awaited_once()
+        modal_interaction.response.defer.assert_not_awaited()
+        ticket_bot.ticket_service.create_ticket_channel.assert_not_awaited()
+
+    async def test_welcome_embed_is_pinned(
+        self,
+        ticket_bot: MagicMock,
+        ticket_interaction: MagicMock,
+        ticket_guild: MagicMock,
+        mock_ticket_channel: MagicMock,
+        mock_db,
+    ) -> None:
+        """After sending welcome embed, the message MUST be pinned."""
+        ticket_interaction.client = ticket_bot
+
+        config = MagicMock()
+        config.ticket_category_id = "100000000"
+        config.mod_role_id = None
+        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
+
+        category_channel = MagicMock(spec=discord.CategoryChannel)
+        ticket_guild.get_channel = MagicMock(return_value=category_channel)
+
+        ticket = Ticket.from_db_row(_ticket_row(ticket_number=1))
+        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, ticket))
+        ticket_bot.db.get_max_ticket_number = AsyncMock(return_value=0)
+
+        # Mock the sent message so we can verify pin() was called.
+        sent_message = AsyncMock()
+        mock_ticket_channel.send = AsyncMock(return_value=sent_message)
+
+        modal_interaction = MagicMock(spec=discord.Interaction)
+        modal_interaction.guild = ticket_guild
+        modal_interaction.user = MagicMock(spec=discord.Member)
+        modal_interaction.user.id = 111111111
+        modal_interaction.user.mention = "<@111111111>"
+        modal_interaction.client = ticket_bot
+        modal_interaction.guild_id = ticket_guild.id
+        modal_interaction.response = MagicMock()
+        modal_interaction.response.defer = AsyncMock()
+        modal_interaction.followup = MagicMock()
+        modal_interaction.followup.send = AsyncMock()
+
+        modal = TicketIntakeModal(
+            guild=ticket_guild,
+            category_id="cat-uuid-001",
+            category_name="Support",
+        )
+        modal.title_input = MagicMock(value="Login broken")
+        modal.description_input = MagicMock(value="")
+
+        with patch("bot.views.tickets.TicketActionsView"):
+            await modal.on_submit(modal_interaction)
+
+        # Message was sent then pinned.
         mock_ticket_channel.send.assert_awaited_once()
-        send_call = mock_ticket_channel.send.call_args
-        assert send_call.kwargs.get("embed") is not None
+        sent_message.pin.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -1947,21 +2101,40 @@ class TestConfigMissingErrorMessages:
         ticket_guild: MagicMock,
         mock_db,
     ) -> None:
-        """_CategorySelect.callback with ticket_category_id=None → actionable error."""
-        ticket_interaction.client = ticket_bot
+        """Modal submit with ticket_category_id=None → actionable error."""
+        ticket_bot.db.get_max_ticket_number = AsyncMock(return_value=0)
 
         config = MagicMock()
         config.ticket_category_id = None
         config.mod_role_id = None
         ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
 
-        select = _CategorySelect(options=[], guild=ticket_guild)
-        select._values = ["cat-uuid-001"]
+        modal_interaction = MagicMock(spec=discord.Interaction)
+        modal_interaction.guild = ticket_guild
+        modal_interaction.user = MagicMock(spec=discord.Member)
+        modal_interaction.user.id = 111111111
+        modal_interaction.user.mention = "<@111111111>"
+        modal_interaction.client = ticket_bot
+        modal_interaction.guild_id = ticket_guild.id
+        modal_interaction.response = MagicMock()
+        modal_interaction.response.defer = AsyncMock()
+        modal_interaction.followup = MagicMock()
+        modal_interaction.followup.send = AsyncMock()
 
-        await select.callback(ticket_interaction)
+        from bot.views.tickets import TicketIntakeModal
 
-        ticket_interaction.followup.send.assert_awaited_once()
-        call_kwargs = ticket_interaction.followup.send.call_args
+        modal = TicketIntakeModal(
+            guild=ticket_guild,
+            category_id="cat-uuid-001",
+            category_name="Support",
+        )
+        modal.title_input = MagicMock(value="Help")
+        modal.description_input = MagicMock(value=None)
+
+        await modal.on_submit(modal_interaction)
+
+        modal_interaction.followup.send.assert_awaited_once()
+        call_kwargs = modal_interaction.followup.send.call_args
         embed = call_kwargs.kwargs.get("embed")
         assert embed is not None
         desc = embed.description or ""

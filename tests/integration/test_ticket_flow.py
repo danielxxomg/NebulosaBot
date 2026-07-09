@@ -148,19 +148,19 @@ class TestTicketFlow:
         ticket_interaction: MagicMock,
         mock_db: AsyncMock,
     ) -> None:
-        """Panel button click → channel created via service with correct permissions.
+        """Panel button click → modal shown → submit → channel created via service.
 
-        Scenario: user clicks panel button → ticket_service.create_ticket_channel
-        called → channel returned with correct permission overwrites.
+        Scenario: user clicks panel button → modal shown → user submits →
+        ticket_service.create_ticket_channel called → channel returned.
         """
         ticket_interaction.client = ticket_bot
 
-        # Setup mocks for the _CategorySelect callback flow.
+        # Setup mocks for the modal submit flow.
         config = MagicMock()
         config.ticket_category_id = "100000000"
         config.mod_role_id = None
         ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
-        mock_db.get_max_ticket_number = AsyncMock(return_value=0)
+        ticket_bot.db.get_max_ticket_number = AsyncMock(return_value=0)
 
         # Category channel mock.
         category_channel = MagicMock(spec=discord.CategoryChannel)
@@ -170,25 +170,41 @@ class TestTicketFlow:
         ticket_row = _make_ticket_row(ticket_number=1)
         ticket = Ticket.from_db_row(ticket_row)
         ticket_bot.ticket_service.create_ticket = AsyncMock(return_value=ticket)
-        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=mock_ticket_channel)
+        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, ticket))
 
-        # Build the select and invoke callback.
-        select = _CategorySelect(
-            options=[],
+        # Build a modal interaction and submit.
+        modal_interaction = MagicMock(spec=discord.Interaction)
+        modal_interaction.guild = mock_ticket_guild
+        modal_interaction.user = MagicMock(spec=discord.Member)
+        modal_interaction.user.id = 111111111
+        modal_interaction.user.mention = "<@111111111>"
+        modal_interaction.client = ticket_bot
+        modal_interaction.guild_id = mock_ticket_guild.id
+        modal_interaction.response = MagicMock()
+        modal_interaction.response.defer = AsyncMock()
+        modal_interaction.followup = MagicMock()
+        modal_interaction.followup.send = AsyncMock()
+
+        from bot.views.tickets import TicketIntakeModal
+
+        modal = TicketIntakeModal(
             guild=mock_ticket_guild,
+            category_id="cat-uuid-001",
+            category_name="Support",
         )
-        # Set _values directly (values is a property reading from _values).
-        select._values = ["cat-uuid-001"]
+        modal.title_input = MagicMock(value="Help me")
+        modal.description_input = MagicMock(value=None)
 
-        with patch("bot.cogs.tickets.TicketActionsView"):
-            await select.callback(ticket_interaction)
+        sent_message = AsyncMock()
+        mock_ticket_channel.send = AsyncMock(return_value=sent_message)
+
+        with patch("bot.views.tickets.TicketActionsView"):
+            await modal.on_submit(modal_interaction)
 
         # 1. ticket_service.create_ticket_channel was called.
         ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
-        call_args = ticket_bot.ticket_service.create_ticket_channel.call_args
-        # Verify it was called with the category channel and the author.
-        assert call_args.args[1] == category_channel  # category
-        assert call_args.args[2] == ticket_interaction.user  # author
+        call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
+        assert call_kwargs["subject"] == "Help me"
 
     async def test_close_ticket_generates_transcript(
         self,

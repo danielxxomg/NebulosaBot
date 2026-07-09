@@ -92,6 +92,15 @@
       "title": "Not Configured",
       "description": "The ticket category channel has not been configured. An admin must run `/setup` to set a ticket category, or use `/create_category` to create one. You can also configure it on the dashboard: https://nebulosabot-dashboard.vercel.app"
     },
+    "modal": {
+      "title": "Open Ticket — {category}",
+      "subject_label": "Title",
+      "subject_placeholder": "What is this ticket about?",
+      "description_label": "Description (optional)",
+      "description_placeholder": "Provide more details about your issue...",
+      "empty_title": "Title Required",
+      "empty_title_description": "Please enter a title for your ticket."
+    },
     "panel": {
       "server_only_title": "Server Only",
       "server_only_description": "The ticket panel can only be deployed in a server.",
@@ -158,11 +167,13 @@
       "success_title": "✅ Ticket Created",
       "success_description": "Your ticket has been created: {channel}",
       "welcome_title": "🎫 Ticket #{number}",
+      "welcome_title_with_subject": "🎫 #{number} — {subject}",
       "welcome_description": "Welcome! A staff member will assist you soon.\nDescribe your issue and a moderator will respond.",
       "welcome_claimed_title": "🎫 Ticket #{number} — Claimed",
       "welcome_claimed_description": "A staff member has claimed this ticket and will assist you shortly.",
       "welcome_claimed_by": "\n**Claimed by:** {user}",
       "author_field": "Author",
+      "details_field": "Details",
       "footer": "NebulosaBot • Tickets"
     },
     "actions": {
