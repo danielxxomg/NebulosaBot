@@ -1704,6 +1704,42 @@ async def test_create_ticket_channel_passes_category_id(
     assert insert_kwargs["category_id"] == "cat-uuid-001"
 
 
+@pytest.mark.asyncio
+async def test_create_ticket_channel_forwards_subject_and_description(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """create_ticket_channel(subject=..., description=...) MUST forward metadata to insert_ticket."""
+    guild = _mock_guild_for_channel()
+    category = MagicMock(spec=discord.CategoryChannel)
+    author = _mock_author()
+
+    mock_db.get_max_ticket_number.return_value = 0
+    mock_db.insert_ticket.return_value = {
+        **ticket_row,
+        "ticketNumber": 1,
+        "subject": "Login broken",
+        "description": "Cannot access since Monday",
+    }
+
+    channel, ticket = await service.create_ticket_channel(
+        guild,
+        category,
+        author,
+        "ticket-0001",
+        guild_id="123456789",
+        subject="Login broken",
+        description="Cannot access since Monday",
+    )
+
+    insert_kwargs = mock_db.insert_ticket.call_args.kwargs
+    assert insert_kwargs["subject"] == "Login broken"
+    assert insert_kwargs["description"] == "Cannot access since Monday"
+    assert ticket.subject == "Login broken"
+    assert ticket.description == "Cannot access since Monday"
+
+
 # ===========================================================================
 # Best-effort audit on success path (runtime-hotfix)
 # ===========================================================================
