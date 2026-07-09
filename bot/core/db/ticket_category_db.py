@@ -85,7 +85,8 @@ class TicketCategoryDBMixin:
     async def count_open_tickets_by_category(self: Any, category_id: str) -> int:
         """Return the number of open/claimed tickets referencing *category_id*.
 
-        Used to block deletion of a category that still has active tickets.
+        Uses ``count="exact"`` to avoid fetching all rows — the server
+        returns the count directly.
         """
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
@@ -93,9 +94,9 @@ class TicketCategoryDBMixin:
         logger.debug("DB count_open_tickets_by_category(%s)", category_id)
         response = await (
             self._client.table("ticket")
-            .select("id")
+            .select("id", count="exact")
             .eq("categoryId", category_id)
             .in_("status", ["open", "claimed"])
             .execute()
         )
-        return len(_unwrap(response))
+        return response.count or 0
