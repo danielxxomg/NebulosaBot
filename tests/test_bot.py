@@ -20,7 +20,7 @@ from discord.ext import commands
 
 from bot.bot import NebulosaBot
 from bot.config import BotConfig
-from bot.utils.embeds import COLOR_ERROR
+from bot.utils.brand import ERROR
 
 # ---------------------------------------------------------------------------
 # Minimal Cog fixtures — override vs no-override
@@ -83,7 +83,7 @@ class TestOnAppCommandErrorDispatch:
         kwargs = interaction.response.send_message.call_args.kwargs
         embed = kwargs["embed"]
         assert isinstance(embed, discord.Embed)
-        assert embed.color is not None and embed.color.value == COLOR_ERROR
+        assert embed.color is not None and embed.color.value == ERROR
         assert embed.title == "Unexpected Error"
         assert kwargs.get("ephemeral") is True
 

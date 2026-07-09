@@ -18,7 +18,8 @@ from bot.constants import FALLBACK_PREFIX
 from bot.core.context import NebulosaContext
 from bot.core.i18n import t
 from bot.utils.checks import is_admin
-from bot.utils.embeds import COLOR_INFO, COLOR_SUCCESS, error_embed, info_embed
+from bot.utils.brand import INFO, SUCCESS
+from bot.utils.embeds import error_embed, info_embed
 from bot.utils.paginator import EmbedPaginator
 
 if TYPE_CHECKING:
@@ -81,7 +82,7 @@ class CoreCog(commands.Cog, name="Core"):
         # Build embed
         embed = discord.Embed(
             title=t(guild_id, "core.status.title"),
-            color=COLOR_INFO,
+            color=INFO,
             timestamp=datetime.now(UTC),
         )
 
@@ -202,7 +203,7 @@ class CoreCog(commands.Cog, name="Core"):
             embed = discord.Embed(
                 title=t(guild_id, "core.sync.title"),
                 description=t(guild_id, "core.sync.description", count=len(synced)),
-                color=COLOR_SUCCESS,
+                color=SUCCESS,
             )
             await ctx.send(embed=embed, ephemeral=True)
         except Exception as exc:
@@ -273,7 +274,7 @@ def _build_cog_help_embed(
             count=len(visible),
             prefix=prefix,
         ),
-        color=COLOR_INFO,
+        color=INFO,
         timestamp=datetime.now(UTC),
     )
 

@@ -5,8 +5,7 @@ Covers the logging-service spec scenarios:
     - Log moderation action
     - Routing guards: logging disabled, missing channel, private channel skip
     - can_log_in_channel: visibility filter
-
-Strict TDD: tests written BEFORE implementation (RED phase).
+    - Footer icon wiring from bot avatar / guild icon
 """
 
 from __future__ import annotations
@@ -548,3 +547,48 @@ def _embed_to_str(embed: discord.Embed) -> str:
     if embed.footer.text:
         parts.append(embed.footer.text)
     return " ".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Footer icon wiring — production callers pass bot/guild
+# ---------------------------------------------------------------------------
+
+
+class TestLogEmbedFooterIcon:
+    """LoggingService embeds MUST have footer icon from bot avatar or guild icon."""
+
+    @pytest.mark.asyncio
+    async def test_send_log_sets_bot_avatar_as_footer_icon(self) -> None:
+        """_send_log MUST set the embed footer icon_url from bot.user.display_avatar."""
+        service, mock_bot, mock_log_channel = await _setup_service_and_config()
+        mock_bot.user = MagicMock()
+        mock_bot.user.display_avatar = MagicMock()
+        mock_bot.user.display_avatar.url = "https://cdn.discordapp.com/avatars/bot123/avatar.png"
+        # get_guild returns a guild without icon → falls back to bot avatar
+        mock_guild = MagicMock()
+        mock_guild.icon = None
+        mock_bot.get_guild = MagicMock(return_value=mock_guild)
+
+        msg = make_mock_message(content="test", channel=make_mock_channel())
+        await service.log_message_delete("123456789", msg)
+
+        embed = mock_log_channel.send.call_args.kwargs["embed"]
+        assert embed.footer.icon_url == "https://cdn.discordapp.com/avatars/bot123/avatar.png"
+
+    @pytest.mark.asyncio
+    async def test_send_log_prefers_guild_icon_over_bot_avatar(self) -> None:
+        """_send_log MUST prefer guild.icon.url over bot avatar when available."""
+        service, mock_bot, mock_log_channel = await _setup_service_and_config()
+        mock_bot.user = MagicMock()
+        mock_bot.user.display_avatar = MagicMock()
+        mock_bot.user.display_avatar.url = "https://cdn.discordapp.com/avatars/bot123/avatar.png"
+        mock_guild = MagicMock()
+        mock_guild.icon = MagicMock()
+        mock_guild.icon.url = "https://cdn.discordapp.com/icons/456/server.png"
+        mock_bot.get_guild = MagicMock(return_value=mock_guild)
+
+        msg = make_mock_message(content="test", channel=make_mock_channel())
+        await service.log_message_delete("123456789", msg)
+
+        embed = mock_log_channel.send.call_args.kwargs["embed"]
+        assert embed.footer.icon_url == "https://cdn.discordapp.com/icons/456/server.png"

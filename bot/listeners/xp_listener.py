@@ -13,7 +13,8 @@ from typing import TYPE_CHECKING, Any
 import discord
 from discord.ext import commands
 
-from bot.utils.embeds import COLOR_INFO
+from bot.core.i18n import t
+from bot.utils.brand import INFO
 
 if TYPE_CHECKING:
     from bot.bot import NebulosaBot
@@ -92,10 +93,16 @@ class XPListener(commands.Cog):
                 if resolved is not None:
                     target_channel = resolved
 
+        guild_id = str(guild.id)
         embed = discord.Embed(
-            title="Level Up! 🎉",
-            description=f"{message.author.mention} has reached **Level {new_level}**!",
-            color=COLOR_INFO,
+            title=t(guild_id, "stellar.level_up.title"),
+            description=t(
+                guild_id,
+                "stellar.level_up.description",
+                mention=message.author.mention,
+                level=new_level,
+            ),
+            color=INFO,
         )
         embed.set_thumbnail(url=message.author.display_avatar.url)
 

@@ -21,8 +21,8 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.core.i18n import t
+from bot.utils.brand import INFO
 from bot.utils.embeds import (
-    COLOR_INFO,
     error_embed,
     info_embed,
     success_embed,
@@ -181,7 +181,7 @@ class StellarCog(commands.Cog, name="Stellar"):
         embed = discord.Embed(
             title=t(guild_id, title_key),
             description="\n".join(lines),
-            color=COLOR_INFO,
+            color=INFO,
         )
         embed.set_footer(text=t(guild_id, "stellar.leaderboard.footer", count=len(rows)))
 
@@ -266,3 +266,8 @@ class StellarCog(commands.Cog, name="Stellar"):
 async def setup(bot: NebulosaBot) -> None:
     """Load the StellarCog into the bot."""
     await bot.add_cog(StellarCog(bot))
+
+
+async def teardown(bot: NebulosaBot) -> None:
+    """Remove StellarCog from the bot."""
+    await bot.remove_cog("Stellar")

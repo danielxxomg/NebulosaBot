@@ -432,6 +432,10 @@
       "failed_description": "Could not retrieve rank data. Please try again later.",
       "no_data_title": "No Rank Data",
       "no_data_description": "**{name}** has no stats yet.\nStart chatting to earn XP and level up!"
+    },
+    "level_up": {
+      "title": "Level Up! 🎉",
+      "description": "{mention} has reached **Level {level}**!"
     }
   },
   "greetings": {
