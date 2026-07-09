@@ -59,7 +59,9 @@ class StellarCog(commands.Cog, name="Stellar"):
 
         try:
             assert self.bot.economy_service is not None, "EconomyService initialised in setup_hook"
-            success, coins_awarded, streak = await self.bot.economy_service.claim_daily(guild_id, user_id)
+            success, coins_awarded, streak, remaining_seconds = (
+                await self.bot.economy_service.claim_daily(guild_id, user_id)
+            )
         except Exception:
             logger.exception("Daily claim failed for user %s", user_id)
             await ctx.send(
@@ -77,9 +79,11 @@ class StellarCog(commands.Cog, name="Stellar"):
                 t(guild_id, "stellar.daily.success_description", coins=coins_awarded, streak=streak, plural=plural),
             )
         else:
+            hours, minutes = divmod(remaining_seconds // 60, 60)
+            remaining = f"{hours}h {minutes}m"
             embed = warning_embed(
                 t(guild_id, "stellar.daily.cooldown_title"),
-                t(guild_id, "stellar.daily.cooldown_description", streak=streak),
+                t(guild_id, "stellar.daily.cooldown_description", streak=streak, remaining=remaining),
             )
 
         await ctx.send(embed=embed)

@@ -29,6 +29,7 @@ from bot.utils.embeds import (
 )
 from bot.utils.paginator import EmbedPaginator
 from bot.utils.time import parse_duration
+from bot.views.confirmation import ConfirmCancelView
 
 if TYPE_CHECKING:
     from bot.bot import NebulosaBot
@@ -430,48 +431,65 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     @app_commands.default_permissions(moderate_members=True)
     @is_mod()
     async def kick(self, ctx: commands.Context, member: discord.Member, *, reason: str) -> None:
-        """Kick *member* from the guild."""
+        """Kick *member* from the guild after confirmation."""
         if not await self._validate_target(ctx, member, "kick"):
             return
 
         guild_id = self._guild_id(ctx)
-        target_id = str(member.id)
-        moderator_id = str(ctx.author.id)
 
-        try:
-            await member.kick(reason=reason)
-        except Exception as exc:
-            await self._handle_mod_error(ctx, exc, "kick", member)
-            return
+        async def _do_kick(interaction: discord.Interaction) -> None:
+            target_id = str(member.id)
+            moderator_id = str(ctx.author.id)
+            try:
+                await member.kick(reason=reason)
+            except Exception as exc:
+                await self._handle_mod_error(ctx, exc, "kick", member)
+                return
 
-        # Create KICK infraction for audit trail.
-        try:
-            assert self.bot.db is not None, "Database initialised in setup_hook"
-            await self.bot.db.insert_infraction(
-                guild_id=guild_id,
-                target_id=target_id,
-                moderator_id=moderator_id,
-                type="KICK",
-                reason=reason,
+            try:
+                assert self.bot.db is not None, "Database initialised in setup_hook"
+                await self.bot.db.insert_infraction(
+                    guild_id=guild_id,
+                    target_id=target_id,
+                    moderator_id=moderator_id,
+                    type="KICK",
+                    reason=reason,
+                )
+            except Exception:
+                logger.exception("Failed to insert KICK infraction (non-fatal)")
+
+            assert self.bot.logging_service is not None, "LoggingService initialised in setup_hook"
+            await self.bot.logging_service.log_moderation_action(
+                guild_id,
+                "Kick",
+                member,
+                ctx.author,
+                reason,
             )
-        except Exception:
-            logger.exception("Failed to insert KICK infraction (non-fatal)")
 
-        assert self.bot.logging_service is not None, "LoggingService initialised in setup_hook"
-        await self.bot.logging_service.log_moderation_action(
-            guild_id,
-            "Kick",
-            member,
-            ctx.author,
-            reason,
-        )
-
-        await ctx.send(
-            embed=success_embed(
-                t(guild_id, "sentinel.kick.success_title"),
-                t(guild_id, "sentinel.kick.success_description", mention=member.mention, reason=reason),
+            await interaction.response.edit_message(
+                embed=success_embed(
+                    t(guild_id, "sentinel.kick.success_title"),
+                    t(guild_id, "sentinel.kick.success_description", mention=member.mention, reason=reason),
+                ),
+                view=None,
             )
+
+        view = ConfirmCancelView(
+            guild_id=guild_id,
+            owner_id=ctx.author.id,
+            on_confirm=_do_kick,
         )
+        msg = await ctx.send(
+            embed=discord.Embed(
+                title=t(guild_id, "confirm.kick_confirm_title"),
+                description=t(guild_id, "confirm.kick_confirm_description", mention=member.mention, reason=reason),
+                color=COLOR_INFO,
+            ),
+            view=view,
+            ephemeral=True,
+        )
+        view.message = msg
 
     @commands.hybrid_command(name="ban", description="Ban a member from the server")
     @app_commands.describe(
@@ -489,7 +507,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         reason: str,
         delete_days: int = 0,
     ) -> None:
-        """Ban *member* from the guild.  Requires Administrator permission."""
+        """Ban *member* from the guild after confirmation.  Requires Administrator permission."""
         if not await self._validate_target(ctx, member, "ban"):
             return
 
@@ -497,43 +515,66 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         delete_days = max(0, min(7, delete_days))
 
         guild_id = self._guild_id(ctx)
-        target_id = str(member.id)
-        moderator_id = str(ctx.author.id)
 
-        try:
-            await member.ban(reason=reason, delete_message_days=delete_days)
-        except Exception as exc:
-            await self._handle_mod_error(ctx, exc, "ban", member)
-            return
+        async def _do_ban(interaction: discord.Interaction) -> None:
+            target_id = str(member.id)
+            moderator_id = str(ctx.author.id)
+            try:
+                await member.ban(reason=reason, delete_message_days=delete_days)
+            except Exception as exc:
+                await self._handle_mod_error(ctx, exc, "ban", member)
+                return
 
-        # Create BAN infraction for audit trail.
-        try:
-            assert self.bot.db is not None, "Database initialised in setup_hook"
-            await self.bot.db.insert_infraction(
-                guild_id=guild_id,
-                target_id=target_id,
-                moderator_id=moderator_id,
-                type="BAN",
-                reason=reason,
+            try:
+                assert self.bot.db is not None, "Database initialised in setup_hook"
+                await self.bot.db.insert_infraction(
+                    guild_id=guild_id,
+                    target_id=target_id,
+                    moderator_id=moderator_id,
+                    type="BAN",
+                    reason=reason,
+                )
+            except Exception:
+                logger.exception("Failed to insert BAN infraction (non-fatal)")
+
+            assert self.bot.logging_service is not None, "LoggingService initialised in setup_hook"
+            await self.bot.logging_service.log_moderation_action(
+                guild_id,
+                "Ban",
+                member,
+                ctx.author,
+                reason,
             )
-        except Exception:
-            logger.exception("Failed to insert BAN infraction (non-fatal)")
 
-        assert self.bot.logging_service is not None, "LoggingService initialised in setup_hook"
-        await self.bot.logging_service.log_moderation_action(
-            guild_id,
-            "Ban",
-            member,
-            ctx.author,
-            reason,
-        )
-
-        await ctx.send(
-            embed=success_embed(
-                t(guild_id, "sentinel.ban.success_title"),
-                t(guild_id, "sentinel.ban.success_description", mention=member.mention, reason=reason),
+            await interaction.response.edit_message(
+                embed=success_embed(
+                    t(guild_id, "sentinel.ban.success_title"),
+                    t(guild_id, "sentinel.ban.success_description", mention=member.mention, reason=reason),
+                ),
+                view=None,
             )
+
+        view = ConfirmCancelView(
+            guild_id=guild_id,
+            owner_id=ctx.author.id,
+            on_confirm=_do_ban,
         )
+        msg = await ctx.send(
+            embed=discord.Embed(
+                title=t(guild_id, "confirm.ban_confirm_title"),
+                description=t(
+                    guild_id,
+                    "confirm.ban_confirm_description",
+                    mention=member.mention,
+                    reason=reason,
+                    delete_days=delete_days,
+                ),
+                color=COLOR_INFO,
+            ),
+            view=view,
+            ephemeral=True,
+        )
+        view.message = msg
 
     # ==================================================================
     # 5.5 — /lock + /unlock
