@@ -342,3 +342,79 @@ async def test_reactivate_guild_sets_active_true(
     # Cache was re-populated.
     cached = cache.get(cache_key)
     assert cached is not None
+
+
+# ---------------------------------------------------------------------------
+# update_guild_panel — cache invalidation after DB write
+# (ticket-panel-persistence, Phase 1)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_update_guild_panel_invalidates_cache_after_success(
+    cache: TTLCache,
+    mock_db: AsyncMock,
+    mod_role_cache: dict[int, str],
+    sample_config: GuildConfig,
+) -> None:
+    """update_guild_panel() MUST invalidate {guild_id}:config cache after DB write succeeds."""
+    guild_id = sample_config.id
+    cache_key = f"{guild_id}:config"
+
+    # Pre-populate cache with stale config.
+    cache.set(cache_key, sample_config, ttl=300)
+    assert cache.get(cache_key) is not None
+
+    service = GuildService(db=mock_db, cache=cache, mod_role_cache=mod_role_cache)
+    await service.update_guild_panel(guild_id, "msg-123", "ch-456")
+
+    # DB method was called with correct args.
+    mock_db.update_guild_panel.assert_awaited_once_with(guild_id, "msg-123", "ch-456")
+
+    # Cache entry was invalidated.
+    assert cache.get(cache_key) is None
+
+
+@pytest.mark.asyncio
+async def test_update_guild_panel_does_not_invalidate_on_db_failure(
+    cache: TTLCache,
+    mock_db: AsyncMock,
+    mod_role_cache: dict[int, str],
+    sample_config: GuildConfig,
+) -> None:
+    """update_guild_panel() MUST NOT invalidate cache if DB write fails."""
+    guild_id = sample_config.id
+    cache_key = f"{guild_id}:config"
+
+    # Pre-populate cache.
+    cache.set(cache_key, sample_config, ttl=300)
+
+    # DB write fails.
+    mock_db.update_guild_panel.side_effect = Exception("Supabase timeout")
+
+    service = GuildService(db=mock_db, cache=cache, mod_role_cache=mod_role_cache)
+    with pytest.raises(Exception, match="Supabase timeout"):
+        await service.update_guild_panel(guild_id, "msg-123", "ch-456")
+
+    # Cache was NOT invalidated — the failed write should not clear the cache.
+    assert cache.get(cache_key) is not None
+
+
+@pytest.mark.asyncio
+async def test_update_guild_panel_supports_nullable_ids(
+    cache: TTLCache,
+    mock_db: AsyncMock,
+    mod_role_cache: dict[int, str],
+    sample_config: GuildConfig,
+) -> None:
+    """update_guild_panel(message_id=None, channel_id=None) MUST clear panel IDs in DB and invalidate cache."""
+    guild_id = sample_config.id
+    cache_key = f"{guild_id}:config"
+
+    cache.set(cache_key, sample_config, ttl=300)
+
+    service = GuildService(db=mock_db, cache=cache, mod_role_cache=mod_role_cache)
+    await service.update_guild_panel(guild_id, None, None)
+
+    mock_db.update_guild_panel.assert_awaited_once_with(guild_id, None, None)
+    assert cache.get(cache_key) is None
