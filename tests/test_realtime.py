@@ -1065,6 +1065,45 @@ class TestCloseLogging:
         await sub.stop()
 
     @pytest.mark.asyncio
+    async def test_wire_close_logging_missing_attribute_continues(self, cache: TTLCache, caplog) -> None:
+        """Spec: client missing _on_connect_error MUST NOT abort start.
+
+        When the SDK does not expose _on_connect_error, _wire_close_logging
+        catches AttributeError and logs a WARNING. start() continues normally
+        and health/poll/watchdog tasks are created.
+        """
+        import logging
+
+        client = _make_client_mock()
+        # Remove _on_connect_error to simulate SDK version without it.
+        del client._on_connect_error
+        sub = _make_subscriber(cache, client)
+
+        with caplog.at_level(logging.WARNING, logger="bot.core.realtime"):
+            await sub.start()
+
+        # WARNING logged about the missing attribute.
+        assert any("attribute" in r.message.lower() or "wire" in r.message.lower() or "close" in r.message.lower() for r in caplog.records)
+        # Health/poll/watchdog tasks MUST be created despite the failure.
+        assert sub._health_task is not None
+        assert sub._poll_task is not None
+        assert sub._watchdog_task is not None
+        await sub.stop()
+
+    @pytest.mark.asyncio
+    async def test_wire_close_logging_attribute_error_no_crash(self, cache: TTLCache) -> None:
+        """Spec: _wire_close_logging MUST catch AttributeError, not propagate."""
+        client = _make_client_mock()
+        # Simulate client without _on_connect_error.
+        del client._on_connect_error
+        sub = _make_subscriber(cache, client)
+
+        # _wire_close_logging should not raise.
+        sub._wire_close_logging()
+        # Channel on_close should still work if channel has it.
+        assert sub._channel is None  # not wired yet, just checking no crash
+
+    @pytest.mark.asyncio
     async def test_health_escalation_after_three_unhealthy_cycles(self, cache: TTLCache, caplog) -> None:
         """After 3 consecutive unhealthy cycles, log level escalates to ERROR."""
         import logging

@@ -789,3 +789,132 @@ class TestGetRankInfo:
         assert result is not None
         assert result["rank"] == 0
         assert result["level"] == 0
+
+
+# ===========================================================================
+# String-type timestamp parsing (runtime-hotfix)
+# ===========================================================================
+
+
+class TestGainXpTimestampParsing:
+    """gain_xp MUST safely parse string-type lastXpGain from DB."""
+
+    @pytest.mark.asyncio
+    async def test_gain_xp_string_last_xp_gain_no_type_error(
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
+        default_config_row: dict,
+        member_row: dict,
+        frozen_clock,
+    ) -> None:
+        """lastXpGain as ISO string MUST NOT raise TypeError on cooldown check."""
+        guild_id = "123456789"
+        user_id = "111111111"
+
+        mock_db.get_economy_config.return_value = default_config_row
+        # DB returns lastXpGain as an ISO string (not datetime).
+        member_str = {
+            **member_row,
+            "lastXpGain": (frozen_clock - timedelta(seconds=120)).isoformat(),
+            "xp": 250,
+            "level": 2,
+        }
+        mock_db.get_member.return_value = member_str
+        mock_db.update_member_xp.return_value = {"xp": 260, "level": 2}
+
+        # Must not raise TypeError — string is parsed via _to_datetime.
+        new_xp, new_level, leveled_up = await service.gain_xp(guild_id, user_id)
+
+        assert new_xp == 260
+        assert leveled_up is False
+
+    @pytest.mark.asyncio
+    async def test_gain_xp_string_last_xp_gain_cooldown_active(
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
+        default_config_row: dict,
+        member_row: dict,
+        frozen_clock,
+    ) -> None:
+        """String lastXpGain within cooldown MUST block XP gain."""
+        guild_id = "123456789"
+        user_id = "111111111"
+
+        mock_db.get_economy_config.return_value = default_config_row
+        # 10 seconds ago as ISO string (cooldown is 60s).
+        member_str = {
+            **member_row,
+            "lastXpGain": (frozen_clock - timedelta(seconds=10)).isoformat(),
+        }
+        mock_db.get_member.return_value = member_str
+
+        new_xp, new_level, leveled_up = await service.gain_xp(guild_id, user_id)
+
+        assert new_xp == 0
+        assert leveled_up is False
+        mock_db.update_member_xp.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_gain_xp_datetime_last_xp_gain_still_works(
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
+        default_config_row: dict,
+        member_row: dict,
+        frozen_clock,
+    ) -> None:
+        """lastXpGain as datetime MUST still work (passthrough)."""
+        guild_id = "123456789"
+        user_id = "111111111"
+
+        mock_db.get_economy_config.return_value = default_config_row
+        member_dt = {
+            **member_row,
+            "lastXpGain": frozen_clock - timedelta(seconds=120),
+            "xp": 250,
+            "level": 2,
+        }
+        mock_db.get_member.return_value = member_dt
+        mock_db.update_member_xp.return_value = {"xp": 260, "level": 2}
+
+        new_xp, new_level, leveled_up = await service.gain_xp(guild_id, user_id)
+
+        assert new_xp == 260
+
+
+class TestClaimDailyTimestampParsing:
+    """claim_daily MUST use shared _to_datetime helper for lastDaily/lastDailyReset."""
+
+    @pytest.mark.asyncio
+    async def test_claim_daily_string_last_daily_no_type_error(
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
+        default_config_row: dict,
+        member_row: dict,
+        frozen_clock,
+    ) -> None:
+        """claim_daily with string lastDaily MUST NOT raise TypeError."""
+        guild_id = "123456789"
+        user_id = "111111111"
+
+        mock_db.get_economy_config.return_value = default_config_row
+        # lastDaily as ISO string — 26h ago (passes 24h cooldown).
+        yesterday_26h = frozen_clock - timedelta(hours=26)
+        yesterday = frozen_clock - timedelta(days=1)
+        member_str = {
+            **member_row,
+            "lastDaily": yesterday_26h.isoformat(),
+            "lastDailyReset": yesterday.isoformat(),
+            "dailyStreak": 3,
+        }
+        mock_db.get_member.return_value = member_str
+        mock_db.update_member_daily.return_value = {"coins": 640}
+
+        success, coins_awarded, streak, remaining = await service.claim_daily(guild_id, user_id)
+
+        assert success is True
+        assert coins_awarded == 130
+        assert streak == 4

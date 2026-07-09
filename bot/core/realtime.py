@@ -476,21 +476,30 @@ class RealtimeCacheSubscriber:
         Wraps ``client._on_connect_error(e)`` to log WebSocket close
         code/reason from the exception object.  Wraps
         ``channel.on_close()`` to record the CLOSED status.
+
+        Gracefully handles missing SDK attributes (e.g. ``_on_connect_error``)
+        so that startup resilience is preserved — health/poll/watchdog tasks
+        still start even when close-logging cannot be wired.
         """
         if self._client is not None:
-            original_on_connect_error = self._client._on_connect_error
+            try:
+                original_on_connect_error = self._client._on_connect_error
 
-            async def _wrapped_on_connect_error(e: object) -> None:
-                code = getattr(e, "code", "unknown")
-                reason = getattr(e, "reason", "")
-                logger.info(
-                    "WebSocket closed: code=%s reason=%s",
-                    code,
-                    reason,
+                async def _wrapped_on_connect_error(e: object) -> None:
+                    code = getattr(e, "code", "unknown")
+                    reason = getattr(e, "reason", "")
+                    logger.info(
+                        "WebSocket closed: code=%s reason=%s",
+                        code,
+                        reason,
+                    )
+                    await original_on_connect_error(e)
+
+                self._client._on_connect_error = _wrapped_on_connect_error
+            except AttributeError:
+                logger.warning(
+                    "SDK client missing _on_connect_error — close-logging skipped"
                 )
-                await original_on_connect_error(e)
-
-            self._client._on_connect_error = _wrapped_on_connect_error
 
         if self._channel is not None:
             original_on_close = self._channel.on_close

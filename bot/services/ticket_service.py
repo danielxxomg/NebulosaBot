@@ -189,7 +189,10 @@ class TicketService:
         # Remove channel from cache so the on_message listener skips it.
         self._ticket_channel_cache.discard(int(ticket.channel_id))
 
-        await self._db.insert_audit_row(guild_id, ticket_id, "close", closed_by, "success", None)
+        try:
+            await self._db.insert_audit_row(guild_id, ticket_id, "close", closed_by, "success", None)
+        except Exception:
+            logger.warning("Failed to write close audit row for ticket %s", ticket_id, exc_info=True)
         logger.info(
             "Ticket %s closed by %s%s",
             ticket_id,
@@ -238,7 +241,10 @@ class TicketService:
             raise ValueError(f"Ticket {ticket_id} not found after claim")
         ticket = Ticket.from_db_row(row)
 
-        await self._db.insert_audit_row(guild_id, ticket_id, "claim", claimed_by, "success", None)
+        try:
+            await self._db.insert_audit_row(guild_id, ticket_id, "claim", claimed_by, "success", None)
+        except Exception:
+            logger.warning("Failed to write claim audit row for ticket %s", ticket_id, exc_info=True)
         logger.info("Ticket %s claimed by %s", ticket_id, claimed_by)
         return ticket
 

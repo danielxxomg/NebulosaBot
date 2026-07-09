@@ -11,6 +11,8 @@ import sys
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from bot.utils.timeparse import _to_datetime
+
 if TYPE_CHECKING:
     from bot.core.cache import TTLCache
     from bot.core.database import Database
@@ -129,18 +131,19 @@ class EconomyService:
 
         # Cooldown check — use lastXpGain timestamp.
         if member is not None and member.get("lastXpGain") is not None:
-            last_gain = member["lastXpGain"]
-            now = datetime.now(UTC)
-            elapsed = (now - last_gain).total_seconds()
-            if elapsed < xp_cooldown_seconds:
-                logger.debug(
-                    "gain_xp(%s/%s): on cooldown (%.1fs < %ds)",
-                    guild_id,
-                    user_id,
-                    elapsed,
-                    xp_cooldown_seconds,
-                )
-                return (0, 0, False)
+            last_gain = _to_datetime(member["lastXpGain"])
+            if last_gain is not None:
+                now = datetime.now(UTC)
+                elapsed = (now - last_gain).total_seconds()
+                if elapsed < xp_cooldown_seconds:
+                    logger.debug(
+                        "gain_xp(%s/%s): on cooldown (%.1fs < %ds)",
+                        guild_id,
+                        user_id,
+                        elapsed,
+                        xp_cooldown_seconds,
+                    )
+                    return (0, 0, False)
 
         # Award XP.
         old_level = member.get("level", 0) if member else 0
@@ -189,18 +192,6 @@ class EconomyService:
 
         member = await self._db.get_member(guild_id, user_id)
         now = datetime.now(UTC)
-
-        # Helper: parse a DB timestamp (may be str or datetime).
-        def _to_datetime(value) -> datetime | None:
-            if value is None:
-                return None
-            if isinstance(value, datetime):
-                return value
-            # Assume ISO-8601 string.
-            try:
-                return datetime.fromisoformat(str(value))
-            except (ValueError, TypeError):
-                return None
 
         if member is not None and member.get("lastDaily") is not None:
             last_daily = _to_datetime(member["lastDaily"])
