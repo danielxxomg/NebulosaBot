@@ -50,14 +50,14 @@ Chain strategy: stacked-to-main
 
 ## Phase 3: Commands + Integration
 
-- [ ] 3.1 RED: Tests for `/configure_fields` in `tests/test_tickets_cog.py`
-- [ ] 3.2 GREEN: Add `configure_fields` hybrid group in `bot/cogs/tickets.py`
-- [ ] 3.3 RED: Update `tests/integration/test_ticket_flow.py` for custom fields flow
-- [ ] 3.4 GREEN: Verify integration end-to-end
-- [ ] 3.5 REFACTOR: Full `uv run pytest` passes, coverage >= 70%
+- [x] 3.1 RED: Tests for `/configure_fields` in `tests/test_tickets_cog.py`
+- [x] 3.2 GREEN: Add `configure_fields` hybrid group in `bot/cogs/tickets.py`
+- [x] 3.3 RED: Update `tests/integration/test_ticket_flow.py` for custom fields flow
+- [x] 3.4 GREEN: Verify integration end-to-end
+- [x] 3.5 REFACTOR: Full `uv run pytest` passes, coverage >= 70%
 
 ## Phase 4: Verify
 
-- [ ] 4.1 No regressions vs baseline (1053+ tests)
-- [ ] 4.2 Migration idempotent and additive
-- [ ] 4.3 Existing tickets with null custom_fields render without errors
+- [x] 4.1 No regressions vs baseline (1053+ tests)
+- [x] 4.2 Migration idempotent and additive
+- [x] 4.3 Existing tickets with null custom_fields render without errors

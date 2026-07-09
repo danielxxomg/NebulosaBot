@@ -286,6 +286,26 @@
       "delete_failed_description": "Could not delete the note.",
       "delete_success_title": "✅ Note Deleted",
       "delete_success_description": "Note `{id}` has been deleted."
+    },
+    "configure_fields": {
+      "help_title": "Configure Fields",
+      "help_description": "Use `/configure_fields set <category_id> <fields_json>` to configure custom intake fields for a ticket category.\n\n`fields_json` is a JSON array of up to 3 field definitions, each with:\n• `key` — lowercase identifier (e.g. `player_nick`)\n• `label` — display label (max 45 chars)\n• `style` — `short` (default) or `paragraph`\n• `required` — `true` or `false` (default)\n• `max_length` — 1–1000 (short) or 1–2000 (paragraph)\n• `placeholder` — optional placeholder text\n\nPass `[]` to clear all fields.",
+      "server_only_title": "Server Only",
+      "server_only_description": "This command can only be used in a server.",
+      "success_title": "✅ Fields Configured",
+      "success_description": "Ticket category **{name}** now has **{count}** custom field(s).",
+      "success_cleared_title": "✅ Fields Cleared",
+      "success_cleared_description": "Custom fields have been cleared from **{name}**.",
+      "invalid_json_title": "Invalid JSON",
+      "invalid_json_description": "The `fields_json` parameter must be valid JSON. Error: {error}",
+      "validation_error_title": "Validation Error",
+      "validation_error_description": "{error}",
+      "not_found_title": "Not Found",
+      "not_found_description": "No ticket category found with ID `{id}`.",
+      "wrong_guild_title": "Wrong Guild",
+      "wrong_guild_description": "That category belongs to a different server.",
+      "failed_title": "Update Failed",
+      "failed_description": "Could not update field definitions. Please try again."
     }
   },
   "ocio": {

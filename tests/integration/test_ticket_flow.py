@@ -240,3 +240,224 @@ class TestTicketFlow:
         call_args = ticket_bot.ticket_service.close_ticket_full.call_args
         assert call_args.args[0] == mock_ticket_channel  # channel
         assert call_args.args[2] == "111111111"  # closer_id
+
+
+# ---------------------------------------------------------------------------
+# PR3 — Custom fields integration tests
+# ---------------------------------------------------------------------------
+
+
+class TestCustomFieldsFlow:
+    """Integration tests for the custom fields lifecycle.
+
+    Verifies: configure_fields → modal with fields → submit → custom_fields
+    persisted → welcome embed renders fields.
+    """
+
+    def _make_category_with_fields(self) -> dict:
+        """Return a category row with field_definitions set."""
+        return {
+            **_make_category_row(),
+            "fieldDefinitions": [
+                {"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True, "max_length": 100},
+                {"key": "evidence_url", "label": "Evidence URL", "style": "short", "required": False, "max_length": 200},
+            ],
+        }
+
+    async def test_modal_with_custom_fields_submits_to_service(
+        self,
+        ticket_bot: MagicMock,
+        mock_ticket_guild: MagicMock,
+        mock_ticket_channel: MagicMock,
+        mock_db: AsyncMock,
+    ) -> None:
+        """Modal with field_definitions → submit → custom_fields passed to create_ticket_channel."""
+        config = MagicMock()
+        config.ticket_category_id = "100000000"
+        config.mod_role_id = None
+        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
+        ticket_bot.db.get_max_ticket_number = AsyncMock(return_value=0)
+
+        category_channel = MagicMock(spec=discord.CategoryChannel)
+        mock_ticket_guild.get_channel = MagicMock(return_value=category_channel)
+
+        ticket_row = _make_ticket_row(ticket_number=1)
+        ticket = Ticket.from_db_row(ticket_row)
+        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, ticket))
+
+        modal_interaction = MagicMock(spec=discord.Interaction)
+        modal_interaction.guild = mock_ticket_guild
+        modal_interaction.user = MagicMock(spec=discord.Member)
+        modal_interaction.user.id = 111111111
+        modal_interaction.user.mention = "<@111111111>"
+        modal_interaction.client = ticket_bot
+        modal_interaction.guild_id = mock_ticket_guild.id
+        modal_interaction.response = MagicMock()
+        modal_interaction.response.defer = AsyncMock()
+        modal_interaction.followup = MagicMock()
+        modal_interaction.followup.send = AsyncMock()
+
+        from bot.views.tickets import TicketIntakeModal
+
+        field_defs = [
+            {"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True, "max_length": 100},
+            {"key": "evidence_url", "label": "Evidence URL", "style": "short", "required": False, "max_length": 200},
+        ]
+
+        modal = TicketIntakeModal(
+            guild=mock_ticket_guild,
+            category_id="cat-uuid-001",
+            category_name="Report",
+            field_definitions=field_defs,
+        )
+        modal.title_input = MagicMock(value="Cheater report")
+        modal.description_input = MagicMock(value="")
+
+        # Simulate user filling custom fields by replacing the _custom_inputs
+        # that the modal built from field_definitions.
+        mock_nick_input = MagicMock()
+        mock_nick_input.value = "DarkSlayer42"
+        mock_evidence_input = MagicMock()
+        mock_evidence_input.value = "https://imgur.com/proof"
+        modal._custom_inputs = [mock_nick_input, mock_evidence_input]
+
+        sent_message = AsyncMock()
+        mock_ticket_channel.send = AsyncMock(return_value=sent_message)
+
+        with patch("bot.views.tickets.TicketActionsView"):
+            await modal.on_submit(modal_interaction)
+
+        # 1. create_ticket_channel was called with custom_fields.
+        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
+        call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
+        assert call_kwargs["subject"] == "Cheater report"
+        assert "custom_fields" in call_kwargs
+        assert call_kwargs["custom_fields"]["player_nick"] == "DarkSlayer42"
+        assert call_kwargs["custom_fields"]["evidence_url"] == "https://imgur.com/proof"
+
+    async def test_modal_without_custom_fields_omits_custom_fields(
+        self,
+        ticket_bot: MagicMock,
+        mock_ticket_guild: MagicMock,
+        mock_ticket_channel: MagicMock,
+        mock_db: AsyncMock,
+    ) -> None:
+        """Modal without field_definitions → no custom_fields in service call."""
+        config = MagicMock()
+        config.ticket_category_id = "100000000"
+        config.mod_role_id = None
+        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
+        ticket_bot.db.get_max_ticket_number = AsyncMock(return_value=0)
+
+        category_channel = MagicMock(spec=discord.CategoryChannel)
+        mock_ticket_guild.get_channel = MagicMock(return_value=category_channel)
+
+        ticket_row = _make_ticket_row(ticket_number=1)
+        ticket = Ticket.from_db_row(ticket_row)
+        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, ticket))
+
+        modal_interaction = MagicMock(spec=discord.Interaction)
+        modal_interaction.guild = mock_ticket_guild
+        modal_interaction.user = MagicMock(spec=discord.Member)
+        modal_interaction.user.id = 111111111
+        modal_interaction.user.mention = "<@111111111>"
+        modal_interaction.client = ticket_bot
+        modal_interaction.guild_id = mock_ticket_guild.id
+        modal_interaction.response = MagicMock()
+        modal_interaction.response.defer = AsyncMock()
+        modal_interaction.followup = MagicMock()
+        modal_interaction.followup.send = AsyncMock()
+
+        from bot.views.tickets import TicketIntakeModal
+
+        modal = TicketIntakeModal(
+            guild=mock_ticket_guild,
+            category_id="cat-uuid-001",
+            category_name="Support",
+        )
+        modal.title_input = MagicMock(value="Help me")
+        modal.description_input = MagicMock(value=None)
+
+        sent_message = AsyncMock()
+        mock_ticket_channel.send = AsyncMock(return_value=sent_message)
+
+        with patch("bot.views.tickets.TicketActionsView"):
+            await modal.on_submit(modal_interaction)
+
+        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
+        call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
+        # No custom_fields or empty custom_fields when no field_definitions.
+        assert not call_kwargs.get("custom_fields")
+
+    async def test_welcome_embed_renders_custom_fields(
+        self,
+        ticket_bot: MagicMock,
+        mock_ticket_guild: MagicMock,
+        mock_ticket_channel: MagicMock,
+        mock_db: AsyncMock,
+    ) -> None:
+        """Welcome embed includes custom fields as inline fields."""
+        from bot.utils.embeds import build_ticket_embed
+
+        field_defs = [
+            {"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True, "max_length": 100},
+            {"key": "evidence_url", "label": "Evidence URL", "style": "short", "required": False, "max_length": 200},
+        ]
+
+        ticket_row = {**_make_ticket_row(ticket_number=1), "customFields": {"player_nick": "DarkSlayer42", "evidence_url": "https://imgur.com/proof"}}
+        ticket = Ticket.from_db_row(ticket_row)
+
+        embed = build_ticket_embed(ticket, guild_id="123456789", field_definitions=field_defs)
+
+        # Embed should have the custom fields as inline fields.
+        field_names = [f.name for f in embed.fields]
+        assert "Player Nickname" in field_names
+        assert "Evidence URL" in field_names
+
+        # Values should match.
+        for f in embed.fields:
+            if f.name == "Player Nickname":
+                assert f.value == "DarkSlayer42"
+            elif f.name == "Evidence URL":
+                assert f.value == "https://imgur.com/proof"
+
+    async def test_welcome_embed_fallback_label_for_missing_definition(
+        self,
+        ticket_bot: MagicMock,
+    ) -> None:
+        """When a definition is removed, stored values use key as fallback label."""
+        from bot.utils.embeds import build_ticket_embed
+
+        # Category had 2 fields, now only 1.
+        current_defs = [
+            {"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True, "max_length": 100},
+        ]
+
+        # Ticket was submitted with both fields.
+        ticket_row = {**_make_ticket_row(ticket_number=1), "customFields": {"player_nick": "DarkSlayer42", "evidence_url": "https://imgur.com/proof"}}
+        ticket = Ticket.from_db_row(ticket_row)
+
+        embed = build_ticket_embed(ticket, guild_id="123456789", field_definitions=current_defs)
+
+        field_names = [f.name for f in embed.fields]
+        # player_nick uses its label.
+        assert "Player Nickname" in field_names
+        # evidence_url uses key as fallback (definition removed).
+        assert "evidence_url" in field_names
+
+    async def test_existing_ticket_with_null_custom_fields_renders_safely(
+        self,
+        ticket_bot: MagicMock,
+    ) -> None:
+        """Existing tickets with null/missing custom_fields render without errors."""
+        from bot.utils.embeds import build_ticket_embed
+
+        ticket_row = _make_ticket_row(ticket_number=1)
+        # No customFields key at all (old ticket).
+        ticket = Ticket.from_db_row(ticket_row)
+
+        embed = build_ticket_embed(ticket, guild_id="123456789")
+
+        # Should not crash and embed should have basic fields.
+        assert embed.title is not None
+        assert embed.color is not None

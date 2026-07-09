@@ -286,6 +286,26 @@
       "delete_failed_description": "No se pudo eliminar la nota.",
       "delete_success_title": "✅ Nota Eliminada",
       "delete_success_description": "La nota `{id}` ha sido eliminada."
+    },
+    "configure_fields": {
+      "help_title": "Configurar Campos",
+      "help_description": "Usa `/configure_fields set <category_id> <fields_json>` para configurar campos personalizados de ingreso para una categoría de tickets.\n\n`fields_json` es un array JSON de hasta 3 definiciones de campo, cada una con:\n• `key` — identificador en minúsculas (ej. `player_nick`)\n• `label` — etiqueta visible (máx. 45 caracteres)\n• `style` — `short` (predeterminado) o `paragraph`\n• `required` — `true` o `false` (predeterminado)\n• `max_length` — 1–1000 (short) o 1–2000 (paragraph)\n• `placeholder` — texto de placeholder opcional\n\nPasa `[]` para borrar todos los campos.",
+      "server_only_title": "Solo Servidores",
+      "server_only_description": "Este comando solo puede usarse en un servidor.",
+      "success_title": "✅ Campos Configurados",
+      "success_description": "La categoría de tickets **{name}** ahora tiene **{count}** campo(s) personalizado(s).",
+      "success_cleared_title": "✅ Campos Borrados",
+      "success_cleared_description": "Los campos personalizados han sido borrados de **{name}**.",
+      "invalid_json_title": "JSON Inválido",
+      "invalid_json_description": "El parámetro `fields_json` debe ser JSON válido. Error: {error}",
+      "validation_error_title": "Error de Validación",
+      "validation_error_description": "{error}",
+      "not_found_title": "No Encontrado",
+      "not_found_description": "No se encontró ninguna categoría de tickets con ID `{id}`.",
+      "wrong_guild_title": "Servidor Incorrecto",
+      "wrong_guild_description": "Esa categoría pertenece a un servidor diferente.",
+      "failed_title": "Error de Actualización",
+      "failed_description": "No se pudieron actualizar las definiciones de campos. Intenta de nuevo."
     }
   },
   "ocio": {
