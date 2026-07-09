@@ -824,7 +824,7 @@ class TestGainXpTimestampParsing:
         mock_db.update_member_xp.return_value = {"xp": 260, "level": 2}
 
         # Must not raise TypeError — string is parsed via _to_datetime.
-        new_xp, new_level, leveled_up = await service.gain_xp(guild_id, user_id)
+        new_xp, _new_level, leveled_up = await service.gain_xp(guild_id, user_id)
 
         assert new_xp == 260
         assert leveled_up is False
@@ -850,7 +850,7 @@ class TestGainXpTimestampParsing:
         }
         mock_db.get_member.return_value = member_str
 
-        new_xp, new_level, leveled_up = await service.gain_xp(guild_id, user_id)
+        new_xp, _new_level, leveled_up = await service.gain_xp(guild_id, user_id)
 
         assert new_xp == 0
         assert leveled_up is False
@@ -879,7 +879,7 @@ class TestGainXpTimestampParsing:
         mock_db.get_member.return_value = member_dt
         mock_db.update_member_xp.return_value = {"xp": 260, "level": 2}
 
-        new_xp, new_level, leveled_up = await service.gain_xp(guild_id, user_id)
+        new_xp, _new_level, _leveled_up = await service.gain_xp(guild_id, user_id)
 
         assert new_xp == 260
 
@@ -913,7 +913,7 @@ class TestClaimDailyTimestampParsing:
         mock_db.get_member.return_value = member_str
         mock_db.update_member_daily.return_value = {"coins": 640}
 
-        success, coins_awarded, streak, remaining = await service.claim_daily(guild_id, user_id)
+        success, coins_awarded, streak, _remaining = await service.claim_daily(guild_id, user_id)
 
         assert success is True
         assert coins_awarded == 130

@@ -497,9 +497,7 @@ class RealtimeCacheSubscriber:
 
                 self._client._on_connect_error = _wrapped_on_connect_error
             except AttributeError:
-                logger.warning(
-                    "SDK client missing _on_connect_error — close-logging skipped"
-                )
+                logger.warning("SDK client missing _on_connect_error — close-logging skipped")
 
         if self._channel is not None:
             original_on_close = self._channel.on_close

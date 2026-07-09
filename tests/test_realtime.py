@@ -1083,7 +1083,10 @@ class TestCloseLogging:
             await sub.start()
 
         # WARNING logged about the missing attribute.
-        assert any("attribute" in r.message.lower() or "wire" in r.message.lower() or "close" in r.message.lower() for r in caplog.records)
+        assert any(
+            "attribute" in r.message.lower() or "wire" in r.message.lower() or "close" in r.message.lower()
+            for r in caplog.records
+        )
         # Health/poll/watchdog tasks MUST be created despite the failure.
         assert sub._health_task is not None
         assert sub._poll_task is not None
