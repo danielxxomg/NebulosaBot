@@ -58,7 +58,7 @@ class UtilityCog(commands.Cog, name="Utility"):
             title=t(guild_id, "utility.avatar.title", name=target.display_name),
             color=target.color,
         )
-        embed.set_thumbnail(url=avatar_url)
+        embed.set_image(url=f"{avatar_url}?size=1024")
         await ctx.send(embed=embed)
 
     @commands.hybrid_command(
