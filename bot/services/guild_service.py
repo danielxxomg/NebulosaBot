@@ -168,6 +168,24 @@ class GuildService:
         # Load through cache-first path to publish guild language to i18n.
         await self.get_config(guild_id)
 
+    async def update_guild_panel(
+        self, guild_id: str, message_id: str | None, channel_id: str | None
+    ) -> None:
+        """Update stored ticket panel IDs and invalidate the guild cache.
+
+        Calls the DB layer to persist the new panel message and channel IDs,
+        then invalidates the ``{guild_id}:config`` cache entry so subsequent
+        reads return the fresh values.  Cache is only invalidated after a
+        successful DB write — a DB failure leaves the cache untouched.
+        """
+        await self._db.update_guild_panel(guild_id, message_id, channel_id)
+        cache_key = CACHE_KEY_TEMPLATE.format(guild_id=guild_id)
+        self._cache.invalidate(cache_key)
+        logger.debug(
+            "GuildService.update_guild_panel: cache invalidated for guild %s",
+            guild_id,
+        )
+
     # ----------------------------------------------------------------
     # Internal
     # ----------------------------------------------------------------
