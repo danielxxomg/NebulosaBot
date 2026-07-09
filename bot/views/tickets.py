@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import discord
@@ -16,7 +17,7 @@ import discord
 from bot.core.i18n import t
 from bot.models.ticket_category import TicketCategory
 from bot.utils.checks import is_mod_check
-from bot.utils.embeds import error_embed, info_embed, success_embed
+from bot.utils.embeds import COLOR_INFO, error_embed, info_embed, success_embed
 
 if TYPE_CHECKING:
     from bot.bot import NebulosaBot
@@ -24,6 +25,48 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 CHANNEL_DELETE_DELAY = 5  # seconds
+
+# Default panel text — used by both /ticket_panel and startup self-heal.
+DEFAULT_TICKET_PANEL_TITLE = "Support Tickets"
+DEFAULT_TICKET_PANEL_DESCRIPTION = (
+    "Click the button below to open a support ticket."
+    " A staff member will assist you shortly."
+)
+
+
+async def deploy_ticket_panel(
+    channel: discord.abc.Messageable,
+    guild_id: str,
+    *,
+    bot: NebulosaBot,
+    title: str = DEFAULT_TICKET_PANEL_TITLE,
+    description_text: str = DEFAULT_TICKET_PANEL_DESCRIPTION,
+) -> discord.Message:
+    """Deploy a ticket panel embed with a persistent TicketPanelView.
+
+    Builds the embed, sends it to *channel* with the panel view, then
+    calls ``guild_service.update_guild_panel()`` to persist the message
+    and channel IDs.  Returns the sent message.
+
+    Raises ``discord.Forbidden`` if the bot lacks send permissions.
+    """
+    embed = discord.Embed(
+        title=title,
+        description=description_text,
+        color=COLOR_INFO,
+        timestamp=datetime.now(UTC),
+    )
+    embed.set_footer(text=t(guild_id, "tickets.open.footer"))
+
+    msg = await channel.send(embed=embed, view=TicketPanelView(guild_id=guild_id))
+
+    if bot.guild_service is not None:
+        await bot.guild_service.update_guild_panel(
+            guild_id, str(msg.id), str(msg.channel.id)
+        )
+
+    logger.info("Ticket panel deployed in guild %s (msg=%s)", guild_id, msg.id)
+    return msg
 
 
 async def _create_ticket_after_modal(

@@ -19,6 +19,103 @@ from bot.utils.embeds import build_ticket_embed
 
 
 # ===========================================================================
+# deploy_ticket_panel — shared helper (ticket-panel-persistence, Phase 2)
+# ===========================================================================
+
+
+class TestDeployTicketPanel:
+    """Verify deploy_ticket_panel() sends embed+view, returns message, calls update_guild_panel."""
+
+    @pytest.mark.asyncio
+    async def test_sends_embed_with_panel_view_and_returns_message(self) -> None:
+        """deploy_ticket_panel() MUST send an embed with TicketPanelView and return the message."""
+        from bot.views.tickets import TicketPanelView, deploy_ticket_panel
+
+        channel = MagicMock()
+        channel.id = 999
+        channel.send = AsyncMock()
+        mock_message = MagicMock()
+        mock_message.id = 42
+        mock_message.channel = channel
+        channel.send.return_value = mock_message
+
+        mock_bot = MagicMock()
+        mock_bot.guild_service = MagicMock()
+        mock_bot.guild_service.update_guild_panel = AsyncMock()
+
+        msg = await deploy_ticket_panel(channel, "123456789", bot=mock_bot)
+
+        channel.send.assert_awaited_once()
+        call_kwargs = channel.send.call_args.kwargs
+        assert "embed" in call_kwargs
+        assert "view" in call_kwargs
+        assert isinstance(call_kwargs["view"], TicketPanelView)
+        assert msg is mock_message
+
+    @pytest.mark.asyncio
+    async def test_calls_update_guild_panel_with_message_ids(self) -> None:
+        """deploy_ticket_panel() MUST call guild_service.update_guild_panel() with the message/channel IDs."""
+        from bot.views.tickets import deploy_ticket_panel
+
+        channel = MagicMock()
+        channel.id = 999
+        channel.send = AsyncMock()
+        mock_message = MagicMock()
+        mock_message.id = 42
+        mock_message.channel = channel
+        channel.send.return_value = mock_message
+
+        mock_bot = MagicMock()
+        mock_bot.guild_service = MagicMock()
+        mock_bot.guild_service.update_guild_panel = AsyncMock()
+
+        await deploy_ticket_panel(channel, "123456789", bot=mock_bot)
+
+        mock_bot.guild_service.update_guild_panel.assert_awaited_once_with(
+            "123456789", str(42), str(999)
+        )
+
+    @pytest.mark.asyncio
+    async def test_raises_on_forbidden(self) -> None:
+        """deploy_ticket_panel() MUST propagate discord.Forbidden when channel.send() fails."""
+        from bot.views.tickets import deploy_ticket_panel
+
+        channel = MagicMock()
+        channel.send = AsyncMock(side_effect=discord.Forbidden(MagicMock(), "missing perms"))
+
+        mock_bot = MagicMock()
+        mock_bot.guild_service = MagicMock()
+
+        with pytest.raises(discord.Forbidden):
+            await deploy_ticket_panel(channel, "123456789", bot=mock_bot)
+
+    @pytest.mark.asyncio
+    async def test_uses_custom_title_and_description(self) -> None:
+        """deploy_ticket_panel(title=..., description_text=...) MUST pass them to the embed."""
+        from bot.views.tickets import deploy_ticket_panel
+
+        channel = MagicMock()
+        channel.send = AsyncMock()
+        mock_message = MagicMock()
+        mock_message.id = 42
+        mock_message.channel = channel
+        channel.send.return_value = mock_message
+
+        mock_bot = MagicMock()
+        mock_bot.guild_service = MagicMock()
+        mock_bot.guild_service.update_guild_panel = AsyncMock()
+
+        await deploy_ticket_panel(
+            channel, "123456789", bot=mock_bot,
+            title="Soporte", description_text="Abre un ticket",
+        )
+
+        embed = channel.send.call_args.kwargs["embed"]
+        assert embed.title == "Soporte"
+        assert embed.description == "Abre un ticket"
+
+
+# ===========================================================================
 # build_ticket_embed — custom_fields rendering (task 2.5 RED)
 # ===========================================================================
 
