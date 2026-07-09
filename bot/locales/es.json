@@ -376,7 +376,7 @@
       "success_title": "¡Recompensa Diaria Reclamada! 🎁",
       "success_description": "¡Recibiste **{coins} monedas**!\nRacha: **{streak} día{plural}** 🔥",
       "cooldown_title": "Enfriamiento Diario ⏳",
-      "cooldown_description": "Ya reclamaste tu recompensa diaria.\nRacha actual: **{streak}** — ¡vuelve mañana!"
+      "cooldown_description": "Ya reclamaste tu recompensa diaria.\nRacha actual: **{streak}** — puedes reclamar de nuevo en **{remaining}**."
     },
     "coins": {
       "failed_title": "Error de Consulta",
@@ -412,5 +412,17 @@
       "failed_title": "Error al Generar Tarjeta",
       "failed_description": "No se pudo generar la tarjeta de despedida. Intenta de nuevo."
     }
+  },
+  "confirm": {
+    "not_owner_title": "No Permitido",
+    "not_owner_description": "Solo la persona que ejecutó este comando puede usar estos botones.",
+    "cancelled_title": "Cancelado",
+    "cancelled_description": "La acción ha sido cancelada.",
+    "timeout_title": "Tiempo Agotado",
+    "timeout_description": "El diálogo de confirmación ha expirado. Ejecuta el comando de nuevo si es necesario.",
+    "kick_confirm_title": "Confirmar Expulsión",
+    "kick_confirm_description": "¿Estás seguro de que quieres expulsar a {mention}?\n**Razón:** {reason}",
+    "ban_confirm_title": "Confirmar Baneo",
+    "ban_confirm_description": "¿Estás seguro de que quieres banear a {mention}?\n**Razón:** {reason}\n**Eliminar mensajes:** {delete_days} día(s)"
   }
 }

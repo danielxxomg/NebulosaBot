@@ -39,7 +39,7 @@ _ES_MARKERS = {
             "success_title": "DAILY_SUCCESS_TITLE_ES",
             "success_description": "DAILY_SUCCESS_DESC_ES_{coins}_{streak}_{plural}",
             "cooldown_title": "DAILY_COOLDOWN_TITLE_ES",
-            "cooldown_description": "DAILY_COOLDOWN_DESC_ES_{streak}",
+            "cooldown_description": "DAILY_COOLDOWN_DESC_ES_{streak}_{remaining}",
         },
         "coins": {
             "failed_title": "COINS_FAIL_TITLE_ES",
@@ -74,7 +74,7 @@ _EN_MARKERS = {
             "success_title": "DAILY_SUCCESS_TITLE_EN",
             "success_description": "DAILY_SUCCESS_DESC_EN_{coins}_{streak}_{plural}",
             "cooldown_title": "DAILY_COOLDOWN_TITLE_EN",
-            "cooldown_description": "DAILY_COOLDOWN_DESC_EN_{streak}",
+            "cooldown_description": "DAILY_COOLDOWN_DESC_EN_{streak}_{remaining}",
         },
         "coins": {
             "failed_title": "COINS_FAIL_TITLE_EN",
@@ -188,7 +188,7 @@ class TestDailyI18n:
     ) -> None:
         """ES guild gets Spanish daily success title."""
         ctx = _make_ctx(_GUILD_ID_ES)
-        mock_bot.economy_service.claim_daily.return_value = (True, 130, 4)
+        mock_bot.economy_service.claim_daily.return_value = (True, 130, 4, 0)
 
         await cog_es.daily.callback(cog_es, ctx)
 
@@ -203,7 +203,7 @@ class TestDailyI18n:
         """EN guild gets English daily success title."""
         cog = StellarCog(mock_bot)
         ctx = _make_ctx(_GUILD_ID_EN)
-        mock_bot.economy_service.claim_daily.return_value = (True, 130, 4)
+        mock_bot.economy_service.claim_daily.return_value = (True, 130, 4, 0)
 
         await cog.daily.callback(cog, ctx)
 
@@ -218,7 +218,7 @@ class TestDailyI18n:
     ) -> None:
         """ES guild gets Spanish cooldown title."""
         ctx = _make_ctx(_GUILD_ID_ES)
-        mock_bot.economy_service.claim_daily.return_value = (False, 0, 3)
+        mock_bot.economy_service.claim_daily.return_value = (False, 0, 3, 22 * 3600)
 
         await cog_es.daily.callback(cog_es, ctx)
 

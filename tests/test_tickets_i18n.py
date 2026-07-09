@@ -1177,6 +1177,118 @@ class TestButtonLabelI18n:
 
 
 # ---------------------------------------------------------------------------
+# CRITICAL 3: Dynamic label resolution at interaction time
+# ---------------------------------------------------------------------------
+
+
+class TestDynamicLabelResolution:
+    """Test button labels resolve via t() at INTERACTION time, not just construction."""
+
+    async def test_panel_open_label_updates_at_interaction_es(self) -> None:
+        """Panel open button label resolves to ES at callback time."""
+        view = TicketPanelView()  # No guild_id → default "Open Ticket"
+
+        # Simulate interaction from ES guild.
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = int(_ES_GUILD_ID)
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.guild = guild
+        interaction.guild_id = int(_ES_GUILD_ID)
+        interaction.client = MagicMock()
+        interaction.client.db = AsyncMock()
+        interaction.client.db.get_ticket_categories = AsyncMock(return_value=[])
+        interaction.response = MagicMock()
+        interaction.response.send_message = AsyncMock()
+
+        open_button = next(
+            c for c in view.children
+            if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:open"
+        )
+        await open_button.callback(interaction)
+
+        # After callback, label should be updated to ES.
+        assert open_button.label == "OPEN_BTN_ES"
+
+    async def test_panel_open_label_updates_at_interaction_en(self) -> None:
+        """Panel open button label resolves to EN at callback time."""
+        view = TicketPanelView()  # No guild_id → default "Open Ticket"
+
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = int(_EN_GUILD_ID)
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.guild = guild
+        interaction.guild_id = int(_EN_GUILD_ID)
+        interaction.client = MagicMock()
+        interaction.client.db = AsyncMock()
+        interaction.client.db.get_ticket_categories = AsyncMock(return_value=[])
+        interaction.response = MagicMock()
+        interaction.response.send_message = AsyncMock()
+
+        open_button = next(
+            c for c in view.children
+            if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:open"
+        )
+        await open_button.callback(interaction)
+
+        assert open_button.label == "OPEN_BTN_EN"
+
+    async def test_actions_claim_label_updates_at_interaction_es(self) -> None:
+        """Claim button label resolves to ES at callback time."""
+        view = TicketActionsView()  # No guild_id → default English
+
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = int(_ES_GUILD_ID)
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.guild = guild
+        interaction.guild_id = int(_ES_GUILD_ID)
+        interaction.user = MagicMock(spec=discord.Member)
+        interaction.user.id = 111111111
+        interaction.user.guild_permissions.administrator = True
+        interaction.client = MagicMock()
+        interaction.client.db = AsyncMock()
+        interaction.client.db.get_ticket_by_channel = AsyncMock(return_value=None)
+        interaction.channel_id = 444444444
+        interaction.response = MagicMock()
+        interaction.response.send_message = AsyncMock()
+        interaction.response.edit_message = AsyncMock()
+
+        claim_button = next(
+            c for c in view.children
+            if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:claim"
+        )
+        await claim_button.callback(interaction)
+
+        # After callback, label should be updated to ES.
+        assert claim_button.label == "CLAIM_BTN_ES"
+
+    async def test_actions_close_label_updates_at_interaction_en(self) -> None:
+        """Close button label resolves to EN at callback time."""
+        view = TicketActionsView()  # No guild_id → default English
+
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = int(_EN_GUILD_ID)
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.guild = guild
+        interaction.guild_id = int(_EN_GUILD_ID)
+        interaction.user = MagicMock(spec=discord.Member)
+        interaction.user.id = 111111111
+        interaction.client = MagicMock()
+        interaction.client.db = AsyncMock()
+        interaction.client.db.get_ticket_by_channel = AsyncMock(return_value=None)
+        interaction.channel_id = 444444444
+        interaction.response = MagicMock()
+        interaction.response.send_message = AsyncMock()
+
+        close_button = next(
+            c for c in view.children
+            if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:close"
+        )
+        await close_button.callback(interaction)
+
+        assert close_button.label == "CLOSE_BTN_EN"
+
+
+# ---------------------------------------------------------------------------
 # CRITICAL 2 fix: reopen error uses t() instead of service's raw Spanish text
 # ---------------------------------------------------------------------------
 

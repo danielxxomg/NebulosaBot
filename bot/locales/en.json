@@ -376,7 +376,7 @@
       "success_title": "Daily Reward Claimed! 🎁",
       "success_description": "You received **{coins} coins**!\nStreak: **{streak} day{plural}** 🔥",
       "cooldown_title": "Daily Cooldown ⏳",
-      "cooldown_description": "You already claimed your daily reward.\nCurrent streak: **{streak}** — come back tomorrow!"
+      "cooldown_description": "You already claimed your daily reward.\nCurrent streak: **{streak}** — you can claim again in **{remaining}**."
     },
     "coins": {
       "failed_title": "Balance Check Failed",
@@ -412,5 +412,17 @@
       "failed_title": "Card Generation Failed",
       "failed_description": "Could not generate the goodbye card. Please try again."
     }
+  },
+  "confirm": {
+    "not_owner_title": "Not Allowed",
+    "not_owner_description": "Only the person who ran this command can use these buttons.",
+    "cancelled_title": "Cancelled",
+    "cancelled_description": "The action has been cancelled.",
+    "timeout_title": "Timed Out",
+    "timeout_description": "The confirmation dialog has timed out. Please run the command again if needed.",
+    "kick_confirm_title": "Confirm Kick",
+    "kick_confirm_description": "Are you sure you want to kick {mention}?\n**Reason:** {reason}",
+    "ban_confirm_title": "Confirm Ban",
+    "ban_confirm_description": "Are you sure you want to ban {mention}?\n**Reason:** {reason}\n**Delete messages:** {delete_days} day(s)"
   }
 }

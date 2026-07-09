@@ -172,12 +172,14 @@ class EconomyService:
     # Daily Claim
     # ------------------------------------------------------------------
 
-    async def claim_daily(self, guild_id: str, user_id: str) -> tuple[bool, int, int]:
+    async def claim_daily(self, guild_id: str, user_id: str) -> tuple[bool, int, int, int]:
         """Attempt a daily coin claim with streak tracking.
 
         Returns:
-            ``(success, coins_awarded, current_streak)``.
-            If on cooldown, ``success`` is ``False`` and ``coins_awarded`` is 0.
+            ``(success, coins_awarded, current_streak, remaining_seconds)``.
+            If on cooldown, ``success`` is ``False``, ``coins_awarded`` is 0,
+            and ``remaining_seconds`` is the exact time until the cooldown expires.
+            On success, ``remaining_seconds`` is 0.
         """
         config = await self._db.get_economy_config(guild_id)
         daily_reward = config.get("dailyReward", DEFAULT_DAILY_REWARD) if config else DEFAULT_DAILY_REWARD
@@ -214,7 +216,8 @@ class EconomyService:
                         cooldown_hours,
                     )
                     streak = member.get("dailyStreak", 0)
-                    return (False, 0, streak)
+                    remaining_seconds = int(cooldown_seconds - elapsed)
+                    return (False, 0, streak, remaining_seconds)
 
         # Determine streak.
         old_streak = member.get("dailyStreak", 0) if member else 0
@@ -260,7 +263,7 @@ class EconomyService:
             coins_awarded,
             new_streak,
         )
-        return (True, coins_awarded, new_streak)
+        return (True, coins_awarded, new_streak, 0)
 
     # ------------------------------------------------------------------
     # Balance

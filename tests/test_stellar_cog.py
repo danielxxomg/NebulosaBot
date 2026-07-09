@@ -85,7 +85,7 @@ class TestDailyCommand:
     ) -> None:
         """Successful claim should send a green embed with coins and streak."""
         ctx = _make_context()
-        mock_bot.economy_service.claim_daily.return_value = (True, 130, 4)
+        mock_bot.economy_service.claim_daily.return_value = (True, 130, 4, 0)
 
         await cog.daily.callback(cog, ctx)
 
@@ -105,9 +105,11 @@ class TestDailyCommand:
         cog: StellarCog,
         mock_bot: MagicMock,
     ) -> None:
-        """Claim on cooldown should show a yellow embed with streak."""
+        """Claim on cooldown should show a yellow embed with streak and remaining time."""
         ctx = _make_context()
-        mock_bot.economy_service.claim_daily.return_value = (False, 0, 3)
+        # 4-tuple: (success, coins, streak, remaining_seconds)
+        # 22h remaining = 79200 seconds → "22h 0m"
+        mock_bot.economy_service.claim_daily.return_value = (False, 0, 3, 22 * 3600)
 
         await cog.daily.callback(cog, ctx)
 
@@ -115,6 +117,8 @@ class TestDailyCommand:
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         assert embed.color.value == 0xF1C40F  # COLOR_WARNING
+        # Must contain formatted remaining time
+        assert "22h 0m" in embed.description  # type: ignore[operator]
 
     @pytest.mark.asyncio
     async def test_daily_error_handling(

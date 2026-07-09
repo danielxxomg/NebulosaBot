@@ -349,11 +349,12 @@ class TestClaimDaily:
         mock_db.get_member.return_value = member_row  # No prior daily
         mock_db.update_member_daily.return_value = {"coins": 600}
 
-        success, coins_awarded, streak = await service.claim_daily(guild_id, user_id)
+        success, coins_awarded, streak, remaining = await service.claim_daily(guild_id, user_id)
 
         assert success is True
         assert coins_awarded == 100  # dailyReward * 1.0
         assert streak == 1
+        assert remaining == 0  # success path: no cooldown
 
     @pytest.mark.asyncio
     async def test_claim_daily_consecutive(
@@ -387,11 +388,12 @@ class TestClaimDaily:
         mock_db.get_member.return_value = member_with_streak
         mock_db.update_member_daily.return_value = {"coins": 640}
 
-        success, coins_awarded, streak = await service.claim_daily(guild_id, user_id)
+        success, coins_awarded, streak, remaining = await service.claim_daily(guild_id, user_id)
 
         assert success is True
         assert coins_awarded == 130  # 100 * (1 + 0.1 * 3) = 130
         assert streak == 4
+        assert remaining == 0  # success path: no cooldown
 
     @pytest.mark.asyncio
     async def test_claim_daily_streak_capped_at_7(
@@ -423,11 +425,12 @@ class TestClaimDaily:
         mock_db.get_member.return_value = member_max_streak
         mock_db.update_member_daily.return_value = {"coins": 660}
 
-        success, coins_awarded, streak = await service.claim_daily(guild_id, user_id)
+        success, coins_awarded, streak, remaining = await service.claim_daily(guild_id, user_id)
 
         assert success is True
         assert coins_awarded == 160  # 100 * (1 + 0.1 * 6) = 160
         assert streak == 7  # stays capped
+        assert remaining == 0  # success path: no cooldown
 
     @pytest.mark.asyncio
     async def test_claim_daily_broken_streak(
@@ -453,11 +456,12 @@ class TestClaimDaily:
         mock_db.get_member.return_value = member_broken
         mock_db.update_member_daily.return_value = {"coins": 600}
 
-        success, coins_awarded, streak = await service.claim_daily(guild_id, user_id)
+        success, coins_awarded, streak, remaining = await service.claim_daily(guild_id, user_id)
 
         assert success is True
         assert coins_awarded == 100  # Reset to base
         assert streak == 1
+        assert remaining == 0  # success path: no cooldown
 
     @pytest.mark.asyncio
     async def test_claim_daily_cooldown_active(
@@ -468,7 +472,7 @@ class TestClaimDaily:
         member_row: dict,
         frozen_clock,
     ) -> None:
-        """Claim within cooldown window should be rejected."""
+        """Claim within cooldown window should be rejected with exact remaining time."""
         guild_id = "123456789"
         user_id = "111111111"
 
@@ -482,11 +486,43 @@ class TestClaimDaily:
         }
         mock_db.get_member.return_value = member_recent
 
-        success, coins_awarded, streak = await service.claim_daily(guild_id, user_id)
+        success, coins_awarded, streak, remaining = await service.claim_daily(guild_id, user_id)
 
         assert success is False
         assert coins_awarded == 0
         assert streak == 3  # unchanged
+        # 24h cooldown - 2h elapsed = 22h = 79200 seconds
+        assert remaining == 22 * 3600
+
+    @pytest.mark.asyncio
+    async def test_claim_daily_cooldown_near_expiry(
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
+        default_config_row: dict,
+        member_row: dict,
+        frozen_clock,
+    ) -> None:
+        """Claim near cooldown expiry should show small remaining time."""
+        guild_id = "123456789"
+        user_id = "111111111"
+
+        mock_db.get_economy_config.return_value = default_config_row
+        # 23h 50m ago → remaining = 10 minutes = 600 seconds
+        near_expiry = frozen_clock - timedelta(hours=23, minutes=50)
+        member_near = {
+            **member_row,
+            "dailyStreak": 1,
+            "lastDailyReset": near_expiry.isoformat(),
+            "lastDaily": near_expiry.isoformat(),
+        }
+        mock_db.get_member.return_value = member_near
+
+        success, coins_awarded, _streak, remaining = await service.claim_daily(guild_id, user_id)
+
+        assert success is False
+        assert coins_awarded == 0
+        assert remaining == 10 * 60  # 600 seconds
 
     @pytest.mark.asyncio
     async def test_claim_daily_custom_reward(
@@ -514,11 +550,12 @@ class TestClaimDaily:
         mock_db.get_member.return_value = member_row
         mock_db.update_member_daily.return_value = {"coins": 700}
 
-        success, coins_awarded, streak = await service.claim_daily(guild_id, user_id)
+        success, coins_awarded, streak, remaining = await service.claim_daily(guild_id, user_id)
 
         assert success is True
         assert coins_awarded == 200
         assert streak == 1
+        assert remaining == 0  # success path: no cooldown
 
 
 # ---------------------------------------------------------------------------

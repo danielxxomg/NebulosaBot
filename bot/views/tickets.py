@@ -43,6 +43,9 @@ class TicketPanelView(discord.ui.View):
         bot: NebulosaBot = interaction.client  # type: ignore[assignment]
         guild = interaction.guild
         guild_id = str(guild.id) if guild else None
+        # Dynamic label resolution at interaction time.
+        if guild_id is not None:
+            button.label = t(guild_id, "tickets.panel.open_button")
         if guild is None:
             await interaction.response.send_message(
                 embed=error_embed(
@@ -106,6 +109,9 @@ class TicketActionsView(discord.ui.View):
         bot: NebulosaBot = interaction.client  # type: ignore[assignment]
         channel_id = interaction.channel_id
         guild_id = str(interaction.guild_id) if interaction.guild_id else None
+        # Dynamic label resolution at interaction time.
+        if guild_id is not None:
+            button.label = t(guild_id, "tickets.actions.claim_button")
         if channel_id is None:
             return
         if not await is_mod_check(interaction):
@@ -164,6 +170,9 @@ class TicketActionsView(discord.ui.View):
         channel_id = interaction.channel_id
         guild = interaction.guild
         guild_id = str(guild.id) if guild else None
+        # Dynamic label resolution at interaction time.
+        if guild_id is not None:
+            button.label = t(guild_id, "tickets.actions.close_button")
         if channel_id is None or guild is None:
             return
         ticket_row, error = await self._get_ticket(bot, channel_id, guild_id, action="close")

@@ -67,6 +67,16 @@ _ES_MARKERS = {
     "sentinel.kick.success_description": "KICK_SUCCESS_DESC_ES_{mention}_{reason}",
     "sentinel.ban.success_title": "BAN_SUCCESS_TITLE_ES",
     "sentinel.ban.success_description": "BAN_SUCCESS_DESC_ES_{mention}_{reason}",
+    "confirm.kick_confirm_title": "KICK_CONFIRM_TITLE_ES",
+    "confirm.kick_confirm_description": "KICK_CONFIRM_DESC_ES_{mention}_{reason}",
+    "confirm.ban_confirm_title": "BAN_CONFIRM_TITLE_ES",
+    "confirm.ban_confirm_description": "BAN_CONFIRM_DESC_ES_{mention}_{reason}_{delete_days}",
+    "confirm.not_owner_title": "CONFIRM_NOT_OWNER_TITLE_ES",
+    "confirm.not_owner_description": "CONFIRM_NOT_OWNER_DESC_ES",
+    "confirm.cancelled_title": "CONFIRM_CANCELLED_TITLE_ES",
+    "confirm.cancelled_description": "CONFIRM_CANCELLED_DESC_ES",
+    "confirm.timeout_title": "CONFIRM_TIMEOUT_TITLE_ES",
+    "confirm.timeout_description": "CONFIRM_TIMEOUT_DESC_ES",
     "sentinel.lock.permission_denied_title": "LOCK_PERM_TITLE_ES",
     "sentinel.lock.permission_denied_description": "LOCK_PERM_DESC_ES_{channel}",
     "sentinel.lock.failed_title": "LOCK_FAIL_TITLE_ES",
@@ -127,6 +137,16 @@ _EN_MARKERS = {
     "sentinel.kick.success_description": "KICK_SUCCESS_DESC_EN_{mention}_{reason}",
     "sentinel.ban.success_title": "BAN_SUCCESS_TITLE_EN",
     "sentinel.ban.success_description": "BAN_SUCCESS_DESC_EN_{mention}_{reason}",
+    "confirm.kick_confirm_title": "KICK_CONFIRM_TITLE_EN",
+    "confirm.kick_confirm_description": "KICK_CONFIRM_DESC_EN_{mention}_{reason}",
+    "confirm.ban_confirm_title": "BAN_CONFIRM_TITLE_EN",
+    "confirm.ban_confirm_description": "BAN_CONFIRM_DESC_EN_{mention}_{reason}_{delete_days}",
+    "confirm.not_owner_title": "CONFIRM_NOT_OWNER_TITLE_EN",
+    "confirm.not_owner_description": "CONFIRM_NOT_OWNER_DESC_EN",
+    "confirm.cancelled_title": "CONFIRM_CANCELLED_TITLE_EN",
+    "confirm.cancelled_description": "CONFIRM_CANCELLED_DESC_EN",
+    "confirm.timeout_title": "CONFIRM_TIMEOUT_TITLE_EN",
+    "confirm.timeout_description": "CONFIRM_TIMEOUT_DESC_EN",
     "sentinel.lock.permission_denied_title": "LOCK_PERM_TITLE_EN",
     "sentinel.lock.permission_denied_description": "LOCK_PERM_DESC_EN_{channel}",
     "sentinel.lock.failed_title": "LOCK_FAIL_TITLE_EN",
@@ -496,14 +516,14 @@ class TestMuteI18n:
 
 
 class TestKickI18n:
-    """kick command returns localized strings."""
+    """kick command returns localized confirmation dialog."""
 
-    async def test_kick_success_es(
+    async def test_kick_confirmation_es(
         self,
         cog_es: SentinelCog,
         sentinel_bot: MagicMock,
     ) -> None:
-        """ES guild gets Spanish kick success."""
+        """ES guild gets Spanish kick confirmation dialog."""
         ctx = _make_ctx(_GUILD_ID_ES)
         target = _make_target()
 
@@ -523,9 +543,12 @@ class TestKickI18n:
         with patch.object(cog_es, "_validate_target", new=AsyncMock(return_value=True)):
             await cog_es.kick.callback(cog_es, ctx, target, reason="rule violation")
 
-        embed = ctx.send.call_args.kwargs.get("embed")
+        # Kick now sends ephemeral confirmation, not direct success.
+        call_kwargs = ctx.send.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
+        embed = call_kwargs.get("embed")
         assert embed is not None
-        assert "KICK_SUCCESS_TITLE_ES" in embed.title
+        assert "KICK_CONFIRM_TITLE_ES" in embed.title
 
 
 # ---------------------------------------------------------------------------
@@ -534,14 +557,14 @@ class TestKickI18n:
 
 
 class TestBanI18n:
-    """ban command returns localized strings."""
+    """ban command returns localized confirmation dialog."""
 
-    async def test_ban_success_es(
+    async def test_ban_confirmation_es(
         self,
         cog_es: SentinelCog,
         sentinel_bot: MagicMock,
     ) -> None:
-        """ES guild gets Spanish ban success."""
+        """ES guild gets Spanish ban confirmation dialog."""
         ctx = _make_ctx(_GUILD_ID_ES)
         target = _make_target()
 
@@ -561,9 +584,12 @@ class TestBanI18n:
         with patch.object(cog_es, "_validate_target", new=AsyncMock(return_value=True)):
             await cog_es.ban.callback(cog_es, ctx, target, reason="severe")
 
-        embed = ctx.send.call_args.kwargs.get("embed")
+        # Ban now sends ephemeral confirmation, not direct success.
+        call_kwargs = ctx.send.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
+        embed = call_kwargs.get("embed")
         assert embed is not None
-        assert "BAN_SUCCESS_TITLE_ES" in embed.title
+        assert "BAN_CONFIRM_TITLE_ES" in embed.title
 
 
 # ---------------------------------------------------------------------------
@@ -759,8 +785,10 @@ class TestPaginatorButtonI18n:
         labels = {b.custom_id: b.label for b in buttons}
 
         # EmbedPaginator uses universal symbols, not localized text
-        assert "◀ Previous" in labels["modlogs:prev"]
-        assert "Next ▶" in labels["modlogs:next"]
+        prev_label = labels["modlogs:prev"]
+        next_label = labels["modlogs:next"]
+        assert prev_label is not None and "◀ Previous" in prev_label
+        assert next_label is not None and "Next ▶" in next_label
 
     def test_paginator_en_buttons(self) -> None:
         """EN guild also gets universal paginator button labels."""
@@ -774,5 +802,7 @@ class TestPaginatorButtonI18n:
         buttons = [c for c in view.children if isinstance(c, discord.ui.Button)]
         labels = {b.custom_id: b.label for b in buttons}
 
-        assert "◀ Previous" in labels["modlogs:prev"]
-        assert "Next ▶" in labels["modlogs:next"]
+        prev_label = labels["modlogs:prev"]
+        next_label = labels["modlogs:next"]
+        assert prev_label is not None and "◀ Previous" in prev_label
+        assert next_label is not None and "Next ▶" in next_label
