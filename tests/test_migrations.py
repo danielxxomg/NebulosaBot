@@ -4,6 +4,8 @@ Covers:
     - Migration 008: Enable RLS on ticket_note (idempotent ALTER TABLE).
     - Migration 009: member increment RPC functions exist and are idempotent.
     - Each function has SECURITY DEFINER and SET search_path = public.
+    - Migration 010: REVOKE EXECUTE on member RPCs from anon/authenticated.
+    - Migration 011: CREATE INDEX on ticket ("channelId").
 """
 
 from __future__ import annotations
@@ -120,3 +122,82 @@ class TestMigration009:
         assert '"dailyStreak"' in sql
         assert '"lastDailyReset"' in sql
         assert '"lastDaily"' in sql
+
+
+class TestMigration010:
+    """Structural tests for migration 010_rpc_revoke_grants.sql."""
+
+    def test_file_exists(self) -> None:
+        """Migration 010 file MUST exist."""
+        _read_migration("010_rpc_revoke_grants.sql")
+
+    def test_revokes_increment_member_xp(self) -> None:
+        """Migration 010 MUST revoke EXECUTE on increment_member_xp with exact signature."""
+        sql = _read_migration("010_rpc_revoke_grants.sql")
+        assert "increment_member_xp(TEXT, TEXT, INTEGER)" in sql
+
+    def test_revokes_increment_member_coins(self) -> None:
+        """Migration 010 MUST revoke EXECUTE on increment_member_coins with exact signature."""
+        sql = _read_migration("010_rpc_revoke_grants.sql")
+        assert "increment_member_coins(TEXT, TEXT, BIGINT)" in sql
+
+    def test_revokes_increment_member_warnings(self) -> None:
+        """Migration 010 MUST revoke EXECUTE on increment_member_warnings with exact signature."""
+        sql = _read_migration("010_rpc_revoke_grants.sql")
+        assert "increment_member_warnings(TEXT, TEXT, INTEGER)" in sql
+
+    def test_revokes_set_member_daily(self) -> None:
+        """Migration 010 MUST revoke EXECUTE on set_member_daily with exact signature."""
+        sql = _read_migration("010_rpc_revoke_grants.sql")
+        assert "set_member_daily(TEXT, TEXT, BIGINT, INTEGER, TIMESTAMPTZ, TIMESTAMPTZ)" in sql
+
+    def test_targets_anon_role(self) -> None:
+        """Migration 010 MUST target the anon role."""
+        sql = _read_migration("010_rpc_revoke_grants.sql")
+        assert "anon" in sql
+
+    def test_targets_authenticated_role(self) -> None:
+        """Migration 010 MUST target the authenticated role."""
+        sql = _read_migration("010_rpc_revoke_grants.sql")
+        assert "authenticated" in sql
+
+    def test_uses_revoke_execute(self) -> None:
+        """Migration 010 MUST use REVOKE EXECUTE ON FUNCTION."""
+        sql = _read_migration("010_rpc_revoke_grants.sql")
+        assert "REVOKE EXECUTE ON FUNCTION" in sql
+
+    def test_targets_public_schema(self) -> None:
+        """Migration 010 MUST reference public schema functions."""
+        sql = _read_migration("010_rpc_revoke_grants.sql")
+        assert "public.increment_member_xp" in sql
+        assert "public.increment_member_coins" in sql
+        assert "public.increment_member_warnings" in sql
+        assert "public.set_member_daily" in sql
+
+
+class TestMigration011:
+    """Structural tests for migration 011_ticket_channel_index.sql."""
+
+    def test_file_exists(self) -> None:
+        """Migration 011 file MUST exist."""
+        _read_migration("011_ticket_channel_index.sql")
+
+    def test_creates_index_if_not_exists(self) -> None:
+        """Migration 011 MUST use CREATE INDEX IF NOT EXISTS for idempotency."""
+        sql = _read_migration("011_ticket_channel_index.sql")
+        assert "CREATE INDEX IF NOT EXISTS" in sql
+
+    def test_index_name_is_idx_ticket_channel(self) -> None:
+        """Migration 011 MUST create index named idx_ticket_channel."""
+        sql = _read_migration("011_ticket_channel_index.sql")
+        assert "idx_ticket_channel" in sql
+
+    def test_targets_ticket_table(self) -> None:
+        """Migration 011 MUST target the public.ticket table."""
+        sql = _read_migration("011_ticket_channel_index.sql")
+        assert "public.ticket" in sql
+
+    def test_indexes_channel_id_column(self) -> None:
+        """Migration 011 MUST index the channelId column."""
+        sql = _read_migration("011_ticket_channel_index.sql")
+        assert '"channelId"' in sql
