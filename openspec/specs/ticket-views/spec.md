@@ -8,9 +8,9 @@ Define persistent Discord UI components for ticket panels and per-ticket actions
 
 ### Requirement: Ticket panel view
 
-The system MUST provide a persistent panel view with an open button. `TicketPanelView`, `TicketActionsView`, and `_CategorySelectView` MUST reside in `bot/views/tickets.py`. Panel design: the open button triggers an ephemeral category dropdown after click. This is the existing behavior; spec was outdated.
+The system MUST provide a persistent panel view with an open button. `TicketPanelView`, `TicketActionsView`, and `_CategorySelectView` MUST reside in `bot/views/tickets.py`. Panel design: the open button triggers an ephemeral category dropdown after click. Button labels MUST be resolved dynamically via `t()` at interaction time using `interaction.guild_id`, not only at construction time.
 
-(Previously: views defined inline in bot/cogs/tickets.py)
+(Previously: labels were set only at construction; after restart, English defaults persisted for non-English guilds)
 
 #### Scenario: Panel render
 
@@ -36,11 +36,23 @@ The system MUST provide a persistent panel view with an open button. `TicketPane
 - WHEN `bot/bot.py` imports `TicketPanelView` and `TicketActionsView`
 - THEN the import succeeds from the new path
 
+#### Scenario: Localized labels after restart
+
+- GIVEN a Spanish guild with a deployed ticket panel
+- WHEN the bot restarts and a user clicks the open button
+- THEN the button label is resolved via `t('tickets.panel.open_button', guild_id)` at interaction time
+
+#### Scenario: English fallback before first interaction
+
+- GIVEN any guild with a deployed ticket panel
+- WHEN the bot restarts and the panel has not yet been interacted with
+- THEN the button shows the English decorator default until first interaction updates it
+
 ### Requirement: Ticket actions view
 
-The system MUST provide a per-ticket action view with close and claim buttons. Claim button MUST be gated by `@is_mod()` (solo mod). Close button MUST be gated by author OR mod. Non-eligible users clicking a gated button SHALL receive an ephemeral rejection message.
+The system MUST provide a per-ticket action view with close and claim buttons. Claim button MUST be gated by `@is_mod()` (solo mod). Close button MUST be gated by author OR mod. Non-eligible users clicking a gated button SHALL receive an ephemeral rejection message. Button labels MUST be resolved dynamically via `t()` at interaction time using `interaction.guild_id`.
 
-(Previously: both buttons were ungated — any user could trigger claim or close)
+(Previously: labels were set only at construction; action button labels did not update for non-English guilds after restart)
 
 #### Scenario: Action view render
 
@@ -89,6 +101,12 @@ The system MUST provide a per-ticket action view with close and claim buttons. C
 - GIVEN an open ticket channel with the action view
 - WHEN a staff member clicks claim
 - THEN the ticket claim flow is triggered
+
+#### Scenario: Localized action labels after restart
+
+- GIVEN a Spanish guild with an active ticket
+- WHEN the bot restarts and a user clicks Claim
+- THEN the claim button label is resolved via `t('tickets.actions.claim_button', guild_id)` at interaction time
 
 ### Requirement: Reopen command accepts ticket-id
 
