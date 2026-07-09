@@ -1,6 +1,7 @@
 """Unit tests for SQL migrations — structural validation.
 
 Covers:
+    - Migration 008: Enable RLS on ticket_note (idempotent ALTER TABLE).
     - Migration 009: member increment RPC functions exist and are idempotent.
     - Each function has SECURITY DEFINER and SET search_path = public.
 """
@@ -19,6 +20,31 @@ def _read_migration(name: str) -> str:
     path = MIGRATIONS_DIR / name
     assert path.exists(), f"Migration {name} not found at {path}"
     return path.read_text(encoding="utf-8")
+
+
+class TestMigration008:
+    """Structural tests for migration 008_ticket_note_rls.sql."""
+
+    def test_migration_008_enables_rls_on_ticket_note(self) -> None:
+        """Migration 008 MUST contain ENABLE ROW LEVEL SECURITY for ticket_note."""
+        sql = _read_migration("008_ticket_note_rls.sql")
+        assert "ENABLE ROW LEVEL SECURITY" in sql
+        assert "ticket_note" in sql
+
+    def test_migration_008_is_idempotent(self) -> None:
+        """Migration 008 MUST be idempotent.
+
+        ALTER TABLE ... ENABLE ROW LEVEL SECURITY is naturally idempotent in
+        PostgreSQL — re-running it when RLS is already enabled is a no-op.
+        The migration file documents this property.
+        """
+        sql = _read_migration("008_ticket_note_rls.sql")
+        # Verify the migration comment documents idempotency.
+        assert "idempotent" in sql.lower() or "safe to re-run" in sql.lower()
+        # The SQL itself is a single ALTER TABLE — inherently idempotent.
+        code_lines = [l for l in sql.splitlines() if l.strip() and not l.strip().startswith("--")]
+        assert len(code_lines) == 1
+        assert "ALTER TABLE" in code_lines[0]
 
 
 class TestMigration009:

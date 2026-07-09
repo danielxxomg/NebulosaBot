@@ -8,6 +8,7 @@ ticket channel IDs for fast O(1) ``on_message`` queries.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -752,27 +753,43 @@ class TicketService:
         author: discord.Member,
         channel_name: str,
         *,
+        guild_id: str,
+        category_id: str | None = None,
         mod_role: discord.Role | None = None,
-    ) -> discord.TextChannel:
-        """Create a ticket Discord channel with standard permission overwrites.
+        parent_id: str | None = None,
+    ) -> tuple[discord.TextChannel, Ticket]:
+        """Create a ticket Discord channel, insert the ticket row, and rename if needed.
 
         Builds the standard ticket permission set (everyone denied, author
-        and bot can view/send, mod role can view/send if provided) and
-        creates a ``TextChannel`` under *category*.
+        and bot can view/send, mod role can view/send if provided), creates
+        a ``TextChannel`` under *category*, inserts the ticket row via
+        :meth:`create_ticket` (or :meth:`create_subticket` when
+        *parent_id* is provided), and renames the channel to match the
+        actual ticket number if it differs from the tentative name.
+
+        When *parent_id* is set, the ticket row is created via
+        :meth:`create_subticket` which enforces parentId invariants
+        (existence, no self-reference, depth ≤ 1, same guild).  On
+        failure the freshly-created channel is deleted before re-raising.
 
         Args:
             guild: The Discord guild.
             category: The category channel to create the ticket under.
             author: The member who opened the ticket.
-            channel_name: Name for the new channel (e.g. ``ticket-0001``).
+            channel_name: Tentative name for the new channel (e.g. ``ticket-0001``).
+            guild_id: Discord guild snowflake for the ticket row.
+            category_id: Optional ticket_category UUID (label, not a channel).
             mod_role: Optional moderator role to grant access.
+            parent_id: Optional parent ticket UUID for sub-ticket creation.
 
         Returns:
-            The newly created :class:`discord.TextChannel`.
+            A tuple of (:class:`discord.TextChannel`, :class:`Ticket`).
 
         Raises:
             discord.Forbidden: If the bot lacks permissions.
             discord.HTTPException: If the channel creation fails.
+            ValueError: If parent_id validation fails.
+            RuntimeError: If ticket insert retries are exhausted.
         """
         overwrites: dict[
             discord.Role | discord.Member | discord.Object,
@@ -792,7 +809,37 @@ class TicketService:
             reason=f"Ticket opened by {author}",
         )
         logger.info("Ticket channel created: %s (guild=%s, author=%s)", channel.id, guild.id, author.id)
-        return channel
+
+        try:
+            if parent_id is not None:
+                ticket = await self.create_subticket(
+                    parent_id=parent_id,
+                    author_id=str(author.id),
+                    category_id=category_id,
+                    channel_id=str(channel.id),
+                    guild_id=guild_id,
+                )
+            else:
+                ticket = await self.create_ticket(
+                    guild_id=guild_id,
+                    author_id=str(author.id),
+                    category_id=category_id,
+                    channel_id=str(channel.id),
+                )
+        except Exception:
+            logger.exception("Ticket row creation failed — cleaning up channel %s", channel.id)
+            with contextlib.suppress(discord.HTTPException):
+                await channel.delete(reason="Ticket row creation failed")
+            raise
+
+        actual_name = f"ticket-{ticket.ticket_number:04d}"
+        if channel.name != actual_name:
+            try:
+                await channel.edit(name=actual_name)
+            except discord.HTTPException:
+                logger.warning("Failed to rename ticket channel %s to %s", channel.id, actual_name)
+
+        return channel, ticket
 
     async def close_ticket_full(
         self,

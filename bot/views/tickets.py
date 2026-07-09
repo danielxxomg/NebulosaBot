@@ -299,8 +299,14 @@ class _CategorySelect(discord.ui.Select[discord.ui.View]):
         tentative_max = await bot.db.get_max_ticket_number(guild_id)
         channel_name = f"ticket-{tentative_max + 1:04d}"
         try:
-            channel = await bot.ticket_service.create_ticket_channel(
-                guild, ticket_category_channel, author, channel_name, mod_role=mod_role
+            channel, ticket = await bot.ticket_service.create_ticket_channel(
+                guild,
+                ticket_category_channel,
+                author,
+                channel_name,
+                guild_id=guild_id,
+                category_id=category_id,
+                mod_role=mod_role,
             )
         except discord.Forbidden:
             await interaction.followup.send(
@@ -323,14 +329,8 @@ class _CategorySelect(discord.ui.Select[discord.ui.View]):
                 ephemeral=True,
             )
             return
-        try:
-            ticket = await bot.ticket_service.create_ticket(
-                guild_id=guild_id, author_id=str(author.id), category_id=category_id, channel_id=str(channel.id)
-            )
         except Exception:
             logger.exception("Failed to create ticket in DB")
-            with contextlib.suppress(discord.HTTPException):
-                await channel.delete(reason="Ticket creation failed — cleanup")
             await interaction.followup.send(
                 embed=error_embed(
                     t(guild_id, "tickets.open.creation_failed_title"),
@@ -340,10 +340,6 @@ class _CategorySelect(discord.ui.Select[discord.ui.View]):
                 ephemeral=True,
             )
             return
-        actual_name = f"ticket-{ticket.ticket_number:04d}"
-        if channel.name != actual_name:
-            with contextlib.suppress(discord.HTTPException):
-                await channel.edit(name=actual_name)
         actions_view = TicketActionsView(guild_id=guild_id)
         from bot.utils.embeds import build_ticket_embed
 
