@@ -13,6 +13,7 @@ import logging
 from typing import TYPE_CHECKING, Literal
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 
 from bot.core.i18n import t
@@ -35,7 +36,13 @@ class SetupCog(commands.Cog, name="Setup"):
 
     @commands.hybrid_command(
         name="setup",
-        description="Configure guild settings (ticket category, mod role, log channel, language)",
+        description="Configure guild settings (ticket category, mod role, log channel, language).",
+    )
+    @app_commands.describe(
+        ticket_category="Category for ticket channels",
+        mod_role="Optional moderator role",
+        log_channel="Optional moderation log channel",
+        language="Optional server language",
     )
     @is_admin()
     async def setup_command(

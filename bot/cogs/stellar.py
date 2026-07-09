@@ -51,7 +51,7 @@ class StellarCog(commands.Cog, name="Stellar"):
     # /daily
     # ------------------------------------------------------------------
 
-    @commands.hybrid_command(name="daily", description="Claim your daily coin reward")
+    @commands.hybrid_command(name="daily", description="Claim your daily coin reward.")
     async def daily(self, ctx: commands.Context) -> None:  # type: ignore[override]
         """Claim the daily coin reward with streak tracking."""
         guild_id = str(ctx.guild.id) if ctx.guild else ""
@@ -92,7 +92,7 @@ class StellarCog(commands.Cog, name="Stellar"):
     # /coins
     # ------------------------------------------------------------------
 
-    @commands.hybrid_command(name="coins", description="Check your coin balance or someone else's")
+    @commands.hybrid_command(name="coins", description="Check your coin balance or someone else's.")
     @app_commands.describe(member="The member to check (defaults to yourself)")
     async def coins(
         self,
@@ -131,7 +131,7 @@ class StellarCog(commands.Cog, name="Stellar"):
 
     @commands.hybrid_command(
         name="leaderboard",
-        description="View the server leaderboard by XP or coins",
+        description="View the server leaderboard by XP or coins.",
     )
     @app_commands.describe(lb_type="Leaderboard type: 'xp' or 'coins' (default: xp)")
     async def leaderboard(
@@ -193,7 +193,7 @@ class StellarCog(commands.Cog, name="Stellar"):
 
     @commands.hybrid_command(
         name="rank",
-        description="View your rank card or someone else's",
+        description="View your rank card or someone else's.",
     )
     @app_commands.describe(member="The member to check (defaults to yourself)")
     async def rank(
