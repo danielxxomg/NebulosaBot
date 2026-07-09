@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 
@@ -22,6 +22,7 @@ class TicketCategory:
     position: int = 0
     active: bool = True
     created_at: datetime | None = None
+    field_definitions: list[dict] = field(default_factory=list)
 
     @classmethod
     def from_db_row(cls, row: dict) -> TicketCategory:
@@ -35,6 +36,7 @@ class TicketCategory:
             position=row["position"],
             active=row.get("active", True),
             created_at=row.get("createdAt"),
+            field_definitions=row.get("fieldDefinitions") or [],
         )
 
     def to_db_dict(self) -> dict:
@@ -48,4 +50,5 @@ class TicketCategory:
             "position": self.position,
             "active": self.active,
             "createdAt": self.created_at.isoformat() if self.created_at else None,
+            "fieldDefinitions": self.field_definitions,
         }

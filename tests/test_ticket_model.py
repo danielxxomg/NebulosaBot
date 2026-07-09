@@ -308,6 +308,132 @@ def test_ticket_subject_description_round_trip_none() -> None:
 
 
 # ===========================================================================
+# Ticket — custom_fields serialization (JSONB object)
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# from_db_row — customFields -> custom_fields
+# ---------------------------------------------------------------------------
+
+
+def test_from_db_row_maps_populated_custom_fields() -> None:
+    """from_db_row MUST map row['customFields'] -> ticket.custom_fields when populated."""
+    row = _ticket_row(customFields={"player_nick": "DarkSlayer42", "evidence_url": "https://imgur.com/abc"})
+
+    ticket = Ticket.from_db_row(row)
+
+    assert ticket.custom_fields == {"player_nick": "DarkSlayer42", "evidence_url": "https://imgur.com/abc"}
+
+
+def test_from_db_row_maps_null_custom_fields_to_none() -> None:
+    """from_db_row MUST set custom_fields=None when the row's customFields is null."""
+    row = _ticket_row(customFields=None)
+
+    ticket = Ticket.from_db_row(row)
+
+    assert ticket.custom_fields is None
+
+
+def test_from_db_row_custom_fields_defaults_none_when_missing() -> None:
+    """from_db_row MUST set custom_fields=None when the row omits customFields entirely."""
+    row = _ticket_row()
+    row.pop("customFields", None)
+
+    ticket = Ticket.from_db_row(row)
+
+    assert ticket.custom_fields is None
+
+
+# ---------------------------------------------------------------------------
+# to_db_dict — custom_fields -> "customFields"
+# ---------------------------------------------------------------------------
+
+
+def test_to_db_dict_includes_populated_custom_fields() -> None:
+    """to_db_dict MUST emit 'customFields' with the custom_fields value when set."""
+    ticket = Ticket(
+        id="t-cf-01",
+        ticket_number=20,
+        guild_id="g1",
+        author_id="a1",
+        channel_id="c1",
+        status="open",
+        created_at=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
+        last_activity=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
+        custom_fields={"player_nick": "DarkSlayer42"},
+    )
+
+    result = ticket.to_db_dict()
+
+    assert result["customFields"] == {"player_nick": "DarkSlayer42"}
+
+
+def test_to_db_dict_includes_null_custom_fields() -> None:
+    """to_db_dict MUST emit 'customFields': None when custom_fields is unset."""
+    ticket = Ticket(
+        id="t-cf-02",
+        ticket_number=21,
+        guild_id="g1",
+        author_id="a1",
+        channel_id="c1",
+        status="open",
+        created_at=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
+        last_activity=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
+        custom_fields=None,
+    )
+
+    result = ticket.to_db_dict()
+
+    assert "customFields" in result
+    assert result["customFields"] is None
+
+
+# ---------------------------------------------------------------------------
+# Round-trip — custom_fields survives from_db_row(to_db_dict(x))
+# ---------------------------------------------------------------------------
+
+
+def test_ticket_custom_fields_round_trip_populated() -> None:
+    """A populated custom_fields MUST survive a to_db_dict -> from_db_row round-trip."""
+    fields = {"player_nick": "DarkSlayer42", "evidence_url": "https://imgur.com/abc"}
+    ticket = Ticket(
+        id="t-rt-cf",
+        ticket_number=22,
+        guild_id="g1",
+        author_id="a1",
+        channel_id="c1",
+        status="open",
+        created_at=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
+        last_activity=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
+        custom_fields=fields,
+    )
+
+    rebuilt = Ticket.from_db_row(ticket.to_db_dict())
+
+    assert rebuilt.custom_fields == fields
+
+
+def test_ticket_custom_fields_round_trip_none() -> None:
+    """A null custom_fields MUST survive a to_db_dict -> from_db_row round-trip."""
+    ticket = Ticket(
+        id="t-rt-cf-none",
+        ticket_number=23,
+        guild_id="g1",
+        author_id="a1",
+        channel_id="c1",
+        status="open",
+        created_at=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
+        last_activity=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
+        custom_fields=None,
+    )
+
+    rebuilt = Ticket.from_db_row(ticket.to_db_dict())
+
+    assert rebuilt.custom_fields is None
+
+
+# ===========================================================================
 # TicketNote — camelCase <-> snake_case serialization
 #
 # TicketNote is imported lazily inside each test so the Ticket tests above
