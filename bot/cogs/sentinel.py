@@ -143,7 +143,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     # 5.2 — /warn + /unwarn
     # ==================================================================
 
-    @commands.hybrid_command(name="warn", description="Warn a member")
+    @commands.hybrid_command(name="warn", description="Warn a member.")
     @app_commands.describe(member="The member to warn", reason="Reason for the warning")
     @app_commands.default_permissions(moderate_members=True)
     @is_mod()
@@ -267,7 +267,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             )
         )
 
-    @commands.hybrid_command(name="unwarn", description="Remove the most recent warning from a member")
+    @commands.hybrid_command(name="unwarn", description="Remove the most recent warning from a member.")
     @app_commands.describe(member="The member to unwarn")
     @app_commands.default_permissions(moderate_members=True)
     @is_mod()
@@ -320,7 +320,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     # 5.3 — /mute + /unmute
     # ==================================================================
 
-    @commands.hybrid_command(name="mute", description="Timeout a member")
+    @commands.hybrid_command(name="mute", description="Timeout a member.")
     @app_commands.describe(
         member="The member to mute",
         duration='Duration (e.g. "1h", "30m", "1h30m"). Default: 1h',
@@ -389,7 +389,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             )
         )
 
-    @commands.hybrid_command(name="unmute", description="Remove a member's timeout")
+    @commands.hybrid_command(name="unmute", description="Remove a member's timeout.")
     @app_commands.describe(member="The member to unmute")
     @app_commands.default_permissions(moderate_members=True)
     @is_mod()
@@ -426,7 +426,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     # 5.4 — /kick + /ban
     # ==================================================================
 
-    @commands.hybrid_command(name="kick", description="Kick a member from the server")
+    @commands.hybrid_command(name="kick", description="Kick a member from the server.")
     @app_commands.describe(member="The member to kick", reason="Reason for the kick")
     @app_commands.default_permissions(moderate_members=True)
     @is_mod()
@@ -491,7 +491,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         )
         view.message = msg
 
-    @commands.hybrid_command(name="ban", description="Ban a member from the server")
+    @commands.hybrid_command(name="ban", description="Ban a member from the server.")
     @app_commands.describe(
         member="The member to ban",
         reason="Reason for the ban",
@@ -582,7 +582,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
 
     @commands.hybrid_command(
         name="lock",
-        description="Lock a channel (deny send_messages for @everyone)",
+        description="Lock a channel (deny send_messages for @everyone).",
     )
     @app_commands.describe(channel="The channel to lock (default: current channel)")
     @app_commands.default_permissions(moderate_members=True)
@@ -644,7 +644,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
 
     @commands.hybrid_command(
         name="unlock",
-        description="Unlock a channel (allow send_messages for @everyone)",
+        description="Unlock a channel (allow send_messages for @everyone).",
     )
     @app_commands.describe(channel="The channel to unlock (default: current channel)")
     @app_commands.default_permissions(moderate_members=True)
@@ -708,7 +708,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     # 5.6 — /modlogs
     # ==================================================================
 
-    @commands.hybrid_command(name="modlogs", description="View moderation history for a member")
+    @commands.hybrid_command(name="modlogs", description="View moderation history for a member.")
     @app_commands.describe(
         member="The member whose modlogs to view",
         type="Filter by infraction type (WARN, MUTE, KICK, BAN)",

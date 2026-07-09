@@ -90,7 +90,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
 
     @commands.hybrid_command(
         name="welcome_test",
-        description="Send a test welcome card in this channel (admin only)",
+        description="Send a test welcome card in this channel (admin only).",
     )
     @app_commands.default_permissions(administrator=True)
     async def welcome_test(self, ctx: commands.Context) -> None:  # type: ignore[override]
@@ -140,7 +140,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
 
     @commands.hybrid_command(
         name="goodbye_test",
-        description="Send a test goodbye card in this channel (admin only)",
+        description="Send a test goodbye card in this channel (admin only).",
     )
     @app_commands.default_permissions(administrator=True)
     async def goodbye_test(self, ctx: commands.Context) -> None:  # type: ignore[override]
@@ -244,7 +244,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
     # /welcome — hybrid group (fallback = config)
     # ------------------------------------------------------------------
 
-    @commands.hybrid_group(fallback="config")
+    @commands.hybrid_group(fallback="config", description="Configure welcome card settings.")
     @app_commands.default_permissions(administrator=True)
     async def welcome(self, ctx: commands.Context) -> None:
         """Show the current welcome configuration."""
@@ -258,7 +258,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             ephemeral=True,
         )
 
-    @welcome.command(name="channel")
+    @welcome.command(name="channel", description="Set the channel for welcome messages.")
     @app_commands.describe(channel="The channel for welcome messages")
     @app_commands.default_permissions(administrator=True)
     async def welcome_channel(
@@ -283,7 +283,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             ephemeral=True,
         )
 
-    @welcome.command(name="toggle")
+    @welcome.command(name="toggle", description="Toggle welcome messages on or off.")
     @app_commands.default_permissions(administrator=True)
     async def welcome_toggle(self, ctx: commands.Context) -> None:
         """Toggle welcome messages on/off."""
@@ -308,7 +308,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             ephemeral=True,
         )
 
-    @welcome.command(name="message")
+    @welcome.command(name="message", description="Set the welcome message template.")
     @app_commands.describe(template="Message template (placeholders: {user}, {server}, {mention})")
     @app_commands.default_permissions(administrator=True)
     async def welcome_message(
@@ -338,7 +338,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
     # /goodbye — hybrid group (fallback = config)
     # ------------------------------------------------------------------
 
-    @commands.hybrid_group(fallback="config")
+    @commands.hybrid_group(fallback="config", description="Configure goodbye card settings.")
     @app_commands.default_permissions(administrator=True)
     async def goodbye(self, ctx: commands.Context) -> None:
         """Show the current goodbye configuration."""
@@ -352,7 +352,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             ephemeral=True,
         )
 
-    @goodbye.command(name="channel")
+    @goodbye.command(name="channel", description="Set the channel for goodbye messages.")
     @app_commands.describe(channel="The channel for goodbye messages")
     @app_commands.default_permissions(administrator=True)
     async def goodbye_channel(
@@ -377,7 +377,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             ephemeral=True,
         )
 
-    @goodbye.command(name="toggle")
+    @goodbye.command(name="toggle", description="Toggle goodbye messages on or off.")
     @app_commands.default_permissions(administrator=True)
     async def goodbye_toggle(self, ctx: commands.Context) -> None:
         """Toggle goodbye messages on/off."""
@@ -402,7 +402,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             ephemeral=True,
         )
 
-    @goodbye.command(name="message")
+    @goodbye.command(name="message", description="Set the goodbye message template.")
     @app_commands.describe(template="Message template (placeholders: {user}, {server}, {mention})")
     @app_commands.default_permissions(administrator=True)
     async def goodbye_message(
