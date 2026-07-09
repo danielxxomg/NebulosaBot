@@ -8,7 +8,7 @@ Define persistent Discord UI components for ticket panels and per-ticket actions
 
 ### Requirement: Ticket panel view
 
-The system MUST provide a persistent panel view with an open button. `TicketPanelView`, `TicketActionsView`, and `_CategorySelectView` MUST reside in `bot/views/tickets.py`. Panel design: the open button triggers an ephemeral category dropdown after click. Button labels MUST be resolved dynamically via `t()` at interaction time using `interaction.guild_id`, not only at construction time. On category selection, the system SHALL respond with a `TicketIntakeModal` instead of deferring immediately.
+The system MUST provide a persistent panel view with an open button. `TicketPanelView`, `TicketActionsView`, and `_CategorySelectView` MUST reside in `bot/views/tickets.py`. Panel design: the open button triggers an ephemeral category dropdown after click. Button labels MUST be resolved dynamically via `t()` at interaction time using `interaction.guild_id`, not only at construction time. On category selection, the system SHALL respond with a `TicketIntakeModal` that receives the selected category's `field_definitions` for dynamic TextInput construction.
 
 #### Scenario: Panel render
 
@@ -45,6 +45,18 @@ The system MUST provide a persistent panel view with an open button. `TicketPane
 - GIVEN any guild with a deployed ticket panel
 - WHEN the bot restarts and the panel has not yet been interacted with
 - THEN the button shows the English decorator default until first interaction updates it
+
+#### Scenario: Category select passes field_definitions to modal
+
+- GIVEN a category with `field_definitions = [{key: "player_nick", label: "Player Nickname", style: "short", required: true}]`
+- WHEN a user selects that category
+- THEN `TicketIntakeModal` is constructed with `field_definitions=[{...}]`
+
+#### Scenario: Category select with no field_definitions
+
+- GIVEN a category with `field_definitions = []`
+- WHEN a user selects that category
+- THEN `TicketIntakeModal` is constructed with `field_definitions=[]`
 
 ### Requirement: Ticket actions view
 
@@ -196,7 +208,7 @@ After extraction, `bot/cogs/tickets.py` MUST be under ~600 lines (from 2015). Th
 
 ### Requirement: Welcome embed pinned after creation
 
-After sending the welcome embed with `TicketActionsView` in a new ticket channel, the system SHALL call `message.pin()` to pin the welcome embed.
+After sending the welcome embed with `TicketActionsView` in a new ticket channel, the system SHALL call `message.pin()` to pin the welcome embed. The welcome embed MUST render any `custom_fields` values as inline fields below the subject/description.
 
 #### Scenario: Welcome embed pinned
 
@@ -215,3 +227,15 @@ After sending the welcome embed with `TicketActionsView` in a new ticket channel
 - GIVEN a ticket with subject=null
 - WHEN `build_ticket_embed()` is called
 - THEN the embed title is "Ticket #0003"
+
+#### Scenario: Embed renders custom fields
+
+- GIVEN a ticket with `custom_fields = {"player_nick": "DarkSlayer42", "evidence_url": "https://imgur.com/..."}`
+- WHEN `build_ticket_embed()` is called
+- THEN the embed includes inline fields for "Player Nickname" and "Evidence URL" with their values
+
+#### Scenario: Embed handles missing custom fields
+
+- GIVEN a ticket with `custom_fields = {}` or `null`
+- WHEN `build_ticket_embed()` is called
+- THEN the embed renders normally without custom field sections

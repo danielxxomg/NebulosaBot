@@ -8,7 +8,7 @@ Define ticket lifecycle management: creation, claim, close, and automatic closur
 
 ### Requirement: Ticket creation
 
-The system MUST create a new ticket channel with a sequential ticket number per guild. `create_ticket()` SHALL accept optional `subject: str | None` and `description: str | None` parameters and persist them to the database.
+The system MUST create a new ticket channel with a sequential ticket number per guild. `create_ticket()` SHALL accept optional `subject: str | None`, `description: str | None`, and `custom_fields: dict | None` parameters and persist them to the database.
 
 #### Scenario: Successful creation
 
@@ -40,9 +40,21 @@ The system MUST create a new ticket channel with a sequential ticket number per 
 - WHEN `create_ticket()` is called
 - THEN the Ticket row has subject=null and description=null
 
+#### Scenario: Creation with custom_fields
+
+- GIVEN `custom_fields = {"player_nick": "DarkSlayer42", "evidence_url": "https://imgur.com/..."}`
+- WHEN `create_ticket(custom_fields=...)` is called
+- THEN the Ticket row includes `customFields` with the provided dict
+
+#### Scenario: Creation without custom_fields
+
+- GIVEN no custom_fields argument
+- WHEN `create_ticket()` is called
+- THEN the Ticket row has `customFields = {}`
+
 ### Requirement: Channel creation extracted to service
 
-`create_ticket_channel()` SHALL accept optional `subject: str | None` and `description: str | None` parameters and pass them through to `create_ticket()`. This supports both the modal intake flow (with subject/description) and the sub-ticket flow (without them).
+`create_ticket_channel()` SHALL accept optional `subject: str | None`, `description: str | None`, and `custom_fields: dict | None` parameters and pass them through to `create_ticket()`. This supports both the modal intake flow (with subject/description/custom_fields) and the sub-ticket flow (without them).
 
 #### Scenario: create_ticket_channel called
 
@@ -61,6 +73,18 @@ The system MUST create a new ticket channel with a sequential ticket number per 
 - GIVEN no subject or description (sub-ticket flow)
 - WHEN `TicketService.create_ticket_channel()` is called
 - THEN `create_ticket()` is called with subject=None and description=None
+
+#### Scenario: create_ticket_channel with custom_fields
+
+- GIVEN custom_fields from modal intake
+- WHEN `TicketService.create_ticket_channel(custom_fields=...)` is called
+- THEN the dict is passed through to `create_ticket()`
+
+#### Scenario: create_ticket_channel without custom_fields
+
+- GIVEN no custom_fields (sub-ticket flow)
+- WHEN `TicketService.create_ticket_channel()` is called
+- THEN `create_ticket()` is called with custom_fields=None
 
 ### Requirement: Ticket claim
 
