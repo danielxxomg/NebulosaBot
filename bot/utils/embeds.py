@@ -139,6 +139,7 @@ def build_ticket_embed(
     *,
     claimed_by: discord.User | discord.Member | None = None,
     guild_id: str | None = None,
+    field_definitions: list[dict] | None = None,
 ) -> discord.Embed:
     """Build the welcome / info embed for a ticket channel."""
     if isinstance(ticket, dict):
@@ -147,12 +148,14 @@ def build_ticket_embed(
         author_id = ticket.get("authorId", "unknown")
         subject = ticket.get("subject")
         description_text = ticket.get("description")
+        custom_fields = ticket.get("customFields") or {}
     else:
         number = ticket.ticket_number
         status = ticket.status
         author_id = ticket.author_id
         subject = ticket.subject
         description_text = ticket.description
+        custom_fields = ticket.custom_fields or {}
 
     if status == "claimed":
         color = COLOR_INFO
@@ -172,5 +175,20 @@ def build_ticket_embed(
     embed.add_field(name=t(guild_id, "tickets.open.author_field"), value=f"<@{author_id}>", inline=True)
     if description_text:
         embed.add_field(name=t(guild_id, "tickets.open.details_field"), value=description_text, inline=False)
+
+    # Render custom fields as inline embed fields.
+    if custom_fields:
+        def_map: dict[str, dict] = {}
+        if field_definitions:
+            def_map = {d["key"]: d for d in field_definitions}
+        for key, value in custom_fields.items():
+            if not value:
+                continue
+            label = def_map.get(key, {}).get("label", key)
+            display = str(value)
+            if len(display) > 1021:
+                display = display[:1021] + "..."
+            embed.add_field(name=label, value=display, inline=True)
+
     embed.set_footer(text=t(guild_id, "tickets.open.footer"))
     return embed

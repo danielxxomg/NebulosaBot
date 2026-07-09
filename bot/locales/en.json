@@ -99,7 +99,9 @@
       "description_label": "Description (optional)",
       "description_placeholder": "Provide more details about your issue...",
       "empty_title": "Title Required",
-      "empty_title_description": "Please enter a title for your ticket."
+      "empty_title_description": "Please enter a title for your ticket.",
+      "field_required_title": "Required Field",
+      "field_required_description": "The field **{field}** is required. Please fill it in."
     },
     "panel": {
       "server_only_title": "Server Only",

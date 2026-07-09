@@ -99,7 +99,9 @@
       "description_label": "Descripción (opcional)",
       "description_placeholder": "Proporciona más detalles sobre tu problema...",
       "empty_title": "Título Requerido",
-      "empty_title_description": "Por favor ingresa un título para tu ticket."
+      "empty_title_description": "Por favor ingresa un título para tu ticket.",
+      "field_required_title": "Campo Requerido",
+      "field_required_description": "El campo **{field}** es obligatorio. Por favor complétalo."
     },
     "panel": {
       "server_only_title": "Solo Servidores",

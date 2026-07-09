@@ -32,6 +32,9 @@ async def _create_ticket_after_modal(
     category_id: str,
     subject: str | None,
     description: str | None,
+    *,
+    custom_fields: dict[str, str] | None = None,
+    field_definitions: list[dict] | None = None,
 ) -> None:
     """Shared ticket creation flow used by TicketIntakeModal.on_submit.
 
@@ -100,6 +103,7 @@ async def _create_ticket_after_modal(
             mod_role=mod_role,
             subject=subject,
             description=description,
+            custom_fields=custom_fields,
         )
     except discord.Forbidden:
         await interaction.followup.send(
@@ -137,7 +141,7 @@ async def _create_ticket_after_modal(
     actions_view = TicketActionsView(guild_id=guild_id)
     from bot.utils.embeds import build_ticket_embed
 
-    embed = build_ticket_embed(ticket, guild_id=guild_id)
+    embed = build_ticket_embed(ticket, guild_id=guild_id, field_definitions=field_definitions)
     message = await channel.send(content=author.mention, embed=embed, view=actions_view)
 
     # Pin the welcome embed — failure is logged, not fatal.
@@ -171,6 +175,7 @@ class TicketIntakeModal(discord.ui.Modal):
         guild: discord.Guild,
         category_id: str,
         category_name: str,
+        field_definitions: list[dict] | None = None,
     ) -> None:
         guild_id = str(guild.id)
         super().__init__(
@@ -179,6 +184,7 @@ class TicketIntakeModal(discord.ui.Modal):
         )
         self._guild = guild
         self._category_id = category_id
+        self._field_definitions = field_definitions or []
 
         self.title_input: discord.ui.TextInput[TicketIntakeModal] = discord.ui.TextInput(
             label=t(guild_id, "tickets.modal.subject_label"),
@@ -198,6 +204,20 @@ class TicketIntakeModal(discord.ui.Modal):
         )
         self.add_item(self.description_input)
 
+        # Dynamic custom field inputs (0–3).
+        self._custom_inputs: list[discord.ui.TextInput[TicketIntakeModal]] = []
+        for defn in self._field_definitions:
+            style = discord.TextStyle.paragraph if defn.get("style") == "paragraph" else discord.TextStyle.short
+            inp = discord.ui.TextInput(
+                label=defn["label"],
+                style=style,
+                required=defn.get("required", False),
+                max_length=min(defn.get("max_length", 100), 4000),
+                placeholder=defn.get("placeholder"),
+            )
+            self._custom_inputs.append(inp)
+            self.add_item(inp)
+
     async def on_submit(self, interaction: discord.Interaction) -> None:
         subject = self.title_input.value.strip()
         if not subject:
@@ -212,6 +232,25 @@ class TicketIntakeModal(discord.ui.Modal):
             )
             return
 
+        # Validate required custom fields.
+        custom_fields: dict[str, str] = {}
+        guild_id = str(self._guild.id)
+        for defn, inp in zip(self._field_definitions, self._custom_inputs):
+            val = inp.value.strip() if inp.value else ""
+            if not val:
+                if defn.get("required"):
+                    await interaction.response.send_message(
+                        embed=error_embed(
+                            t(guild_id, "tickets.modal.field_required_title"),
+                            t(guild_id, "tickets.modal.field_required_description", field=defn["label"]),
+                            guild_id=guild_id,
+                        ),
+                        ephemeral=True,
+                    )
+                    return
+                continue
+            custom_fields[defn["key"]] = val
+
         description_raw = self.description_input.value.strip() if self.description_input.value else None
         description = description_raw or None
 
@@ -222,6 +261,8 @@ class TicketIntakeModal(discord.ui.Modal):
             self._category_id,
             subject=subject,
             description=description,
+            custom_fields=custom_fields,
+            field_definitions=self._field_definitions,
         )
 
     async def on_error(
@@ -289,7 +330,7 @@ class TicketPanelView(discord.ui.View):
             )
             for cat in categories
         ]
-        view = _CategorySelectView(options, guild)
+        view = _CategorySelectView(options, guild, categories)
         await interaction.response.send_message(t(guild_id, "tickets.open.select_category"), view=view, ephemeral=True)
 
 
@@ -455,22 +496,23 @@ class _CategorySelectView(discord.ui.View):
 
     __slots__ = ()
 
-    def __init__(self, options: list[discord.SelectOption], guild: discord.Guild) -> None:
+    def __init__(self, options: list[discord.SelectOption], guild: discord.Guild, categories: list[TicketCategory]) -> None:
         super().__init__(timeout=300)
-        self.add_item(_CategorySelect(options, guild))
+        self.add_item(_CategorySelect(options, guild, categories))
 
 
 class _CategorySelect(discord.ui.Select[discord.ui.View]):
     """Select dropdown populated with ticket categories."""
 
-    __slots__ = ("_guild",)
+    __slots__ = ("_guild", "_categories")
 
-    def __init__(self, options: list[discord.SelectOption], guild: discord.Guild) -> None:
+    def __init__(self, options: list[discord.SelectOption], guild: discord.Guild, categories: list[TicketCategory]) -> None:
         guild_id = str(guild.id)
         super().__init__(
             placeholder=t(guild_id, "tickets.open.select_category"), min_values=1, max_values=1, options=options
         )
         self._guild = guild
+        self._categories = categories
 
     async def callback(self, interaction: discord.Interaction) -> None:
         category_id = self.values[0]
@@ -483,6 +525,13 @@ class _CategorySelect(discord.ui.Select[discord.ui.View]):
             category_id,
         )
 
+        # Resolve field_definitions from the category list.
+        field_definitions: list[dict] = []
+        for cat in self._categories:
+            if cat.id == category_id:
+                field_definitions = cat.field_definitions
+                break
+
         await interaction.response.send_modal(
-            TicketIntakeModal(guild, category_id, category_name)
+            TicketIntakeModal(guild, category_id, category_name, field_definitions=field_definitions)
         )

@@ -1735,6 +1735,104 @@ async def test_create_ticket_channel_forwards_subject_and_description(
 
 
 # ===========================================================================
+# PR2 — custom_fields passthrough (task 2.1 RED)
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_create_ticket_with_custom_fields(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """create_ticket(custom_fields=...) MUST forward to insert_ticket and persist on the model."""
+    cf = {"player_nick": "DarkSlayer42", "evidence_url": "https://imgur.com/abc"}
+    mock_db.get_max_ticket_number.return_value = 0
+    mock_db.insert_ticket.return_value = {**ticket_row, "customFields": cf}
+
+    ticket = await service.create_ticket(
+        guild_id="123456789",
+        author_id="111111111",
+        category_id="cat-uuid-001",
+        channel_id="888888888",
+        custom_fields=cf,
+    )
+
+    insert_kwargs = mock_db.insert_ticket.call_args.kwargs
+    assert insert_kwargs["custom_fields"] == cf
+    assert ticket.custom_fields == cf
+
+
+@pytest.mark.asyncio
+async def test_create_ticket_without_custom_fields(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """create_ticket() without custom_fields MUST pass None to insert_ticket."""
+    mock_db.get_max_ticket_number.return_value = 0
+    mock_db.insert_ticket.return_value = {**ticket_row, "customFields": None}
+
+    ticket = await service.create_ticket(
+        guild_id="123456789",
+        author_id="111111111",
+        category_id=None,
+        channel_id="888888888",
+    )
+
+    insert_kwargs = mock_db.insert_ticket.call_args.kwargs
+    assert insert_kwargs["custom_fields"] is None
+    assert ticket.custom_fields is None
+
+
+@pytest.mark.asyncio
+async def test_create_ticket_channel_forwards_custom_fields(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """create_ticket_channel(custom_fields=...) MUST forward to create_ticket."""
+    guild = _mock_guild_for_channel()
+    category = MagicMock(spec=discord.CategoryChannel)
+    author = _mock_author()
+    cf = {"player_nick": "DarkSlayer42"}
+
+    mock_db.get_max_ticket_number.return_value = 0
+    mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1, "customFields": cf}
+
+    _channel, ticket = await service.create_ticket_channel(
+        guild, category, author, "ticket-0001", guild_id="123456789", custom_fields=cf
+    )
+
+    insert_kwargs = mock_db.insert_ticket.call_args.kwargs
+    assert insert_kwargs["custom_fields"] == cf
+    assert ticket.custom_fields == cf
+
+
+@pytest.mark.asyncio
+async def test_create_ticket_channel_without_custom_fields(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """create_ticket_channel() without custom_fields MUST pass None to create_ticket."""
+    guild = _mock_guild_for_channel()
+    category = MagicMock(spec=discord.CategoryChannel)
+    author = _mock_author()
+
+    mock_db.get_max_ticket_number.return_value = 0
+    mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1, "customFields": None}
+
+    _channel, ticket = await service.create_ticket_channel(
+        guild, category, author, "ticket-0001", guild_id="123456789"
+    )
+
+    insert_kwargs = mock_db.insert_ticket.call_args.kwargs
+    assert insert_kwargs["custom_fields"] is None
+    assert ticket.custom_fields is None
+
+
+# ===========================================================================
 # Best-effort audit on success path (runtime-hotfix)
 # ===========================================================================
 

@@ -206,7 +206,7 @@ class TestCategorySelect:
         """Category selection → modal sent as first response (no defer)."""
         ticket_interaction.client = ticket_bot
 
-        select = _CategorySelect(options=[], guild=ticket_guild)
+        select = _CategorySelect(options=[], guild=ticket_guild, categories=[])
         select._values = ["cat-uuid-001"]
 
         ticket_interaction.response.send_modal = AsyncMock()
@@ -240,7 +240,7 @@ class TestCategorySelect:
         ticket_bot.ticket_service.create_ticket = AsyncMock(return_value=ticket)
         ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, ticket))
 
-        select = _CategorySelect(options=[], guild=ticket_guild)
+        select = _CategorySelect(options=[], guild=ticket_guild, categories=[])
         select._values = ["cat-uuid-001"]
 
         ticket_interaction.response.send_modal = AsyncMock()
@@ -263,7 +263,7 @@ class TestTicketIntakeModal:
         """Category selection MUST send_modal as first response (no defer)."""
         ticket_interaction.client = ticket_bot
 
-        select = _CategorySelect(options=[], guild=ticket_guild)
+        select = _CategorySelect(options=[], guild=ticket_guild, categories=[])
         select._values = ["cat-uuid-001"]
 
         # Patch send_modal so we can verify it was called instead of defer.
