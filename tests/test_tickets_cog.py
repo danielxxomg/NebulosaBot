@@ -13,7 +13,6 @@ TDD cycle: RED → GREEN — tests specify expected behavior of existing code.
 
 from __future__ import annotations
 
-import io
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -532,8 +531,7 @@ class TestTicketIntakeModal:
         modal.title_input = MagicMock(value="Help")
         modal.description_input = MagicMock(value="")
 
-        with patch("bot.views.tickets.TicketActionsView"), \
-             patch("bot.views.tickets.logger") as mock_logger:
+        with patch("bot.views.tickets.TicketActionsView"), patch("bot.views.tickets.logger") as mock_logger:
             await modal.on_submit(modal_interaction)
 
         # Ticket creation succeeds despite pin failure.
@@ -1214,9 +1212,7 @@ class TestSubticketCreate:
         ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
         category_channel = MagicMock(spec=discord.CategoryChannel)
         slash_ctx.guild.get_channel = MagicMock(return_value=category_channel)
-        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(
-            side_effect=ValueError("Parent ticket not found")
-        )
+        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(side_effect=ValueError("Parent ticket not found"))
 
         await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
 

@@ -1613,9 +1613,7 @@ async def test_create_ticket_channel_creates_channel_and_inserts(
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1}
 
-    channel, ticket = await service.create_ticket_channel(
-        guild, category, author, "ticket-0001", guild_id="123456789"
-    )
+    channel, ticket = await service.create_ticket_channel(guild, category, author, "ticket-0001", guild_id="123456789")
 
     # Channel created with correct overwrites.
     guild.create_text_channel.assert_awaited_once()
@@ -1650,9 +1648,7 @@ async def test_create_ticket_channel_renames_if_number_differs(
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 42}
 
-    channel, ticket = await service.create_ticket_channel(
-        guild, category, author, "ticket-0001", guild_id="123456789"
-    )
+    channel, ticket = await service.create_ticket_channel(guild, category, author, "ticket-0001", guild_id="123456789")
 
     # Channel renamed to match actual ticket number.
     channel.edit.assert_awaited_once_with(name="ticket-0042")
@@ -1673,9 +1669,7 @@ async def test_create_ticket_channel_no_rename_if_name_matches(
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1}
 
-    channel, ticket = await service.create_ticket_channel(
-        guild, category, author, "ticket-0001", guild_id="123456789"
-    )
+    channel, ticket = await service.create_ticket_channel(guild, category, author, "ticket-0001", guild_id="123456789")
 
     # No rename needed.
     channel.edit.assert_not_awaited()
@@ -1696,7 +1690,7 @@ async def test_create_ticket_channel_passes_category_id(
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1, "categoryId": "cat-uuid-001"}
 
-    channel, ticket = await service.create_ticket_channel(
+    _channel, _ticket = await service.create_ticket_channel(
         guild, category, author, "ticket-0001", guild_id="123456789", category_id="cat-uuid-001"
     )
 
@@ -1723,7 +1717,7 @@ async def test_create_ticket_channel_forwards_subject_and_description(
         "description": "Cannot access since Monday",
     }
 
-    channel, ticket = await service.create_ticket_channel(
+    _channel, ticket = await service.create_ticket_channel(
         guild,
         category,
         author,
