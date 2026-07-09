@@ -30,7 +30,7 @@ from bot.services.logging_service import LoggingService
 from bot.services.ticket_service import TicketService
 from bot.services.transcript_service import TranscriptService
 from bot.utils.embeds import error_embed
-from bot.views.tickets import TicketActionsView, TicketPanelView
+from bot.views.tickets import TicketActionsView, TicketPanelView, deploy_ticket_panel
 
 if TYPE_CHECKING:
     from bot.config import BotConfig
@@ -459,3 +459,130 @@ class NebulosaBot(commands.Bot):
             # return_exceptions=True so one bad guild doesn't abort backfill.
             await asyncio.gather(*tasks, return_exceptions=True)
             logger.info("Backfilled guild config for %d guild(s)", len(self.guilds))
+
+        # --- Panel validation: verify stored panels and self-heal ---
+        await self._validate_panels()
+
+    # ==================================================================
+    # Panel validation / self-heal
+    # ==================================================================
+
+    async def _validate_panels(self) -> None:
+        """Validate stored ticket panels and self-heal missing/stripped ones.
+
+        Runs AFTER guild backfill completes.  Only guilds with a stored
+        ``ticket_panel_message_id`` are checked.  Uses bounded concurrency
+        matching the backfill pattern.
+        """
+        if self.guild_service is None:
+            return
+
+        # Collect guilds with stored panel IDs.
+        guild_ids: list[str] = []
+        for guild in self.guilds:
+            try:
+                config = await self.guild_service.get_config(str(guild.id))
+                if config.ticket_panel_message_id:
+                    guild_ids.append(str(guild.id))
+            except Exception:
+                logger.exception(
+                    "Failed to read config for guild %s during panel validation",
+                    guild.id,
+                )
+
+        if not guild_ids:
+            logger.info("No stored panel IDs — skipping panel validation")
+            return
+
+        logger.info("Validating panels for %d guild(s) ...", len(guild_ids))
+
+        tasks = [self._validate_single_panel(gid) for gid in guild_ids]
+        if len(tasks) > BACKFILL_CONCURRENCY_LIMIT:
+            semaphore = asyncio.Semaphore(BACKFILL_CONCURRENCY_LIMIT)
+
+            async def _bounded(coro: Coroutine[Any, Any, None]) -> None:
+                async with semaphore:
+                    await coro
+
+            tasks = [_bounded(t) for t in tasks]
+
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _validate_single_panel(self, guild_id: str) -> None:
+        """Validate a single guild's ticket panel; self-heal if unhealthy."""
+        assert self.guild_service is not None
+
+        # Resolve guild from the guilds list (populated by the gateway).
+        guild: discord.Guild | None = None
+        for g in self.guilds:
+            if str(g.id) == guild_id:
+                guild = g
+                break
+
+        if guild is None:
+            logger.warning(
+                "Panel validation: guild %s not found in cache — skipping",
+                guild_id,
+            )
+            return
+
+        config = await self.guild_service.get_config(guild_id)
+        msg_id = config.ticket_panel_message_id
+        ch_id = config.ticket_panel_channel_id
+
+        if not msg_id or not ch_id:
+            return
+
+        # Resolve channel.
+        channel = guild.get_channel(int(ch_id))
+        if channel is None:
+            logger.warning(
+                "Panel validation: channel %s not found for guild %s — clearing panel IDs",
+                ch_id,
+                guild_id,
+            )
+            await self.guild_service.update_guild_panel(guild_id, None, None)
+            return
+
+        # Fetch the message and check for the ticket:open button.
+        try:
+            message = await channel.fetch_message(int(msg_id))  # type: ignore[union-attr]
+        except discord.NotFound:
+            logger.warning(
+                "Panel validation: message %s deleted in guild %s — re-deploying",
+                msg_id,
+                guild_id,
+            )
+            await deploy_ticket_panel(channel, guild_id, bot=self)  # type: ignore[arg-type]
+            return
+        except discord.Forbidden:
+            logger.warning(
+                "Panel validation: Forbidden fetching message %s in guild %s — skipping",
+                msg_id,
+                guild_id,
+            )
+            return
+        except discord.HTTPException:
+            logger.exception(
+                "Panel validation: HTTP error fetching message %s in guild %s — skipping",
+                msg_id,
+                guild_id,
+            )
+            return
+
+        # Check for ticket:open button in components.
+        has_ticket_button = False
+        for component in message.components:  # type: ignore[union-attr]
+            if hasattr(component, "children"):
+                for child in component.children:
+                    if getattr(child, "custom_id", None) == "ticket:open":
+                        has_ticket_button = True
+                        break
+
+        if not has_ticket_button:
+            logger.warning(
+                "Panel validation: message %s in guild %s has no ticket:open button — re-deploying",
+                msg_id,
+                guild_id,
+            )
+            await deploy_ticket_panel(channel, guild_id, bot=self)  # type: ignore[arg-type]

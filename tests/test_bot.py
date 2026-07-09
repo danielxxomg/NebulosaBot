@@ -341,3 +341,204 @@ class TestOnReadyBoundedBackfill:
         assert peak_concurrent <= BACKFILL_CONCURRENCY_LIMIT, (
             f"Peak concurrent {peak_concurrent} exceeded BACKFILL_CONCURRENCY_LIMIT {BACKFILL_CONCURRENCY_LIMIT}"
         )
+
+
+# ---------------------------------------------------------------------------
+# _validate_panels — startup panel health check and self-heal
+# (ticket-panel-persistence, Phase 3)
+# ---------------------------------------------------------------------------
+
+
+class TestValidatePanels:
+    """Verify _validate_panels() checks stored panels and self-heals."""
+
+    @pytest.mark.asyncio
+    async def test_healthy_panel_no_redeploy(self) -> None:
+        """When fetch_message succeeds with ticket:open button → no re-deploy."""
+        bot = _make_bot()
+        bot.guild_service = MagicMock()
+        bot.guild_service.update_guild_panel = AsyncMock()
+        bot.guild_service.get_config = AsyncMock()
+        config = MagicMock()
+        config.ticket_panel_message_id = "1"
+        config.ticket_panel_channel_id = "1"
+        bot.guild_service.get_config.return_value = config
+
+        guild = MagicMock()
+        guild.id = 111
+        guild.name = "Test Guild"
+
+        channel = MagicMock()
+        channel.id = 1
+        guild.get_channel.return_value = channel
+
+        # Message with a ticket:open button component.
+        message = MagicMock()
+        row = MagicMock()
+        button = MagicMock()
+        button.custom_id = "ticket:open"
+        row.children = [button]
+        message.components = [row]
+        channel.fetch_message = AsyncMock(return_value=message)
+
+        with patch.object(type(bot), "guilds", new_callable=lambda: property(lambda _self: [guild])):
+            await bot._validate_panels()
+
+        # No re-deploy — update_guild_panel not called.
+        bot.guild_service.update_guild_panel.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_deleted_panel_triggers_redeploy(self) -> None:
+        """When fetch_message raises NotFound → re-deploy + update IDs."""
+        bot = _make_bot()
+        bot.guild_service = MagicMock()
+        bot.guild_service.update_guild_panel = AsyncMock()
+        bot.guild_service.get_config = AsyncMock()
+        config = MagicMock()
+        config.ticket_panel_message_id = "1"
+        config.ticket_panel_channel_id = "1"
+        bot.guild_service.get_config.return_value = config
+
+        guild = MagicMock()
+        guild.id = 111
+        guild.name = "Test Guild"
+
+        channel = MagicMock()
+        channel.id = 1
+        guild.get_channel.return_value = channel
+        channel.fetch_message = AsyncMock(side_effect=discord.NotFound(MagicMock(), "gone"))
+
+        mock_message = MagicMock()
+        mock_message.id = 99
+        mock_message.channel = channel
+
+        with (
+            patch.object(type(bot), "guilds", new_callable=lambda: property(lambda _self: [guild])),
+            patch("bot.bot.deploy_ticket_panel", new_callable=AsyncMock, return_value=mock_message) as mock_deploy,
+        ):
+            await bot._validate_panels()
+
+        mock_deploy.assert_awaited_once_with(
+            channel, "111", bot=bot,
+        )
+
+    @pytest.mark.asyncio
+    async def test_stripped_panel_triggers_redeploy(self) -> None:
+        """When message exists but has no ticket:open button → re-deploy."""
+        bot = _make_bot()
+        bot.guild_service = MagicMock()
+        bot.guild_service.update_guild_panel = AsyncMock()
+        bot.guild_service.get_config = AsyncMock()
+        config = MagicMock()
+        config.ticket_panel_message_id = "1"
+        config.ticket_panel_channel_id = "1"
+        bot.guild_service.get_config.return_value = config
+
+        guild = MagicMock()
+        guild.id = 111
+        guild.name = "Test Guild"
+
+        channel = MagicMock()
+        channel.id = 1
+        guild.get_channel.return_value = channel
+
+        # Message with no matching button.
+        message = MagicMock()
+        message.components = []
+        channel.fetch_message = AsyncMock(return_value=message)
+
+        mock_message = MagicMock()
+        mock_message.id = 99
+        mock_message.channel = channel
+
+        with (
+            patch.object(type(bot), "guilds", new_callable=lambda: property(lambda _self: [guild])),
+            patch("bot.bot.deploy_ticket_panel", new_callable=AsyncMock, return_value=mock_message) as mock_deploy,
+        ):
+            await bot._validate_panels()
+
+        mock_deploy.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_missing_channel_clears_ids(self) -> None:
+        """When get_channel returns None → clear IDs + log warning."""
+        bot = _make_bot()
+        bot.guild_service = MagicMock()
+        bot.guild_service.update_guild_panel = AsyncMock()
+        bot.guild_service.get_config = AsyncMock()
+        config = MagicMock()
+        config.ticket_panel_message_id = "1"
+        config.ticket_panel_channel_id = "1"
+        bot.guild_service.get_config.return_value = config
+
+        guild = MagicMock()
+        guild.id = 111
+        guild.name = "Test Guild"
+        guild.get_channel.return_value = None
+
+        with patch.object(type(bot), "guilds", new_callable=lambda: property(lambda _self: [guild])):
+            await bot._validate_panels()
+
+        bot.guild_service.update_guild_panel.assert_awaited_once_with("111", None, None)
+
+    @pytest.mark.asyncio
+    async def test_forbidden_on_fetch_skips_guild(self) -> None:
+        """When fetch_message raises Forbidden → skip guild + log warning."""
+        bot = _make_bot()
+        bot.guild_service = MagicMock()
+        bot.guild_service.update_guild_panel = AsyncMock()
+        bot.guild_service.get_config = AsyncMock()
+        config = MagicMock()
+        config.ticket_panel_message_id = "1"
+        config.ticket_panel_channel_id = "1"
+        bot.guild_service.get_config.return_value = config
+
+        guild = MagicMock()
+        guild.id = 111
+        guild.name = "Test Guild"
+
+        channel = MagicMock()
+        channel.id = 1
+        guild.get_channel.return_value = channel
+        channel.fetch_message = AsyncMock(side_effect=discord.Forbidden(MagicMock(), "no perms"))
+
+        with patch.object(type(bot), "guilds", new_callable=lambda: property(lambda _self: [guild])):
+            await bot._validate_panels()
+
+        # IDs retained — neither clear nor redeploy.
+        bot.guild_service.update_guild_panel.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_validation_runs_after_backfill(self) -> None:
+        """_validate_panels MUST be called at the end of on_ready, after backfill gather."""
+        bot = _make_bot()
+        bot.guild_service = MagicMock()
+        bot.guild_service.ensure_guild_exists = AsyncMock()
+        bot.guild_service.get_config = AsyncMock(return_value=MagicMock(
+            ticket_panel_message_id=None, ticket_panel_channel_id=None,
+        ))
+
+        call_order: list[str] = []
+
+        async def mock_ensure(guild_id: str) -> None:
+            call_order.append(f"backfill:{guild_id}")
+
+        async def mock_validate() -> None:
+            call_order.append("validate")
+
+        bot.guild_service.ensure_guild_exists = mock_ensure
+        bot._validate_panels = mock_validate
+
+        guild_a = MagicMock()
+        guild_a.id = 111
+        guild_b = MagicMock()
+        guild_b.id = 222
+
+        with patch.object(type(bot), "guilds", new_callable=lambda: property(lambda _self: [guild_a, guild_b])):
+            await bot.on_ready()
+
+        # Backfill happened before validation.
+        assert "backfill:111" in call_order
+        assert "backfill:222" in call_order
+        assert call_order.index("validate") > call_order.index("backfill:111")
+        assert call_order.index("validate") > call_order.index("backfill:222")
