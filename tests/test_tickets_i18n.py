@@ -107,6 +107,15 @@ def _load_ticket_i18n(tmp_path: Path) -> Generator[None, None, None]:
                 "title": "TICKET_NO_CONFIG_ES",
                 "description": "TICKET_NO_CONFIG_DESC_ES",
             },
+            "modal": {
+                "title": "MODAL_TITLE_{category}_ES",
+                "subject_label": "MODAL_SUBJECT_LABEL_ES",
+                "subject_placeholder": "MODAL_SUBJECT_PH_ES",
+                "description_label": "MODAL_DESC_LABEL_ES",
+                "description_placeholder": "MODAL_DESC_PH_ES",
+                "empty_title": "MODAL_EMPTY_TITLE_ES",
+                "empty_title_description": "MODAL_EMPTY_TITLE_DESC_ES",
+            },
             "panel": {
                 "server_only_title": "PANEL_GUILD_ONLY_ES",
                 "server_only_description": "PANEL_GUILD_ONLY_DESC_ES",
@@ -173,11 +182,13 @@ def _load_ticket_i18n(tmp_path: Path) -> Generator[None, None, None]:
                 "success_title": "OPEN_OK_ES",
                 "success_description": "OPEN_OK_DESC_{channel}_ES",
                 "welcome_title": "OPEN_WELCOME_{number}_ES",
+                "welcome_title_with_subject": "OPEN_WELCOME_SUBJ_{number}_{subject}_ES",
                 "welcome_description": "OPEN_WELCOME_DESC_ES",
                 "welcome_claimed_title": "OPEN_CLAIMED_{number}_ES",
                 "welcome_claimed_description": "OPEN_CLAIMED_DESC_ES",
                 "welcome_claimed_by": "OPEN_CLAIMED_BY_ES",
                 "author_field": "OPEN_AUTHOR_ES",
+                "details_field": "OPEN_DETAILS_ES",
                 "footer": "OPEN_FOOTER_ES",
             },
             "actions": {
@@ -304,6 +315,15 @@ def _load_ticket_i18n(tmp_path: Path) -> Generator[None, None, None]:
                 "title": "TICKET_NO_CONFIG_EN",
                 "description": "TICKET_NO_CONFIG_DESC_EN",
             },
+            "modal": {
+                "title": "MODAL_TITLE_{category}_EN",
+                "subject_label": "MODAL_SUBJECT_LABEL_EN",
+                "subject_placeholder": "MODAL_SUBJECT_PH_EN",
+                "description_label": "MODAL_DESC_LABEL_EN",
+                "description_placeholder": "MODAL_DESC_PH_EN",
+                "empty_title": "MODAL_EMPTY_TITLE_EN",
+                "empty_title_description": "MODAL_EMPTY_TITLE_DESC_EN",
+            },
             "panel": {
                 "server_only_title": "PANEL_GUILD_ONLY_EN",
                 "server_only_description": "PANEL_GUILD_ONLY_DESC_EN",
@@ -370,11 +390,13 @@ def _load_ticket_i18n(tmp_path: Path) -> Generator[None, None, None]:
                 "success_title": "OPEN_OK_EN",
                 "success_description": "OPEN_OK_DESC_{channel}_EN",
                 "welcome_title": "OPEN_WELCOME_{number}_EN",
+                "welcome_title_with_subject": "OPEN_WELCOME_SUBJ_{number}_{subject}_EN",
                 "welcome_description": "OPEN_WELCOME_DESC_EN",
                 "welcome_claimed_title": "OPEN_CLAIMED_{number}_EN",
                 "welcome_claimed_description": "OPEN_CLAIMED_DESC_EN",
                 "welcome_claimed_by": "OPEN_CLAIMED_BY_EN",
                 "author_field": "OPEN_AUTHOR_EN",
+                "details_field": "OPEN_DETAILS_EN",
                 "footer": "OPEN_FOOTER_EN",
             },
             "actions": {
@@ -1123,6 +1145,89 @@ class TestTicketEmbedI18n:
         assert embed.title is not None
         assert "OPEN_CLAIMED_" in embed.title
         assert embed.description is not None and "OPEN_CLAIMED_DESC_ES" in embed.description
+
+
+class TestTicketEmbedSubjectI18n:
+    """Test build_ticket_embed uses subject as title prefix when present."""
+
+    def test_embed_title_with_subject_es(self) -> None:
+        """Ticket with subject → embed title uses title_with_subject key (ES)."""
+        guild_id = _ES_GUILD_ID
+        row = _ticket_row(status="open", guild_id=guild_id)
+        row["subject"] = "Login broken"
+        ticket = Ticket.from_db_row(row)
+        embed = _build_ticket_embed(ticket, guild_id=guild_id)
+        assert embed.title is not None
+        assert "OPEN_WELCOME_SUBJ_" in embed.title
+        assert "Login broken" in embed.title
+
+    def test_embed_title_with_subject_en(self) -> None:
+        """Ticket with subject → embed title uses title_with_subject key (EN)."""
+        guild_id = _EN_GUILD_ID
+        row = _ticket_row(status="open", guild_id=guild_id)
+        row["subject"] = "Need help"
+        ticket = Ticket.from_db_row(row)
+        embed = _build_ticket_embed(ticket, guild_id=guild_id)
+        assert embed.title is not None
+        assert "OPEN_WELCOME_SUBJ_" in embed.title
+        assert "Need help" in embed.title
+
+    def test_embed_title_fallback_when_no_subject_es(self) -> None:
+        """Ticket without subject → embed title uses welcome_title fallback (ES)."""
+        guild_id = _ES_GUILD_ID
+        row = _ticket_row(status="open", guild_id=guild_id)
+        row["subject"] = None
+        ticket = Ticket.from_db_row(row)
+        embed = _build_ticket_embed(ticket, guild_id=guild_id)
+        assert embed.title is not None
+        assert "OPEN_WELCOME_" in embed.title
+        assert "SUBJ" not in embed.title
+
+    def test_embed_description_field_when_present_es(self) -> None:
+        """Ticket with description → embed includes details field (ES)."""
+        guild_id = _ES_GUILD_ID
+        row = _ticket_row(status="open", guild_id=guild_id)
+        row["description"] = "Cannot access since Monday"
+        ticket = Ticket.from_db_row(row)
+        embed = _build_ticket_embed(ticket, guild_id=guild_id)
+        field_names = [f.name for f in embed.fields]
+        assert "OPEN_DETAILS_ES" in field_names
+
+    def test_embed_no_description_field_when_absent_es(self) -> None:
+        """Ticket without description → embed has no details field."""
+        guild_id = _ES_GUILD_ID
+        row = _ticket_row(status="open", guild_id=guild_id)
+        row["description"] = None
+        ticket = Ticket.from_db_row(row)
+        embed = _build_ticket_embed(ticket, guild_id=guild_id)
+        field_names = [f.name for f in embed.fields]
+        assert "OPEN_DETAILS_ES" not in field_names
+
+
+class TestModalI18nKeys:
+    """Test modal i18n keys exist in both locales."""
+
+    def test_modal_keys_es(self) -> None:
+        """Modal i18n keys resolve for ES guild."""
+        from bot.core.i18n import t
+
+        assert t(_ES_GUILD_ID, "tickets.modal.title", category="Support") == "MODAL_TITLE_Support_ES"
+        assert t(_ES_GUILD_ID, "tickets.modal.subject_label") == "MODAL_SUBJECT_LABEL_ES"
+        assert t(_ES_GUILD_ID, "tickets.modal.subject_placeholder") == "MODAL_SUBJECT_PH_ES"
+        assert t(_ES_GUILD_ID, "tickets.modal.description_label") == "MODAL_DESC_LABEL_ES"
+        assert t(_ES_GUILD_ID, "tickets.modal.description_placeholder") == "MODAL_DESC_PH_ES"
+        assert t(_ES_GUILD_ID, "tickets.modal.empty_title") == "MODAL_EMPTY_TITLE_ES"
+        assert t(_ES_GUILD_ID, "tickets.modal.empty_title_description") == "MODAL_EMPTY_TITLE_DESC_ES"
+
+    def test_modal_keys_en(self) -> None:
+        """Modal i18n keys resolve for EN guild."""
+        from bot.core.i18n import t
+
+        assert t(_EN_GUILD_ID, "tickets.modal.title", category="Report") == "MODAL_TITLE_Report_EN"
+        assert t(_EN_GUILD_ID, "tickets.modal.subject_label") == "MODAL_SUBJECT_LABEL_EN"
+        assert t(_EN_GUILD_ID, "tickets.modal.subject_placeholder") == "MODAL_SUBJECT_PH_EN"
+        assert t(_EN_GUILD_ID, "tickets.modal.description_label") == "MODAL_DESC_LABEL_EN"
+        assert t(_EN_GUILD_ID, "tickets.modal.description_placeholder") == "MODAL_DESC_PH_EN"
 
 
 # ---------------------------------------------------------------------------

@@ -77,6 +77,9 @@ class TicketService:
         author_id: str,
         category_id: str | None,
         channel_id: str,
+        *,
+        subject: str | None = None,
+        description: str | None = None,
     ) -> Ticket:
         """Create a new ticket with sequential numbering per guild.
 
@@ -113,6 +116,8 @@ class TicketService:
                     channel_id=channel_id,
                     category_id=category_id,
                     ticket_number=ticket_number,
+                    subject=subject,
+                    description=description,
                 )
                 ticket = Ticket.from_db_row(row)
                 self._ticket_channel_cache.add(int(channel_id))
@@ -763,6 +768,8 @@ class TicketService:
         category_id: str | None = None,
         mod_role: discord.Role | None = None,
         parent_id: str | None = None,
+        subject: str | None = None,
+        description: str | None = None,
     ) -> tuple[discord.TextChannel, Ticket]:
         """Create a ticket Discord channel, insert the ticket row, and rename if needed.
 
@@ -831,6 +838,8 @@ class TicketService:
                     author_id=str(author.id),
                     category_id=category_id,
                     channel_id=str(channel.id),
+                    subject=subject,
+                    description=description,
                 )
         except Exception:
             logger.exception("Ticket row creation failed — cleaning up channel %s", channel.id)
