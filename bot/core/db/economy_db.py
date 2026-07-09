@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
 from typing import Any
 
 from bot.core.db.base import _unwrap
@@ -51,94 +50,69 @@ class EconomyDBMixin:
         xp_delta: int,
         new_level: int | None = None,
     ) -> dict:
-        """Increment a member's XP and return the updated row.
+        """Increment a member's XP atomically via RPC.
 
-        Optionally updates the stored level and sets ``lastXpGain`` to now.
-        If the member does not have a row yet, an initial row is upserted.
-        Returns the camelCase row dict with at least ``xp`` and ``level``.
+        Calls the ``increment_member_xp`` Postgres function which handles
+        the upsert + increment in a single round trip.  The level is NOT
+        set by the RPC — it is computed by the caller (EconomyService)
+        from guild economy config thresholds.
         """
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
 
-        now = datetime.now(UTC).isoformat()
-        existing = await self.get_member(guild_id, user_id)
-        if existing is not None:
-            new_xp_val = max(existing.get("xp", 0) + xp_delta, 0)
-            level = new_level if new_level is not None else existing.get("level", 0)
-            logger.debug(
-                "DB update_member_xp(%s/%s): xp %d → %d, level=%d",
-                guild_id,
-                user_id,
-                existing.get("xp", 0),
-                new_xp_val,
-                level,
-            )
+        logger.debug(
+            "DB update_member_xp(%s/%s): delta=%d",
+            guild_id,
+            user_id,
+            xp_delta,
+        )
+        response = await self._client.rpc(
+            "increment_member_xp",
+            {
+                "p_guild_id": guild_id,
+                "p_user_id": user_id,
+                "p_amount": xp_delta,
+            },
+        ).execute()
+        rows = _unwrap(response)
+        if not rows:
+            return {"xp": 0, "level": 0}
+        result = rows[0]
+        # If caller provides a level override, update it separately.
+        if new_level is not None:
             await self._client.table("member").update(
-                {
-                    "xp": new_xp_val,
-                    "level": level,
-                    "lastXpGain": now,
-                }
+                {"level": new_level}
             ).eq("guildId", guild_id).eq("userId", user_id).execute()
-            return {"xp": new_xp_val, "level": level}
-        else:
-            level = new_level if new_level is not None else 0
-            logger.debug(
-                "DB update_member_xp(%s/%s): new member, xp=%d",
-                guild_id,
-                user_id,
-                xp_delta,
-            )
-            await self._client.table("member").upsert(
-                {
-                    "guildId": guild_id,
-                    "userId": user_id,
-                    "xp": max(xp_delta, 0),
-                    "level": level,
-                    "lastXpGain": now,
-                }
-            ).execute()
-            return {"xp": xp_delta, "level": level}
+            result["level"] = new_level
+        return result
 
     async def update_member_coins(self: Any, guild_id: str, user_id: str, coin_delta: int) -> dict:
-        """Increment a member's coins and return the updated row.
+        """Increment a member's coins atomically via RPC.
 
-        If the member does not have a row yet, an initial row with
-        ``coins = coin_delta`` is upserted.  Returns the camelCase row
-        dict with at least ``coins``.
+        Calls the ``increment_member_coins`` Postgres function which handles
+        the upsert + increment in a single round trip.
         """
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
 
-        existing = await self.get_member(guild_id, user_id)
-        if existing is not None:
-            new_coins = max(existing.get("coins", 0) + coin_delta, 0)
-            logger.debug(
-                "DB update_member_coins(%s/%s): coins %d → %d",
-                guild_id,
-                user_id,
-                existing.get("coins", 0),
-                new_coins,
-            )
-            await self._client.table("member").update({"coins": new_coins}).eq("guildId", guild_id).eq(
-                "userId", user_id
-            ).execute()
-            return {"coins": new_coins}
-        else:
-            logger.debug(
-                "DB update_member_coins(%s/%s): new member, coins=%d",
-                guild_id,
-                user_id,
-                coin_delta,
-            )
-            await self._client.table("member").upsert(
-                {
-                    "guildId": guild_id,
-                    "userId": user_id,
-                    "coins": max(coin_delta, 0),
-                }
-            ).execute()
-            return {"coins": coin_delta}
+        logger.debug(
+            "DB update_member_coins(%s/%s): delta=%d",
+            guild_id,
+            user_id,
+            coin_delta,
+        )
+        response = await self._client.rpc(
+            "increment_member_coins",
+            {
+                "p_guild_id": guild_id,
+                "p_user_id": user_id,
+                "p_amount": coin_delta,
+            },
+        ).execute()
+        rows = _unwrap(response)
+        if not rows:
+            return {"coins": 0}
+        return rows[0]
 
     async def update_member_daily(
         self: Any,
@@ -149,53 +123,37 @@ class EconomyDBMixin:
         last_daily_reset: str | None,
         last_daily: str | None,
     ) -> dict:
-        """Apply a daily claim: increment coins, set streak + timestamps.
+        """Apply a daily claim atomically via RPC.
 
-        If the member does not have a row yet, an initial row is upserted.
-        Returns the camelCase row dict with at least ``coins``.
+        Calls the ``set_member_daily`` Postgres function which handles
+        the upsert + coin increment + streak + timestamps in a single
+        round trip.
         """
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
 
-        existing = await self.get_member(guild_id, user_id)
-        if existing is not None:
-            new_coins = max(existing.get("coins", 0) + coin_delta, 0)
-            logger.debug(
-                "DB update_member_daily(%s/%s): coins %d → %d, streak=%d",
-                guild_id,
-                user_id,
-                existing.get("coins", 0),
-                new_coins,
-                streak,
-            )
-            await self._client.table("member").update(
-                {
-                    "coins": new_coins,
-                    "dailyStreak": streak,
-                    "lastDailyReset": last_daily_reset,
-                    "lastDaily": last_daily,
-                }
-            ).eq("guildId", guild_id).eq("userId", user_id).execute()
-            return {"coins": new_coins}
-        else:
-            logger.debug(
-                "DB update_member_daily(%s/%s): new member, coins=%d, streak=%d",
-                guild_id,
-                user_id,
-                coin_delta,
-                streak,
-            )
-            await self._client.table("member").upsert(
-                {
-                    "guildId": guild_id,
-                    "userId": user_id,
-                    "coins": max(coin_delta, 0),
-                    "dailyStreak": streak,
-                    "lastDailyReset": last_daily_reset,
-                    "lastDaily": last_daily,
-                }
-            ).execute()
-            return {"coins": coin_delta}
+        logger.debug(
+            "DB update_member_daily(%s/%s): coins_delta=%d, streak=%d",
+            guild_id,
+            user_id,
+            coin_delta,
+            streak,
+        )
+        response = await self._client.rpc(
+            "set_member_daily",
+            {
+                "p_guild_id": guild_id,
+                "p_user_id": user_id,
+                "p_coin_amount": coin_delta,
+                "p_streak": streak,
+                "p_last_daily_reset": last_daily_reset,
+                "p_last_daily": last_daily,
+            },
+        ).execute()
+        rows = _unwrap(response)
+        if not rows:
+            return {"coins": 0, "dailyStreak": streak, "lastDailyReset": last_daily_reset, "lastDaily": last_daily}
+        return rows[0]
 
     async def get_leaderboard(
         self: Any,

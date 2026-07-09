@@ -27,6 +27,7 @@ from bot.utils.embeds import (
     info_embed,
     success_embed,
 )
+from bot.utils.paginator import EmbedPaginator
 from bot.utils.time import parse_duration
 
 if TYPE_CHECKING:
@@ -35,71 +36,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 MODLOGS_PER_PAGE = 5
-
-
-# ======================================================================
-# Modlogs Paginator
-# ======================================================================
-
-
-class _ModlogsPaginator(discord.ui.View):
-    """Two-button paginator for /modlogs embeds.
-
-    Shows prev/next buttons that cycle through a list of pre-built
-    :class:`discord.Embed` pages.
-    """
-
-    __slots__ = ("_current", "_pages")
-
-    def __init__(self, pages: list[discord.Embed], guild_id: str = "") -> None:
-        super().__init__(timeout=120)
-        self._pages = pages
-        self._current = 0
-        # Localize button labels at runtime (decorators provide English defaults).
-        for child in self.children:
-            if isinstance(child, discord.ui.Button):
-                if child.custom_id == "modlogs_prev":
-                    child.label = t(guild_id, "sentinel.modlogs.prev_button")
-                elif child.custom_id == "modlogs_next":
-                    child.label = t(guild_id, "sentinel.modlogs.next_button")
-        self._update_buttons()
-
-    # -- button callbacks ----------------------------------------------
-
-    @discord.ui.button(label="◀ Previous", style=discord.ButtonStyle.secondary, custom_id="modlogs_prev")
-    async def prev_button(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button,
-    ) -> None:
-        self._current = max(0, self._current - 1)
-        self._update_buttons()
-        await interaction.response.edit_message(
-            embed=self._pages[self._current],
-            view=self,
-        )
-
-    @discord.ui.button(label="Next ▶", style=discord.ButtonStyle.secondary, custom_id="modlogs_next")
-    async def next_button(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button,
-    ) -> None:
-        self._current = min(len(self._pages) - 1, self._current + 1)
-        self._update_buttons()
-        await interaction.response.edit_message(
-            embed=self._pages[self._current],
-            view=self,
-        )
-
-    # -- helpers -------------------------------------------------------
-
-    def _update_buttons(self) -> None:
-        """Disable prev/next at boundaries."""
-        children = list(self.children)
-        if len(children) >= 2:
-            children[0].disabled = self._current == 0
-            children[1].disabled = self._current == len(self._pages) - 1
 
 
 # ======================================================================
@@ -790,7 +726,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         if len(pages) == 1:
             await ctx.send(embed=pages[0], ephemeral=True)
         else:
-            view = _ModlogsPaginator(pages, guild_id=guild_id)
+            view = EmbedPaginator(pages, custom_id_prefix="modlogs:")
             await ctx.send(embed=pages[0], view=view, ephemeral=True)
 
 

@@ -744,34 +744,35 @@ class TestHandleModErrorI18n:
 
 
 class TestPaginatorButtonI18n:
-    """_ModlogsPaginator button labels are localized via t()."""
+    """EmbedPaginator button labels use universal symbols (no i18n needed)."""
 
     def test_paginator_es_buttons(self) -> None:
-        """ES guild gets Spanish paginator button labels."""
+        """Paginator buttons have universal symbols and correct custom_ids."""
         import discord
 
-        from bot.cogs.sentinel import _ModlogsPaginator
+        from bot.utils.paginator import EmbedPaginator
 
         page = discord.Embed(title="test")
-        view = _ModlogsPaginator([page, page], guild_id=str(_GUILD_ID_ES))
+        view = EmbedPaginator([page, page], custom_id_prefix="modlogs:")
 
         buttons = [c for c in view.children if isinstance(c, discord.ui.Button)]
         labels = {b.custom_id: b.label for b in buttons}
 
-        assert labels["modlogs_prev"] == "MODLOGS_PREV_ES"
-        assert labels["modlogs_next"] == "MODLOGS_NEXT_ES"
+        # EmbedPaginator uses universal symbols, not localized text
+        assert "◀ Previous" in labels["modlogs:prev"]
+        assert "Next ▶" in labels["modlogs:next"]
 
     def test_paginator_en_buttons(self) -> None:
-        """EN guild gets English paginator button labels."""
+        """EN guild also gets universal paginator button labels."""
         import discord
 
-        from bot.cogs.sentinel import _ModlogsPaginator
+        from bot.utils.paginator import EmbedPaginator
 
         page = discord.Embed(title="test")
-        view = _ModlogsPaginator([page, page], guild_id=str(_GUILD_ID_EN))
+        view = EmbedPaginator([page, page], custom_id_prefix="modlogs:")
 
         buttons = [c for c in view.children if isinstance(c, discord.ui.Button)]
         labels = {b.custom_id: b.label for b in buttons}
 
-        assert labels["modlogs_prev"] == "MODLOGS_PREV_EN"
-        assert labels["modlogs_next"] == "MODLOGS_NEXT_EN"
+        assert "◀ Previous" in labels["modlogs:prev"]
+        assert "Next ▶" in labels["modlogs:next"]
