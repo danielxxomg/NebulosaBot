@@ -8,9 +8,7 @@ Define persistent Discord UI components for ticket panels and per-ticket actions
 
 ### Requirement: Ticket panel view
 
-The system MUST provide a persistent panel view with an open button. `TicketPanelView`, `TicketActionsView`, and `_CategorySelectView` MUST reside in `bot/views/tickets.py`. Panel design: the open button triggers an ephemeral category dropdown after click. Button labels MUST be resolved dynamically via `t()` at interaction time using `interaction.guild_id`, not only at construction time.
-
-(Previously: labels were set only at construction; after restart, English defaults persisted for non-English guilds)
+The system MUST provide a persistent panel view with an open button. `TicketPanelView`, `TicketActionsView`, and `_CategorySelectView` MUST reside in `bot/views/tickets.py`. Panel design: the open button triggers an ephemeral category dropdown after click. Button labels MUST be resolved dynamically via `t()` at interaction time using `interaction.guild_id`, not only at construction time. On category selection, the system SHALL respond with a `TicketIntakeModal` instead of deferring immediately.
 
 #### Scenario: Panel render
 
@@ -22,7 +20,7 @@ The system MUST provide a persistent panel view with an open button. `TicketPane
 
 - GIVEN a user clicks the open button on the panel
 - WHEN categories exist
-- THEN an ephemeral category select dropdown is shown; upon selection a new ticket is created
+- THEN an ephemeral category select dropdown is shown; upon selection a modal is displayed
 
 #### Scenario: Empty category list
 
@@ -146,13 +144,19 @@ The system MUST re-register persistent views on bot startup so buttons remain fu
 
 ### Requirement: Channel creation extracted to service
 
-Channel creation logic (permission overwrites, channel creation, DB insert, rename) MUST be extracted to `TicketService.create_ticket_channel()`.
+Channel creation logic (permission overwrites, channel creation, DB insert, rename) MUST be extracted to `TicketService.create_ticket_channel()`. The modal submit callback SHALL call `create_ticket_channel()` with `subject` and `description` parameters.
 
 #### Scenario: create_ticket_channel called
 
 - GIVEN guild config, author, category_id, and mod_role
 - WHEN `TicketService.create_ticket_channel()` is called
 - THEN a Discord channel is created with correct overwrites and a Ticket row is inserted
+
+#### Scenario: create_ticket_channel with subject and description
+
+- GIVEN modal-submitted subject and description
+- WHEN `TicketService.create_ticket_channel(subject=..., description=...)` is called
+- THEN the Ticket row includes the subject and description values
 
 ### Requirement: Close flow extracted to service
 
@@ -189,3 +193,25 @@ After extraction, `bot/cogs/tickets.py` MUST be under ~600 lines (from 2015). Th
 - GIVEN all views, embeds, channel creation, close flow, and lookup helpers are extracted
 - WHEN `wc -l bot/cogs/tickets.py` is run
 - THEN the result is under ~600 lines
+
+### Requirement: Welcome embed pinned after creation
+
+After sending the welcome embed with `TicketActionsView` in a new ticket channel, the system SHALL call `message.pin()` to pin the welcome embed.
+
+#### Scenario: Welcome embed pinned
+
+- GIVEN a new ticket channel is created
+- WHEN the welcome embed is sent
+- THEN the embed message is pinned in the channel
+
+#### Scenario: Embed title uses subject
+
+- GIVEN a ticket with subject="Login broken"
+- WHEN `build_ticket_embed()` is called
+- THEN the embed title is "#0003 — Login broken"
+
+#### Scenario: Embed title fallback when no subject
+
+- GIVEN a ticket with subject=null
+- WHEN `build_ticket_embed()` is called
+- THEN the embed title is "Ticket #0003"
