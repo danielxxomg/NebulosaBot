@@ -145,7 +145,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         except Exception:
             logger.exception("Failed to update lastActivity for channel %s", message.channel.id)
 
-    @commands.hybrid_command(name="ticket_panel", description="Deploy the ticket panel to the current channel")
+    @commands.hybrid_command(name="ticket_panel", description="Deploy the ticket panel to the current channel.")
     @app_commands.describe(
         title="Optional title for the panel embed", description_text="Optional description for the panel embed"
     )
@@ -182,7 +182,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
         await ctx.send(embed=_ok(gid, "tickets.panel.success"), ephemeral=True)
 
-    @commands.hybrid_command(name="create_category", description="Create a new ticket category")
+    @commands.hybrid_command(name="create_category", description="Create a new ticket category.")
     @app_commands.describe(
         name="Category name", emoji="Optional emoji", description="Optional description", position="Display order"
     )
@@ -222,7 +222,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
         await ctx.send(embed=_ok(gid, "tickets.create.success", name=cat.name, id=cat.id), ephemeral=True)
 
-    @commands.hybrid_command(name="list_categories", description="List all active ticket categories")
+    @commands.hybrid_command(name="list_categories", description="List all active ticket categories.")
     @app_commands.default_permissions(administrator=True)
     @is_mod()
     async def list_categories(self, ctx: commands.Context) -> None:
@@ -258,7 +258,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         embed.set_footer(text=t(gid, "tickets.open.footer"))
         await ctx.send(embed=embed, ephemeral=True)
 
-    @commands.hybrid_command(name="delete_category", description="Delete a ticket category by ID")
+    @commands.hybrid_command(name="delete_category", description="Delete a ticket category by ID.")
     @app_commands.describe(category_id="The UUID of the category to delete")
     @app_commands.default_permissions(administrator=True)
     @is_mod()
@@ -297,7 +297,11 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
         await ctx.send(embed=_ok(gid, "tickets.delete.success", name=cat_name), ephemeral=True)
 
-    @commands.hybrid_group(name="configure_fields", fallback="help")
+    @commands.hybrid_group(
+        name="configure_fields",
+        fallback="help",
+        description="Configure custom intake fields for a ticket category.",
+    )
     @app_commands.default_permissions(administrator=True)
     @is_mod()
     async def configure_fields(self, ctx: commands.Context) -> None:
@@ -305,7 +309,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         gid = str(ctx.guild.id) if ctx.guild else None
         await ctx.send(embed=_info(gid, "tickets.configure_fields.help"), ephemeral=True)
 
-    @configure_fields.command(name="set")
+    @configure_fields.command(name="set", description="Set field definitions for a ticket category.")
     @app_commands.describe(
         category_id="The UUID of the ticket category",
         fields_json='JSON array of field definitions, e.g. \'[{"key":"player_nick","label":"Player Nickname"}]\'',
@@ -389,7 +393,11 @@ class TicketsCog(commands.Cog, name="Tickets"):
                 ephemeral=True,
             )
 
-    @commands.hybrid_group(name="subticket", fallback="help")
+    @commands.hybrid_group(
+        name="subticket",
+        fallback="help",
+        description="Manage sub-tickets linked to a parent ticket.",
+    )
     @is_mod()
     async def subticket(self, ctx: commands.Context) -> None:
         gid = str(ctx.guild.id) if ctx.guild else None
@@ -413,7 +421,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             await ctx.send(embed=_err(gid, "tickets.subticket.owner_not_found_resolve"))
             return None
 
-    @subticket.command(name="create")
+    @subticket.command(name="create", description="Create a sub-ticket linked to a parent ticket.")
     @app_commands.describe(parent_id="The UUID of the parent ticket (omitted: uses current channel)")
     @is_mod()
     async def subticket_create(self, ctx: commands.Context, parent_id: str | None = None) -> None:
@@ -508,7 +516,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             "Sub-ticket #%d created (parent=%s, guild=%s, author=%s)", subticket.ticket_number, pid, guild.id, author.id
         )
 
-    @commands.hybrid_command(name="reopen")
+    @commands.hybrid_command(name="reopen", description="Reopen a closed ticket.")
     @app_commands.describe(ticket_ref="Optional ticket reference: '#0003', '0003', a UUID, or 'ticket:#0003'")
     @is_mod()
     async def reopen(self, ctx: commands.Context, *, ticket_ref: str | None = None) -> None:
@@ -545,7 +553,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
         await ctx.send(embed=_ok(gid, "tickets.reopen.success"))
 
-    @commands.hybrid_command(name="transfer")
+    @commands.hybrid_command(name="transfer", description="Transfer a ticket to another staff member.")
     @app_commands.describe(member="The staff member to transfer the ticket to")
     @is_mod()
     async def transfer(self, ctx: commands.Context, member: discord.Member) -> None:
@@ -578,13 +586,13 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
         await ctx.send(embed=_ok(gid, "tickets.transfer.success", member=member.mention))
 
-    @commands.hybrid_group(name="note", fallback="help")
+    @commands.hybrid_group(name="note", fallback="help", description="Manage staff notes on tickets.")
     @is_mod()
     async def note(self, ctx: commands.Context) -> None:
         gid = str(ctx.guild.id) if ctx.guild else None
         await ctx.send(embed=_info(gid, "tickets.note.help"))
 
-    @note.command(name="add")
+    @note.command(name="add", description="Add a staff note to the current ticket.")
     @app_commands.describe(content="The note text")
     @is_mod()
     async def note_add(self, ctx: commands.Context, content: str) -> None:
@@ -615,7 +623,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
         await ctx.send(embed=_ok(gid, "tickets.note.list_sent"))
 
-    @note.command(name="list")
+    @note.command(name="list", description="List all staff notes on the current ticket.")
     @is_mod()
     async def note_list(self, ctx: commands.Context) -> None:
         gid = str(ctx.guild.id) if ctx.guild else None
@@ -643,7 +651,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         embed.set_footer(text=t(gid, "tickets.open.footer"))
         await self._send_notes_private(ctx, embed)
 
-    @note.command(name="delete")
+    @note.command(name="delete", description="Delete a staff note from the current ticket.")
     @app_commands.describe(note_id="The UUID of the note to delete")
     @is_mod()
     async def note_delete(self, ctx: commands.Context, note_id: str) -> None:

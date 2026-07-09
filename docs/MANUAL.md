@@ -214,7 +214,7 @@ Cada categoría de ticket puede tener campos de entrada personalizados que el us
 | Definir campos | `/configure_fields set <cat_id> '[{"key":"nick","label":"Nickname"}]'` | Campos personalizados para la categoría |
 | Limpiar campos | `/configure_fields set <cat_id> '[]'` | Elimina todos los campos de la categoría |
 
-**Formato JSON de campos**: array de objetos con `key` (identificador interno) y `label` (texto visible en el modal). Máximo razonable: 5 campos por categoría (límite de Discord modals).
+**Formato JSON de campos**: array de objetos con `key` (identificador interno) y `label` (texto visible en el modal). Máximo **3 campos personalizados** por categoría (el modal de Discord permite 5 inputs en total: título + descripción + hasta 3 extras).
 
 #### Sub-tickets
 
@@ -359,10 +359,10 @@ Panel → Usuario clickea → Modal (título + campos custom) → Canal creado �
 
 El administrador ejecuta `/ticket_panel` en el canal deseado. El bot envía un embed con un botón. Al hacer clic:
 
-1. Se abre un **modal** con campo de título y los campos personalizados de la categoría seleccionada.
-2. El usuario selecciona la categoría (si hay varias) vía un menú desplegable.
+1. Se abre un **menú de categorías** (si hay varias).
+2. Al elegir categoría se abre un **modal** con título (obligatorio), descripción (opcional) y hasta 3 campos personalizados de esa categoría.
 3. Se crea un canal de texto en la categoría de Discord configurada con `/setup`.
-4. El canal recibe un embed con los datos del ticket y botones de acción.
+4. El canal recibe un embed de bienvenida (fijado) con los datos del ticket y botones de acción.
 
 ### Campos personalizados
 
