@@ -1643,3 +1643,70 @@ async def test_create_ticket_channel_passes_category_id(
 
     insert_kwargs = mock_db.insert_ticket.call_args.kwargs
     assert insert_kwargs["category_id"] == "cat-uuid-001"
+
+
+# ===========================================================================
+# Best-effort audit on success path (runtime-hotfix)
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_claim_success_audit_failure_continues(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Spec: claim success audit failure MUST NOT abort the claim.
+
+    When insert_audit_row raises on the success path, the claim
+    UI action (role assignment) proceeds normally and a WARNING is logged.
+    """
+    import logging
+
+    ticket_id = ticket_row["id"]
+    staff_id = "999999999"
+
+    mock_db.get_ticket.side_effect = [
+        ticket_row,
+        {**ticket_row, "status": "claimed", "claimedBy": staff_id},
+    ]
+    mock_db.insert_audit_row.side_effect = Exception("audit table unavailable")
+
+    with caplog.at_level(logging.WARNING, logger="bot.services.ticket_service"):
+        ticket = await service.claim_ticket(ticket_id, claimed_by=staff_id)
+
+    # Claim succeeded — ticket is claimed despite audit failure.
+    assert ticket.status == "claimed"
+    assert ticket.claimed_by == staff_id
+    assert any("audit" in r.message.lower() for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_close_success_audit_failure_continues(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Spec: close success audit failure MUST NOT abort the close.
+
+    When insert_audit_row raises on the success path, the close
+    UI action (channel delete, transcript) proceeds normally and a WARNING is logged.
+    """
+    import logging
+
+    ticket_id = ticket_row["id"]
+
+    mock_db.get_ticket.side_effect = [
+        ticket_row,
+        {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"},
+    ]
+    mock_db.insert_audit_row.side_effect = Exception("audit table unavailable")
+
+    with caplog.at_level(logging.WARNING, logger="bot.services.ticket_service"):
+        ticket = await service.close_ticket(ticket_id, closed_by="999999999")
+
+    # Close succeeded — ticket is closed despite audit failure.
+    assert ticket.status == "closed"
+    assert any("audit" in r.message.lower() for r in caplog.records)

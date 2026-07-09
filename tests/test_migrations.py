@@ -201,3 +201,19 @@ class TestMigration011:
         """Migration 011 MUST index the channelId column."""
         sql = _read_migration("011_ticket_channel_index.sql")
         assert '"channelId"' in sql
+
+
+class TestMigrationParity:
+    """Migration parity: 012 tracked, 005 stale removed (runtime-hotfix)."""
+
+    def test_012_ticket_audit_exists(self) -> None:
+        """Migration 012_ticket_audit.sql MUST exist and be readable."""
+        sql = _read_migration("012_ticket_audit.sql")
+        assert len(sql.strip()) > 0
+
+    def test_005_ticket_audit_absent(self) -> None:
+        """Stale 005_ticket_audit.sql MUST NOT exist in migrations/."""
+        path = MIGRATIONS_DIR / "005_ticket_audit.sql"
+        assert not path.exists(), (
+            f"Stale migration {path} should have been removed"
+        )
