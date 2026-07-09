@@ -12,7 +12,7 @@ Strict TDD: RED phase — tests written BEFORE implementation.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
@@ -312,8 +312,8 @@ class TestTicketAdminEphemeral(TestEphemeralAdminResponses):
     async def test_ticket_panel_slash_is_ephemeral(self) -> None:
         """ticket_panel via slash MUST respond ephemerally (at least the final success)."""
         bot = MagicMock()
-        bot.db = AsyncMock()
-        bot.db.update_guild_panel = AsyncMock()
+        bot.guild_service = MagicMock()
+        bot.guild_service.update_guild_panel = AsyncMock()
 
         cog = TicketsCog(bot)
         ctx = MagicMock()
@@ -321,14 +321,10 @@ class TestTicketAdminEphemeral(TestEphemeralAdminResponses):
         ctx.guild.id = 123456789
         ctx.send = AsyncMock()
         ctx.interaction = MagicMock()  # slash invocation
+        ctx.channel = MagicMock()
 
-        mock_message = MagicMock()
-        mock_message.id = 777777777
-        mock_message.channel = MagicMock()
-        mock_message.channel.id = 888888888
-        ctx.send = AsyncMock(return_value=mock_message)
-
-        await cog.ticket_panel.callback(cog, ctx)
+        with patch("bot.cogs.tickets.deploy_ticket_panel", new_callable=AsyncMock):
+            await cog.ticket_panel.callback(cog, ctx)
 
         assert self._has_ephemeral_calls(ctx.send), "ticket_panel MUST respond with ephemeral=True"
 

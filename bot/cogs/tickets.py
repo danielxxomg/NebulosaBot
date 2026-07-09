@@ -30,6 +30,7 @@ from bot.views.tickets import (
     TicketPanelView,
     _CategorySelect,
     _CategorySelectView,
+    deploy_ticket_panel,
 )
 
 if TYPE_CHECKING:
@@ -165,19 +166,16 @@ class TicketsCog(commands.Cog, name="Tickets"):
             await ctx.send(embed=_err(None, "tickets.panel.server_only"), ephemeral=True)
             return
         gid = str(ctx.guild.id)
-        assert self.bot.db is not None
-        embed = discord.Embed(title=title, description=description_text, color=COLOR_INFO, timestamp=datetime.now(UTC))
-        embed.set_footer(text=t(gid, "tickets.open.footer"))
         try:
-            msg = await ctx.send(embed=embed, view=TicketPanelView(guild_id=gid))
+            await deploy_ticket_panel(
+                ctx.channel, gid, bot=self.bot,
+                title=title, description_text=description_text,
+            )
         except discord.Forbidden:
             await ctx.send(embed=_err(gid, "tickets.panel.permission_denied"), ephemeral=True)
             return
-        try:
-            await self.bot.db.update_guild_panel(gid, str(msg.id), str(msg.channel.id))
-            logger.info("Ticket panel deployed in guild %s", ctx.guild.id)
         except Exception:
-            logger.exception("Failed to persist ticket panel for guild %s", ctx.guild.id)
+            logger.exception("Failed to deploy ticket panel for guild %s", ctx.guild.id)
             await ctx.send(embed=_err(gid, "tickets.panel.deploy_error"), ephemeral=True)
             return
         await ctx.send(embed=_ok(gid, "tickets.panel.success"), ephemeral=True)
