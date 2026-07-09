@@ -39,14 +39,14 @@ Chain strategy: stacked-to-main
 
 ## Phase 2: Service, Views, Embeds
 
-- [ ] 2.1 RED: Tests for `create_ticket`/`create_ticket_channel` with `custom_fields`
-- [ ] 2.2 GREEN: Add `custom_fields` param to `bot/services/ticket_service.py`
-- [ ] 2.3 RED: Tests for dynamic modal — 0/1/3 fields, required/optional validation
-- [ ] 2.4 GREEN: `TicketIntakeModal` in `bot/views/tickets.py` builds dynamic TextInputs
-- [ ] 2.5 RED: Tests for `build_ticket_embed` with custom_fields
-- [ ] 2.6 GREEN: `build_ticket_embed()` in `bot/utils/embeds.py` renders custom fields inline
-- [ ] 2.7 Add i18n keys to `bot/locales/en.json` and `bot/locales/es.json`
-- [ ] 2.8 REFACTOR: `uv run pytest` passes
+- [x] 2.1 RED: Tests for `create_ticket`/`create_ticket_channel` with `custom_fields`
+- [x] 2.2 GREEN: Add `custom_fields` param to `bot/services/ticket_service.py`
+- [x] 2.3 RED: Tests for dynamic modal — 0/1/3 fields, required/optional validation
+- [x] 2.4 GREEN: `TicketIntakeModal` in `bot/views/tickets.py` builds dynamic TextInputs
+- [x] 2.5 RED: Tests for `build_ticket_embed` with custom_fields
+- [x] 2.6 GREEN: `build_ticket_embed()` in `bot/utils/embeds.py` renders custom fields inline
+- [x] 2.7 Add i18n keys to `bot/locales/en.json` and `bot/locales/es.json`
+- [x] 2.8 REFACTOR: `uv run pytest` passes
 
 ## Phase 3: Commands + Integration
 
