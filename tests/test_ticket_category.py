@@ -140,3 +140,120 @@ def test_round_trip() -> None:
     round_tripped = TicketCategory.from_db_row(db_dict)
 
     assert round_tripped == original
+
+
+# ---------------------------------------------------------------------------
+# from_db_row — field_definitions (JSONB array)
+# ---------------------------------------------------------------------------
+
+
+def test_from_db_row_with_field_definitions() -> None:
+    """from_db_row MUST map row['fieldDefinitions'] to field_definitions list."""
+    row = {
+        "id": "cat-fd-01",
+        "guildId": "g1",
+        "name": "Reportes",
+        "position": 0,
+        "fieldDefinitions": [
+            {"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True},
+            {"key": "evidence_url", "label": "Evidence URL", "style": "short", "required": False},
+        ],
+    }
+
+    cat = TicketCategory.from_db_row(row)
+
+    assert len(cat.field_definitions) == 2
+    assert cat.field_definitions[0]["key"] == "player_nick"
+    assert cat.field_definitions[0]["required"] is True
+    assert cat.field_definitions[1]["key"] == "evidence_url"
+    assert cat.field_definitions[1]["required"] is False
+
+
+def test_from_db_row_without_field_definitions_defaults_empty() -> None:
+    """from_db_row MUST default field_definitions to [] when key is missing."""
+    row = {
+        "id": "cat-fd-02",
+        "guildId": "g1",
+        "name": "Support",
+        "position": 0,
+    }
+
+    cat = TicketCategory.from_db_row(row)
+
+    assert cat.field_definitions == []
+
+
+def test_from_db_row_with_null_field_definitions_defaults_empty() -> None:
+    """from_db_row MUST default field_definitions to [] when key is null."""
+    row = {
+        "id": "cat-fd-03",
+        "guildId": "g1",
+        "name": "Support",
+        "position": 0,
+        "fieldDefinitions": None,
+    }
+
+    cat = TicketCategory.from_db_row(row)
+
+    assert cat.field_definitions == []
+
+
+# ---------------------------------------------------------------------------
+# to_db_dict — field_definitions
+# ---------------------------------------------------------------------------
+
+
+def test_to_db_dict_includes_field_definitions() -> None:
+    """to_db_dict MUST include 'fieldDefinitions' when populated."""
+    cat = TicketCategory(
+        id="cat-fd-04",
+        guild_id="g1",
+        name="Reportes",
+        field_definitions=[
+            {"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True},
+        ],
+    )
+
+    result = cat.to_db_dict()
+
+    assert result["fieldDefinitions"] == [
+        {"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True},
+    ]
+
+
+def test_to_db_dict_includes_empty_field_definitions() -> None:
+    """to_db_dict MUST include 'fieldDefinitions': [] when empty."""
+    cat = TicketCategory(
+        id="cat-fd-05",
+        guild_id="g1",
+        name="Support",
+    )
+
+    result = cat.to_db_dict()
+
+    assert result["fieldDefinitions"] == []
+
+
+# ---------------------------------------------------------------------------
+# Round-trip — field_definitions
+# ---------------------------------------------------------------------------
+
+
+def test_round_trip_with_field_definitions() -> None:
+    """field_definitions MUST survive from_db_row(to_db_dict(x)) round-trip."""
+    definitions = [
+        {"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True},
+        {"key": "evidence_url", "label": "Evidence URL", "style": "short", "required": False},
+    ]
+    original = TicketCategory(
+        id="cat-rt-fd",
+        guild_id="g1",
+        name="Reportes",
+        field_definitions=definitions,
+        created_at=None,
+    )
+
+    rebuilt = TicketCategory.from_db_row(original.to_db_dict())
+
+    assert rebuilt.field_definitions == definitions
+    assert rebuilt == original

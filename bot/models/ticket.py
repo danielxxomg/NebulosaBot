@@ -28,6 +28,7 @@ class Ticket:
     parent_id: str | None = None  # self-referential; one level deep (sub-tickets)
     subject: str | None = None
     description: str | None = None
+    custom_fields: dict | None = None
 
     @classmethod
     def from_db_row(cls, row: dict) -> Ticket:
@@ -48,6 +49,7 @@ class Ticket:
             parent_id=row.get("parentId"),
             subject=row.get("subject"),
             description=row.get("description"),
+            custom_fields=row.get("customFields"),
         )
 
     def to_db_dict(self) -> dict:
@@ -68,4 +70,5 @@ class Ticket:
             "parentId": self.parent_id,
             "subject": self.subject,
             "description": self.description,
+            "customFields": self.custom_fields,
         }
