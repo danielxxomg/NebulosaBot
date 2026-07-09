@@ -22,7 +22,13 @@ from bot.services.ticket_service import TicketCategoryNotConfiguredError
 from bot.utils.checks import is_mod
 from bot.utils.embeds import COLOR_INFO, build_ticket_embed, error_embed, info_embed, success_embed
 from bot.utils.ticket_helpers import resolve_ticket_for_channel, resolve_ticket_for_reopen
-from bot.views.tickets import TicketActionsView, TicketIntakeModal, TicketPanelView, _CategorySelect, _CategorySelectView
+from bot.views.tickets import (
+    TicketActionsView,
+    TicketIntakeModal,
+    TicketPanelView,
+    _CategorySelect,
+    _CategorySelectView,
+)
 
 if TYPE_CHECKING:
     from bot.bot import NebulosaBot

@@ -180,7 +180,7 @@ class TicketIntakeModal(discord.ui.Modal):
         self._guild = guild
         self._category_id = category_id
 
-        self.title_input = discord.ui.TextInput(
+        self.title_input: discord.ui.TextInput[TicketIntakeModal] = discord.ui.TextInput(
             label=t(guild_id, "tickets.modal.subject_label"),
             placeholder=t(guild_id, "tickets.modal.subject_placeholder"),
             style=discord.TextStyle.short,
@@ -189,7 +189,7 @@ class TicketIntakeModal(discord.ui.Modal):
         )
         self.add_item(self.title_input)
 
-        self.description_input = discord.ui.TextInput(
+        self.description_input: discord.ui.TextInput[TicketIntakeModal] = discord.ui.TextInput(
             label=t(guild_id, "tickets.modal.description_label"),
             placeholder=t(guild_id, "tickets.modal.description_placeholder"),
             style=discord.TextStyle.paragraph,
@@ -224,7 +224,9 @@ class TicketIntakeModal(discord.ui.Modal):
             description=description,
         )
 
-    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
+    async def on_error(
+        self, interaction: discord.Interaction, error: Exception, *args: Any
+    ) -> None:
         logger.exception("TicketIntakeModal error (guild=%s)", self._guild.id, exc_info=error)
         if not interaction.response.is_done():
             guild_id = str(self._guild.id)

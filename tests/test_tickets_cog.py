@@ -418,6 +418,133 @@ class TestTicketIntakeModal:
         mock_ticket_channel.send.assert_awaited_once()
         sent_message.pin.assert_awaited_once()
 
+    async def test_modal_submit_title_only_description_persists_none(
+        self,
+        ticket_bot: MagicMock,
+        ticket_interaction: MagicMock,
+        ticket_guild: MagicMock,
+        mock_ticket_channel: MagicMock,
+        mock_db,
+    ) -> None:
+        """Title-only submit (blank description) → description=None forwarded and persisted."""
+        ticket_interaction.client = ticket_bot
+
+        config = MagicMock()
+        config.ticket_category_id = "100000000"
+        config.mod_role_id = None
+        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
+
+        category_channel = MagicMock(spec=discord.CategoryChannel)
+        ticket_guild.get_channel = MagicMock(return_value=category_channel)
+
+        ticket = Ticket.from_db_row(_ticket_row(ticket_number=1))
+        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, ticket))
+        ticket_bot.db.get_max_ticket_number = AsyncMock(return_value=0)
+
+        modal_interaction = MagicMock(spec=discord.Interaction)
+        modal_interaction.guild = ticket_guild
+        modal_interaction.user = MagicMock(spec=discord.Member)
+        modal_interaction.user.id = 111111111
+        modal_interaction.user.mention = "<@111111111>"
+        modal_interaction.client = ticket_bot
+        modal_interaction.guild_id = ticket_guild.id
+        modal_interaction.response = MagicMock()
+        modal_interaction.response.defer = AsyncMock()
+        modal_interaction.followup = MagicMock()
+        modal_interaction.followup.send = AsyncMock()
+
+        modal = TicketIntakeModal(
+            guild=ticket_guild,
+            category_id="cat-uuid-001",
+            category_name="Support",
+        )
+        modal.title_input = MagicMock(value="Help me")
+        modal.description_input = MagicMock(value="   ")  # blank/whitespace
+
+        with patch("bot.views.tickets.TicketActionsView"):
+            await modal.on_submit(modal_interaction)
+
+        # description=None forwarded to service.
+        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
+        call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
+        assert call_kwargs["subject"] == "Help me"
+        assert call_kwargs["description"] is None
+
+    async def test_modal_title_includes_category_name(
+        self,
+        ticket_bot: MagicMock,
+        ticket_guild: MagicMock,
+    ) -> None:
+        """Modal title MUST include the selected category name."""
+        modal = TicketIntakeModal(
+            guild=ticket_guild,
+            category_id="cat-uuid-001",
+            category_name="Report",
+        )
+
+        assert "Report" in modal.title
+
+    async def test_pin_failure_does_not_abort_ticket_creation(
+        self,
+        ticket_bot: MagicMock,
+        ticket_interaction: MagicMock,
+        ticket_guild: MagicMock,
+        mock_ticket_channel: MagicMock,
+        mock_db,
+    ) -> None:
+        """When message.pin() raises HTTPException, ticket creation still succeeds."""
+        ticket_interaction.client = ticket_bot
+
+        config = MagicMock()
+        config.ticket_category_id = "100000000"
+        config.mod_role_id = None
+        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
+
+        category_channel = MagicMock(spec=discord.CategoryChannel)
+        ticket_guild.get_channel = MagicMock(return_value=category_channel)
+
+        ticket = Ticket.from_db_row(_ticket_row(ticket_number=1))
+        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, ticket))
+        ticket_bot.db.get_max_ticket_number = AsyncMock(return_value=0)
+
+        # Mock pin to raise HTTPException.
+        sent_message = AsyncMock()
+        sent_message.pin = AsyncMock(side_effect=discord.HTTPException(MagicMock(), "Pin failed"))
+        mock_ticket_channel.send = AsyncMock(return_value=sent_message)
+
+        modal_interaction = MagicMock(spec=discord.Interaction)
+        modal_interaction.guild = ticket_guild
+        modal_interaction.user = MagicMock(spec=discord.Member)
+        modal_interaction.user.id = 111111111
+        modal_interaction.user.mention = "<@111111111>"
+        modal_interaction.client = ticket_bot
+        modal_interaction.guild_id = ticket_guild.id
+        modal_interaction.response = MagicMock()
+        modal_interaction.response.defer = AsyncMock()
+        modal_interaction.followup = MagicMock()
+        modal_interaction.followup.send = AsyncMock()
+
+        modal = TicketIntakeModal(
+            guild=ticket_guild,
+            category_id="cat-uuid-001",
+            category_name="Support",
+        )
+        modal.title_input = MagicMock(value="Help")
+        modal.description_input = MagicMock(value="")
+
+        with patch("bot.views.tickets.TicketActionsView"), \
+             patch("bot.views.tickets.logger") as mock_logger:
+            await modal.on_submit(modal_interaction)
+
+        # Ticket creation succeeds despite pin failure.
+        modal_interaction.followup.send.assert_awaited_once()
+        success_call_kwargs = modal_interaction.followup.send.call_args.kwargs
+        assert success_call_kwargs.get("ephemeral") is True
+        embed = success_call_kwargs.get("embed")
+        assert embed is not None
+        # Warning was logged for the pin failure.
+        mock_logger.warning.assert_called()
+
 
 # ---------------------------------------------------------------------------
 # 3.10 — claim / close / auto-close
