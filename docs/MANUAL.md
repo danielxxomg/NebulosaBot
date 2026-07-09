@@ -419,7 +419,6 @@ Cada categoría puede definir campos que aparecen en el modal de apertura:
 | **Supabase sin FK en runtime** | Transaction Mode de Supabase no aplica foreign keys. La integridad referencial se valida en la aplicación. |
 | **Escalada automática con umbrales fijos** | Los umbrales de escalada (warn → mute → kick) requieren configuración en base de datos; no hay comando de Discord para ajustarlos. |
 | **Configuración de greetings solo por comandos** | No hay panel visual para configurar bienvenida/despedida; todo se hace por comandos slash. |
-| **Ticket panel no persiste tras reinicio** | Si el bot se reinicia, el panel anterior sigue en el canal pero pierde los botones interactivos. Hay que re-ejecutar `/ticket_panel`. |
 | **Imágenes generadas en hilo** | Las tarjetas de rango y bienvenida se generan en un hilo separado (`asyncio.to_thread`) para no bloquear el event loop, pero el rendimiento depende del servidor. |
 
 ---
