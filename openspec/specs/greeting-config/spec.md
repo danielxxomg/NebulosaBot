@@ -42,21 +42,21 @@ The system MUST read greeting configuration from cache first and fall back to th
 - WHEN an administrator updates a greeting field
 - THEN the cache entry is invalidated or updated
 
-### Requirement: Dashboard webhook notification
+### Requirement: Dashboard greeting config sync via Realtime CDC
 
-The dashboard `updateGreetingConfig()` Server Action MUST fire an asynchronous POST to the bot's webhook endpoint after a successful Supabase write. The webhook call MUST NOT block or fail the Supabase write.
+Dashboard greeting config writes MUST NOT call any inbound bot webhook. Cache invalidation MUST rely on outbound Supabase Realtime CDC (`cache-sync-realtime`).
 
-#### Scenario: Webhook fired after greeting config write
+#### Scenario: Greeting config write does not call webhook
 
 - GIVEN the dashboard writes a greeting config change to Supabase
 - WHEN the Supabase write succeeds
-- THEN a signed POST is sent to the webhook endpoint with `{"guild_id": G}` (guild_id only; the optional `entity` field is omitted because the bot performs a full `invalidate_guild`)
+- THEN the Server Action returns success without POSTing to a bot webhook endpoint
 
-#### Scenario: Webhook failure does not fail write
+#### Scenario: Bot invalidates via Realtime
 
-- GIVEN the webhook endpoint is unreachable or returns an error
-- WHEN `updateGreetingConfig()` completes the Supabase write
-- THEN the Server Action returns success (fire-and-forget)
+- GIVEN the bot Realtime subscriber is connected
+- WHEN Supabase emits a greeting_config change for guild G
+- THEN the bot invalidates the greeting cache for G
 
 ### Requirement: Welcome dispatch respects card toggle
 

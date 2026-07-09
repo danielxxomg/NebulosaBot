@@ -25,9 +25,9 @@ sequenceDiagram
         Admin->>Web: Cambia Prefijo a "?"
         Web->>DB: UPDATE Guild SET prefix="?"
         
-        par Notificación Asíncrona
-            Web->>Bot: ⚡ POST /webhook/sync {guild_id, type: "config"}
-            Bot->>Bot: 🗑️ Borra Cache del Guild ID
+        par Invalidación por Realtime CDC
+            DB-->>Bot: ⚡ Realtime postgres_changes (guild UPDATE)
+            Bot->>Bot: 🗑️ Invalida cache del Guild ID
         and Feedback Visual
             Web-->>Admin: "Guardado exitosamente"
         end

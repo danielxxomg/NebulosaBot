@@ -137,18 +137,18 @@ The system MUST provide separate leaderboard queries for XP and coins, ordered d
 - WHEN the XP leaderboard is queried with limit 10 and offset 10
 - THEN the result contains members ranked 11–20 by XP
 
-### Requirement: Dashboard webhook notification
+### Requirement: Dashboard economy config sync via Realtime CDC
 
-The dashboard `updateEconomyConfig()` Server Action MUST fire an asynchronous POST to the bot's webhook endpoint after a successful Supabase write. The webhook call MUST NOT block or fail the Supabase write.
+Dashboard economy config writes MUST NOT call any inbound bot webhook. Cache invalidation MUST rely on outbound Supabase Realtime CDC (`cache-sync-realtime`).
 
-#### Scenario: Webhook fired after economy config write
+#### Scenario: Economy config write does not call webhook
 
 - GIVEN the dashboard writes an economy config change to Supabase
 - WHEN the Supabase write succeeds
-- THEN a signed POST is sent to the webhook endpoint with `{"guild_id": G}` (guild_id only; the optional `entity` field is omitted because the bot performs a full `invalidate_guild`)
+- THEN the Server Action returns success without POSTing to a bot webhook endpoint
 
-#### Scenario: Webhook failure does not fail write
+#### Scenario: Bot invalidates via Realtime
 
-- GIVEN the webhook endpoint is unreachable or returns an error
-- WHEN `updateEconomyConfig()` completes the Supabase write
-- THEN the Server Action returns success (fire-and-forget)
+- GIVEN the bot Realtime subscriber is connected
+- WHEN Supabase emits an economy-related config change for guild G
+- THEN the bot invalidates the relevant cache for G
