@@ -8,6 +8,7 @@ cog class, thin command definitions, and the auto-close background task.
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -18,6 +19,7 @@ from discord.ext import commands, tasks
 
 from bot.core.i18n import t
 from bot.models.ticket_category import TicketCategory
+from bot.services.ticket_field_service import validate_field_definitions
 from bot.services.ticket_service import TicketCategoryNotConfiguredError
 from bot.utils.checks import is_mod
 from bot.utils.embeds import COLOR_INFO, build_ticket_embed, error_embed, info_embed, success_embed
@@ -294,6 +296,98 @@ class TicketsCog(commands.Cog, name="Tickets"):
             await ctx.send(embed=_err(gid, "tickets.delete.failed"), ephemeral=True)
             return
         await ctx.send(embed=_ok(gid, "tickets.delete.success", name=cat_name), ephemeral=True)
+
+    @commands.hybrid_group(name="configure_fields", fallback="help")
+    @app_commands.default_permissions(administrator=True)
+    @is_mod()
+    async def configure_fields(self, ctx: commands.Context) -> None:
+        """Configure custom intake fields for a ticket category."""
+        gid = str(ctx.guild.id) if ctx.guild else None
+        await ctx.send(embed=_info(gid, "tickets.configure_fields.help"), ephemeral=True)
+
+    @configure_fields.command(name="set")
+    @app_commands.describe(
+        category_id="The UUID of the ticket category",
+        fields_json='JSON array of field definitions, e.g. \'[{"key":"player_nick","label":"Player Nickname"}]\'',
+    )
+    @app_commands.default_permissions(administrator=True)
+    @is_mod()
+    async def configure_fields_set(
+        self,
+        ctx: commands.Context,
+        category_id: str,
+        fields_json: str,
+    ) -> None:
+        """Set field_definitions on a ticket category."""
+        if ctx.guild is None:
+            await ctx.send(embed=_err(None, "tickets.configure_fields.server_only"), ephemeral=True)
+            return
+
+        gid = str(ctx.guild.id)
+
+        # Parse JSON.
+        try:
+            raw = json.loads(fields_json)
+        except (json.JSONDecodeError, ValueError) as exc:
+            await ctx.send(
+                embed=_err(gid, "tickets.configure_fields.invalid_json", error=str(exc)),
+                ephemeral=True,
+            )
+            return
+
+        # Validate field definitions via pure service.
+        try:
+            normalized = validate_field_definitions(raw)
+        except ValueError as exc:
+            await ctx.send(
+                embed=_err(gid, "tickets.configure_fields.validation_error", error=str(exc)),
+                ephemeral=True,
+            )
+            return
+
+        # Fetch category and verify guild ownership.
+        assert self.bot.db is not None
+        try:
+            row = await self.bot.db.get_ticket_category(category_id)
+        except Exception:
+            logger.exception("Failed to fetch ticket category %s", category_id)
+            await ctx.send(embed=_err(gid, "tickets.configure_fields.failed"), ephemeral=True)
+            return
+
+        if row is None:
+            await ctx.send(
+                embed=_err(gid, "tickets.configure_fields.not_found", id=category_id),
+                ephemeral=True,
+            )
+            return
+
+        if row.get("guildId") != gid:
+            await ctx.send(embed=_err(gid, "tickets.configure_fields.wrong_guild"), ephemeral=True)
+            return
+
+        # Persist via DB facade.
+        try:
+            await self.bot.db.update_ticket_category_field_definitions(
+                category_id=category_id,
+                guild_id=gid,
+                field_definitions=normalized,
+            )
+        except Exception:
+            logger.exception("Failed to update field_definitions for category %s", category_id)
+            await ctx.send(embed=_err(gid, "tickets.configure_fields.failed"), ephemeral=True)
+            return
+
+        cat_name = row.get("name", category_id)
+        if normalized:
+            await ctx.send(
+                embed=_ok(gid, "tickets.configure_fields.success", name=cat_name, count=len(normalized)),
+                ephemeral=True,
+            )
+        else:
+            await ctx.send(
+                embed=_ok(gid, "tickets.configure_fields.success_cleared", name=cat_name),
+                ephemeral=True,
+            )
 
     @commands.hybrid_group(name="subticket", fallback="help")
     @is_mod()

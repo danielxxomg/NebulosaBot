@@ -2287,3 +2287,269 @@ class TestConfigMissingErrorMessages:
         assert "/setup" in desc
         assert "/create_category" in desc
         assert "dashboard" in desc.lower() or "https://" in desc
+
+
+# ===========================================================================
+# PR3 — /configure_fields set command
+# ===========================================================================
+
+import json
+
+
+class TestConfigureFieldsCommand:
+    """Tests for /configure_fields set <category_id> <fields_json>.
+
+    Spec (ticket-commands):
+    - Restricted to admin + @is_mod()
+    - Accepts category_id and fields_json (JSON string)
+    - Validates via ticket_field_service
+    - Verifies category belongs to ctx.guild
+    - Persists via DB facade
+    - All responses ephemeral
+    """
+
+    VALID_FIELDS_JSON = '[{"key":"player_nick","label":"Player Nickname","style":"short","required":true}]'
+
+    async def test_configure_fields_set_success(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        mock_db,
+    ) -> None:
+        """Valid invocation → field_definitions updated, success embed sent."""
+        slash_ctx.guild.id = 123456789
+        row = _category_row()
+        mock_db.get_ticket_category = AsyncMock(return_value=row)
+        mock_db.update_ticket_category_field_definitions = AsyncMock()
+
+        await tickets_cog.configure_fields_set.callback(
+            tickets_cog, slash_ctx, category_id="cat-uuid-001", fields_json=self.VALID_FIELDS_JSON
+        )
+
+        mock_db.get_ticket_category.assert_awaited_once_with("cat-uuid-001")
+        mock_db.update_ticket_category_field_definitions.assert_awaited_once()
+        call_kwargs = mock_db.update_ticket_category_field_definitions.call_args.kwargs
+        assert call_kwargs["category_id"] == "cat-uuid-001"
+        assert call_kwargs["guild_id"] == "123456789"
+        assert len(call_kwargs["field_definitions"]) == 1
+        assert call_kwargs["field_definitions"][0]["key"] == "player_nick"
+        slash_ctx.send.assert_awaited_once()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+        assert "Configured" in embed.title or "Fields" in embed.title or "✅" in embed.title
+
+    async def test_configure_fields_set_clears_with_empty_list(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        mock_db,
+    ) -> None:
+        """Empty JSON array '[]' → field_definitions cleared (empty list)."""
+        slash_ctx.guild.id = 123456789
+        row = _category_row()
+        mock_db.get_ticket_category = AsyncMock(return_value=row)
+        mock_db.update_ticket_category_field_definitions = AsyncMock()
+
+        await tickets_cog.configure_fields_set.callback(
+            tickets_cog, slash_ctx, category_id="cat-uuid-001", fields_json="[]"
+        )
+
+        mock_db.update_ticket_category_field_definitions.assert_awaited_once()
+        call_kwargs = mock_db.update_ticket_category_field_definitions.call_args.kwargs
+        assert call_kwargs["field_definitions"] == []
+        slash_ctx.send.assert_awaited_once()
+
+    async def test_configure_fields_set_invalid_json(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+    ) -> None:
+        """Invalid JSON → ephemeral error embed."""
+        await tickets_cog.configure_fields_set.callback(
+            tickets_cog, slash_ctx, category_id="cat-uuid-001", fields_json="not-json"
+        )
+
+        slash_ctx.send.assert_awaited_once()
+        kwargs = slash_ctx.send.call_args.kwargs
+        assert kwargs.get("ephemeral") is True
+        embed = kwargs.get("embed")
+        assert embed is not None
+        assert "JSON" in (embed.title or "") or "json" in (embed.description or "").lower()
+
+    async def test_configure_fields_set_too_many_fields(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+    ) -> None:
+        """4+ fields → ephemeral error embed about max 3."""
+        four_fields = json.dumps([
+            {"key": "f1", "label": "F1"},
+            {"key": "f2", "label": "F2"},
+            {"key": "f3", "label": "F3"},
+            {"key": "f4", "label": "F4"},
+        ])
+        await tickets_cog.configure_fields_set.callback(
+            tickets_cog, slash_ctx, category_id="cat-uuid-001", fields_json=four_fields
+        )
+
+        slash_ctx.send.assert_awaited_once()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+        assert "3" in (embed.description or "") or "max" in (embed.description or "").lower()
+
+    async def test_configure_fields_set_missing_label(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+    ) -> None:
+        """Field missing 'label' → ephemeral error embed."""
+        bad_json = '[{"key": "no_label"}]'
+        await tickets_cog.configure_fields_set.callback(
+            tickets_cog, slash_ctx, category_id="cat-uuid-001", fields_json=bad_json
+        )
+
+        slash_ctx.send.assert_awaited_once()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+        assert "label" in (embed.description or "").lower()
+
+    async def test_configure_fields_set_invalid_style(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+    ) -> None:
+        """Field with style='dropdown' → ephemeral error embed."""
+        bad_json = '[{"key": "x", "label": "X", "style": "dropdown"}]'
+        await tickets_cog.configure_fields_set.callback(
+            tickets_cog, slash_ctx, category_id="cat-uuid-001", fields_json=bad_json
+        )
+
+        slash_ctx.send.assert_awaited_once()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+        assert "style" in (embed.description or "").lower() or "short" in (embed.description or "").lower()
+
+    async def test_configure_fields_set_category_not_found(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        mock_db,
+    ) -> None:
+        """Non-existent category → ephemeral error embed."""
+        mock_db.get_ticket_category = AsyncMock(return_value=None)
+
+        await tickets_cog.configure_fields_set.callback(
+            tickets_cog, slash_ctx, category_id="nonexistent", fields_json=self.VALID_FIELDS_JSON
+        )
+
+        slash_ctx.send.assert_awaited_once()
+        kwargs = slash_ctx.send.call_args.kwargs
+        assert kwargs.get("ephemeral") is True
+        embed = kwargs.get("embed")
+        assert embed is not None
+        assert "Not Found" in (embed.title or "")
+
+    async def test_configure_fields_set_wrong_guild(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        mock_db,
+    ) -> None:
+        """Category belongs to different guild → ephemeral error embed."""
+        slash_ctx.guild.id = 123456789
+        other_row = {**_category_row(), "guildId": "999999999"}
+        mock_db.get_ticket_category = AsyncMock(return_value=other_row)
+
+        await tickets_cog.configure_fields_set.callback(
+            tickets_cog, slash_ctx, category_id="cat-uuid-001", fields_json=self.VALID_FIELDS_JSON
+        )
+
+        slash_ctx.send.assert_awaited_once()
+        kwargs = slash_ctx.send.call_args.kwargs
+        assert kwargs.get("ephemeral") is True
+        embed = kwargs.get("embed")
+        assert embed is not None
+        assert "Wrong Guild" in (embed.title or "") or "Servidor" in (embed.title or "")
+
+    async def test_configure_fields_set_db_error(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        mock_db,
+    ) -> None:
+        """DB update failure → ephemeral error embed, no raw traceback."""
+        slash_ctx.guild.id = 123456789
+        row = _category_row()
+        mock_db.get_ticket_category = AsyncMock(return_value=row)
+        mock_db.update_ticket_category_field_definitions = AsyncMock(side_effect=Exception("DB down"))
+
+        with patch("bot.cogs.tickets.logger.exception") as mock_exc:
+            await tickets_cog.configure_fields_set.callback(
+                tickets_cog, slash_ctx, category_id="cat-uuid-001", fields_json=self.VALID_FIELDS_JSON
+            )
+
+        slash_ctx.send.assert_awaited_once()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+        assert "DB down" not in (embed.description or "")
+        mock_exc.assert_called_once()
+
+    async def test_configure_fields_set_no_guild(
+        self,
+        tickets_cog: TicketsCog,
+    ) -> None:
+        """configure_fields set in DM → ephemeral error embed."""
+        ctx = MagicMock()
+        ctx.guild = None
+        ctx.send = AsyncMock()
+
+        await tickets_cog.configure_fields_set.callback(
+            tickets_cog, ctx, category_id="cat-uuid-001", fields_json=self.VALID_FIELDS_JSON
+        )
+
+        ctx.send.assert_awaited_once()
+        embed = ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+
+
+class TestConfigureFieldsGroup:
+    """Tests for the /configure_fields hybrid group fallback (help)."""
+
+    async def test_configure_fields_fallback_shows_help(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+    ) -> None:
+        """/configure_fields (no subcommand) → help embed."""
+        await tickets_cog.configure_fields.callback(tickets_cog, slash_ctx)
+
+        slash_ctx.send.assert_awaited_once()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+
+
+class TestConfigureFieldsPermissions:
+    """Verify /configure_fields is gated by @is_mod()."""
+
+    @staticmethod
+    def _is_mod_gated(cmd) -> bool:
+        """Check if a command has is_mod() gating.
+
+        For HybridCommand: checks are on cmd.app_command.checks.
+        For HybridGroup: checks may be on callback.__discord_app_commands_checks__
+        (decorator order: @is_mod() applied before @hybrid_group wraps it).
+        """
+        if getattr(cmd, "checks", None):
+            return True
+        if hasattr(cmd, "app_command") and getattr(cmd.app_command, "checks", None):
+            return True
+        cb = getattr(cmd, "callback", None)
+        if cb and getattr(cb, "__discord_app_commands_checks__", None):
+            return True
+        return False
+
+    def test_configure_fields_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
+        assert self._is_mod_gated(tickets_cog.configure_fields), "/configure_fields MUST be gated by @is_mod()"
+
+    def test_configure_fields_set_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
+        assert self._is_mod_gated(tickets_cog.configure_fields_set), "/configure_fields set MUST be gated by @is_mod()"
