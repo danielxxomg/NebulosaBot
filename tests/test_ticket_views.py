@@ -114,6 +114,30 @@ class TestDeployTicketPanel:
         assert embed.title == "Soporte"
         assert embed.description == "Abre un ticket"
 
+    @pytest.mark.asyncio
+    async def test_embed_footer_uses_bot_avatar_icon(self) -> None:
+        """deploy_ticket_panel MUST set footer icon_url from bot.user.display_avatar."""
+        from bot.views.tickets import deploy_ticket_panel
+
+        channel = MagicMock()
+        channel.send = AsyncMock()
+        mock_message = MagicMock()
+        mock_message.id = 42
+        mock_message.channel = channel
+        channel.send.return_value = mock_message
+
+        mock_bot = MagicMock()
+        mock_bot.guild_service = MagicMock()
+        mock_bot.guild_service.update_guild_panel = AsyncMock()
+        mock_bot.user = MagicMock()
+        mock_bot.user.display_avatar = MagicMock()
+        mock_bot.user.display_avatar.url = "https://cdn.discordapp.com/avatars/bot123/avatar.png"
+
+        await deploy_ticket_panel(channel, "123456789", bot=mock_bot)
+
+        embed = channel.send.call_args.kwargs["embed"]
+        assert embed.footer.icon_url == "https://cdn.discordapp.com/avatars/bot123/avatar.png"
+
 
 # ===========================================================================
 # build_ticket_embed — custom_fields rendering (task 2.5 RED)

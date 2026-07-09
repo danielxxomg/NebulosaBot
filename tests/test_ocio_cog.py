@@ -18,6 +18,7 @@ from discord.ext import commands
 
 from bot.cogs.ocio import OcioCog
 from bot.core.i18n import load_locales, set_guild_language
+from bot.utils.brand import ERROR
 
 # ---------------------------------------------------------------------------
 # i18n setup
@@ -248,7 +249,7 @@ class TestBananaCommand:
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
-        assert embed.color.value == 0xE74C3C  # type: ignore[union-attr]  # COLOR_ERROR
+        assert embed.color.value == ERROR  # type: ignore[union-attr]
 
     @pytest.mark.asyncio
     @patch("bot.cogs.ocio.Path.exists", return_value=True)

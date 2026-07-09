@@ -12,14 +12,15 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from bot.utils.embeds import COLOR_INFO
+from bot.utils.brand import INFO
+from bot.utils.embeds import guild_footer_icon
 
 if TYPE_CHECKING:
     from bot.bot import NebulosaBot
 
 logger = logging.getLogger(__name__)
 
-LOG_COLOR = COLOR_INFO  # 0x3498DB blue
+LOG_COLOR = INFO
 MAX_FIELD_LENGTH = 1024
 
 
@@ -296,6 +297,13 @@ class LoggingService:
         config = await self._bot.guild_service.get_config(guild_id)
         if not config.log_channel_id:
             return
+
+        # Apply guild icon as footer icon (falls back to bot avatar).
+        guild = self._bot.get_guild(int(guild_id))
+        embed.set_footer(
+            text=embed.footer.text or "",
+            icon_url=guild_footer_icon(guild, self._bot),
+        )
 
         log_channel = self._bot.get_channel(int(config.log_channel_id))
         if log_channel is None:

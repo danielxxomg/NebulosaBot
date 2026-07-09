@@ -23,6 +23,7 @@ from discord.ext import commands
 
 from bot.cogs.greetings import GreetingsCog
 from bot.models.greeting_config import GreetingConfig
+from bot.utils.brand import ERROR
 
 # Minimal valid PNG for mock card buffers — avoids fd corruption when
 # discord.File opens the buffer (MagicMock.__index__() returns 1, which
@@ -230,7 +231,7 @@ class TestWelcomeTestCommand:
         call_kwargs = ctx.send.call_args[1]
         embed = call_kwargs["embed"]
         assert isinstance(embed, discord.Embed)
-        assert embed.color.value == 0xE74C3C  # type: ignore[union-attr]  # COLOR_ERROR
+        assert embed.color.value == ERROR  # type: ignore[union-attr]
         title_lower = embed.title.lower() if embed.title else ""  # type: ignore[union-attr]
         assert "permission" in title_lower or "permiso" in title_lower
 
@@ -250,7 +251,7 @@ class TestWelcomeTestCommand:
         call_kwargs = ctx.send.call_args[1]
         assert "file" not in call_kwargs  # No file on error
         embed = call_kwargs["embed"]
-        assert embed.color.value == 0xE74C3C  # COLOR_ERROR
+        assert embed.color.value == ERROR
 
 
 # ---------------------------------------------------------------------------
@@ -291,7 +292,7 @@ class TestGoodbyeTestCommand:
         ctx.defer.assert_not_awaited()
         ctx.send.assert_awaited_once()
         embed = ctx.send.call_args[1]["embed"]
-        assert embed.color.value == 0xE74C3C  # COLOR_ERROR
+        assert embed.color.value == ERROR
 
     @pytest.mark.asyncio
     async def test_goodbye_test_card_generation_error(
@@ -309,7 +310,7 @@ class TestGoodbyeTestCommand:
         call_kwargs = ctx.send.call_args[1]
         assert "file" not in call_kwargs
         embed = call_kwargs["embed"]
-        assert embed.color.value == 0xE74C3C  # COLOR_ERROR
+        assert embed.color.value == ERROR
 
 
 # ---------------------------------------------------------------------------
@@ -380,7 +381,7 @@ class TestWelcomeConfigCommand:
         embed = ctx.send.call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
         assert embed.color is not None
-        assert embed.color.value == 0xE74C3C  # COLOR_ERROR
+        assert embed.color.value == ERROR
 
     @pytest.mark.asyncio
     async def test_channel_saves_new_channel(
@@ -509,7 +510,7 @@ class TestGoodbyeConfigCommand:
         embed = ctx.send.call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
         assert embed.color is not None
-        assert embed.color.value == 0xE74C3C  # COLOR_ERROR
+        assert embed.color.value == ERROR
 
     @pytest.mark.asyncio
     async def test_channel_saves_new_channel(

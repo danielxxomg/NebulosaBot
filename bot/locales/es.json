@@ -432,6 +432,10 @@
       "failed_description": "No se pudieron obtener los datos de rango. Intenta de nuevo más tarde.",
       "no_data_title": "Sin Datos de Rango",
       "no_data_description": "**{name}** no tiene estadísticas aún.\n¡Empieza a chatear para ganar XP y subir de nivel!"
+    },
+    "level_up": {
+      "title": "¡Subiste de nivel! 🎉",
+      "description": "¡{mention} alcanzó el **Nivel {level}**!"
     }
   },
   "greetings": {

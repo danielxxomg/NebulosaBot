@@ -20,6 +20,7 @@ from discord.ext import commands
 
 from bot.cogs.utility import UtilityCog
 from bot.core.i18n import load_locales, set_guild_language
+from bot.utils.brand import ERROR
 
 # ---------------------------------------------------------------------------
 # i18n setup — load real locale files for all tests
@@ -240,7 +241,7 @@ class TestServerinfoCommand:
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
-        assert embed.color.value == 0xE74C3C  # type: ignore[union-attr]  # COLOR_ERROR
+        assert embed.color.value == ERROR  # type: ignore[union-attr]
 
     @pytest.mark.asyncio
     async def test_serverinfo_no_icon_handles_none_thumbnail(

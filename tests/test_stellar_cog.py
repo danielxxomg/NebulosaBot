@@ -19,6 +19,7 @@ from discord.ext import commands
 
 from bot.cogs.stellar import StellarCog
 from bot.core.i18n import load_locales, set_guild_language
+from bot.utils.brand import ERROR, INFO, SUCCESS, WARNING
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -94,7 +95,7 @@ class TestDailyCommand:
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
-        assert embed.color.value == 0x2ECC71  # type: ignore[union-attr]  # COLOR_SUCCESS
+        assert embed.color.value == SUCCESS
         assert "130" in embed.description  # type: ignore[operator]
         # Economy commands must be permanent (NOT ephemeral)
         assert call_args[1].get("ephemeral") is not True
@@ -116,7 +117,7 @@ class TestDailyCommand:
         ctx.send.assert_called_once()
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
-        assert embed.color.value == 0xF1C40F  # COLOR_WARNING
+        assert embed.color.value == WARNING
         # Must contain formatted remaining time
         assert "22h 0m" in embed.description  # type: ignore[operator]
 
@@ -135,7 +136,7 @@ class TestDailyCommand:
         ctx.send.assert_called_once()
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
-        assert embed.color.value == 0xE74C3C  # COLOR_ERROR
+        assert embed.color.value == ERROR
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +163,7 @@ class TestCoinsCommand:
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         assert "500" in embed.description
-        assert embed.color.value == 0x3498DB  # COLOR_INFO
+        assert embed.color.value == INFO
 
     @pytest.mark.asyncio
     async def test_coins_target_balance(
@@ -214,7 +215,7 @@ class TestCoinsCommand:
 
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
-        assert embed.color.value == 0xE74C3C  # COLOR_ERROR
+        assert embed.color.value == ERROR
 
 
 # ---------------------------------------------------------------------------
@@ -278,7 +279,7 @@ class TestLeaderboardCommand:
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
-        assert embed.color.value == 0xE74C3C  # type: ignore[union-attr]  # COLOR_ERROR or similar
+        assert embed.color.value == ERROR  # type: ignore[union-attr]
 
     @pytest.mark.asyncio
     async def test_leaderboard_error_handling(
@@ -294,7 +295,7 @@ class TestLeaderboardCommand:
 
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
-        assert embed.color.value == 0xE74C3C  # COLOR_ERROR
+        assert embed.color.value == ERROR
 
     @pytest.mark.asyncio
     async def test_leaderboard_invalid_type_defaults_to_xp(
@@ -427,7 +428,7 @@ class TestRankCommand:
         import discord
 
         assert isinstance(embed, discord.Embed)
-        assert embed.color.value == 0xE74C3C  # type: ignore[union-attr]  # COLOR_ERROR
+        assert embed.color.value == ERROR  # type: ignore[union-attr]
 
     @pytest.mark.asyncio
     async def test_rank_error_handling(
@@ -449,4 +450,4 @@ class TestRankCommand:
         call_kwargs = ctx.send.call_args[1]
         embed = call_kwargs.get("embed")
         assert embed is not None
-        assert embed.color.value == 0xE74C3C  # COLOR_ERROR
+        assert embed.color.value == ERROR

@@ -20,9 +20,9 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.core.i18n import t
+from bot.utils.brand import INFO
 from bot.utils.checks import is_admin, is_mod
 from bot.utils.embeds import (
-    COLOR_INFO,
     error_embed,
     info_embed,
     success_embed,
@@ -484,7 +484,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             embed=discord.Embed(
                 title=t(guild_id, "confirm.kick_confirm_title"),
                 description=t(guild_id, "confirm.kick_confirm_description", mention=member.mention, reason=reason),
-                color=COLOR_INFO,
+                color=INFO,
             ),
             view=view,
             ephemeral=True,
@@ -569,7 +569,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                     reason=reason,
                     delete_days=delete_days,
                 ),
-                color=COLOR_INFO,
+                color=INFO,
             ),
             view=view,
             ephemeral=True,
@@ -816,7 +816,7 @@ def _build_modlog_pages(
         embed = discord.Embed(
             title=t(guild_id, "sentinel.modlogs.title", name=member.display_name),
             description=description,
-            color=COLOR_INFO,
+            color=INFO,
             timestamp=datetime.now(UTC),
         )
         embed.set_thumbnail(url=member.display_avatar.url)

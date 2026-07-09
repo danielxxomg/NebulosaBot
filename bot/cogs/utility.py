@@ -14,7 +14,8 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.core.i18n import t
-from bot.utils.embeds import COLOR_INFO, error_embed
+from bot.utils.brand import INFO
+from bot.utils.embeds import error_embed
 
 if TYPE_CHECKING:
     from bot.bot import NebulosaBot
@@ -80,7 +81,7 @@ class UtilityCog(commands.Cog, name="Utility"):
             return
 
         guild = ctx.guild
-        embed = discord.Embed(title=guild.name, color=COLOR_INFO)
+        embed = discord.Embed(title=guild.name, color=INFO)
 
         if guild.icon is not None:
             embed.set_thumbnail(url=guild.icon.url)
@@ -189,3 +190,8 @@ class UtilityCog(commands.Cog, name="Utility"):
 async def setup(bot: NebulosaBot) -> None:
     """Register UtilityCog with the bot (v2.x pattern)."""
     await bot.add_cog(UtilityCog(bot))
+
+
+async def teardown(bot: NebulosaBot) -> None:
+    """Remove UtilityCog from the bot."""
+    await bot.remove_cog("Utility")

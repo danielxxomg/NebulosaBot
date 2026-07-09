@@ -17,7 +17,8 @@ import discord
 from bot.core.i18n import t
 from bot.models.ticket_category import TicketCategory
 from bot.utils.checks import is_mod_check
-from bot.utils.embeds import COLOR_INFO, error_embed, info_embed, success_embed
+from bot.utils.brand import INFO
+from bot.utils.embeds import bot_avatar_url, error_embed, info_embed, success_embed
 
 if TYPE_CHECKING:
     from bot.bot import NebulosaBot
@@ -53,10 +54,10 @@ async def deploy_ticket_panel(
     embed = discord.Embed(
         title=title,
         description=description_text,
-        color=COLOR_INFO,
+        color=INFO,
         timestamp=datetime.now(UTC),
     )
-    embed.set_footer(text=t(guild_id, "tickets.open.footer"))
+    embed.set_footer(text=t(guild_id, "tickets.open.footer"), icon_url=bot_avatar_url(bot))
 
     msg = await channel.send(embed=embed, view=TicketPanelView(guild_id=guild_id))
 
@@ -96,7 +97,7 @@ async def _create_ticket_after_modal(
             embed=error_embed(
                 t(guild_id, "tickets.open.config_error_title"),
                 t(guild_id, "tickets.open.config_error_description"),
-                guild_id=guild_id,
+                guild_id=guild_id, bot=bot, guild=guild,
             ),
             ephemeral=True,
         )
@@ -107,7 +108,7 @@ async def _create_ticket_after_modal(
             embed=error_embed(
                 t(guild_id, "tickets.config_missing.title"),
                 t(guild_id, "tickets.config_missing.description"),
-                guild_id=guild_id,
+                guild_id=guild_id, bot=bot, guild=guild,
             ),
             ephemeral=True,
         )
@@ -119,7 +120,7 @@ async def _create_ticket_after_modal(
             embed=error_embed(
                 t(guild_id, "tickets.open.invalid_category_title"),
                 t(guild_id, "tickets.open.invalid_category_description"),
-                guild_id=guild_id,
+                guild_id=guild_id, bot=bot, guild=guild,
             ),
             ephemeral=True,
         )
@@ -153,7 +154,7 @@ async def _create_ticket_after_modal(
             embed=error_embed(
                 t(guild_id, "tickets.open.permission_denied_title"),
                 t(guild_id, "tickets.open.permission_denied_description"),
-                guild_id=guild_id,
+                guild_id=guild_id, bot=bot, guild=guild,
             ),
             ephemeral=True,
         )
@@ -164,7 +165,7 @@ async def _create_ticket_after_modal(
             embed=error_embed(
                 t(guild_id, "tickets.open.channel_failed_title"),
                 t(guild_id, "tickets.open.channel_failed_description"),
-                guild_id=guild_id,
+                guild_id=guild_id, bot=bot, guild=guild,
             ),
             ephemeral=True,
         )
@@ -175,7 +176,7 @@ async def _create_ticket_after_modal(
             embed=error_embed(
                 t(guild_id, "tickets.open.creation_failed_title"),
                 t(guild_id, "tickets.open.creation_failed_description"),
-                guild_id=guild_id,
+                guild_id=guild_id, bot=bot, guild=guild,
             ),
             ephemeral=True,
         )
@@ -184,7 +185,7 @@ async def _create_ticket_after_modal(
     actions_view = TicketActionsView(guild_id=guild_id)
     from bot.utils.embeds import build_ticket_embed
 
-    embed = build_ticket_embed(ticket, guild_id=guild_id, field_definitions=field_definitions)
+    embed = build_ticket_embed(ticket, guild_id=guild_id, field_definitions=field_definitions, bot=bot, guild=guild)
     message = await channel.send(content=author.mention, embed=embed, view=actions_view)
 
     # Pin the welcome embed — failure is logged, not fatal.
@@ -197,7 +198,7 @@ async def _create_ticket_after_modal(
         embed=success_embed(
             t(guild_id, "tickets.open.success_title"),
             t(guild_id, "tickets.open.success_description", channel=channel.mention),
-            guild_id=guild_id,
+            guild_id=guild_id, bot=bot, guild=guild,
         ),
         ephemeral=True,
     )
@@ -406,6 +407,7 @@ class TicketActionsView(discord.ui.View):
     async def claim_button(self, interaction: discord.Interaction, button: discord.ui.Button[discord.ui.View]) -> None:
         bot: NebulosaBot = interaction.client  # type: ignore[assignment]
         channel_id = interaction.channel_id
+        guild = interaction.guild
         guild_id = str(interaction.guild_id) if interaction.guild_id else None
         # Dynamic label resolution at interaction time.
         if guild_id is not None:
@@ -417,7 +419,7 @@ class TicketActionsView(discord.ui.View):
                 embed=error_embed(
                     t(guild_id, "tickets.actions.claim_mods_only_title"),
                     t(guild_id, "tickets.actions.claim_mods_only_description"),
-                    guild_id=guild_id,
+                    guild_id=guild_id, bot=bot, guild=guild,
                 ),
                 ephemeral=True,
             )
@@ -425,7 +427,7 @@ class TicketActionsView(discord.ui.View):
         ticket_row, error = await self._get_ticket(bot, channel_id, guild_id)
         if error is not None:
             await interaction.response.send_message(
-                embed=error_embed(t(guild_id, "tickets.actions.claim_failed_title"), error, guild_id=guild_id),
+                embed=error_embed(t(guild_id, "tickets.actions.claim_failed_title"), error, guild_id=guild_id, bot=bot, guild=guild),
                 ephemeral=True,
             )
             return
@@ -436,7 +438,7 @@ class TicketActionsView(discord.ui.View):
                 embed=error_embed(
                     t(guild_id, "tickets.actions.claim_already_claimed_title"),
                     t(guild_id, "tickets.actions.claim_already_claimed_description", user=claimed_by_id),
-                    guild_id=guild_id,
+                    guild_id=guild_id, bot=bot, guild=guild,
                 ),
                 ephemeral=True,
             )
@@ -452,14 +454,14 @@ class TicketActionsView(discord.ui.View):
                 embed=error_embed(
                     t(guild_id, "tickets.actions.claim_failed_title"),
                     t(guild_id, "tickets.actions.claim_generic_error_description"),
-                    guild_id=guild_id,
+                    guild_id=guild_id, bot=bot, guild=guild,
                 ),
                 ephemeral=True,
             )
             return
         from bot.utils.embeds import build_ticket_embed
 
-        embed = build_ticket_embed(ticket, claimed_by=interaction.user, guild_id=guild_id)
+        embed = build_ticket_embed(ticket, claimed_by=interaction.user, guild_id=guild_id, bot=bot, guild=guild)
         await interaction.response.edit_message(embed=embed, view=self)
 
     @discord.ui.button(label="Close", style=discord.ButtonStyle.danger, custom_id="ticket:close", emoji="🔒")
@@ -476,7 +478,7 @@ class TicketActionsView(discord.ui.View):
         ticket_row, error = await self._get_ticket(bot, channel_id, guild_id, action="close")
         if error is not None:
             await interaction.response.send_message(
-                embed=error_embed(t(guild_id, "tickets.actions.close_failed_title"), error, guild_id=guild_id),
+                embed=error_embed(t(guild_id, "tickets.actions.close_failed_title"), error, guild_id=guild_id, bot=bot, guild=guild),
                 ephemeral=True,
             )
             return
@@ -488,7 +490,7 @@ class TicketActionsView(discord.ui.View):
                 embed=error_embed(
                     t(guild_id, "tickets.actions.close_author_or_mod_title"),
                     t(guild_id, "tickets.actions.close_author_or_mod_description"),
-                    guild_id=guild_id,
+                    guild_id=guild_id, bot=bot, guild=guild,
                 ),
                 ephemeral=True,
             )
@@ -513,7 +515,7 @@ class TicketActionsView(discord.ui.View):
                 embed=error_embed(
                     t(guild_id, "tickets.actions.close_db_error_title"),
                     t(guild_id, "tickets.actions.close_db_error_description"),
-                    guild_id=guild_id,
+                    guild_id=guild_id, bot=bot, guild=guild,
                 ),
                 ephemeral=True,
             )
@@ -522,13 +524,13 @@ class TicketActionsView(discord.ui.View):
         if transcript_url:
             close_msg += t(guild_id, "tickets.actions.closed_channel_transcript", url=transcript_url)
         await channel.send(
-            embed=info_embed(t(guild_id, "tickets.actions.closed_channel_title"), close_msg, guild_id=guild_id)
+            embed=info_embed(t(guild_id, "tickets.actions.closed_channel_title"), close_msg, guild_id=guild_id, bot=bot, guild=guild)
         )
         await interaction.followup.send(
             embed=success_embed(
                 t(guild_id, "tickets.actions.close_success_title"),
                 t(guild_id, "tickets.actions.close_success_description"),
-                guild_id=guild_id,
+                guild_id=guild_id, bot=bot, guild=guild,
             ),
             ephemeral=True,
         )
