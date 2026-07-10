@@ -214,11 +214,13 @@ class TestTicketFlow:
         ticket_interaction: MagicMock,
         mock_db: AsyncMock,
     ) -> None:
-        """Close button → close_ticket_full called (handles transcript + DB + delete).
+        """Close button → ephemeral ConfirmCancelView sent (close deferred to confirm).
 
-        Scenario: close button pressed → service handles transcript generation,
-        DB update, and channel deletion.
+        Scenario: close button pressed → system shows confirmation dialog
+        before proceeding with transcript, DB update, and channel deletion.
         """
+        from bot.views.confirmation import ConfirmCancelView
+
         ticket_interaction.client = ticket_bot
         ticket_interaction.channel = mock_ticket_channel
 
@@ -235,11 +237,11 @@ class TestTicketFlow:
         view = TicketActionsView()
         await view.close_button.callback(ticket_interaction)
 
-        # 1. close_ticket_full was called with the channel, ticket, and closer.
-        ticket_bot.ticket_service.close_ticket_full.assert_awaited_once()
-        call_args = ticket_bot.ticket_service.close_ticket_full.call_args
-        assert call_args.args[0] == mock_ticket_channel  # channel
-        assert call_args.args[2] == "111111111"  # closer_id
+        # Button sends ephemeral ConfirmCancelView (not close_ticket_full directly).
+        ticket_interaction.response.send_message.assert_awaited_once()
+        call_kwargs = ticket_interaction.response.send_message.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
+        assert isinstance(call_kwargs.get("view"), ConfirmCancelView)
 
 
 # ---------------------------------------------------------------------------

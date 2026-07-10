@@ -17,7 +17,7 @@ import discord
 from bot.core.i18n import t
 from bot.models.ticket_category import TicketCategory
 from bot.utils.checks import is_mod_check
-from bot.utils.brand import INFO
+from bot.utils.brand import INFO, WARNING
 from bot.utils.embeds import bot_avatar_url, error_embed, info_embed, success_embed
 
 if TYPE_CHECKING:
@@ -495,45 +495,67 @@ class TicketActionsView(discord.ui.View):
                 ephemeral=True,
             )
             return
+
         ticket_id = ticket_row["id"]
         channel = interaction.channel
-        if not isinstance(channel, discord.TextChannel):
-            return
-        await interaction.response.defer(ephemeral=True)
-        assert bot.ticket_service is not None
-        from bot.models.ticket import Ticket
-
-        ticket = Ticket.from_db_row(ticket_row)
         closer_id = str(interaction.user.id)
-        try:
-            transcript_url = await bot.ticket_service.close_ticket_full(
-                channel, ticket, closer_id, bot=bot
-            )
-        except Exception:
-            logger.exception("Failed to close ticket %s", ticket_id)
-            await interaction.followup.send(
-                embed=error_embed(
-                    t(guild_id, "tickets.actions.close_db_error_title"),
-                    t(guild_id, "tickets.actions.close_db_error_description"),
-                    guild_id=guild_id, bot=bot, guild=guild,
+
+        async def _on_close_confirm(confirm_interaction: discord.Interaction) -> None:
+            """Execute the close flow after the user confirms."""
+            if not isinstance(channel, discord.TextChannel):
+                return
+            assert bot.ticket_service is not None
+            from bot.models.ticket import Ticket
+
+            ticket = Ticket.from_db_row(ticket_row)
+            # Acknowledge the ephemeral confirm so the view can edit it.
+            await confirm_interaction.response.edit_message(
+                embed=discord.Embed(
+                    title=t(guild_id, "tickets.actions.close_success_title"),
+                    description=t(guild_id, "tickets.actions.close_success_description"),
+                    color=discord.Color.greyple(),
                 ),
-                ephemeral=True,
+                view=None,
             )
-            return
-        close_msg = t(guild_id, "tickets.actions.closed_channel_message")
-        if transcript_url:
-            close_msg += t(guild_id, "tickets.actions.closed_channel_transcript", url=transcript_url)
-        await channel.send(
-            embed=info_embed(t(guild_id, "tickets.actions.closed_channel_title"), close_msg, guild_id=guild_id, bot=bot, guild=guild)
+            try:
+                transcript_url = await bot.ticket_service.close_ticket_full(
+                    channel, ticket, closer_id, bot=bot, manual=True
+                )
+            except Exception:
+                logger.exception("Failed to close ticket %s", ticket_id)
+                await confirm_interaction.followup.send(
+                    embed=error_embed(
+                        t(guild_id, "tickets.actions.close_db_error_title"),
+                        t(guild_id, "tickets.actions.close_db_error_description"),
+                        guild_id=guild_id, bot=bot, guild=guild,
+                    ),
+                    ephemeral=True,
+                )
+                return
+            close_msg = t(guild_id, "tickets.actions.closed_channel_message")
+            if transcript_url:
+                close_msg += t(guild_id, "tickets.actions.closed_channel_transcript", url=transcript_url)
+            await channel.send(
+                embed=info_embed(t(guild_id, "tickets.actions.closed_channel_title"), close_msg, guild_id=guild_id, bot=bot, guild=guild)
+            )
+
+        from bot.views.confirmation import ConfirmCancelView
+
+        confirm_view = ConfirmCancelView(
+            guild_id=guild_id or "",
+            owner_id=interaction.user.id,
+            on_confirm=_on_close_confirm,
         )
-        await interaction.followup.send(
-            embed=success_embed(
-                t(guild_id, "tickets.actions.close_success_title"),
-                t(guild_id, "tickets.actions.close_success_description"),
-                guild_id=guild_id, bot=bot, guild=guild,
+        await interaction.response.send_message(
+            embed=discord.Embed(
+                title=t(guild_id, "tickets.actions.close_confirm_title"),
+                description=t(guild_id, "tickets.actions.close_confirm_description"),
+                color=WARNING,
             ),
+            view=confirm_view,
             ephemeral=True,
         )
+        confirm_view.message = await interaction.original_response()
 
 
 class _CategorySelectView(discord.ui.View):
