@@ -30,7 +30,7 @@ Chain strategy: stacked-to-main
 
 - [x] 1.1 [RED] Create `tests/test_economy_config_model.py` — test `from_db_row` with all fields, `to_db_dict` round-trip, defaults for missing keys. Ver: `uv run pytest tests/test_economy_config_model.py -x`
 - [x] 1.2 [RED] Create `tests/test_member_model.py` — test `from_db_row` current behavior (strings pass through), `to_db_dict` serializes datetime to ISO, defaults for optional fields. **PR1 deviation**: tests current behavior, not datetime parsing — production fix deferred to PR2. Ver: `uv run pytest tests/test_member_model.py -x`
-- [ ] 1.3 [GREEN] Fix `bot/models/member.py` — in `from_db_row`, parse `lastDailyReset`, `lastDaily`, `lastXpGain` with `datetime.fromisoformat()` when value is a string. **DEFERRED TO PR2** per orchestrator boundary.
+- [x] 1.3 [GREEN] Fix `bot/models/member.py` — in `from_db_row`, parse `lastDailyReset`, `lastDaily`, `lastXpGain` with `datetime.fromisoformat()` when value is a string. **COMPLETED IN PR2** per orchestrator boundary.
 
 ## Phase 2: Brand Contract & Hex Scan (PR 1)
 
@@ -84,8 +84,8 @@ Chain strategy: stacked-to-main
 
 ## Phase 11: Sentinel Behavior Tests (PR 3)
 
-- [ ] 11.1 [RED] Create `tests/test_sentinel_behavior.py` — test `warn` calls `infraction_service.warn()` + logs moderation; test warn auto-escalation triggers mute; test `mute` calls `member.timeout()`; test `kick`/`ban` send ConfirmCancelView; test `_validate_target` denies self-target, higher-role target, bot target. Mock services/member/logging. Ver: `uv run pytest tests/test_sentinel_behavior.py -x`
+- [x] 11.1 [RED] Create `tests/test_sentinel_behavior.py` — test `warn` calls `infraction_service.warn()` + logs moderation; test warn auto-escalation triggers mute; test `mute` calls `member.timeout()`; test `kick`/`ban` send ConfirmCancelView; test `_validate_target` denies self-target, higher-role target, bot target. Mock services/member/logging. Ver: `uv run pytest tests/test_sentinel_behavior.py -x`
 
 ## Phase 12: PR 3 Verification
 
-- [ ] 12.1 Run `uv run pytest` — all green. Run `uv run ruff check .` and `uv run mypy bot`. Commit: `test(qa): add sentinel behavior tests for warn/mute/kick/validate_target`
+- [x] 12.1 Run `uv run pytest` — all green. Run `uv run ruff check .` and `uv run mypy bot`. Commit: `test(qa): add sentinel behavior tests for warn/mute/kick/validate_target`
