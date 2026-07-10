@@ -16,9 +16,9 @@ import discord
 
 from bot.core.i18n import t
 from bot.models.ticket_category import TicketCategory
-from bot.utils.brand import INFO, WARNING
+from bot.utils.brand import INFO, SUCCESS, WARNING
 from bot.utils.checks import is_mod_check
-from bot.utils.embeds import error_embed, guild_footer_icon, info_embed, success_embed
+from bot.utils.embeds import error_embed, guild_footer_icon, success_embed
 
 if TYPE_CHECKING:
     from bot.bot import NebulosaBot
@@ -80,7 +80,7 @@ async def _create_ticket_after_modal(
     description: str | None,
     *,
     custom_fields: dict[str, str] | None = None,
-    field_definitions: list[dict] | None = None,
+    field_definitions: list[dict[str, Any]] | None = None,
 ) -> None:
     """Shared ticket creation flow used by TicketIntakeModal.on_submit.
 
@@ -219,7 +219,7 @@ class TicketIntakeModal(discord.ui.Modal):
         guild: discord.Guild,
         category_id: str,
         category_name: str,
-        field_definitions: list[dict] | None = None,
+        field_definitions: list[dict[str, Any]] | None = None,
     ) -> None:
         guild_id = str(guild.id)
         super().__init__(
@@ -249,11 +249,11 @@ class TicketIntakeModal(discord.ui.Modal):
         )
         self.add_item(self.description_input)
 
-        # Dynamic custom field inputs (0–3).
+        # Dynamic custom field inputs (0-3).
         self._custom_inputs: list[discord.ui.TextInput[TicketIntakeModal]] = []
         for defn in self._field_definitions:
             style = discord.TextStyle.paragraph if defn.get("style") == "paragraph" else discord.TextStyle.short
-            inp = discord.ui.TextInput(
+            inp: discord.ui.TextInput[TicketIntakeModal] = discord.ui.TextInput(
                 label=defn["label"],
                 style=style,
                 required=defn.get("required", False),
@@ -280,7 +280,7 @@ class TicketIntakeModal(discord.ui.Modal):
         # Validate required custom fields.
         custom_fields: dict[str, str] = {}
         guild_id = str(self._guild.id)
-        for defn, inp in zip(self._field_definitions, self._custom_inputs):
+        for defn, inp in zip(self._field_definitions, self._custom_inputs, strict=True):
             val = inp.value.strip() if inp.value else ""
             if not val:
                 if defn.get("required"):
@@ -429,7 +429,11 @@ class TicketActionsView(discord.ui.View):
         ticket_row, error = await self._get_ticket(bot, channel_id, guild_id)
         if error is not None:
             await interaction.response.send_message(
-                embed=error_embed(t(guild_id, "tickets.actions.claim_failed_title"), error, guild_id=guild_id, bot=bot, guild=guild),
+                embed=error_embed(
+                    t(guild_id, "tickets.actions.claim_failed_title"),
+                    error,
+                    guild_id=guild_id, bot=bot, guild=guild,
+                ),
                 ephemeral=True,
             )
             return
@@ -464,11 +468,16 @@ class TicketActionsView(discord.ui.View):
                         view=None,
                     )
                     return
+                transfer_desc = t(
+                    guild_id,
+                    "tickets.transfer.success_description",
+                    member=interaction.user.mention,
+                )
                 await confirm_interaction.response.edit_message(
                     embed=discord.Embed(
                         title=t(guild_id, "tickets.transfer.success_title"),
-                        description=t(guild_id, "tickets.transfer.success_description", member=interaction.user.mention),
-                        color=discord.Color.green(),
+                        description=transfer_desc,
+                        color=SUCCESS,
                     ),
                     view=None,
                 )
@@ -476,7 +485,9 @@ class TicketActionsView(discord.ui.View):
 
                 embed = build_ticket_embed(ticket, claimed_by=interaction.user, guild_id=guild_id, bot=bot, guild=guild)
                 try:
-                    await interaction.message.edit(embed=embed)
+                    msg = interaction.message
+                    if msg is not None:
+                        await msg.edit(embed=embed)
                 except (discord.HTTPException, AttributeError):
                     logger.warning("Failed to refresh ticket embed after transfer in channel %s", channel_id)
 
@@ -531,7 +542,11 @@ class TicketActionsView(discord.ui.View):
         ticket_row, error = await self._get_ticket(bot, channel_id, guild_id, action="close")
         if error is not None:
             await interaction.response.send_message(
-                embed=error_embed(t(guild_id, "tickets.actions.close_failed_title"), error, guild_id=guild_id, bot=bot, guild=guild),
+                embed=error_embed(
+                    t(guild_id, "tickets.actions.close_failed_title"),
+                    error,
+                    guild_id=guild_id, bot=bot, guild=guild,
+                ),
                 ephemeral=True,
             )
             return
@@ -566,12 +581,12 @@ class TicketActionsView(discord.ui.View):
                 embed=discord.Embed(
                     title=t(guild_id, "tickets.actions.close_success_title"),
                     description=t(guild_id, "tickets.actions.close_success_description"),
-                    color=discord.Color.greyple(),
+                    color=INFO,
                 ),
                 view=None,
             )
             try:
-                transcript_url = await bot.ticket_service.close_ticket_full(
+                await bot.ticket_service.close_ticket_full(
                     channel, ticket, closer_id, bot=bot, manual=True
                 )
             except Exception:
@@ -585,12 +600,6 @@ class TicketActionsView(discord.ui.View):
                     ephemeral=True,
                 )
                 return
-            close_msg = t(guild_id, "tickets.actions.closed_channel_message")
-            if transcript_url:
-                close_msg += t(guild_id, "tickets.actions.closed_channel_transcript", url=transcript_url)
-            await channel.send(
-                embed=info_embed(t(guild_id, "tickets.actions.closed_channel_title"), close_msg, guild_id=guild_id, bot=bot, guild=guild)
-            )
 
         from bot.views.confirmation import ConfirmCancelView
 
@@ -616,7 +625,12 @@ class _CategorySelectView(discord.ui.View):
 
     __slots__ = ()
 
-    def __init__(self, options: list[discord.SelectOption], guild: discord.Guild, categories: list[TicketCategory]) -> None:
+    def __init__(
+        self,
+        options: list[discord.SelectOption],
+        guild: discord.Guild,
+        categories: list[TicketCategory],
+    ) -> None:
         super().__init__(timeout=300)
         self.add_item(_CategorySelect(options, guild, categories))
 
@@ -626,7 +640,12 @@ class _CategorySelect(discord.ui.Select[discord.ui.View]):
 
     __slots__ = ("_categories", "_guild")
 
-    def __init__(self, options: list[discord.SelectOption], guild: discord.Guild, categories: list[TicketCategory]) -> None:
+    def __init__(
+        self,
+        options: list[discord.SelectOption],
+        guild: discord.Guild,
+        categories: list[TicketCategory],
+    ) -> None:
         guild_id = str(guild.id)
         super().__init__(
             placeholder=t(guild_id, "tickets.open.select_category"), min_values=1, max_values=1, options=options
@@ -646,7 +665,7 @@ class _CategorySelect(discord.ui.Select[discord.ui.View]):
         )
 
         # Resolve field_definitions from the category list.
-        field_definitions: list[dict] = []
+        field_definitions: list[dict[str, Any]] = []
         for cat in self._categories:
             if cat.id == category_id:
                 field_definitions = cat.field_definitions

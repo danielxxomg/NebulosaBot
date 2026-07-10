@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 import discord
 
 from bot.core.i18n import t
+from bot.utils.brand import ERROR, INFO
 
 if TYPE_CHECKING:
     pass
@@ -67,7 +68,7 @@ class ConfirmCancelView(discord.ui.View):
             embed=discord.Embed(
                 title=t(self._guild_id, "confirm.not_owner_title"),
                 description=t(self._guild_id, "confirm.not_owner_description"),
-                color=discord.Color.red(),
+                color=ERROR,
             ),
             ephemeral=True,
         )
@@ -109,7 +110,7 @@ class ConfirmCancelView(discord.ui.View):
             embed=discord.Embed(
                 title=t(self._guild_id, "confirm.cancelled_title"),
                 description=t(self._guild_id, "confirm.cancelled_description"),
-                color=discord.Color.greyple(),
+                color=INFO,
             ),
             view=self,
         )
@@ -127,7 +128,7 @@ class ConfirmCancelView(discord.ui.View):
                             self._guild_id,
                             "confirm.timeout_description",
                         ),
-                        color=discord.Color.greyple(),
+                        color=INFO,
                     ),
                     view=self,
                 )

@@ -572,7 +572,7 @@ class NebulosaBot(commands.Bot):
 
         # Check for ticket:open button in components.
         has_ticket_button = False
-        for component in message.components:  # type: ignore[union-attr]
+        for component in message.components:
             if hasattr(component, "children"):
                 for child in component.children:
                     if getattr(child, "custom_id", None) == "ticket:open":
