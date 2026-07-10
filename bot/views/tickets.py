@@ -167,6 +167,33 @@ async def _create_ticket_after_modal(
             ephemeral=True,
         )
         return
+    except ValueError as exc:
+        # Per-user-per-category limit (and other service ValueErrors).
+        msg = str(exc).lower()
+        if "already has an open" in msg:
+            await interaction.followup.send(
+                embed=error_embed(
+                    t(guild_id, "tickets.open.limit_title"),
+                    t(
+                        guild_id,
+                        "tickets.open.limit_description",
+                        category=category_name,
+                    ),
+                    guild_id=guild_id, bot=bot, guild=guild,
+                ),
+                ephemeral=True,
+            )
+            return
+        logger.exception("Ticket creation rejected by service invariant")
+        await interaction.followup.send(
+            embed=error_embed(
+                t(guild_id, "tickets.open.creation_failed_title"),
+                t(guild_id, "tickets.open.creation_failed_description"),
+                guild_id=guild_id, bot=bot, guild=guild,
+            ),
+            ephemeral=True,
+        )
+        return
     except Exception:
         logger.exception("Failed to create ticket in DB")
         await interaction.followup.send(

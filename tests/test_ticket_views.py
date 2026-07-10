@@ -1155,6 +1155,55 @@ class TestModalModRoleResolution:
         assert call_kwargs["mod_role"] is None
 
 
+class TestCreateTicketLimitEphemeral:
+    """Limit violations on open MUST show specific ephemeral, not creation_failed."""
+
+    @pytest.mark.asyncio
+    async def test_limit_valueerror_shows_specific_ux(self) -> None:
+        """create_ticket_channel raising limit ValueError → tickets.open.limit_* keys."""
+        from bot.views.tickets import _create_ticket_after_modal
+
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = 123456789
+        guild.get_role = MagicMock(return_value=None)
+
+        bot = MagicMock()
+        bot.db = MagicMock()
+        config = MagicMock()
+        config.ticket_category_id = "100000000"
+        config.mod_role_id = None
+        bot.guild_service = MagicMock()
+        bot.guild_service.get_config = AsyncMock(return_value=config)
+        bot.ticket_service = MagicMock()
+        bot.ticket_service.create_ticket_channel = AsyncMock(
+            side_effect=ValueError(
+                "User 111 already has an open ticket in category 'cat-uuid'"
+            ),
+        )
+
+        category_channel = MagicMock(spec=discord.CategoryChannel)
+        guild.get_channel = MagicMock(return_value=category_channel)
+
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.guild = guild
+        interaction.user = MagicMock(spec=discord.Member)
+        interaction.user.id = 111111111
+        interaction.client = bot
+        interaction.followup = MagicMock()
+        interaction.followup.send = AsyncMock()
+
+        await _create_ticket_after_modal(
+            interaction, guild, "cat-uuid", "Support", "Help", "desc",
+        )
+
+        interaction.followup.send.assert_awaited_once()
+        embed = interaction.followup.send.call_args.kwargs["embed"]
+        title = embed.title.lower()
+        assert "limit" in title or "límite" in title
+        assert "Support" in embed.description
+        assert interaction.followup.send.call_args.kwargs.get("ephemeral") is True
+
+
 # ===========================================================================
 # Phase 3 — Edit Category Button + Ephemeral Select (task 3.3 RED)
 # ===========================================================================

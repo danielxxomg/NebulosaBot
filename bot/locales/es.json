@@ -166,6 +166,8 @@
       "channel_failed_description": "No se pudo crear el canal de ticket. Intenta de nuevo.",
       "creation_failed_title": "Error al Crear Ticket",
       "creation_failed_description": "No se pudo crear el ticket. Intenta de nuevo.",
+      "limit_title": "Límite de Tickets",
+      "limit_description": "Ya tenés un ticket abierto en **{category}**. Cerralo antes de abrir otro en esta categoría.",
       "success_title": "✅ Ticket Creado",
       "success_description": "Tu ticket ha sido creado: {channel}",
       "welcome_title": "🎫 Ticket #{number}",
