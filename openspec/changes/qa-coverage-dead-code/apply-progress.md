@@ -1,6 +1,6 @@
-# Apply Progress: QA Coverage & Dead Code Cleanup — PR 2
+# Apply Progress: QA Coverage & Dead Code Cleanup — PR 3 (Final)
 
-## Status: COMPLETE (PR 2 boundary)
+## Status: COMPLETE (all PRs)
 
 ## TDD Cycle Evidence
 
@@ -17,32 +17,49 @@
 | 9.3 | `tests/test_greeting_db.py` | Facade | N/A (new) | ✅ Written (4 tests) | ✅ 4/4 passed | ✅ 2 cases (persist + on_write) | ➖ None needed |
 | 9.4 | `tests/test_infraction_db.py` | Facade | N/A (new) | ✅ Written (4 tests) | ✅ 4/4 passed | ✅ 3 cases (active=false, guildId, id) | ➖ None needed |
 | 10.1 | Full suite | Regression | ✅ 1294/1294 | N/A | ✅ 1327 passed, 3 skipped, 0 warnings | N/A | ✅ ruff clean on PR2 files, mypy clean |
+| 11.1 | `tests/test_sentinel_behavior.py` | Unit | ✅ 1327/1327 | ✅ Written (4 tests: warn escalation, bot/self/higher-role deny) | ✅ 4/4 passed | ✅ 4 cases (escalation + 3 deny paths) | ✅ Removed unused import |
+| 12.1 | Full suite | Regression | ✅ 1327/1327 | N/A | ✅ 1331 passed, 3 skipped, 0 warnings | N/A | ✅ ruff clean, mypy clean |
 
 ## Test Summary
 
-- **Total tests written**: 33 new tests (4 member + 4 count_open + 7 ticket_category + 11 ticket + 4 greeting + 4 infraction + -1 existing updated)
-- **Total tests passing**: 1327 (1294 baseline + 33 new)
-- **Layers used**: Unit (4), Facade (29)
+- **Total tests written**: 37 new tests across all PRs (PR1: 4, PR2: 29, PR3: 4)
+- **Total tests passing**: 1331 (1294 baseline + 37 new)
+- **Layers used**: Unit (8), Facade (29)
 - **Approval tests**: None — no refactoring tasks
 - **Pure functions created**: 1 (`_parse_dt` helper in member.py)
 
 ## Files Changed
 
+### PR 1 (merged)
 | File | Action | What Was Done |
 |------|--------|---------------|
-| `bot/models/member.py` | Modified | Added `_parse_dt()` helper; `from_db_row` now parses ISO strings via `datetime.fromisoformat()` |
-| `bot/core/db/ticket_category_db.py` | Modified | `count_open_tickets_by_category` now requires `guild_id` param + `guildId` filter |
-| `bot/core/db/infraction_db.py` | Modified | `deactivate_infraction` now requires `guild_id` param + `guildId` filter |
+| `tests/test_economy_config_model.py` | Created | EconomyConfig round-trip and defaults |
+| `tests/test_member_model.py` | Created | Member datetime parsing/ISO serialization and defaults |
+| `tests/test_core_help_builder.py` | Created | Internal help builders and context-prefix fallback |
+| `tests/test_brand.py` | Modified | Added production-source hex-literal contract scan |
+| `tests/test_manual.py` | Modified | Added order-independent runtime command discovery assertion |
+
+### PR 2 (merged)
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `bot/models/member.py` | Modified | Added `_parse_dt()` helper; `from_db_row` now parses ISO strings |
+| `bot/core/db/ticket_category_db.py` | Modified | `count_open_tickets_by_category` requires `guild_id` param |
+| `bot/core/db/infraction_db.py` | Modified | `deactivate_infraction` requires `guild_id` param |
 | `bot/cogs/tickets.py` | Modified | `delete_category` passes `gid` to `count_open_tickets_by_category` |
 | `bot/services/infraction_service.py` | Modified | `unwarn()` passes `guild_id` to `deactivate_infraction` |
-| `tests/test_member_model.py` | Modified | Updated to expect datetime parsing; added round-trip test and existing-dt passthrough test |
-| `tests/test_database.py` | Modified | `TestCountOpenTicketsByCategory` updated for `(guild_id, category_id)` signature + guildId filter assert |
-| `tests/test_infraction_service.py` | Modified | `deactivate_infraction` assertion updated to expect `(guild_id, infraction_id)` |
-| `tests/test_sentinel_cog.py` | Modified | `deactivate_infraction` assertion updated to expect `(guild_id, infraction_id)` |
-| `tests/test_ticket_category_db.py` | Created | 7 tests: count_open (guild+category+status+count_exact), update_field_defs (id+guild) |
-| `tests/test_ticket_db.py` | Created | 11 tests: get_stale (guild+time+status), get_channel_ids (guild+status), update_activity (channel+timestamp) |
-| `tests/test_greeting_db.py` | Created | 4 tests: upsert persists, on_write hook, skip when None, raises without connect |
-| `tests/test_infraction_db.py` | Created | 4 tests: active=false, guildId filter, id filter, raises without connect |
+| `tests/test_member_model.py` | Modified | Updated for datetime parsing; added round-trip test |
+| `tests/test_database.py` | Modified | `TestCountOpenTicketsByCategory` updated for new signature |
+| `tests/test_infraction_service.py` | Modified | `deactivate_infraction` assertion updated |
+| `tests/test_sentinel_cog.py` | Modified | `deactivate_infraction` assertion updated |
+| `tests/test_ticket_category_db.py` | Created | 7 tests: count_open + update_field_defs |
+| `tests/test_ticket_db.py` | Created | 11 tests: get_stale + get_channel_ids + update_activity |
+| `tests/test_greeting_db.py` | Created | 4 tests: upsert persists + on_write hook |
+| `tests/test_infraction_db.py` | Created | 4 tests: active=false + guildId + id filters |
+
+### PR 3 (this PR)
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `tests/test_sentinel_behavior.py` | Created | 4 behavioral tests: warn auto-escalation, bot/self/higher-role target denial |
 
 ## Deviations from Design
 
@@ -55,10 +72,9 @@ None.
 ## Commit
 
 ```
-fix(db): guild-scope facade methods + model datetime parsing + facade tests
+test(qa): add sentinel behavior tests for warn/mute/kick/validate_target
 ```
 
-## Remaining Tasks (PR 3)
+## All Tasks Complete
 
-- [ ] 11.1 Create `tests/test_sentinel_behavior.py` — sentinel behavior tests
-- [ ] 12.1 PR 3 verification — full suite green, commit
+All 91 lines of tasks.md are now `[x]` — no remaining tasks.
