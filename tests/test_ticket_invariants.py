@@ -17,8 +17,10 @@ from bot.services.ticket_invariants import (
     check_can_claim,
     check_can_close,
     check_can_delete_note,
+    check_can_edit_category,
     check_can_reopen,
     check_can_transfer,
+    check_one_ticket_per_user_per_category,
     check_subticket_parent,
     compute_note_hash,
     is_duplicate_note,
@@ -284,6 +286,107 @@ class TestCheckSubticketParent:
         """A parent in a different guild MUST raise."""
         with pytest.raises(ValueError, match="guild"):
             check_subticket_parent(_parent_row("p1"), "guildA", "guildB", current_id="c1")
+
+
+# ===========================================================================
+# check_one_ticket_per_user_per_category — per-user-per-category limit
+# ===========================================================================
+
+
+class TestCheckOneTicketPerUserPerCategory:
+    """Verify check_one_ticket_per_user_per_category() enforces the limit."""
+
+    def test_user_with_open_ticket_blocked(self) -> None:
+        """User with 1 open ticket in category MUST be blocked."""
+
+        def count_fn(_uid: str, _cid: str) -> int:
+            return 1
+
+        with pytest.raises(ValueError, match="already has an open ticket"):
+            check_one_ticket_per_user_per_category("userA", "Support", None, count_fn)
+
+    def test_user_with_claimed_ticket_blocked(self) -> None:
+        """User with 1 claimed ticket in category MUST be blocked (claimed counts as open)."""
+
+        def count_fn(_uid: str, _cid: str) -> int:
+            return 1
+
+        with pytest.raises(ValueError, match="already has an open ticket"):
+            check_one_ticket_per_user_per_category("userA", "Support", None, count_fn)
+
+    def test_user_with_no_open_tickets_allowed(self) -> None:
+        """User with 0 open tickets in category MUST NOT raise."""
+
+        def count_fn(_uid: str, _cid: str) -> int:
+            return 0
+
+        check_one_ticket_per_user_per_category("userA", "Support", None, count_fn)
+
+    def test_subticket_skips_check(self) -> None:
+        """Subticket (parent_id is not None) MUST skip the limit check."""
+
+        def count_fn(_uid: str, _cid: str) -> int:
+            return 99  # would block if called
+
+        check_one_ticket_per_user_per_category("userA", "Support", "parent-abc", count_fn)
+
+    def test_null_category_id_skips_check(self) -> None:
+        """Null category_id MUST skip the limit check."""
+
+        def count_fn(_uid: str, _cid: str) -> int:
+            return 99  # would block if called
+
+        check_one_ticket_per_user_per_category("userA", None, None, count_fn)
+
+    def test_closed_ticket_frees_slot(self) -> None:
+        """User with only closed tickets (count=0) MUST NOT be blocked."""
+
+        def count_fn(_uid: str, _cid: str) -> int:
+            return 0
+
+        check_one_ticket_per_user_per_category("userA", "Support", None, count_fn)
+
+    def test_count_fn_receives_user_and_category(self) -> None:
+        """count_fn MUST be called with user_id and category_id."""
+        calls: list[tuple[str, str]] = []
+
+        def count_fn(uid: str, cid: str) -> int:
+            calls.append((uid, cid))
+            return 0
+
+        check_one_ticket_per_user_per_category("userA", "Support", None, count_fn)
+        assert calls == [("userA", "Support")]
+
+
+# ===========================================================================
+# check_can_edit_category — mod/admin authorization
+# ===========================================================================
+
+
+class TestCheckCanEditCategory:
+    """Verify check_can_edit_category() gates by mod/admin role."""
+
+    def test_mod_can_edit_category(self) -> None:
+        """An actor with is_mod=True MUST be allowed to edit category."""
+        ticket = {"id": "t1", "authorId": "userA", "status": "open"}
+        check_can_edit_category("modUser", ticket, is_mod=True)
+
+    def test_non_mod_author_denied(self) -> None:
+        """The ticket author without mod role MUST be denied."""
+        ticket = {"id": "t1", "authorId": "userA", "status": "open"}
+        with pytest.raises(ValueError, match="Only moderators"):
+            check_can_edit_category("userA", ticket, is_mod=False)
+
+    def test_non_mod_non_author_denied(self) -> None:
+        """A non-author, non-mod actor MUST be denied."""
+        ticket = {"id": "t1", "authorId": "userA", "status": "open"}
+        with pytest.raises(ValueError, match="Only moderators"):
+            check_can_edit_category("userB", ticket, is_mod=False)
+
+    def test_mod_can_edit_others_ticket(self) -> None:
+        """A mod MUST be able to edit any ticket's category."""
+        ticket = {"id": "t1", "authorId": "userA", "status": "claimed"}
+        check_can_edit_category("modUser", ticket, is_mod=True)
 
 
 # ===========================================================================
