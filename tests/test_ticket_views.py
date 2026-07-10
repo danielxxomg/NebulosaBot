@@ -981,3 +981,165 @@ class TestClaimOnClaimedTransferConfirm:
         await sent_view.cancel_button.callback(cancel_interaction)
 
         cancel_interaction.response.edit_message.assert_awaited_once()
+
+
+# ===========================================================================
+# PR3 — Modal mod-role resolution characterization (task 3.2)
+# ===========================================================================
+
+
+class TestModalModRoleResolution:
+    """Characterize _create_ticket_after_modal mod_role resolution paths.
+
+    Currently: ``if config.mod_role_id: guild.get_role(int(config.mod_role_id))``
+    wrapped in ``contextlib.suppress(ValueError, TypeError)``.
+
+    After PR3 wiring: replaced by ``resolve_mod_role()`` helper.
+    Behavior MUST remain identical.
+    """
+
+    @staticmethod
+    def _make_modal_interaction(
+        guild: MagicMock,
+        bot: MagicMock,
+    ) -> MagicMock:
+        """Build a mock interaction wired for _create_ticket_after_modal."""
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.guild = guild
+        interaction.user = MagicMock(spec=discord.Member)
+        interaction.user.id = 111111111
+        interaction.user.mention = "<@111111111>"
+        interaction.client = bot
+        interaction.guild_id = guild.id
+        interaction.response = MagicMock()
+        interaction.response.defer = AsyncMock()
+        interaction.followup = MagicMock()
+        interaction.followup.send = AsyncMock()
+        return interaction
+
+    @pytest.mark.asyncio
+    async def test_valid_mod_role_passed_to_service(self) -> None:
+        """config.mod_role_id set + guild.get_role returns Role → mod_role kwarg is the Role."""
+        from bot.views.tickets import _create_ticket_after_modal
+
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = 123456789
+        mod_role = MagicMock(spec=discord.Role)
+        guild.get_role = MagicMock(return_value=mod_role)
+
+        bot = MagicMock()
+        bot.db = MagicMock()
+        config = MagicMock()
+        config.ticket_category_id = "100000000"
+        config.mod_role_id = "987654321"
+        bot.guild_service = MagicMock()
+        bot.guild_service.get_config = AsyncMock(return_value=config)
+        bot.ticket_service = MagicMock()
+
+        category_channel = MagicMock(spec=discord.CategoryChannel)
+        guild.get_channel = MagicMock(return_value=category_channel)
+
+        from bot.models.ticket import Ticket
+
+        ticket = Ticket(
+            id="t1", ticket_number=1, guild_id="123", author_id="456",
+            channel_id="789", status="open", created_at="2026-01-01",
+            last_activity="2026-01-01",
+        )
+        mock_channel = MagicMock()
+        sent_message = AsyncMock()
+        mock_channel.send = AsyncMock(return_value=sent_message)
+        bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_channel, ticket))
+
+        interaction = self._make_modal_interaction(guild, bot)
+
+        with patch("bot.views.tickets.TicketActionsView"):
+            await _create_ticket_after_modal(interaction, guild, "cat-uuid", "Support", "Help", "desc")
+
+        bot.ticket_service.create_ticket_channel.assert_awaited_once()
+        call_kwargs = bot.ticket_service.create_ticket_channel.call_args.kwargs
+        assert call_kwargs["mod_role"] is mod_role
+
+    @pytest.mark.asyncio
+    async def test_none_mod_role_id_passes_none(self) -> None:
+        """config.mod_role_id=None → mod_role=None passed to service."""
+        from bot.views.tickets import _create_ticket_after_modal
+
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = 123456789
+        guild.get_role = MagicMock(return_value=None)
+
+        bot = MagicMock()
+        bot.db = MagicMock()
+        config = MagicMock()
+        config.ticket_category_id = "100000000"
+        config.mod_role_id = None
+        bot.guild_service = MagicMock()
+        bot.guild_service.get_config = AsyncMock(return_value=config)
+        bot.ticket_service = MagicMock()
+
+        category_channel = MagicMock(spec=discord.CategoryChannel)
+        guild.get_channel = MagicMock(return_value=category_channel)
+
+        from bot.models.ticket import Ticket
+
+        ticket = Ticket(
+            id="t1", ticket_number=1, guild_id="123", author_id="456",
+            channel_id="789", status="open", created_at="2026-01-01",
+            last_activity="2026-01-01",
+        )
+        mock_channel = MagicMock()
+        sent_message = AsyncMock()
+        mock_channel.send = AsyncMock(return_value=sent_message)
+        bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_channel, ticket))
+
+        interaction = self._make_modal_interaction(guild, bot)
+
+        with patch("bot.views.tickets.TicketActionsView"):
+            await _create_ticket_after_modal(interaction, guild, "cat-uuid", "Support", "Help", "desc")
+
+        bot.ticket_service.create_ticket_channel.assert_awaited_once()
+        call_kwargs = bot.ticket_service.create_ticket_channel.call_args.kwargs
+        assert call_kwargs["mod_role"] is None
+
+    @pytest.mark.asyncio
+    async def test_invalid_mod_role_id_passes_none(self) -> None:
+        """config.mod_role_id='not-a-number' → ValueError suppressed, mod_role=None."""
+        from bot.views.tickets import _create_ticket_after_modal
+
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = 123456789
+        guild.get_role = MagicMock(return_value=None)
+
+        bot = MagicMock()
+        bot.db = MagicMock()
+        config = MagicMock()
+        config.ticket_category_id = "100000000"
+        config.mod_role_id = "not-a-number"
+        bot.guild_service = MagicMock()
+        bot.guild_service.get_config = AsyncMock(return_value=config)
+        bot.ticket_service = MagicMock()
+
+        category_channel = MagicMock(spec=discord.CategoryChannel)
+        guild.get_channel = MagicMock(return_value=category_channel)
+
+        from bot.models.ticket import Ticket
+
+        ticket = Ticket(
+            id="t1", ticket_number=1, guild_id="123", author_id="456",
+            channel_id="789", status="open", created_at="2026-01-01",
+            last_activity="2026-01-01",
+        )
+        mock_channel = MagicMock()
+        sent_message = AsyncMock()
+        mock_channel.send = AsyncMock(return_value=sent_message)
+        bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_channel, ticket))
+
+        interaction = self._make_modal_interaction(guild, bot)
+
+        with patch("bot.views.tickets.TicketActionsView"):
+            await _create_ticket_after_modal(interaction, guild, "cat-uuid", "Support", "Help", "desc")
+
+        bot.ticket_service.create_ticket_channel.assert_awaited_once()
+        call_kwargs = bot.ticket_service.create_ticket_channel.call_args.kwargs
+        assert call_kwargs["mod_role"] is None

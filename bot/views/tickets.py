@@ -7,7 +7,6 @@ from command logic. Views call service methods via ``interaction.client``
 
 from __future__ import annotations
 
-import contextlib
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -19,6 +18,7 @@ from bot.models.ticket_category import TicketCategory
 from bot.utils.brand import INFO, SUCCESS, WARNING
 from bot.utils.checks import is_mod_check
 from bot.utils.embeds import error_embed, guild_footer_icon, success_embed
+from bot.utils.ticket_helpers import resolve_mod_role
 
 if TYPE_CHECKING:
     from bot.bot import NebulosaBot
@@ -128,10 +128,7 @@ async def _create_ticket_after_modal(
         )
         return
 
-    mod_role: discord.Role | None = None
-    if config.mod_role_id:
-        with contextlib.suppress(ValueError, TypeError):
-            mod_role = guild.get_role(int(config.mod_role_id))
+    mod_role = resolve_mod_role(guild, config.mod_role_id)
 
     author = interaction.user
     assert isinstance(author, discord.Member)
