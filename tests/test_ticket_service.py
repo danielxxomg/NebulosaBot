@@ -2078,3 +2078,130 @@ async def test_close_ticket_full_countdown_failure_fallback(
 
     # Channel still deleted via fallback.
     channel.delete.assert_awaited_once()
+
+
+# ===========================================================================
+# PR3 — unclaim_ticket (task 3.3.1 RED)
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_unclaim_ticket_resets_status_and_claimed_by(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """unclaim_ticket MUST set claimedBy=null, status='open', and write an audit row."""
+    ticket_id = "ticket-uuid-unclaim"
+    actor_id = "userA"
+
+    claimed_row = {
+        "id": ticket_id,
+        "ticketNumber": 5,
+        "guildId": "123456789",
+        "authorId": "111111111",
+        "channelId": "888888888",
+        "categoryId": None,
+        "status": "claimed",
+        "claimedBy": actor_id,
+        "transcriptUrl": None,
+        "createdAt": "2026-01-15T10:00:00",
+        "closedAt": None,
+        "lastActivity": "2026-01-15T10:00:00",
+    }
+    unclaimed_row = {**claimed_row, "status": "open", "claimedBy": None}
+    mock_db.get_ticket.side_effect = [claimed_row, unclaimed_row]
+
+    ticket = await service.unclaim_ticket(ticket_id, actor_id, is_mod=False)
+
+    mock_db.update_ticket.assert_awaited_once()
+    update_kwargs = mock_db.update_ticket.call_args.kwargs
+    assert update_kwargs["status"] == "open"
+    assert update_kwargs["claimedBy"] is None
+
+    assert ticket.status == "open"
+    assert ticket.claimed_by is None
+
+    mock_db.insert_audit_row.assert_awaited_once()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "unclaim"
+    assert kwargs["outcome"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_unclaim_ticket_unclaimed_raises(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """unclaim_ticket on an unclaimed ticket MUST raise ValueError + audit denied."""
+    ticket_id = "ticket-uuid-unclaim"
+
+    open_row = {
+        "id": ticket_id,
+        "ticketNumber": 5,
+        "guildId": "123456789",
+        "authorId": "111111111",
+        "channelId": "888888888",
+        "categoryId": None,
+        "status": "open",
+        "claimedBy": None,
+        "transcriptUrl": None,
+        "createdAt": "2026-01-15T10:00:00",
+        "closedAt": None,
+        "lastActivity": "2026-01-15T10:00:00",
+    }
+    mock_db.get_ticket.return_value = open_row
+
+    with pytest.raises(ValueError, match=r"claimed"):
+        await service.unclaim_ticket(ticket_id, "userA", is_mod=False)
+
+    mock_db.update_ticket.assert_not_awaited()
+    mock_db.insert_audit_row.assert_awaited_once()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "unclaim"
+    assert kwargs["outcome"] == "denied"
+
+
+@pytest.mark.asyncio
+async def test_unclaim_ticket_non_claimer_non_mod_denied(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """unclaim_ticket by non-claimer non-mod MUST raise ValueError + audit denied."""
+    ticket_id = "ticket-uuid-unclaim"
+
+    claimed_row = {
+        "id": ticket_id,
+        "ticketNumber": 5,
+        "guildId": "123456789",
+        "authorId": "111111111",
+        "channelId": "888888888",
+        "categoryId": None,
+        "status": "claimed",
+        "claimedBy": "userA",
+        "transcriptUrl": None,
+        "createdAt": "2026-01-15T10:00:00",
+        "closedAt": None,
+        "lastActivity": "2026-01-15T10:00:00",
+    }
+    mock_db.get_ticket.return_value = claimed_row
+
+    with pytest.raises(ValueError, match=r"claimer|mod|permission"):
+        await service.unclaim_ticket(ticket_id, "userB", is_mod=False)
+
+    mock_db.update_ticket.assert_not_awaited()
+    mock_db.insert_audit_row.assert_awaited_once()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "unclaim"
+    assert kwargs["outcome"] == "denied"
+
+
+@pytest.mark.asyncio
+async def test_unclaim_ticket_not_found(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """unclaim_ticket on a non-existent ticket MUST raise ValueError."""
+    mock_db.get_ticket.return_value = None
+
+    with pytest.raises(ValueError, match=r"not found"):
+        await service.unclaim_ticket("nonexistent", "userA", is_mod=False)

@@ -31,6 +31,7 @@ from bot.services.ticket_invariants import (
     check_can_delete_note,
     check_can_reopen,
     check_can_transfer,
+    check_can_unclaim,
     check_subticket_parent,
     compute_note_hash,
     is_duplicate_note,
@@ -405,6 +406,13 @@ async def test_ti019_audit_every_success() -> None:
         guild_id="123456789",
     )
 
+    # --- unclaim → success (pre=claimed by actor, re-read=open) -------------
+    claimed_row = {**open_row, "status": "claimed", "claimedBy": "999999999"}
+    unclaimed_row = {**open_row, "status": "open", "claimedBy": None}
+    db.get_ticket.side_effect = [claimed_row, unclaimed_row]
+    await service.unclaim_ticket(ticket_id, actor_id="999999999", is_mod=False)
+    db.get_ticket.reset_mock(side_effect=True)
+
     # --- reopen → success (closed→open, new channel) ----------------------
     closed_row = {**_contract_ticket_row(status="closed"), "ticketNumber": 1, "transcriptUrl": "https://t"}
     reopened = {**closed_row, "channelId": "555555555", "status": "open", "closedAt": None}
@@ -432,6 +440,7 @@ async def test_ti019_audit_every_success() -> None:
         "claim",
         "close",
         "transfer",
+        "unclaim",
         "note_add",
         "note_list",
         "note_delete",
@@ -471,6 +480,12 @@ async def test_ti020_audit_every_denied() -> None:
         await service.transfer_ticket(ticket_id, new_claimed_by="userA", actor_id="admin1")
     db.get_ticket.reset_mock(side_effect=True)
 
+    # unclaim denied (not claimed)
+    db.get_ticket.return_value = _contract_ticket_row(status="open", claimed_by=None)
+    with pytest.raises(ValueError):
+        await service.unclaim_ticket(ticket_id, actor_id="userA", is_mod=False)
+    db.get_ticket.reset_mock(side_effect=True)
+
     # note_add denied (cap reached)
     db.get_ticket.return_value = {"id": ticket_id, "guildId": "123456789"}
     db.get_ticket_notes.return_value = [_contract_note_row() for _ in range(50)]
@@ -498,7 +513,7 @@ async def test_ti020_audit_every_denied() -> None:
     assert rows, "no denied audit rows written"
     assert all(r[1] == "denied" for r in rows), rows
     assert all(r[2] for r in rows), "every denied row MUST carry a reason"
-    assert {"claim", "close", "transfer", "note_add", "note_delete", "reopen"} <= {r[0] for r in rows}
+    assert {"claim", "close", "transfer", "unclaim", "note_add", "note_delete", "reopen"} <= {r[0] for r in rows}
 
 
 async def test_ti021_audit_guild_scope() -> None:
@@ -861,3 +876,36 @@ async def test_ti037_reopen_noarg_legacy() -> None:
 def test_ti038_audit_paginated() -> None:
     """TI-038: GIVEN 200 audit rows WHEN admin visits audit tab THEN paginated rows newest-first."""
     raise AssertionError("Unskipped by PR3: AuditPanel paginates get_audit_rows(limit, offset)")
+
+
+# ===========================================================================
+# PR3 — unclaim invariant  (check_can_unclaim)
+# ===========================================================================
+
+
+def test_unclaim_claimer_granted() -> None:
+    """GIVEN ticket claimed by userA WHEN check_can_unclaim(userA, ticket, is_mod=False) THEN access granted."""
+    ticket = _contract_ticket_row(status="claimed", claimed_by="userA")
+    # Should NOT raise — claimer can always unclaim.
+    check_can_unclaim("userA", ticket, is_mod=False)
+
+
+def test_unclaim_mod_granted() -> None:
+    """GIVEN ticket claimed by userA WHEN check_can_unclaim(modUser, ticket, is_mod=True) THEN access granted."""
+    ticket = _contract_ticket_row(status="claimed", claimed_by="userA")
+    # Should NOT raise — mods can unclaim any ticket.
+    check_can_unclaim("modUser", ticket, is_mod=True)
+
+
+def test_unclaim_other_denied() -> None:
+    """GIVEN ticket claimed by userA WHEN check_can_unclaim(userB, ticket, is_mod=False) THEN access denied."""
+    ticket = _contract_ticket_row(status="claimed", claimed_by="userA")
+    with pytest.raises(ValueError, match=r"claimer|mod|permission"):
+        check_can_unclaim("userB", ticket, is_mod=False)
+
+
+def test_unclaim_unclaimed_ticket_denied() -> None:
+    """GIVEN ticket with claimedBy=null WHEN check_can_unclaim(anyone, ticket) THEN denied (not claimed)."""
+    ticket = _contract_ticket_row(status="open", claimed_by=None)
+    with pytest.raises(ValueError, match=r"claimed|not claimed"):
+        check_can_unclaim("userA", ticket, is_mod=False)

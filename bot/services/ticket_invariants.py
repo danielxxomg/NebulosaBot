@@ -106,6 +106,22 @@ def check_can_close(ticket_status: str) -> None:
         raise ValueError(f"Cannot close a ticket with status {ticket_status!r}")
 
 
+def check_can_unclaim(actor_id: str, ticket: dict, *, is_mod: bool) -> None:
+    """Validate that *actor_id* may unclaim the *ticket*.
+
+    Unclaim is allowed when the actor is the current claimer OR has the mod
+    role. The ticket MUST be currently claimed (``claimedBy`` is not ``None``).
+
+    Raises ``ValueError`` on any violation.
+    """
+    claimed_by = ticket.get("claimedBy")
+    if claimed_by is None:
+        raise ValueError("Cannot unclaim a ticket that is not currently claimed")
+    if actor_id == claimed_by or is_mod:
+        return
+    raise ValueError("Only the claimer or a moderator can unclaim this ticket")
+
+
 def check_can_reopen(ticket_status: str) -> None:
     """Validate that a reopen may proceed.
 
