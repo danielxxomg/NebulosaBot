@@ -32,6 +32,8 @@ def bot_avatar_url(bot: NebulosaBot) -> str:
     Returns:
         The URL string for the bot's current avatar.
     """
+    if bot.user is None:
+        return ""
     return bot.user.display_avatar.url
 
 
@@ -203,7 +205,7 @@ def build_ticket_embed(
     *,
     claimed_by: discord.User | discord.Member | None = None,
     guild_id: str | None = None,
-    field_definitions: list[dict] | None = None,
+    field_definitions: list[dict[str, Any]] | None = None,
     bot: NebulosaBot | None = None,
     guild: discord.Guild | None = None,
 ) -> discord.Embed:
@@ -244,7 +246,7 @@ def build_ticket_embed(
 
     # Render custom fields as inline embed fields.
     if custom_fields:
-        def_map: dict[str, dict] = {}
+        def_map: dict[str, dict[str, Any]] = {}
         if field_definitions:
             def_map = {d["key"]: d for d in field_definitions}
         for key, value in custom_fields.items():

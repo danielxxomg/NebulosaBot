@@ -1,10 +1,10 @@
 # R2 Readability Review Ledger — PR1 Branding & Assets
 
-**Change:** `ticket-ux-branding`  
-**Slice:** PR1 branding/assets (working tree, uncommitted)  
-**Reviewer:** review-readability (R2)  
-**Date:** 2026-07-09  
-**Lens:** naming, structure, maintainability, intention, review size  
+**Change:** `ticket-ux-branding`
+**Slice:** PR1 branding/assets (working tree, uncommitted)
+**Reviewer:** review-readability (R2)
+**Date:** 2026-07-09
+**Lens:** naming, structure, maintainability, intention, review size
 **Scope:** branding files only (fix pass applied 2026-07-09)
 
 ## Diff size (review size)
