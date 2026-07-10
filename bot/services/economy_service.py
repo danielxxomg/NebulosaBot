@@ -271,7 +271,13 @@ class EconomyService:
     # Leaderboard
     # ------------------------------------------------------------------
 
-    async def get_leaderboard(self, guild_id: str, sort_by: str = "xp", limit: int = 10, offset: int = 0) -> list[dict[str, Any]]:
+    async def get_leaderboard(
+        self,
+        guild_id: str,
+        sort_by: str = "xp",
+        limit: int = 10,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
         """Return leaderboard entries for a guild, with caching.
 
         Cache key: ``{guild_id}:leaderboard:{sort_by}`` with 30s TTL.

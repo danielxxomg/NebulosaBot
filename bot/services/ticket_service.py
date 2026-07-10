@@ -555,7 +555,10 @@ class TicketService:
         return ticket
 
     @staticmethod
-    def _resolve_ticket_category(guild: discord.Guild, guild_row: dict[str, Any] | None) -> discord.CategoryChannel | None:
+    def _resolve_ticket_category(
+        guild: discord.Guild,
+        guild_row: dict[str, Any] | None,
+    ) -> discord.CategoryChannel | None:
         """Resolve the guild's configured Discord ticket category, or None.
 
         Returns ``None`` when no category is configured, the configured id
