@@ -58,7 +58,7 @@ Chain strategy: stacked-to-main
 
 ## Phase 4: Verification & Cleanup
 
-- [ ] 4.1 Verify `reopen_ticket` LOC dropped from 137 to ~80
-- [ ] 4.2 Verify service LOC dropped from 1,069 to ~950
-- [ ] 4.3 Run `uv run pytest --cov=bot --cov-report=term`; verify coverage ≥ 0.70
-- [ ] 4.4 Verify no duplication remains for extracted patterns across all call sites
+- [x] 4.1 Verify `reopen_ticket` LOC dropped from 137 to ~80
+- [x] 4.2 Verify service LOC dropped from 1,069 to ~950
+- [x] 4.3 Run `uv run pytest --cov=bot --cov-report=term`; verify coverage ≥ 0.70
+- [x] 4.4 Verify no duplication remains for extracted patterns across all call sites
