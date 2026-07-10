@@ -169,7 +169,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         gid = str(ctx.guild.id)
         try:
             await deploy_ticket_panel(
-                ctx.channel, gid, bot=self.bot,
+                ctx.channel, gid, bot=self.bot, guild=ctx.guild,
                 title=title, description_text=description_text,
             )
         except discord.Forbidden:

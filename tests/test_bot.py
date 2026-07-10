@@ -419,7 +419,7 @@ class TestValidatePanels:
             await bot._validate_panels()
 
         mock_deploy.assert_awaited_once_with(
-            channel, "111", bot=bot,
+            channel, "111", bot=bot, guild=guild,
         )
 
     @pytest.mark.asyncio
