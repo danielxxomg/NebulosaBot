@@ -11,7 +11,7 @@ import asyncio
 import contextlib
 import logging
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import discord
 
@@ -555,7 +555,7 @@ class TicketService:
         return ticket
 
     @staticmethod
-    def _resolve_ticket_category(guild: discord.Guild, guild_row: dict | None) -> discord.CategoryChannel | None:
+    def _resolve_ticket_category(guild: discord.Guild, guild_row: dict[str, Any] | None) -> discord.CategoryChannel | None:
         """Resolve the guild's configured Discord ticket category, or None.
 
         Returns ``None`` when no category is configured, the configured id
@@ -578,8 +578,8 @@ class TicketService:
     async def _build_reopen_channel(
         self,
         guild: discord.Guild,
-        closed_row: dict,
-        guild_row: dict | None,
+        closed_row: dict[str, Any],
+        guild_row: dict[str, Any] | None,
         category_channel: discord.CategoryChannel,
         ticket_id: str,
     ) -> discord.TextChannel:

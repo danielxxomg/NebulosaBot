@@ -18,6 +18,7 @@ import hashlib
 import logging
 import re
 from dataclasses import dataclass
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +107,7 @@ def check_can_close(ticket_status: str) -> None:
         raise ValueError(f"Cannot close a ticket with status {ticket_status!r}")
 
 
-def check_can_unclaim(actor_id: str, ticket: dict, *, is_mod: bool) -> None:
+def check_can_unclaim(actor_id: str, ticket: dict[str, Any], *, is_mod: bool) -> None:
     """Validate that *actor_id* may unclaim the *ticket*.
 
     Unclaim is allowed when the actor is the current claimer OR has the mod
@@ -181,7 +182,7 @@ def check_can_delete_note(note_author_id: str, actor_id: str) -> None:
 
 
 def check_subticket_parent(
-    parent: dict | None,
+    parent: dict[str, Any] | None,
     parent_guild_id: str,
     current_guild_id: str,
     current_id: str | None = None,

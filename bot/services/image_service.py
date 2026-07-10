@@ -141,7 +141,7 @@ class ImageService:
         # -- Avatar (circular crop) ----------------------------------------
         avatar = self._fetch_avatar(avatar_url)
         if avatar is not None:
-            avatar = avatar.resize((AVATAR_SIZE, AVATAR_SIZE), Image.LANCZOS)
+            avatar = avatar.resize((AVATAR_SIZE, AVATAR_SIZE), Image.LANCZOS)  # type: ignore[attr-defined]  # Pillow exposes LANCZOS at runtime but stubs omit it
             mask = Image.new("L", (AVATAR_SIZE, AVATAR_SIZE), 0)
             ImageDraw.Draw(mask).ellipse((0, 0, AVATAR_SIZE, AVATAR_SIZE), fill=255)
             avatar.putalpha(mask)
@@ -285,7 +285,7 @@ class ImageService:
         if avatar is not None:
             avatar = avatar.resize(
                 (self.GREETING_AVATAR_SIZE, self.GREETING_AVATAR_SIZE),
-                Image.LANCZOS,
+                Image.LANCZOS,  # type: ignore[attr-defined]  # Pillow exposes LANCZOS at runtime but stubs omit it
             )
             mask = Image.new("L", (self.GREETING_AVATAR_SIZE, self.GREETING_AVATAR_SIZE), 0)
             ImageDraw.Draw(mask).ellipse(

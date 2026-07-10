@@ -94,7 +94,7 @@ class LoggingService:
         """
         if not await self._should_log(guild_id):
             return
-        if not self.can_log_in_channel(before.channel):
+        if not self.can_log_in_channel(before.channel):  # type: ignore[arg-type]  # discord.py Message.channel is broader union than GuildChannel; runtime guard in can_log_in_channel handles non-text
             return
 
         channel_name = getattr(before.channel, "name", "unknown")
@@ -129,7 +129,7 @@ class LoggingService:
         """
         if not await self._should_log(guild_id):
             return
-        if not self.can_log_in_channel(message.channel):
+        if not self.can_log_in_channel(message.channel):  # type: ignore[arg-type]  # discord.py Message.channel is broader union than GuildChannel; runtime guard in can_log_in_channel handles non-text
             return
 
         channel_name = getattr(message.channel, "name", "unknown")

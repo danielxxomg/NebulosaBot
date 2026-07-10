@@ -4,6 +4,7 @@ Covers the pyproject-toml-qa-config spec scenarios:
     - strict = true enabled
     - No global disable_error_code
     - Per-file overrides exist for known debt modules (bot.bot)
+    - No wildcard override for bot.services.* (type-strict-services)
 """
 
 from __future__ import annotations
@@ -81,3 +82,22 @@ class TestMypyOverrides:
         override = bot_bot_overrides[0]
         disabled = override.get("disable_error_code", [])
         assert "attr-defined" in disabled, f"bot.bot override must disable 'attr-defined', got: {disabled}"
+
+
+# ---------------------------------------------------------------------------
+# Scenario: bot.services.* wildcard override removed (type-strict-services)
+# ---------------------------------------------------------------------------
+
+
+class TestMypyNoServicesWildcard:
+    """No override MUST target bot.services.* — services must be strict-typed."""
+
+    def test_no_services_wildcard_override(self, mypy_overrides: list[dict]) -> None:
+        """bot.services.* override MUST NOT exist."""
+        services_overrides = [
+            o for o in mypy_overrides
+            if o.get("module") == "bot.services.*"
+        ]
+        assert len(services_overrides) == 0, (
+            f"bot.services.* override still present — remove it: {services_overrides}"
+        )

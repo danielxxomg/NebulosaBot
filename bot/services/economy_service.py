@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import sys
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from bot.utils.timeparse import _to_datetime
 
@@ -265,13 +265,13 @@ class EconomyService:
         member = await self._db.get_member(guild_id, user_id)
         if member is None:
             return 0
-        return member.get("coins", 0)
+        return cast(int, member.get("coins", 0))
 
     # ------------------------------------------------------------------
     # Leaderboard
     # ------------------------------------------------------------------
 
-    async def get_leaderboard(self, guild_id: str, sort_by: str = "xp", limit: int = 10, offset: int = 0) -> list[dict]:
+    async def get_leaderboard(self, guild_id: str, sort_by: str = "xp", limit: int = 10, offset: int = 0) -> list[dict[str, Any]]:
         """Return leaderboard entries for a guild, with caching.
 
         Cache key: ``{guild_id}:leaderboard:{sort_by}`` with 30s TTL.
@@ -281,7 +281,7 @@ class EconomyService:
         cached = self._cache.get(cache_key)
         if cached is not None:
             logger.debug("get_leaderboard(%s): cache hit", cache_key)
-            return cached
+            return cast(list[dict[str, Any]], cached)
 
         logger.debug("get_leaderboard(%s): cache miss — querying DB", cache_key)
         rows = await self._db.get_leaderboard(guild_id, sort_by, limit, offset)
@@ -292,7 +292,7 @@ class EconomyService:
     # Rank Info
     # ------------------------------------------------------------------
 
-    async def get_rank_info(self, guild_id: str, user_id: str) -> dict | None:
+    async def get_rank_info(self, guild_id: str, user_id: str) -> dict[str, Any] | None:
         """Return rank card data for a member: xp, level, coins, rank, progress.
 
         Returns ``None`` if the member has no row.
@@ -328,7 +328,7 @@ class EconomyService:
     # Config
     # ------------------------------------------------------------------
 
-    async def get_economy_config(self, guild_id: str) -> dict | None:
+    async def get_economy_config(self, guild_id: str) -> dict[str, Any] | None:
         """Return the economy configuration for *guild_id*, or ``None``.
 
         Thin wrapper over ``Database.get_economy_config()`` so callers
