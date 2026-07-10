@@ -7,7 +7,7 @@ No service layer — embed construction only, no DB or cache I/O.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import discord
 from discord import app_commands
@@ -39,14 +39,14 @@ class UtilityCog(commands.Cog, name="Utility"):
     # Commands
     # ==================================================================
 
-    @commands.hybrid_command(
+    @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
         name="avatar",
         description="Show a member's avatar.",
     )
     @app_commands.describe(member="Whose avatar to show (default: you)")
     async def avatar(
         self,
-        ctx: commands.Context,
+        ctx: commands.Context[Any],
         member: discord.Member | None = None,
     ) -> None:
         """Reply with an embed showing the targeted member's avatar."""
@@ -62,11 +62,11 @@ class UtilityCog(commands.Cog, name="Utility"):
         embed.set_image(url=f"{avatar_url}?size=1024")
         await ctx.send(embed=embed)
 
-    @commands.hybrid_command(
+    @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
         name="serverinfo",
         description="Show server information.",
     )
-    async def serverinfo(self, ctx: commands.Context) -> None:
+    async def serverinfo(self, ctx: commands.Context[Any]) -> None:
         """Reply with a guild summary embed or error if invoked in DMs."""
         guild_id = ctx.guild.id if ctx.guild else None
 
@@ -113,14 +113,14 @@ class UtilityCog(commands.Cog, name="Utility"):
 
         await ctx.send(embed=embed)
 
-    @commands.hybrid_command(
+    @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
         name="userinfo",
         description="Show user information.",
     )
     @app_commands.describe(member="Whose info to show (default: you)")
     async def userinfo(
         self,
-        ctx: commands.Context,
+        ctx: commands.Context[Any],
         member: discord.Member | None = None,
     ) -> None:
         """Reply with a member summary embed."""
@@ -163,7 +163,7 @@ class UtilityCog(commands.Cog, name="Utility"):
 
         embed.add_field(
             name=t(guild_id, "utility.userinfo.joined_field"),
-            value=discord.utils.format_dt(target.joined_at, "R"),
+            value=discord.utils.format_dt(target.joined_at, "R") if target.joined_at is not None else "Unknown",
             inline=True,
         )
         embed.add_field(

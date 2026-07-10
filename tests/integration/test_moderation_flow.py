@@ -14,6 +14,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import discord
 import pytest
 
 from bot.cogs.sentinel import SentinelCog
@@ -67,7 +68,7 @@ def sentinel_cog(sentinel_bot: MagicMock) -> SentinelCog:
 @pytest.fixture
 def mod_author() -> MagicMock:
     """Return a mock moderator author with a known ID."""
-    member = MagicMock()
+    member = MagicMock(spec=discord.Member)
     member.id = 111111111
     member.mention = "<@111111111>"
     member.name = "TestMod"

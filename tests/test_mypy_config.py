@@ -85,6 +85,32 @@ class TestMypyOverrides:
 
 
 # ---------------------------------------------------------------------------
+# Scenario: bot.cogs.* override narrowed to untyped-decorator only
+# ---------------------------------------------------------------------------
+
+
+class TestMypyCogsOverride:
+    """bot.cogs.* override MUST exist and disable ONLY untyped-decorator."""
+
+    def test_cogs_wildcard_override_exists(self, mypy_overrides: list[dict]) -> None:
+        """An override for bot.cogs.* MUST exist."""
+        cogs_overrides = [o for o in mypy_overrides if o.get("module") == "bot.cogs.*"]
+        assert len(cogs_overrides) >= 1, (
+            f"No override found for 'bot.cogs.*'. Existing overrides: {[o.get('module') for o in mypy_overrides]}"
+        )
+
+    def test_cogs_override_disables_only_untyped_decorator(self, mypy_overrides: list[dict]) -> None:
+        """bot.cogs.* override MUST disable ONLY untyped-decorator error code."""
+        cogs_overrides = [o for o in mypy_overrides if o.get("module") == "bot.cogs.*"]
+        assert len(cogs_overrides) >= 1, "No override for bot.cogs.*"
+        override = cogs_overrides[0]
+        disabled = override.get("disable_error_code", [])
+        assert disabled == ["untyped-decorator"], (
+            f"bot.cogs.* override must disable ONLY ['untyped-decorator'], got: {disabled}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Scenario: bot.services.* wildcard override removed (type-strict-services)
 # ---------------------------------------------------------------------------
 

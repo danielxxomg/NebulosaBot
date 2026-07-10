@@ -10,7 +10,7 @@ Design: ``openspec/changes/ticket-category-id-null/design.md``
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import discord
 from discord import app_commands
@@ -47,7 +47,7 @@ class SetupCog(commands.Cog, name="Setup"):
     @is_admin()
     async def setup_command(
         self,
-        ctx: commands.Context,
+        ctx: commands.Context[Any],
         ticket_category: discord.CategoryChannel,
         mod_role: discord.Role | None = None,
         log_channel: discord.TextChannel | None = None,

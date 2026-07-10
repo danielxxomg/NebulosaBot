@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import discord
 from discord import app_commands
@@ -88,12 +88,12 @@ class GreetingsCog(commands.Cog, name="Greetings"):
     # /welcome_test
     # ------------------------------------------------------------------
 
-    @commands.hybrid_command(
+    @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
         name="welcome_test",
         description="Send a test welcome card in this channel (admin only).",
     )
     @app_commands.default_permissions(administrator=True)
-    async def welcome_test(self, ctx: commands.Context) -> None:  # type: ignore[override]
+    async def welcome_test(self, ctx: commands.Context[Any]) -> None:
         """Generate and send a sample welcome card."""
         if not isinstance(ctx.author, discord.Member) or not ctx.author.guild_permissions.administrator:
             guild_id = str(ctx.guild.id) if ctx.guild else ""
@@ -116,7 +116,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
                 username=ctx.author.display_name,
                 avatar_url=avatar_url,
                 guild_name=ctx.guild.name if ctx.guild else "Unknown",
-                member_count=ctx.guild.member_count if ctx.guild else 0,
+                member_count=(ctx.guild.member_count or 0) if ctx.guild else 0,
                 card_type="welcome",
             )
         except Exception:
@@ -138,12 +138,12 @@ class GreetingsCog(commands.Cog, name="Greetings"):
     # /goodbye_test
     # ------------------------------------------------------------------
 
-    @commands.hybrid_command(
+    @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
         name="goodbye_test",
         description="Send a test goodbye card in this channel (admin only).",
     )
     @app_commands.default_permissions(administrator=True)
-    async def goodbye_test(self, ctx: commands.Context) -> None:  # type: ignore[override]
+    async def goodbye_test(self, ctx: commands.Context[Any]) -> None:
         """Generate and send a sample goodbye card."""
         if not isinstance(ctx.author, discord.Member) or not ctx.author.guild_permissions.administrator:
             guild_id = str(ctx.guild.id) if ctx.guild else ""
@@ -166,7 +166,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
                 username=ctx.author.display_name,
                 avatar_url=avatar_url,
                 guild_name=ctx.guild.name if ctx.guild else "Unknown",
-                member_count=ctx.guild.member_count if ctx.guild else 0,
+                member_count=(ctx.guild.member_count or 0) if ctx.guild else 0,
                 card_type="goodbye",
             )
         except Exception:
@@ -188,7 +188,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
     # Admin guard + embed builder
     # ------------------------------------------------------------------
 
-    async def _admin_guard(self, ctx: commands.Context) -> bool:
+    async def _admin_guard(self, ctx: commands.Context[Any]) -> bool:
         """Check admin permission and send error if denied. Returns True if OK."""
         if not isinstance(ctx.author, discord.Member) or not ctx.author.guild_permissions.administrator:
             guild_id = str(ctx.guild.id) if ctx.guild else ""
@@ -244,9 +244,9 @@ class GreetingsCog(commands.Cog, name="Greetings"):
     # /welcome — hybrid group (fallback = config)
     # ------------------------------------------------------------------
 
-    @commands.hybrid_group(fallback="config", description="Configure welcome card settings.")
+    @commands.hybrid_group(fallback="config", description="Configure welcome card settings.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
     @app_commands.default_permissions(administrator=True)
-    async def welcome(self, ctx: commands.Context) -> None:
+    async def welcome(self, ctx: commands.Context[Any]) -> None:
         """Show the current welcome configuration."""
         if not await self._admin_guard(ctx):
             return
@@ -258,12 +258,12 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             ephemeral=True,
         )
 
-    @welcome.command(name="channel", description="Set the channel for welcome messages.")
+    @welcome.command(name="channel", description="Set the channel for welcome messages.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
     @app_commands.describe(channel="The channel for welcome messages")
     @app_commands.default_permissions(administrator=True)
     async def welcome_channel(
         self,
-        ctx: commands.Context,
+        ctx: commands.Context[Any],
         channel: discord.TextChannel,
     ) -> None:
         """Set the welcome channel."""
@@ -283,9 +283,9 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             ephemeral=True,
         )
 
-    @welcome.command(name="toggle", description="Toggle welcome messages on or off.")
+    @welcome.command(name="toggle", description="Toggle welcome messages on or off.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
     @app_commands.default_permissions(administrator=True)
-    async def welcome_toggle(self, ctx: commands.Context) -> None:
+    async def welcome_toggle(self, ctx: commands.Context[Any]) -> None:
         """Toggle welcome messages on/off."""
         if not await self._admin_guard(ctx):
             return
@@ -308,12 +308,12 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             ephemeral=True,
         )
 
-    @welcome.command(name="message", description="Set the welcome message template.")
+    @welcome.command(name="message", description="Set the welcome message template.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
     @app_commands.describe(template="Message template (placeholders: {user}, {server}, {mention})")
     @app_commands.default_permissions(administrator=True)
     async def welcome_message(
         self,
-        ctx: commands.Context,
+        ctx: commands.Context[Any],
         *,
         template: str,
     ) -> None:
@@ -338,9 +338,9 @@ class GreetingsCog(commands.Cog, name="Greetings"):
     # /goodbye — hybrid group (fallback = config)
     # ------------------------------------------------------------------
 
-    @commands.hybrid_group(fallback="config", description="Configure goodbye card settings.")
+    @commands.hybrid_group(fallback="config", description="Configure goodbye card settings.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
     @app_commands.default_permissions(administrator=True)
-    async def goodbye(self, ctx: commands.Context) -> None:
+    async def goodbye(self, ctx: commands.Context[Any]) -> None:
         """Show the current goodbye configuration."""
         if not await self._admin_guard(ctx):
             return
@@ -352,12 +352,12 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             ephemeral=True,
         )
 
-    @goodbye.command(name="channel", description="Set the channel for goodbye messages.")
+    @goodbye.command(name="channel", description="Set the channel for goodbye messages.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
     @app_commands.describe(channel="The channel for goodbye messages")
     @app_commands.default_permissions(administrator=True)
     async def goodbye_channel(
         self,
-        ctx: commands.Context,
+        ctx: commands.Context[Any],
         channel: discord.TextChannel,
     ) -> None:
         """Set the goodbye channel."""
@@ -377,9 +377,9 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             ephemeral=True,
         )
 
-    @goodbye.command(name="toggle", description="Toggle goodbye messages on or off.")
+    @goodbye.command(name="toggle", description="Toggle goodbye messages on or off.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
     @app_commands.default_permissions(administrator=True)
-    async def goodbye_toggle(self, ctx: commands.Context) -> None:
+    async def goodbye_toggle(self, ctx: commands.Context[Any]) -> None:
         """Toggle goodbye messages on/off."""
         if not await self._admin_guard(ctx):
             return
@@ -402,12 +402,12 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             ephemeral=True,
         )
 
-    @goodbye.command(name="message", description="Set the goodbye message template.")
+    @goodbye.command(name="message", description="Set the goodbye message template.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
     @app_commands.describe(template="Message template (placeholders: {user}, {server}, {mention})")
     @app_commands.default_permissions(administrator=True)
     async def goodbye_message(
         self,
-        ctx: commands.Context,
+        ctx: commands.Context[Any],
         *,
         template: str,
     ) -> None:
