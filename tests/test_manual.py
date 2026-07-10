@@ -244,3 +244,104 @@ def test_dynamic_discovery_all_hybrid_commands_in_manual(manual_text: str) -> No
     lower = manual_text.lower()
     missing = [cmd for cmd in discovered if f"/{cmd}" not in lower]
     assert not missing, f"Discovered hybrid commands not in manual: {missing}"
+
+
+def test_dynamic_discovery_commands_have_descriptions(manual_text: str) -> None:
+    """Each discovered hybrid command must have a non-empty description in the manual.
+
+    Spec (docs-manual/spec.md — each command has a description scenario):
+    "WHEN the surrounding text is inspected THEN a non-empty description line
+    follows the command name."
+    """
+    discovered = _discover_hybrid_commands()
+    assert len(discovered) > 0, "No hybrid commands discovered"
+
+    # Parse the reference section table rows to extract command → description.
+    # Format: | `/cmd` | params | [perm] | description |
+    # Cells may have 3 or 4 columns (some tables include a permission column).
+    lines = manual_text.splitlines()
+    cmd_descriptions: dict[str, str] = {}
+    for line in lines:
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+        cells = [c.strip() for c in stripped.split("|")]
+        # Split by | yields ['', cell1, cell2, ..., ''] — drop empties
+        cells = [c for c in cells if c]
+        if not cells:
+            continue
+        # First cell must contain a command reference like `/ping` or `/ping` etc.
+        first = cells[0].strip().strip("`")
+        if not first.startswith("/"):
+            continue
+        cmd_name = first.lstrip("/")
+        # Skip subcommands (e.g., `/welcome channel` → we want top-level `welcome`)
+        # The description is the LAST cell in the row.
+        if len(cells) >= 3:
+            description = cells[-1].strip()
+            # Only record the first occurrence (reference section has the canonical entry)
+            if cmd_name not in cmd_descriptions:
+                cmd_descriptions[cmd_name] = description
+
+    # For each discovered command, assert a non-empty description exists.
+    missing_desc: list[str] = []
+    empty_desc: list[str] = []
+    for cmd in discovered:
+        desc = cmd_descriptions.get(cmd)
+        if desc is None:
+            missing_desc.append(cmd)
+        elif not desc or desc == "—":
+            empty_desc.append(cmd)
+
+    assert not missing_desc, f"Commands not found in reference tables: {missing_desc}"
+    assert not empty_desc, f"Commands found but with empty description: {empty_desc}"
+
+
+def test_dynamic_discovery_order_resilience(manual_text: str) -> None:
+    """Discovery result is identical regardless of cog module import order.
+
+    Spec (docs-manual/spec.md — discovery is resilient to cog load order scenario):
+    "WHEN command discovery runs THEN the discovered command set is identical
+    regardless of import order."
+    """
+    import importlib
+    import pkgutil
+    import random
+    import sys
+
+    import bot.cogs as cogs_pkg
+
+    # Collect module names once.
+    mod_names = [
+        modname
+        for _importer, modname, _ispkg in pkgutil.iter_modules(cogs_pkg.__path__)
+        if not modname.startswith("_")
+    ]
+    assert len(mod_names) > 0, "No cog modules found"
+
+    # Run discovery with default import order.
+    baseline = _discover_hybrid_commands()
+
+    # Evict all cog modules from sys.modules and re-import in reversed order.
+    cog_prefix = "bot.cogs."
+    evicted = {}
+    for name in list(sys.modules):
+        if name.startswith(cog_prefix):
+            evicted[name] = sys.modules.pop(name)
+
+    try:
+        random.seed(42)
+        shuffled = list(mod_names)
+        random.shuffle(shuffled)
+        for modname in shuffled:
+            importlib.import_module(f"bot.cogs.{modname}")
+
+        reordered = _discover_hybrid_commands()
+        assert reordered == baseline, (
+            f"Discovery differs under shuffled import order.\n"
+            f"Baseline: {baseline}\n"
+            f"Shuffled: {reordered}"
+        )
+    finally:
+        # Restore evicted modules so other tests are unaffected.
+        sys.modules.update(evicted)

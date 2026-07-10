@@ -861,17 +861,22 @@ class TestOnMessageListener:
         ticket_bot: MagicMock,
         mock_db,
     ) -> None:
-        """Messages in ticket channels update lastActivity."""
+        """Messages in ticket channels update lastActivity with guild_id and timestamp."""
         message = MagicMock()
         message.author.bot = False
         message.guild = MagicMock()
+        message.guild.id = 123456789
         message.channel.id = 444444444
 
         ticket_bot.ticket_service.is_ticket_channel = MagicMock(return_value=True)
         mock_db.update_ticket_last_activity = AsyncMock()
 
         await tickets_cog.on_message(message)
-        mock_db.update_ticket_last_activity.assert_awaited_once_with("444444444")
+        mock_db.update_ticket_last_activity.assert_awaited_once()
+        args = mock_db.update_ticket_last_activity.call_args.args
+        assert args[0] == "123456789"  # guild_id
+        assert args[1] == "444444444"  # channel_id
+        assert isinstance(args[2], str)  # timestamp
 
 
 class TestCogLifecycle:

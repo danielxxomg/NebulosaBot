@@ -186,15 +186,21 @@ class TicketDBMixin:
         rows = _unwrap(response)
         return [r["channelId"] for r in rows]
 
-    async def update_ticket_last_activity(self: Any, channel_id: str) -> None:
-        """Set ``lastActivity`` to now for the ticket with the given channel ID.
+    async def update_ticket_last_activity(self: Any, guild_id: str, channel_id: str, timestamp: str) -> None:
+        """Set ``lastActivity`` for the ticket with the given channel ID in a guild.
 
         Called by the ``on_message`` listener — avoids a separate
-        lookup-then-update round-trip.
+        lookup-then-update round-trip.  Scoped by *guild_id* so one guild
+        cannot modify another guild's tickets.
         """
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
 
-        now = datetime.now(UTC).isoformat()
-        logger.debug("DB update_ticket_last_activity(ch=%s)", channel_id)
-        await self._client.table("ticket").update({"lastActivity": now}).eq("channelId", channel_id).execute()
+        logger.debug("DB update_ticket_last_activity(guild=%s, ch=%s)", guild_id, channel_id)
+        await (
+            self._client.table("ticket")
+            .update({"lastActivity": timestamp})
+            .eq("guildId", guild_id)
+            .eq("channelId", channel_id)
+            .execute()
+        )

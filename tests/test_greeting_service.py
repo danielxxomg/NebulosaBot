@@ -215,7 +215,7 @@ class TestSaveConfig:
 
         await service.save_config(config)
 
-        mock_db.upsert_greeting_config.assert_called_once_with(config)
+        mock_db.upsert_greeting_config.assert_called_once_with(guild_id, config)
 
         # Cache must be invalidated.
         assert cache.get(f"{guild_id}:greeting_config") is None

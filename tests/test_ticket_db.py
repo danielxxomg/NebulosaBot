@@ -156,15 +156,14 @@ class TestGetOpenTicketChannelIds:
 
 
 class TestUpdateTicketLastActivity:
-    """update_ticket_last_activity(channel_id) — channel-scoped timestamp update."""
+    """update_ticket_last_activity(guild_id, channel_id, timestamp) — guild+channel scoped."""
 
     @pytest.mark.asyncio
-    @freeze_time("2024-06-15 12:00:00", tz_offset=0)
     async def test_updates_last_activity(self, db: Database, fake_client: FakeSupabaseClient) -> None:
-        """Sends update with lastActivity = now()."""
+        """Sends update with lastActivity = provided timestamp."""
         fake_client.set_table_data("ticket", [])
 
-        await db.update_ticket_last_activity("ch-001")
+        await db.update_ticket_last_activity("g1", "ch-001", "2024-06-15T12:00:00+00:00")
 
         update_calls = fake_client.get_table_calls("ticket")
         assert len(update_calls) == 1
@@ -172,11 +171,21 @@ class TestUpdateTicketLastActivity:
         assert update_calls[0][1]["lastActivity"] == "2024-06-15T12:00:00+00:00"
 
     @pytest.mark.asyncio
+    async def test_filters_by_guild_id(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """Applies eq('guildId') filter."""
+        fake_client.set_table_data("ticket", [])
+
+        await db.update_ticket_last_activity("g99", "ch-001", "2024-06-15T12:00:00+00:00")
+
+        filters = fake_client.get_table_filters("ticket")
+        assert ("eq", "guildId", "g99") in filters
+
+    @pytest.mark.asyncio
     async def test_filters_by_channel_id(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """Applies eq('channelId') filter."""
         fake_client.set_table_data("ticket", [])
 
-        await db.update_ticket_last_activity("ch-999")
+        await db.update_ticket_last_activity("g1", "ch-999", "2024-06-15T12:00:00+00:00")
 
         filters = fake_client.get_table_filters("ticket")
         assert ("eq", "channelId", "ch-999") in filters
@@ -185,4 +194,4 @@ class TestUpdateTicketLastActivity:
     async def test_raises_without_connect(self, disconnected_db: Database) -> None:
         """Raises RuntimeError when not connected."""
         with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.update_ticket_last_activity("ch-001")
+            await disconnected_db.update_ticket_last_activity("g1", "ch-001", "2024-06-15T12:00:00+00:00")

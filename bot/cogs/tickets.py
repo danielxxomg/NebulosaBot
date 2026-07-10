@@ -143,7 +143,10 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
         assert self.bot.db is not None
         try:
-            await self.bot.db.update_ticket_last_activity(str(message.channel.id))
+            now = datetime.now(UTC).isoformat()
+            await self.bot.db.update_ticket_last_activity(
+                str(message.guild.id), str(message.channel.id), now
+            )
         except Exception:
             logger.exception("Failed to update lastActivity for channel %s", message.channel.id)
 
