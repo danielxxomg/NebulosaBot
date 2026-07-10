@@ -60,9 +60,7 @@ The system MUST provide a persistent panel view with an open button. `TicketPane
 
 ### Requirement: Ticket actions view
 
-The system MUST provide a per-ticket action view with close and claim buttons. Claim button MUST be gated by `@is_mod()` (solo mod). Close button MUST be gated by author OR mod. Non-eligible users clicking a gated button SHALL receive an ephemeral rejection message. Button labels MUST be resolved dynamically via `t()` at interaction time using `interaction.guild_id`.
-
-(Previously: labels were set only at construction; action button labels did not update for non-English guilds after restart)
+The system MUST provide a per-ticket action view with close and claim buttons. Claim button MUST be gated by `@is_mod()` (solo mod). Close button MUST be gated by author OR mod. Non-eligible users clicking a gated button SHALL receive an ephemeral rejection message. Button labels MUST be resolved dynamically via `t()` at interaction time using `interaction.guild_id`. Close button click MUST trigger an ephemeral `ConfirmCancelView` confirmation dialog before proceeding. Claim on an already-claimed ticket MUST trigger an ephemeral transfer confirmation dialog before calling `transfer_ticket()`.
 
 #### Scenario: Action view render
 
@@ -86,13 +84,13 @@ The system MUST provide a per-ticket action view with close and claim buttons. C
 
 - GIVEN a ticket authored by userA
 - WHEN userA clicks close
-- THEN the ticket close flow is triggered
+- THEN an ephemeral Confirm/Cancel confirmation dialog is shown
 
 #### Scenario: Mod clicks close on another's ticket
 
 - GIVEN a ticket authored by userA
 - WHEN a mod (not userA) clicks close
-- THEN the ticket close flow is triggered
+- THEN an ephemeral Confirm/Cancel confirmation dialog is shown
 
 #### Scenario: Non-author non-mod clicks close rejected
 
@@ -103,8 +101,8 @@ The system MUST provide a per-ticket action view with close and claim buttons. C
 #### Scenario: Close from action view
 
 - GIVEN an open ticket channel with the action view
-- WHEN a staff member clicks close
-- THEN the ticket close flow is triggered
+- WHEN a staff member clicks close and confirms
+- THEN the ticket close flow is triggered with countdown
 
 #### Scenario: Claim from action view
 
@@ -117,6 +115,18 @@ The system MUST provide a per-ticket action view with close and claim buttons. C
 - GIVEN a Spanish guild with an active ticket
 - WHEN the bot restarts and a user clicks Claim
 - THEN the claim button label is resolved via `t('tickets.actions.claim_button', guild_id)` at interaction time
+
+#### Scenario: Claim on already-claimed ticket shows transfer confirm
+
+- GIVEN a ticket claimed by userA
+- WHEN userB (mod) clicks Claim
+- THEN an ephemeral transfer confirmation dialog is shown with "Transfer ticket from userA to userB?"
+
+#### Scenario: Transfer confirm proceeds
+
+- GIVEN a claim-on-claimed transfer confirmation dialog
+- WHEN the mod clicks Confirm
+- THEN `transfer_ticket()` is called and the ticket is reassigned to userB
 
 ### Requirement: Reopen command accepts ticket-id
 

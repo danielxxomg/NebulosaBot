@@ -8,7 +8,7 @@ Ensure a user-facing Spanish manual exists and covers all bot commands organized
 
 ### Requirement: User manual exists
 
-`docs/MANUAL.md` MUST exist in Spanish and MUST cover all 28 bot commands organized by audience (users, moderators, administrators).
+`docs/MANUAL.md` MUST exist in Spanish and MUST cover all bot commands organized by audience (users, moderators, administrators). The manual MUST document the following ticket UX behaviors: close confirmation dialog (ephemeral Confirm/Cancel), `/unclaim` command (claimer or mods), claim-on-claimed transfer confirmation, channel naming format (`{category}-{username}-{number}`), and brand palette notes (purple/violet embeds, bot avatar footer).
 
 #### Scenario: Manual file present
 
@@ -24,6 +24,30 @@ Ensure a user-facing Spanish manual exists and covers all bot commands organized
 
 #### Scenario: All commands documented
 
-- GIVEN the 28 commands across 7 cogs
+- GIVEN the commands across all cogs
 - WHEN reading the manual's command sections
 - THEN every command SHALL appear at least once with a brief description
+
+#### Scenario: Close confirmation documented
+
+- GIVEN the Ticket System section
+- WHEN reading about closing tickets
+- THEN the manual describes the ephemeral Confirm/Cancel dialog and that dismiss = cancel
+
+#### Scenario: Unclaim command documented
+
+- GIVEN the Ticket System section
+- WHEN reading about claim management
+- THEN `/unclaim` is documented with its permissions (claimer or mods)
+
+#### Scenario: Claim-on-claimed transfer documented
+
+- GIVEN the Ticket System section
+- WHEN reading about claiming tickets
+- THEN the manual describes that claiming an already-claimed ticket shows a transfer confirmation
+
+#### Scenario: Channel naming documented
+
+- GIVEN the Ticket System section
+- WHEN reading about ticket channels
+- THEN the manual describes the `{category}-{username}-{number}` naming format

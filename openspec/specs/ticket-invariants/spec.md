@@ -8,7 +8,7 @@ Shared source-of-truth for ticket lifecycle invariants enforced identically by b
 
 ### Requirement: Status state machine
 
-Ticket status MUST be one of: `open`, `claimed`, `closed`. Transitions: open→claimed (claim), open→closed (close), claimed→closed (close), closed→open (reopen, new channel). Transfer reassigns `claimedBy` AND sets `status='claimed'` (implicit re-claim — transferring an open ticket claims it for the new assignee). Invalid transitions MUST be rejected.
+Ticket status MUST be one of: `open`, `claimed`, `closed`. Transitions: open→claimed (claim), open→closed (close), claimed→closed (close), closed→open (reopen, new channel), claimed→open (unclaim). Transfer reassigns `claimedBy` AND sets `status='claimed'` (implicit re-claim — transferring an open ticket claims it for the new assignee). Unclaim sets `claimedBy=null` AND `status='open'`. Invalid transitions MUST be rejected.
 
 #### Scenario: Valid transitions
 
@@ -34,6 +34,34 @@ Ticket status MUST be one of: `open`, `claimed`, `closed`. Transitions: open→c
 - WHEN transfer to userB executes
 - THEN claimedBy=userB and status remains `claimed`
 
+#### Scenario: Unclaim resets to open
+
+- GIVEN ticket status `claimed` with claimedBy=userA
+- WHEN unclaim executes
+- THEN claimedBy=null and status becomes `open`
+
+### Requirement: Unclaim permission check
+
+`check_can_unclaim(actor_id, ticket)` MUST allow the operation if the actor is the current claimer OR has the mod role. All other actors MUST be denied.
+
+#### Scenario: Claimer can unclaim
+
+- GIVEN ticket claimed by userA
+- WHEN `check_can_unclaim(userA, ticket)` is evaluated
+- THEN access is granted
+
+#### Scenario: Mod can unclaim another's ticket
+
+- GIVEN ticket claimed by userA
+- WHEN `check_can_unclaim(modUser, ticket)` is evaluated and modUser has mod role
+- THEN access is granted
+
+#### Scenario: Non-claimer non-mod denied
+
+- GIVEN ticket claimed by userA
+- WHEN `check_can_unclaim(userB, ticket)` is evaluated and userB lacks mod role
+- THEN access is denied
+
 ### Requirement: Claim no-overwrite
 
 Claim on an already-claimed ticket MUST be rejected. Reassignment SHALL use transfer only.
@@ -52,7 +80,7 @@ Claim on an already-claimed ticket MUST be rejected. Reassignment SHALL use tran
 
 ### Requirement: Permission matrix
 
-Operations × actors: create=any user; claim=mod; close=author OR mod; reopen=mod; transfer=admin; subticket/note CRUD=admin OR mod; audit view=admin only. Dashboard actions are admin-only (divergence documented).
+Operations × actors: create=any user; claim=mod; close=author OR mod; reopen=mod; unclaim=claimer OR mod; transfer=admin; subticket/note CRUD=admin OR mod; audit view=admin only. Dashboard actions are admin-only (divergence documented).
 
 #### Scenario: Mod can claim
 
@@ -76,6 +104,24 @@ Operations × actors: create=any user; claim=mod; close=author OR mod; reopen=mo
 
 - GIVEN user is not author and not mod
 - WHEN they attempt close
+- THEN access is denied
+
+#### Scenario: Claimer can unclaim
+
+- GIVEN user is the ticket claimer
+- WHEN they unclaim the ticket
+- THEN the unclaim succeeds
+
+#### Scenario: Mod can unclaim another's ticket
+
+- GIVEN a ticket claimed by userA
+- WHEN a mod unclaims
+- THEN the unclaim succeeds
+
+#### Scenario: Non-claimer non-mod cannot unclaim
+
+- GIVEN a ticket claimed by userA
+- WHEN userB (not claimer, not mod) attempts unclaim
 - THEN access is denied
 
 ### Requirement: parentId FK invariants
