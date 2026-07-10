@@ -9,7 +9,9 @@ from __future__ import annotations
 import logging
 import re
 import unicodedata
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+
+import discord
 
 from bot.core.i18n import t
 from bot.services.ticket_invariants import parse_ticket_ref
@@ -17,6 +19,18 @@ from bot.utils.embeds import error_embed
 
 if TYPE_CHECKING:
     from bot.bot import NebulosaBot
+
+
+# ---------------------------------------------------------------------------
+# Narrow DB protocol — avoids runtime Database import
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class TicketCategoryReader(Protocol):
+    """Minimal async interface for reading ticket category rows."""
+
+    async def get_ticket_category(self, category_id: str) -> dict[str, Any] | None: ...
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +89,115 @@ def sanitize_channel_name(
         prefix = prefix[:max_prefix_len].rstrip("-")
 
     return f"{prefix}{suffix}"
+
+
+# ---------------------------------------------------------------------------
+# Pure ticket helpers — dependency leaves (no service/cog/view imports)
+# ---------------------------------------------------------------------------
+
+
+def build_ticket_overwrites(
+    guild: discord.Guild,
+    author: discord.Member | None,
+    mod_role: discord.Role | None,
+) -> dict[discord.Role | discord.Member | discord.Object, discord.PermissionOverwrite]:
+    """Build the standard ticket permission overwrite mapping.
+
+    Grants view+send to the bot, *author*, and *mod_role* while denying
+    ``read_messages`` to ``guild.default_role``.  Principals that are
+    ``None`` are silently skipped.
+
+    Args:
+        guild: The Discord guild (provides ``default_role`` and ``me``).
+        author: The ticket author, or ``None`` to skip.
+        mod_role: The moderator role, or ``None`` to skip.
+
+    Returns:
+        A dict mapping principals to :class:`discord.PermissionOverwrite`.
+    """
+    overwrites: dict[
+        discord.Role | discord.Member | discord.Object,
+        discord.PermissionOverwrite,
+    ] = {
+        guild.default_role: discord.PermissionOverwrite(read_messages=False),
+        guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+    }
+    if author is not None:
+        overwrites[author] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+    if mod_role is not None:
+        overwrites[mod_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+    return overwrites
+
+
+def resolve_mod_role(
+    guild: discord.Guild,
+    role_id: object,
+) -> discord.Role | None:
+    """Resolve a Discord role from a raw config ID, suppressing errors.
+
+    Args:
+        guild: The Discord guild to look up the role in.
+        role_id: Raw role snowflake (str, int, or None).
+
+    Returns:
+        The resolved :class:`discord.Role`, or ``None`` if *role_id* is
+        falsy, non-numeric, or the role no longer exists.
+    """
+    if not role_id:
+        return None
+    try:
+        return guild.get_role(int(role_id))
+    except (ValueError, TypeError):
+        return None
+
+
+def resolve_member_safe(
+    guild: discord.Guild,
+    member_id: object,
+) -> discord.Member | None:
+    """Resolve a guild member from a raw snowflake, suppressing errors.
+
+    Args:
+        guild: The Discord guild to look up the member in.
+        member_id: Raw user snowflake (str, int, or None).
+
+    Returns:
+        The resolved :class:`discord.Member`, or ``None`` if *member_id*
+        is falsy, non-numeric, or the member is not in the guild.
+    """
+    if not member_id:
+        return None
+    try:
+        return guild.get_member(int(member_id))
+    except (ValueError, TypeError):
+        return None
+
+
+async def resolve_category_name(
+    db: TicketCategoryReader,
+    category_id: str | None,
+    fallback: str = "ticket",
+) -> str:
+    """Resolve a ticket category label from its UUID via the DB.
+
+    Args:
+        db: Any object exposing ``get_ticket_category(category_id)``.
+        category_id: The ticket_category UUID, or ``None``.
+        fallback: Value returned when the category is missing or the
+            lookup fails (default ``"ticket"``).
+
+    Returns:
+        The category ``name`` field, or *fallback*.
+    """
+    if not category_id:
+        return fallback
+    try:
+        row = await db.get_ticket_category(category_id)
+        if row is not None:
+            return row.get("name", fallback)
+    except Exception:
+        logger.warning("Failed to resolve ticket category %s", category_id)
+    return fallback
 
 
 async def resolve_ticket_for_channel(
