@@ -22,9 +22,11 @@ from bot.services.ticket_invariants import (
     check_can_claim,
     check_can_close,
     check_can_delete_note,
+    check_can_edit_category,
     check_can_reopen,
     check_can_transfer,
     check_can_unclaim,
+    check_one_ticket_per_user_per_category,
     check_subticket_parent,
     compute_note_hash,
     is_duplicate_note,
@@ -107,7 +109,19 @@ class TicketService:
 
         Raises:
             RuntimeError: If all numbering retries are exhausted.
+            ValueError: If the user already has an open ticket in the same category.
         """
+        # Per-user-per-category guard: skip for subtickets (parent_id set)
+        # or uncategorized tickets (category_id is None).
+        if category_id is not None:
+            count = await self._db.count_user_open_tickets_in_category(
+                guild_id, author_id, category_id,
+            )
+            check_one_ticket_per_user_per_category(
+                author_id, category_id, parent_id=None,
+                count_fn=lambda _u, _c: count,
+            )
+
         for attempt in range(1, MAX_RETRIES + 1):
             current_max = await self._db.get_max_ticket_number(guild_id)
             ticket_number = current_max + 1
@@ -317,6 +331,123 @@ class TicketService:
         logger.info("Ticket %s unclaimed by %s", ticket_id, actor_id)
         return ticket
 
+    async def edit_ticket_category(
+        self,
+        ticket_id: str,
+        new_category_id: str,
+        *,
+        channel: discord.TextChannel,
+        actor_id: str,
+        is_mod: bool = False,
+    ) -> tuple[Ticket, bool]:
+        """Edit a ticket's category, audit, and rename the channel.
+
+        This method is the security boundary: it re-validates mod/admin via
+        :func:`check_can_edit_category` even though the view gates UX.
+
+        Args:
+            ticket_id: UUID of the ticket to edit.
+            new_category_id: UUID of the new :class:`TicketCategory`.
+            channel: The Discord channel to rename.
+            actor_id: Discord user snowflake of the actor.
+            is_mod: Whether the actor has the moderator role.
+
+        Returns:
+            A tuple of (updated :class:`Ticket`, rename_succeeded: bool).
+
+        Raises:
+            ValueError: If the ticket is not found, is closed, the actor
+                lacks mod/admin, or the per-user-per-category limit is hit.
+        """
+        pre = await self._db.get_ticket(ticket_id)
+        if pre is None:
+            raise ValueError(f"Ticket {ticket_id} not found")
+        guild_id = pre.get("guildId", "")
+        author_id = pre.get("authorId", "")
+        status = pre.get("status", "")
+
+        # Reject closed tickets.
+        if status == "closed":
+            raise ValueError(
+                f"Cannot edit category of a closed ticket (status={status!r})"
+            )
+
+        # Security boundary: re-validate mod/admin.
+        try:
+            check_can_edit_category(actor_id, pre, is_mod=is_mod)
+        except ValueError as exc:
+            await self._db.insert_audit_row(
+                guild_id, ticket_id, "edit_category", actor_id, "denied", str(exc),
+            )
+            raise
+
+        # Per-user-per-category limit against the NEW category, excluding
+        # the ticket being edited.
+        count = await self._db.count_user_open_tickets_in_category(
+            guild_id, author_id, new_category_id, exclude_ticket_id=ticket_id,
+        )
+        check_one_ticket_per_user_per_category(
+            author_id, new_category_id, parent_id=None,
+            count_fn=lambda _u, _c: count,
+        )
+
+        # DB mutation.
+        await self._db.update_ticket(ticket_id, categoryId=new_category_id)
+
+        row = await self._db.get_ticket(ticket_id)
+        if row is None:
+            raise ValueError(f"Ticket {ticket_id} not found after edit_category")
+        ticket = Ticket.from_db_row(row)
+
+        # Audit success after DB update.
+        try:
+            await self._db.insert_audit_row(
+                guild_id, ticket_id, "edit_category", actor_id, "success", None,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to write edit_category audit row for ticket %s",
+                ticket_id,
+                exc_info=True,
+            )
+
+        # Channel rename — best effort.
+        rename_succeeded = True
+        try:
+            category_name = await resolve_category_name(
+                self._db, new_category_id, fallback="ticket",
+            )
+            # Resolve author display name for the channel name (mirrors
+            # _build_reopen_channel so the channel name reflects the author).
+            author = resolve_member_safe(channel.guild, author_id)
+            display_name = author.display_name if author is not None else "user"
+            # ticket_number from the DB row.
+            ticket_number = row.get("ticketNumber", 0)
+            try:
+                ticket_number = int(ticket_number)
+            except (TypeError, ValueError):
+                ticket_number = 0
+            new_name = sanitize_channel_name(
+                category_name, display_name, ticket_number,
+            )
+            await channel.edit(name=new_name)
+        except discord.HTTPException:
+            logger.warning(
+                "Failed to rename ticket channel %s after category edit",
+                channel.id,
+                exc_info=True,
+            )
+            rename_succeeded = False
+
+        logger.info(
+            "Ticket %s category edited to %s by %s (rename=%s)",
+            ticket_id,
+            new_category_id,
+            actor_id,
+            rename_succeeded,
+        )
+        return ticket, rename_succeeded
+
     async def get_stale_tickets(self, guild_id: str, hours: int = 48) -> list[Ticket]:
         """Return open/claimed tickets with no activity for *hours*.
 
@@ -387,8 +518,8 @@ class TicketService:
         4. parent belongs to the same guild as the caller-supplied *guild_id*
 
         When ``parent_id`` is set the "one open ticket per user per category"
-        constraint is skipped (carve-out). The current ``create_ticket`` path
-        does not enforce that constraint, so the carve-out is structural.
+        constraint is skipped (carve-out). The ``create_ticket`` path enforces
+        that constraint, so the carve-out here is structural.
 
         The caller creates the Discord channel first (mirrors
         :meth:`create_ticket`).

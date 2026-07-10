@@ -55,6 +55,8 @@ def mock_db() -> AsyncMock:
     db.get_recent_notes_for_dedup = AsyncMock(return_value=[])
     # PR4 channel naming: category lookup for reopen.
     db.get_ticket_category = AsyncMock(return_value=None)
+    # PR2 Phase 2: per-user-per-category count for create_ticket guard + edit_ticket_category.
+    db.count_user_open_tickets_in_category = AsyncMock(return_value=0)
     return db
 
 
@@ -249,6 +251,131 @@ async def test_create_ticket_without_subject_and_description(
     assert call_kwargs["description"] is None
     assert ticket.subject is None
     assert ticket.description is None
+
+
+# ---------------------------------------------------------------------------
+# create_ticket — per-user-per-category guard (task 2.1 RED)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_ticket_blocked_when_user_has_open_in_same_category(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """Second ticket in same category MUST raise ValueError."""
+    mock_db.get_max_ticket_number.return_value = 0
+    mock_db.count_user_open_tickets_in_category.return_value = 1  # already has one
+
+    with pytest.raises(ValueError, match=r"already has an open ticket"):
+        await service.create_ticket(
+            guild_id="123456789",
+            author_id="111111111",
+            category_id="cat-uuid-001",
+            channel_id="888888888",
+        )
+
+    # No insert attempted after guard rejection.
+    mock_db.insert_ticket.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_ticket_allowed_in_different_category(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """Ticket in a different category MUST succeed even if user has open ticket elsewhere."""
+    mock_db.get_max_ticket_number.return_value = 0
+    mock_db.count_user_open_tickets_in_category.return_value = 0  # no open in this category
+    mock_db.insert_ticket.return_value = {**ticket_row, "categoryId": "cat-uuid-002"}
+
+    ticket = await service.create_ticket(
+        guild_id="123456789",
+        author_id="111111111",
+        category_id="cat-uuid-002",
+        channel_id="888888888",
+    )
+
+    assert isinstance(ticket, Ticket)
+    mock_db.insert_ticket.assert_awaited_once()
+    mock_db.count_user_open_tickets_in_category.assert_awaited_once_with(
+        "123456789", "111111111", "cat-uuid-002",
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_ticket_allowed_when_closed_frees_slot(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """Closed ticket frees the slot — count returns 0."""
+    mock_db.get_max_ticket_number.return_value = 0
+    mock_db.count_user_open_tickets_in_category.return_value = 0  # closed doesn't count
+    mock_db.insert_ticket.return_value = {**ticket_row, "categoryId": "cat-uuid-001"}
+
+    ticket = await service.create_ticket(
+        guild_id="123456789",
+        author_id="111111111",
+        category_id="cat-uuid-001",
+        channel_id="888888888",
+    )
+
+    assert isinstance(ticket, Ticket)
+    mock_db.insert_ticket.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_create_ticket_subticket_bypasses_guard(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """When parentId is set, the guard MUST be skipped (subticket carve-out).
+
+    The user already has an open ticket in the same category, yet the
+    sub-ticket creation MUST succeed without calling count.
+    """
+    parent_id = "parent-uuid-001"
+    mock_db.get_ticket.return_value = _parent_row(parent_id=None)
+    mock_db.get_max_ticket_number.return_value = 5
+    mock_db.insert_ticket.return_value = {**ticket_row, "parentId": parent_id, "ticketNumber": 6}
+
+    ticket = await service.create_subticket(
+        parent_id=parent_id,
+        author_id="111111111",
+        category_id="cat-uuid-001",
+        channel_id="666666666",
+        guild_id="123456789",
+    )
+
+    assert ticket.parent_id == parent_id
+    # Count MUST NOT be called for subtickets.
+    mock_db.count_user_open_tickets_in_category.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_ticket_null_category_id_bypasses_guard(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """When categoryId is None, the guard MUST be skipped."""
+    mock_db.get_max_ticket_number.return_value = 0
+    mock_db.insert_ticket.return_value = {**ticket_row, "categoryId": None}
+
+    ticket = await service.create_ticket(
+        guild_id="123456789",
+        author_id="111111111",
+        category_id=None,
+        channel_id="888888888",
+    )
+
+    assert isinstance(ticket, Ticket)
+    # Count MUST NOT be called when categoryId is None.
+    mock_db.count_user_open_tickets_in_category.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -2488,6 +2615,349 @@ async def test_unclaim_ticket_not_found(
 
     with pytest.raises(ValueError, match=r"not found"):
         await service.unclaim_ticket("nonexistent", "userA", is_mod=False)
+
+
+# ===========================================================================
+# edit_ticket_category — service method (task 2.3 RED)
+# ===========================================================================
+
+
+def _open_ticket_row_for_edit(
+    *,
+    ticket_id: str = "ticket-uuid-edit",
+    author_id: str = "111111111",
+    category_id: str | None = "cat-uuid-support",
+    guild_id: str = "123456789",
+    status: str = "open",
+) -> dict:
+    """Return an open ticket DB row wired for edit_ticket_category tests."""
+    return {
+        "id": ticket_id,
+        "ticketNumber": 5,
+        "guildId": guild_id,
+        "authorId": author_id,
+        "channelId": "888888888",
+        "categoryId": category_id,
+        "status": status,
+        "claimedBy": None,
+        "transcriptUrl": None,
+        "createdAt": "2026-01-15T10:00:00+00:00",
+        "closedAt": None,
+        "lastActivity": "2026-01-15T10:00:00+00:00",
+        "parentId": None,
+    }
+
+
+def _mock_channel_for_edit(*, name: str = "support-daniel-0005") -> MagicMock:
+    """Return a mock TextChannel wired for edit_ticket_category.
+
+    The channel exposes a guild whose ``get_member`` returns a member with
+    ``display_name`` matching the default author_id in
+    ``_open_ticket_row_for_edit`` (``111111111``). This lets
+    ``resolve_member_safe`` resolve the author the way the reopen path does.
+    """
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.id = 888888888
+    channel.name = name
+    channel.edit = AsyncMock()
+
+    guild = MagicMock()
+    author_member = MagicMock()
+    author_member.display_name = "DanielXX"
+    guild.get_member = MagicMock(return_value=author_member)
+    channel.guild = guild
+
+    return channel
+
+
+@pytest.mark.asyncio
+async def test_edit_ticket_category_updates_db_and_renames(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """edit_ticket_category MUST update categoryId in DB and rename the channel."""
+    ticket_id = "ticket-uuid-edit"
+    open_row = _open_ticket_row_for_edit(category_id="cat-uuid-support")
+    updated_row = {**open_row, "categoryId": "cat-uuid-billing"}
+    channel = _mock_channel_for_edit()
+
+    # get_ticket: pre-read (open), then re-read (after update).
+    mock_db.get_ticket.side_effect = [open_row, updated_row]
+    mock_db.count_user_open_tickets_in_category.return_value = 0
+    mock_db.get_ticket_category = AsyncMock(return_value={"name": "Billing"})
+
+    ticket, rename_ok = await service.edit_ticket_category(
+        ticket_id,
+        "cat-uuid-billing",
+        channel=channel,
+        actor_id="999999999",
+        is_mod=True,
+    )
+
+    # DB categoryId updated.
+    mock_db.update_ticket.assert_awaited_once()
+    update_kwargs = mock_db.update_ticket.call_args.kwargs
+    assert update_kwargs["categoryId"] == "cat-uuid-billing"
+
+    # Channel renamed.
+    channel.edit.assert_awaited_once()
+    assert rename_ok is True
+
+    # Channel renamed to sanitized name from category + author + number.
+    # Billing -> billing, author display_name "DanielXX" -> danielxx, 5 -> 0005.
+    edit_kwargs = channel.edit.call_args.kwargs
+    assert edit_kwargs["name"] == "billing-danielxx-0005"
+
+    # Returned ticket reflects new category.
+    assert isinstance(ticket, Ticket)
+
+
+@pytest.mark.asyncio
+async def test_edit_ticket_category_rename_failure_does_not_block_db(
+    service: TicketService,
+    mock_db: AsyncMock,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """When channel rename raises HTTPException, DB update MUST still succeed."""
+    import logging
+
+    ticket_id = "ticket-uuid-edit"
+    open_row = _open_ticket_row_for_edit(category_id="cat-uuid-support")
+    updated_row = {**open_row, "categoryId": "cat-uuid-billing"}
+    channel = _mock_channel_for_edit()
+    channel.edit = AsyncMock(side_effect=discord.HTTPException(MagicMock(), "rate limited"))
+
+    mock_db.get_ticket.side_effect = [open_row, updated_row]
+    mock_db.count_user_open_tickets_in_category.return_value = 0
+    mock_db.get_ticket_category = AsyncMock(return_value={"name": "Billing"})
+
+    with caplog.at_level(logging.WARNING, logger="bot.services.ticket_service"):
+        _ticket, rename_ok = await service.edit_ticket_category(
+            ticket_id,
+            "cat-uuid-billing",
+            channel=channel,
+            actor_id="999999999",
+            is_mod=True,
+        )
+
+    # DB updated despite rename failure.
+    mock_db.update_ticket.assert_awaited_once()
+    assert rename_ok is False
+    assert any("rename" in r.message.lower() for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_edit_ticket_category_writes_audit_on_success(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """edit_ticket_category MUST write an audit row on success."""
+    ticket_id = "ticket-uuid-edit"
+    open_row = _open_ticket_row_for_edit()
+    updated_row = {**open_row, "categoryId": "cat-uuid-billing"}
+    channel = _mock_channel_for_edit()
+
+    mock_db.get_ticket.side_effect = [open_row, updated_row]
+    mock_db.count_user_open_tickets_in_category.return_value = 0
+    mock_db.get_ticket_category = AsyncMock(return_value={"name": "Billing"})
+
+    await service.edit_ticket_category(
+        ticket_id,
+        "cat-uuid-billing",
+        channel=channel,
+        actor_id="999999999",
+        is_mod=True,
+    )
+
+    mock_db.insert_audit_row.assert_awaited_once()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "edit_category"
+    assert kwargs["outcome"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_edit_ticket_category_non_mod_denied(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """Non-mod actor MUST be denied by check_can_edit_category."""
+    ticket_id = "ticket-uuid-edit"
+    open_row = _open_ticket_row_for_edit()
+    channel = _mock_channel_for_edit()
+
+    mock_db.get_ticket.return_value = open_row
+
+    with pytest.raises(ValueError, match=r"[Mm]oderator"):
+        await service.edit_ticket_category(
+            ticket_id,
+            "cat-uuid-billing",
+            channel=channel,
+            actor_id="111111111",  # author, not mod
+            is_mod=False,
+        )
+
+    # No DB mutation on denial.
+    mock_db.update_ticket.assert_not_awaited()
+    # Audit denied written.
+    mock_db.insert_audit_row.assert_awaited_once()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "edit_category"
+    assert kwargs["outcome"] == "denied"
+
+
+@pytest.mark.asyncio
+async def test_edit_ticket_category_closed_rejected(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """Edit on a closed ticket MUST raise ValueError and not mutate DB."""
+    ticket_id = "ticket-uuid-edit"
+    closed_row = _open_ticket_row_for_edit(status="closed")
+    channel = _mock_channel_for_edit()
+
+    mock_db.get_ticket.return_value = closed_row
+
+    with pytest.raises(ValueError, match=r"[Cc]losed"):
+        await service.edit_ticket_category(
+            ticket_id,
+            "cat-uuid-billing",
+            channel=channel,
+            actor_id="999999999",
+            is_mod=True,
+        )
+
+    mock_db.update_ticket.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_edit_ticket_category_limit_violation(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """Edit into category where author already has open ticket MUST raise ValueError."""
+    ticket_id = "ticket-uuid-edit"
+    open_row = _open_ticket_row_for_edit(author_id="111111111")
+    channel = _mock_channel_for_edit()
+
+    mock_db.get_ticket.return_value = open_row
+    mock_db.count_user_open_tickets_in_category.return_value = 1  # already has one
+
+    with pytest.raises(ValueError, match=r"already has an open ticket"):
+        await service.edit_ticket_category(
+            ticket_id,
+            "cat-uuid-billing",
+            channel=channel,
+            actor_id="999999999",
+            is_mod=True,
+        )
+
+    mock_db.update_ticket.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_edit_ticket_category_empty_category_allowed(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """Edit into a category where author has no open tickets MUST succeed."""
+    ticket_id = "ticket-uuid-edit"
+    open_row = _open_ticket_row_for_edit()
+    updated_row = {**open_row, "categoryId": "cat-uuid-billing"}
+    channel = _mock_channel_for_edit()
+
+    mock_db.get_ticket.side_effect = [open_row, updated_row]
+    mock_db.count_user_open_tickets_in_category.return_value = 0
+    mock_db.get_ticket_category = AsyncMock(return_value={"name": "Billing"})
+
+    _ticket, rename_ok = await service.edit_ticket_category(
+        ticket_id,
+        "cat-uuid-billing",
+        channel=channel,
+        actor_id="999999999",
+        is_mod=True,
+    )
+
+    assert rename_ok is True
+    mock_db.update_ticket.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_edit_ticket_category_excludes_edited_ticket_from_count(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """The count MUST exclude the ticket being edited (exclude_ticket_id)."""
+    ticket_id = "ticket-uuid-edit"
+    open_row = _open_ticket_row_for_edit(category_id="cat-uuid-billing")
+    updated_row = {**open_row, "categoryId": "cat-uuid-support"}
+    channel = _mock_channel_for_edit()
+
+    mock_db.get_ticket.side_effect = [open_row, updated_row]
+    mock_db.count_user_open_tickets_in_category.return_value = 0
+    mock_db.get_ticket_category = AsyncMock(return_value={"name": "Support"})
+
+    await service.edit_ticket_category(
+        ticket_id,
+        "cat-uuid-support",
+        channel=channel,
+        actor_id="999999999",
+        is_mod=True,
+    )
+
+    # Count called with exclude_ticket_id.
+    mock_db.count_user_open_tickets_in_category.assert_awaited_once_with(
+        "123456789", "111111111", "cat-uuid-support", exclude_ticket_id=ticket_id,
+    )
+
+
+@pytest.mark.asyncio
+async def test_edit_ticket_category_same_category_noop(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """Same-category no-op edit MUST not self-block (exclude_ticket_id prevents it)."""
+    ticket_id = "ticket-uuid-edit"
+    open_row = _open_ticket_row_for_edit(category_id="cat-uuid-support")
+    # Same category — no actual change.
+    channel = _mock_channel_for_edit()
+
+    # Count returns 0 because the edited ticket is excluded.
+    mock_db.get_ticket.side_effect = [open_row, open_row]
+    mock_db.count_user_open_tickets_in_category.return_value = 0
+    mock_db.get_ticket_category = AsyncMock(return_value={"name": "Support"})
+
+    _ticket, rename_ok = await service.edit_ticket_category(
+        ticket_id,
+        "cat-uuid-support",
+        channel=channel,
+        actor_id="999999999",
+        is_mod=True,
+    )
+
+    # DB updated (even though category didn't change — the method doesn't optimize for no-op).
+    mock_db.update_ticket.assert_awaited_once()
+    assert rename_ok is True
+
+
+@pytest.mark.asyncio
+async def test_edit_ticket_category_not_found(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """Editing a non-existent ticket MUST raise ValueError."""
+    mock_db.get_ticket.return_value = None
+    channel = _mock_channel_for_edit()
+
+    with pytest.raises(ValueError, match=r"[Nn]ot found"):
+        await service.edit_ticket_category(
+            "nonexistent",
+            "cat-uuid-billing",
+            channel=channel,
+            actor_id="999999999",
+            is_mod=True,
+        )
+
+    mock_db.update_ticket.assert_not_awaited()
 
 
 # ===========================================================================
