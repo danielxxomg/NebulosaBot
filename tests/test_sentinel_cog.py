@@ -201,7 +201,7 @@ class TestUnwarnCommand:
         with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
             await sentinel_cog.unwarn.callback(sentinel_cog, sentinel_ctx, target_member)
 
-        mock_db.deactivate_infraction.assert_awaited_once_with("inf-001")
+        mock_db.deactivate_infraction.assert_awaited_once_with("123456789", "inf-001")
         sentinel_ctx.send.assert_awaited_once()
         embed = sentinel_ctx.send.call_args.kwargs.get("embed")
         assert "Revoked" in embed.title

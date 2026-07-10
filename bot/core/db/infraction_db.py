@@ -112,10 +112,20 @@ class InfractionDBMixin:
         )
         return _unwrap(response)
 
-    async def deactivate_infraction(self: Any, infraction_id: str) -> None:
-        """Soft-delete an infraction by setting ``active = false``."""
+    async def deactivate_infraction(self: Any, guild_id: str, infraction_id: str) -> None:
+        """Soft-delete an infraction by setting ``active = false``.
+
+        Scoped by *guild_id* so one guild cannot deactivate another
+        guild's infractions even if the infraction ID is known.
+        """
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
 
-        logger.debug("DB deactivate_infraction(%s)", infraction_id)
-        await self._client.table("infraction").update({"active": False}).eq("id", infraction_id).execute()
+        logger.debug("DB deactivate_infraction(%s, %s)", guild_id, infraction_id)
+        await (
+            self._client.table("infraction")
+            .update({"active": False})
+            .eq("guildId", guild_id)
+            .eq("id", infraction_id)
+            .execute()
+        )

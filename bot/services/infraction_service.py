@@ -92,7 +92,7 @@ class InfractionService:
             return None
 
         most_recent = active[0]  # ordered by createdAt DESC
-        await self._db.deactivate_infraction(most_recent["id"])
+        await self._db.deactivate_infraction(guild_id, most_recent["id"])
         await self._db.update_member_warnings(guild_id, target_id, delta=-1)
 
         return Infraction.from_db_row(most_recent)

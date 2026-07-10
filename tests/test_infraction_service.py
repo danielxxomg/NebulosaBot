@@ -132,7 +132,7 @@ async def test_unwarn_deactivates_last_active_warning(
 
     assert result is not None
     assert result.id == sample_infraction_row["id"]
-    mock_db.deactivate_infraction.assert_awaited_once_with(sample_infraction_row["id"])
+    mock_db.deactivate_infraction.assert_awaited_once_with(GUILD_ID, sample_infraction_row["id"])
     mock_db.update_member_warnings.assert_awaited_once_with(GUILD_ID, TARGET_ID, delta=-1)
 
 

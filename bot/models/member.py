@@ -6,6 +6,13 @@ from dataclasses import dataclass
 from datetime import datetime
 
 
+def _parse_dt(value: str | datetime | None) -> datetime | None:
+    """Parse an ISO-8601 string to datetime, or pass through existing instances."""
+    if value is None or isinstance(value, datetime):
+        return value
+    return datetime.fromisoformat(value)
+
+
 @dataclass
 class Member:
     """Per-guild member data stored in Supabase.
@@ -26,7 +33,12 @@ class Member:
 
     @classmethod
     def from_db_row(cls, row: dict) -> Member:
-        """Build a Member from a Supabase row (camelCase keys)."""
+        """Build a Member from a Supabase row (camelCase keys).
+
+        ISO-8601 strings for datetime fields are parsed via
+        ``datetime.fromisoformat()``.  Already-constructed ``datetime``
+        instances (e.g. from ORM or test fixtures) pass through unchanged.
+        """
         return cls(
             guild_id=row["guildId"],
             user_id=row["userId"],
@@ -35,9 +47,9 @@ class Member:
             warnings=row.get("warnings", 0),
             coins=row.get("coins", 0),
             daily_streak=row.get("dailyStreak", 0),
-            last_daily_reset=row.get("lastDailyReset"),
-            last_daily=row.get("lastDaily"),
-            last_xp_gain=row.get("lastXpGain"),
+            last_daily_reset=_parse_dt(row.get("lastDailyReset")),
+            last_daily=_parse_dt(row.get("lastDaily")),
+            last_xp_gain=_parse_dt(row.get("lastXpGain")),
         )
 
     def to_db_dict(self) -> dict:
