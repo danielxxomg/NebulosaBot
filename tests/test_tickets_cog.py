@@ -923,7 +923,7 @@ class TestSlashCommands:
             await tickets_cog.ticket_panel.callback(tickets_cog, ctx)
 
         mock_deploy.assert_awaited_once_with(
-            ctx.channel, "123456789", bot=ticket_bot,
+            ctx.channel, "123456789", bot=ticket_bot, guild=ctx.guild,
             title="Support Tickets",
             description_text="Click the button below to open a support ticket. A staff member will assist you shortly.",
         )

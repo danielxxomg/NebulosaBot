@@ -16,9 +16,9 @@ import discord
 
 from bot.core.i18n import t
 from bot.models.ticket_category import TicketCategory
-from bot.utils.checks import is_mod_check
 from bot.utils.brand import INFO, WARNING
-from bot.utils.embeds import bot_avatar_url, error_embed, info_embed, success_embed
+from bot.utils.checks import is_mod_check
+from bot.utils.embeds import error_embed, guild_footer_icon, info_embed, success_embed
 
 if TYPE_CHECKING:
     from bot.bot import NebulosaBot
@@ -40,6 +40,7 @@ async def deploy_ticket_panel(
     guild_id: str,
     *,
     bot: NebulosaBot,
+    guild: discord.Guild | None = None,
     title: str = DEFAULT_TICKET_PANEL_TITLE,
     description_text: str = DEFAULT_TICKET_PANEL_DESCRIPTION,
 ) -> discord.Message:
@@ -57,7 +58,7 @@ async def deploy_ticket_panel(
         color=INFO,
         timestamp=datetime.now(UTC),
     )
-    embed.set_footer(text=t(guild_id, "tickets.open.footer"), icon_url=bot_avatar_url(bot))
+    embed.set_footer(text=t(guild_id, "tickets.open.footer"), icon_url=guild_footer_icon(guild, bot))
 
     msg = await channel.send(embed=embed, view=TicketPanelView(guild_id=guild_id))
 
@@ -623,7 +624,7 @@ class _CategorySelectView(discord.ui.View):
 class _CategorySelect(discord.ui.Select[discord.ui.View]):
     """Select dropdown populated with ticket categories."""
 
-    __slots__ = ("_guild", "_categories")
+    __slots__ = ("_categories", "_guild")
 
     def __init__(self, options: list[discord.SelectOption], guild: discord.Guild, categories: list[TicketCategory]) -> None:
         guild_id = str(guild.id)

@@ -553,7 +553,7 @@ class NebulosaBot(commands.Bot):
                 msg_id,
                 guild_id,
             )
-            await deploy_ticket_panel(channel, guild_id, bot=self)  # type: ignore[arg-type]
+            await deploy_ticket_panel(channel, guild_id, bot=self, guild=guild)  # type: ignore[arg-type]
             return
         except discord.Forbidden:
             logger.warning(
@@ -585,4 +585,4 @@ class NebulosaBot(commands.Bot):
                 msg_id,
                 guild_id,
             )
-            await deploy_ticket_panel(channel, guild_id, bot=self)  # type: ignore[arg-type]
+            await deploy_ticket_panel(channel, guild_id, bot=self, guild=guild)  # type: ignore[arg-type]

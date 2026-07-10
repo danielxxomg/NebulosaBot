@@ -138,6 +138,63 @@ class TestDeployTicketPanel:
         embed = channel.send.call_args.kwargs["embed"]
         assert embed.footer.icon_url == "https://cdn.discordapp.com/avatars/bot123/avatar.png"
 
+    @pytest.mark.asyncio
+    async def test_embed_footer_uses_guild_icon_when_available(self) -> None:
+        """deploy_ticket_panel MUST use guild.icon.url as footer icon when guild has an icon."""
+        from bot.views.tickets import deploy_ticket_panel
+
+        channel = MagicMock()
+        channel.send = AsyncMock()
+        mock_message = MagicMock()
+        mock_message.id = 42
+        mock_message.channel = channel
+        channel.send.return_value = mock_message
+
+        mock_bot = MagicMock()
+        mock_bot.guild_service = MagicMock()
+        mock_bot.guild_service.update_guild_panel = AsyncMock()
+        mock_bot.user = MagicMock()
+        mock_bot.user.display_avatar = MagicMock()
+        mock_bot.user.display_avatar.url = "https://cdn.discordapp.com/avatars/bot123/avatar.png"
+
+        mock_guild = MagicMock(spec=discord.Guild)
+        mock_guild.id = 123456789
+        mock_guild.icon = MagicMock()
+        mock_guild.icon.url = "https://cdn.discordapp.com/icons/123456789/server.png"
+
+        await deploy_ticket_panel(channel, "123456789", bot=mock_bot, guild=mock_guild)
+
+        embed = channel.send.call_args.kwargs["embed"]
+        assert embed.footer.icon_url == "https://cdn.discordapp.com/icons/123456789/server.png"
+
+    @pytest.mark.asyncio
+    async def test_embed_footer_falls_back_to_bot_avatar_when_guild_no_icon(self) -> None:
+        """deploy_ticket_panel MUST fall back to bot avatar when guild has no custom icon."""
+        from bot.views.tickets import deploy_ticket_panel
+
+        channel = MagicMock()
+        channel.send = AsyncMock()
+        mock_message = MagicMock()
+        mock_message.id = 42
+        mock_message.channel = channel
+        channel.send.return_value = mock_message
+
+        mock_bot = MagicMock()
+        mock_bot.guild_service = MagicMock()
+        mock_bot.guild_service.update_guild_panel = AsyncMock()
+        mock_bot.user = MagicMock()
+        mock_bot.user.display_avatar = MagicMock()
+        mock_bot.user.display_avatar.url = "https://cdn.discordapp.com/avatars/bot123/avatar.png"
+
+        mock_guild = MagicMock(spec=discord.Guild)
+        mock_guild.id = 123456789
+        mock_guild.icon = None
+
+        await deploy_ticket_panel(channel, "123456789", bot=mock_bot, guild=mock_guild)
+
+        embed = channel.send.call_args.kwargs["embed"]
+        assert embed.footer.icon_url == "https://cdn.discordapp.com/avatars/bot123/avatar.png"
+
 
 # ===========================================================================
 # build_ticket_embed — custom_fields rendering (task 2.5 RED)
@@ -721,6 +778,27 @@ class TestCloseButtonConfirmation:
         assert call_kwargs.get("ephemeral") is True
         # The embed should be an error (not a ConfirmCancelView).
         assert "view" not in call_kwargs or not isinstance(call_kwargs.get("view"), ConfirmCancelView)
+
+    @pytest.mark.asyncio
+    async def test_close_non_author_mod_gets_confirm_view(self) -> None:
+        """A non-author moderator clicking close MUST see the confirmation dialog, not rejection."""
+        from bot.views.confirmation import ConfirmCancelView
+        from bot.views.tickets import TicketActionsView
+
+        view = TicketActionsView(guild_id="123456789")
+        # User is NOT the author (author is 111111111, closer is 999999999).
+        interaction = self._make_close_interaction(user_id=999999999)
+        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row_for_close(author_id="111111111")
+
+        # Patch is_mod_check to return True — this user IS a moderator.
+        with patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=True):
+            await view.close_button.callback(interaction)
+
+        # MUST send ephemeral ConfirmCancelView (not a rejection).
+        interaction.response.send_message.assert_awaited_once()
+        call_kwargs = interaction.response.send_message.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
+        assert isinstance(call_kwargs.get("view"), ConfirmCancelView)
 
 
 # ===========================================================================
