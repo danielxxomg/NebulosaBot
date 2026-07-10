@@ -721,3 +721,184 @@ class TestCloseButtonConfirmation:
         assert call_kwargs.get("ephemeral") is True
         # The embed should be an error (not a ConfirmCancelView).
         assert "view" not in call_kwargs or not isinstance(call_kwargs.get("view"), ConfirmCancelView)
+
+
+# ===========================================================================
+# PR3 — Claim-on-Claimed Transfer Confirm (task 3.5.1 RED)
+# ===========================================================================
+
+
+class TestClaimOnClaimedTransferConfirm:
+    """Verify claim on already-claimed ticket shows transfer confirmation dialog."""
+
+    @staticmethod
+    def _make_claim_interaction(
+        *,
+        guild_id: int = 123456789,
+        user_id: int = 222222222,
+        channel_id: int = 888888888,
+    ) -> MagicMock:
+        """Return a mock Interaction wired for the claim button callback."""
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.guild_id = guild_id
+        interaction.channel_id = channel_id
+        interaction.response = MagicMock()
+        interaction.response.send_message = AsyncMock()
+        interaction.response.edit_message = AsyncMock()
+        interaction.response.is_done.return_value = False
+        interaction.original_response = AsyncMock()
+
+        guild = MagicMock()
+        guild.id = guild_id
+        interaction.guild = guild
+
+        user = MagicMock(spec=discord.Member)
+        user.id = user_id
+        user.guild_permissions = MagicMock()
+        user.guild_permissions.administrator = True
+        user.roles = []
+        interaction.user = user
+
+        # message.edit must be an AsyncMock for the embed refresh after transfer.
+        interaction.message = MagicMock()
+        interaction.message.edit = AsyncMock()
+
+        bot = MagicMock()
+        bot.db = MagicMock()
+        bot.db.get_ticket_by_channel = AsyncMock()
+        bot._guild_mod_role_cache = {}
+        bot.ticket_service = MagicMock()
+        bot.ticket_service.claim_ticket = AsyncMock()
+        bot.ticket_service.transfer_ticket = AsyncMock()
+        bot.logging_service = MagicMock()
+        interaction.client = bot
+
+        return interaction
+
+    @pytest.mark.asyncio
+    async def test_claim_on_claimed_shows_transfer_confirm(self) -> None:
+        """Claim on already-claimed ticket MUST send ephemeral ConfirmCancelView (not error embed)."""
+        from bot.views.confirmation import ConfirmCancelView
+        from bot.views.tickets import TicketActionsView
+
+        view = TicketActionsView(guild_id="123456789")
+        interaction = self._make_claim_interaction()
+
+        claimed_row = {
+            "id": "ticket-uuid-claimed",
+            "ticketNumber": 5,
+            "guildId": "123456789",
+            "authorId": "111111111",
+            "channelId": "888888888",
+            "categoryId": None,
+            "status": "claimed",
+            "claimedBy": "111111111",
+            "transcriptUrl": None,
+            "createdAt": "2026-01-15T10:00:00+00:00",
+            "closedAt": None,
+            "lastActivity": "2026-01-15T10:00:00+00:00",
+        }
+        interaction.client.db.get_ticket_by_channel.return_value = claimed_row
+
+        await view.claim_button.callback(interaction)
+
+        # MUST send ephemeral ConfirmCancelView (not a direct error embed).
+        interaction.response.send_message.assert_awaited_once()
+        call_kwargs = interaction.response.send_message.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
+        assert isinstance(call_kwargs.get("view"), ConfirmCancelView)
+
+    @pytest.mark.asyncio
+    async def test_transfer_confirm_calls_transfer_ticket(self) -> None:
+        """Transfer confirm MUST call transfer_ticket with the new claimer."""
+        from bot.views.confirmation import ConfirmCancelView
+        from bot.views.tickets import TicketActionsView
+
+        view = TicketActionsView(guild_id="123456789")
+        interaction = self._make_claim_interaction(user_id=222222222)
+
+        claimed_row = {
+            "id": "ticket-uuid-claimed",
+            "ticketNumber": 5,
+            "guildId": "123456789",
+            "authorId": "111111111",
+            "channelId": "888888888",
+            "categoryId": None,
+            "status": "claimed",
+            "claimedBy": "111111111",
+            "transcriptUrl": None,
+            "createdAt": "2026-01-15T10:00:00+00:00",
+            "closedAt": None,
+            "lastActivity": "2026-01-15T10:00:00+00:00",
+        }
+        interaction.client.db.get_ticket_by_channel.return_value = claimed_row
+
+        from bot.models.ticket import Ticket
+
+        transferred = Ticket.from_db_row({**claimed_row, "claimedBy": "222222222"})
+        interaction.client.ticket_service.transfer_ticket = AsyncMock(return_value=transferred)
+
+        await view.claim_button.callback(interaction)
+
+        # Extract the ConfirmCancelView.
+        sent_view = interaction.response.send_message.call_args.kwargs["view"]
+        assert isinstance(sent_view, ConfirmCancelView)
+
+        # Build a confirm interaction.
+        confirm_interaction = MagicMock(spec=discord.Interaction)
+        confirm_interaction.user = interaction.user
+        confirm_interaction.response = MagicMock()
+        confirm_interaction.response.edit_message = AsyncMock()
+        confirm_interaction.followup = MagicMock()
+        confirm_interaction.followup.send = AsyncMock()
+        confirm_interaction.channel = interaction.channel
+        confirm_interaction.guild = interaction.guild
+        confirm_interaction.guild_id = interaction.guild_id
+        confirm_interaction.client = interaction.client
+
+        await sent_view._on_confirm(confirm_interaction)
+
+        # transfer_ticket MUST be called with the new claimer.
+        interaction.client.ticket_service.transfer_ticket.assert_called_once()
+        call_kwargs = interaction.client.ticket_service.transfer_ticket.call_args.kwargs
+        assert call_kwargs["new_claimed_by"] == "222222222"
+
+    @pytest.mark.asyncio
+    async def test_transfer_cancel_dismisses(self) -> None:
+        """Cancel on transfer confirm MUST edit the ephemeral message."""
+        from bot.views.confirmation import ConfirmCancelView
+        from bot.views.tickets import TicketActionsView
+
+        view = TicketActionsView(guild_id="123456789")
+        interaction = self._make_claim_interaction()
+
+        claimed_row = {
+            "id": "ticket-uuid-claimed",
+            "ticketNumber": 5,
+            "guildId": "123456789",
+            "authorId": "111111111",
+            "channelId": "888888888",
+            "categoryId": None,
+            "status": "claimed",
+            "claimedBy": "111111111",
+            "transcriptUrl": None,
+            "createdAt": "2026-01-15T10:00:00+00:00",
+            "closedAt": None,
+            "lastActivity": "2026-01-15T10:00:00+00:00",
+        }
+        interaction.client.db.get_ticket_by_channel.return_value = claimed_row
+
+        await view.claim_button.callback(interaction)
+
+        sent_view = interaction.response.send_message.call_args.kwargs["view"]
+        assert isinstance(sent_view, ConfirmCancelView)
+
+        # Simulate cancel.
+        cancel_interaction = MagicMock(spec=discord.Interaction)
+        cancel_interaction.user = interaction.user
+        cancel_interaction.response = MagicMock()
+        cancel_interaction.response.edit_message = AsyncMock()
+
+        await sent_view.cancel_button.callback(cancel_interaction)
+
+        cancel_interaction.response.edit_message.assert_awaited_once()
