@@ -2581,3 +2581,197 @@ class TestConfigureFieldsPermissions:
 
     def test_configure_fields_set_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
         assert self._is_mod_gated(tickets_cog.configure_fields_set), "/configure_fields set MUST be gated by @is_mod()"
+
+
+# ===========================================================================
+# PR3 — /unclaim command
+# ===========================================================================
+
+
+class TestUnclaimCommand:
+    """Tests for /unclaim hybrid command.
+
+    /unclaim is NOT gated by @is_mod() — instead, the claimer OR a mod
+    can unclaim. The command resolves the ticket from the current channel,
+    then checks claimer/mod via check_can_unclaim.
+    """
+
+    async def test_unclaim_by_claimer_succeeds(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """Claimer unclaiming their own ticket → success embed."""
+        slash_ctx.author.id = 111111111
+        claimed_row = _ticket_row(status="claimed")
+        claimed_row["claimedBy"] = "111111111"
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=claimed_row)
+
+        from bot.models.ticket import Ticket
+
+        unclaimed = Ticket.from_db_row({**claimed_row, "status": "open", "claimedBy": None})
+        ticket_bot.ticket_service.unclaim_ticket = AsyncMock(return_value=unclaimed)
+
+        await tickets_cog.unclaim.callback(tickets_cog, slash_ctx)
+
+        ticket_bot.ticket_service.unclaim_ticket.assert_awaited_once()
+        call_args = ticket_bot.ticket_service.unclaim_ticket.call_args
+        assert call_args.args[0] == claimed_row["id"]
+        assert call_args.args[1] == "111111111"
+        assert call_args.kwargs.get("is_mod") is False
+        slash_ctx.send.assert_awaited_once()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+        assert "Unclaim" in embed.title or "✅" in embed.title
+
+    async def test_unclaim_by_mod_succeeds(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """Mod unclaiming another's ticket → success embed."""
+        slash_ctx.author.id = 222222222  # different from claimer
+        slash_ctx.author.guild_permissions.administrator = True
+        ticket_bot._guild_mod_role_cache = {}
+
+        claimed_row = _ticket_row(status="claimed")
+        claimed_row["claimedBy"] = "111111111"
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=claimed_row)
+
+        from bot.models.ticket import Ticket
+
+        unclaimed = Ticket.from_db_row({**claimed_row, "status": "open", "claimedBy": None})
+        ticket_bot.ticket_service.unclaim_ticket = AsyncMock(return_value=unclaimed)
+
+        await tickets_cog.unclaim.callback(tickets_cog, slash_ctx)
+
+        ticket_bot.ticket_service.unclaim_ticket.assert_awaited_once()
+        call_args = ticket_bot.ticket_service.unclaim_ticket.call_args
+        assert call_args.args[1] == "222222222"
+        assert call_args.kwargs.get("is_mod") is True
+
+    async def test_unclaim_by_non_claimer_non_mod_rejected(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """Non-claimer non-mod → service raises ValueError → ephemeral error embed."""
+        slash_ctx.author.id = 333333333  # not claimer
+        slash_ctx.author.guild_permissions.administrator = False
+        slash_ctx.author.roles = []
+        ticket_bot._guild_mod_role_cache = {}
+
+        claimed_row = _ticket_row(status="claimed")
+        claimed_row["claimedBy"] = "111111111"
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=claimed_row)
+        # Service raises the invariant denial.
+        ticket_bot.ticket_service.unclaim_ticket = AsyncMock(
+            side_effect=ValueError("Only the claimer or a moderator can unclaim this ticket")
+        )
+
+        await tickets_cog.unclaim.callback(tickets_cog, slash_ctx)
+
+        # Service IS called — the invariant is checked inside the service.
+        ticket_bot.ticket_service.unclaim_ticket.assert_called_once()
+        slash_ctx.send.assert_awaited_once()
+        kwargs = slash_ctx.send.call_args.kwargs
+        assert kwargs.get("ephemeral") is True
+        embed = kwargs.get("embed")
+        assert embed is not None
+        assert "Permission" in (embed.title or "") or "Denied" in (embed.title or "")
+
+    async def test_unclaim_on_unclaimed_ticket_rejected(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """Unclaim on an unclaimed ticket → ephemeral error embed."""
+        slash_ctx.author.id = 111111111
+        open_row = _ticket_row(status="open")
+        open_row["claimedBy"] = None
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=open_row)
+        ticket_bot.ticket_service.unclaim_ticket = AsyncMock()
+
+        await tickets_cog.unclaim.callback(tickets_cog, slash_ctx)
+
+        ticket_bot.ticket_service.unclaim_ticket.assert_not_called()
+        slash_ctx.send.assert_awaited_once()
+        kwargs = slash_ctx.send.call_args.kwargs
+        assert kwargs.get("ephemeral") is True
+        embed = kwargs.get("embed")
+        assert embed is not None
+
+    async def test_unclaim_no_guild(
+        self,
+        tickets_cog: TicketsCog,
+    ) -> None:
+        """/unclaim in DM → error embed."""
+        ctx = MagicMock()
+        ctx.guild = None
+        ctx.send = AsyncMock()
+
+        await tickets_cog.unclaim.callback(tickets_cog, ctx)
+
+        ctx.send.assert_awaited_once()
+        embed = ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+
+    async def test_unclaim_not_ticket_channel(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """/unclaim in non-ticket channel → error embed."""
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=None)
+        ticket_bot.ticket_service.unclaim_ticket = AsyncMock()
+
+        await tickets_cog.unclaim.callback(tickets_cog, slash_ctx)
+
+        ticket_bot.ticket_service.unclaim_ticket.assert_not_called()
+        slash_ctx.send.assert_awaited_once()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+
+    async def test_unclaim_service_error(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """unclaim_ticket raises → error embed."""
+        slash_ctx.author.id = 111111111
+        claimed_row = _ticket_row(status="claimed")
+        claimed_row["claimedBy"] = "111111111"
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=claimed_row)
+        ticket_bot.ticket_service.unclaim_ticket = AsyncMock(
+            side_effect=Exception("DB down")
+        )
+
+        await tickets_cog.unclaim.callback(tickets_cog, slash_ctx)
+
+        slash_ctx.send.assert_awaited_once()
+        embed = slash_ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+        assert "Unclaim Failed" in (embed.title or "") or "Failed" in (embed.title or "")
+
+    async def test_unclaim_not_gated_by_is_mod(
+        self,
+        tickets_cog: TicketsCog,
+    ) -> None:
+        """/unclaim MUST NOT be gated by @is_mod() — claimer can unclaim without mod role."""
+        cmd = tickets_cog.unclaim
+        has_is_mod = bool(cmd.checks) or (
+            hasattr(cmd, "app_command") and bool(cmd.app_command.checks)
+        )
+        assert not has_is_mod, "/unclaim MUST NOT use @is_mod() — claimer can also unclaim"

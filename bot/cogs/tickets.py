@@ -585,6 +585,115 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
         await ctx.send(embed=_ok(gid, "tickets.transfer.success", member=member.mention))
 
+    @commands.hybrid_command(name="unclaim", description="Release a claimed ticket back to open status.")
+    async def unclaim(self, ctx: commands.Context) -> None:
+        """Unclaim a ticket — available to the claimer or moderators."""
+        if ctx.guild is None:
+            await ctx.send(embed=_err(None, "tickets.actions.unclaim_not_ticket_title"))
+            return
+        gid = str(ctx.guild.id)
+        assert self.bot.db is not None and self.bot.ticket_service is not None
+        try:
+            row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id))
+        except Exception:
+            logger.exception("Failed to look up ticket by channel %s", ctx.channel.id)
+            await ctx.send(
+                embed=error_embed(
+                    t(gid, "tickets.actions.unclaim_failed_title"),
+                    t(gid, "tickets.actions.unclaim_failed_description"),
+                    guild_id=gid,
+                ),
+                ephemeral=True,
+            )
+            return
+        if row is None:
+            await ctx.send(
+                embed=error_embed(
+                    t(gid, "tickets.actions.unclaim_not_ticket_title"),
+                    t(gid, "tickets.actions.unclaim_not_ticket_description"),
+                    guild_id=gid,
+                ),
+                ephemeral=True,
+            )
+            return
+
+        actor_id = str(ctx.author.id)
+        # Pre-check: ticket must be claimed to unclaim.
+        if not row.get("claimedBy"):
+            await ctx.send(
+                embed=error_embed(
+                    t(gid, "tickets.actions.unclaim_not_claimed_title"),
+                    t(gid, "tickets.actions.unclaim_not_claimed_description"),
+                    guild_id=gid,
+                ),
+                ephemeral=True,
+            )
+            return
+
+        # Resolve actor_is_mod: admin OR configured mod role.
+        actor_is_mod = False
+        if isinstance(ctx.author, discord.Member):
+            if ctx.author.guild_permissions.administrator:
+                actor_is_mod = True
+            else:
+                mod_role_id = (getattr(self.bot, "_guild_mod_role_cache", {}) or {}).get(int(gid))
+                if mod_role_id:
+                    try:
+                        actor_is_mod = any(r.id == int(mod_role_id) for r in ctx.author.roles)
+                    except (ValueError, TypeError):
+                        pass
+
+        try:
+            ticket = await self.bot.ticket_service.unclaim_ticket(row["id"], actor_id, is_mod=actor_is_mod)
+        except ValueError as exc:
+            reason = str(exc)
+            if "not currently claimed" in reason:
+                await ctx.send(
+                    embed=error_embed(
+                        t(gid, "tickets.actions.unclaim_not_claimed_title"),
+                        t(gid, "tickets.actions.unclaim_not_claimed_description"),
+                        guild_id=gid,
+                    ),
+                    ephemeral=True,
+                )
+            else:
+                await ctx.send(
+                    embed=error_embed(
+                        t(gid, "tickets.actions.unclaim_permission_denied_title"),
+                        t(gid, "tickets.actions.unclaim_permission_denied_description"),
+                        guild_id=gid,
+                    ),
+                    ephemeral=True,
+                )
+            return
+        except Exception:
+            logger.exception("Failed to unclaim ticket %s", row["id"])
+            await ctx.send(
+                embed=error_embed(
+                    t(gid, "tickets.actions.unclaim_failed_title"),
+                    t(gid, "tickets.actions.unclaim_failed_description"),
+                    guild_id=gid,
+                ),
+                ephemeral=True,
+            )
+            return
+
+        # Refresh the embed to show unclaimed status.
+        from bot.utils.embeds import build_ticket_embed
+
+        embed = build_ticket_embed(ticket, guild_id=gid, bot=self.bot, guild=ctx.guild)
+        # Try to edit the original actions view message to refresh the embed.
+        try:
+            # Find the pinned welcome message to edit it.
+            async for message in ctx.channel.history(limit=10):
+                if message.pinned and message.author == ctx.guild.me:
+                    await message.edit(embed=embed)
+                    break
+        except (discord.HTTPException, discord.Forbidden):
+            logger.warning("Failed to refresh ticket embed after unclaim in channel %s", ctx.channel.id)
+
+        await ctx.send(embed=_ok(gid, "tickets.actions.unclaim_success"))
+
     @commands.hybrid_group(name="note", fallback="help", description="Manage staff notes on tickets.")
     @is_mod()
     async def note(self, ctx: commands.Context) -> None:

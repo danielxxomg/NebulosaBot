@@ -434,14 +434,65 @@ class TicketActionsView(discord.ui.View):
         assert ticket_row is not None
         claimed_by_id = ticket_row.get("claimedBy")
         if claimed_by_id:
+            # Ticket already claimed — show transfer confirmation dialog.
+            from bot.views.confirmation import ConfirmCancelView
+
+            ticket_id = ticket_row["id"]
+            staff_id = str(interaction.user.id)
+
+            async def _on_transfer_confirm(confirm_interaction: discord.Interaction) -> None:
+                """Execute the transfer flow after the user confirms."""
+                assert bot.ticket_service is not None
+                try:
+                    ticket = await bot.ticket_service.transfer_ticket(
+                        ticket_id,
+                        new_claimed_by=staff_id,
+                        actor_id=staff_id,
+                        guild=guild,
+                        logging_service=getattr(bot, "logging_service", None),
+                    )
+                except Exception:
+                    logger.exception("Failed to transfer ticket %s", ticket_id)
+                    await confirm_interaction.response.edit_message(
+                        embed=error_embed(
+                            t(guild_id, "tickets.transfer.failed_title"),
+                            t(guild_id, "tickets.transfer.failed_description"),
+                            guild_id=guild_id, bot=bot, guild=guild,
+                        ),
+                        view=None,
+                    )
+                    return
+                await confirm_interaction.response.edit_message(
+                    embed=discord.Embed(
+                        title=t(guild_id, "tickets.transfer.success_title"),
+                        description=t(guild_id, "tickets.transfer.success_description", member=interaction.user.mention),
+                        color=discord.Color.green(),
+                    ),
+                    view=None,
+                )
+                from bot.utils.embeds import build_ticket_embed
+
+                embed = build_ticket_embed(ticket, claimed_by=interaction.user, guild_id=guild_id, bot=bot, guild=guild)
+                try:
+                    await interaction.message.edit(embed=embed)
+                except (discord.HTTPException, AttributeError):
+                    logger.warning("Failed to refresh ticket embed after transfer in channel %s", channel_id)
+
+            confirm_view = ConfirmCancelView(
+                guild_id=guild_id or "",
+                owner_id=interaction.user.id,
+                on_confirm=_on_transfer_confirm,
+            )
             await interaction.response.send_message(
-                embed=error_embed(
-                    t(guild_id, "tickets.actions.claim_already_claimed_title"),
-                    t(guild_id, "tickets.actions.claim_already_claimed_description", user=claimed_by_id),
-                    guild_id=guild_id, bot=bot, guild=guild,
+                embed=discord.Embed(
+                    title=t(guild_id, "tickets.actions.transfer_confirm_title"),
+                    description=t(guild_id, "tickets.actions.transfer_confirm_description", current=claimed_by_id),
+                    color=WARNING,
                 ),
+                view=confirm_view,
                 ephemeral=True,
             )
+            confirm_view.message = await interaction.original_response()
             return
         ticket_id = ticket_row["id"]
         staff_id = str(interaction.user.id)
