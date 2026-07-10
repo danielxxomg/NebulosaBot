@@ -31,18 +31,25 @@ from bot.services.ticket_service import MAX_RETRIES, TicketService
 
 @pytest.fixture
 def mock_db() -> AsyncMock:
-    """Return an AsyncMock for Database, pre-configured for ticket methods."""
+    """Return an AsyncMock for Database, pre-configured for ticket methods.
+
+    Every child MUST have an explicit ``return_value`` (not the AsyncMock
+    default) because ``AsyncMock().return_value`` is itself an ``AsyncMock``.
+    When production code calls ``.get()`` or ``+`` on that implicit child,
+    it creates a coroutine from ``AsyncMockMixin._execute_mock_call`` that
+    is never awaited, leaking a ``PytestUnraisableExceptionWarning``.
+    """
     db = AsyncMock()
-    db.get_max_ticket_number = AsyncMock()
-    db.insert_ticket = AsyncMock()
-    db.update_ticket = AsyncMock()
-    db.get_ticket = AsyncMock()
-    db.get_stale_tickets = AsyncMock()
+    db.get_max_ticket_number = AsyncMock(return_value=0)
+    db.insert_ticket = AsyncMock(return_value=None)
+    db.update_ticket = AsyncMock(return_value=None)
+    db.get_ticket = AsyncMock(return_value=None)
+    db.get_stale_tickets = AsyncMock(return_value=[])
     # Sub-ticket / note methods (added by PR1; wired here for slice-2 tests).
-    db.get_guild = AsyncMock()
-    db.get_ticket_notes = AsyncMock()
-    db.insert_ticket_note = AsyncMock()
-    db.delete_ticket_note = AsyncMock()
+    db.get_guild = AsyncMock(return_value=None)
+    db.get_ticket_notes = AsyncMock(return_value=[])
+    db.insert_ticket_note = AsyncMock(return_value=None)
+    db.delete_ticket_note = AsyncMock(return_value=None)
     # PR1 audit + dedup DB methods (wired by PR2 service integration).
     db.insert_audit_row = AsyncMock(return_value={})
     db.get_recent_notes_for_dedup = AsyncMock(return_value=[])

@@ -10,6 +10,7 @@ using ``freezegun`` to eliminate date-time flake risk under ``pytest-randomly``.
 from __future__ import annotations
 
 import asyncio
+import gc
 import selectors
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
@@ -74,12 +75,34 @@ def cache() -> TTLCache:
 def mock_db() -> AsyncMock:
     """Return an AsyncMock standing in for the Database class.
 
-    ``get_guild`` and ``upsert_guild`` are AsyncMock instances so callers
-    can set ``return_value`` / ``side_effect`` per test.
+    No ``spec`` — avoids auto-creating AsyncMock children for every
+    Database method, which would leak unawaited coroutines when tests
+    only use a subset of methods.  Individual tests set the specific
+    AsyncMock children they need.
+
+    ``return_value`` is explicitly set on every child because
+    ``AsyncMock()`` auto-creates its children as ``AsyncMock``, and
+    ``AsyncMock().return_value`` is also an ``AsyncMock``.  When
+    production code calls ``.get()`` on that implicit return value, it
+    creates an unawaited ``AsyncMockMixin._execute_mock_call`` coroutine.
     """
-    db = AsyncMock(spec=Database)
-    db.get_guild = AsyncMock()
-    db.upsert_guild = AsyncMock()
+    db = AsyncMock()
+    db.get_guild = AsyncMock(return_value=None)
+    db.upsert_guild = AsyncMock(return_value=None)
+    # Methods accessed by production code via bot.db — must have explicit
+    # return_value to avoid AsyncMock chain leaks.
+    db.get_ticket_by_channel = AsyncMock(return_value=None)
+    db.get_ticket_by_number = AsyncMock(return_value=None)
+    db.get_ticket = AsyncMock(return_value=None)
+    db.get_ticket_categories = AsyncMock(return_value=[])
+    db.get_ticket_category = AsyncMock(return_value=None)
+    db.get_max_ticket_number = AsyncMock(return_value=0)
+    db.insert_ticket_category = AsyncMock(return_value=None)
+    db.delete_ticket_category = AsyncMock(return_value=None)
+    db.count_open_tickets_by_category = AsyncMock(return_value=0)
+    db.update_ticket_category_field_definitions = AsyncMock(return_value=None)
+    db.update_ticket_last_activity = AsyncMock(return_value=None)
+    db.get_open_ticket_channel_ids = AsyncMock(return_value=[])
     return db
 
 
@@ -118,16 +141,27 @@ def default_config() -> GuildConfig:
 
 @pytest.fixture
 def mock_guild() -> MagicMock:
-    """Return a MagicMock standing in for discord.Guild."""
-    guild = MagicMock(spec=discord.Guild)
+    """Return a MagicMock standing in for discord.Guild.
+
+    No ``spec`` — avoids auto-creating AsyncMock children for async Guild
+    methods (fetch_member, ban, etc.) that leak unawaited coroutines.
+    """
+    guild = MagicMock()
     guild.id = 123456789
     return guild
 
 
 @pytest.fixture
 def mock_member() -> MagicMock:
-    """Return a MagicMock standing in for discord.Member (no roles)."""
-    member = MagicMock(spec=discord.Member)
+    """Return a MagicMock standing in for a discord.Member (no roles).
+
+    No ``spec`` — avoids auto-creating AsyncMock children for unused async
+    Member methods (ban, kick, timeout, etc.) whose coroutines leak on GC.
+    ``__class__`` is overridden so ``isinstance(member, discord.Member)``
+    still works.
+    """
+    member = MagicMock()
+    member.__class__ = discord.Member
     member.guild_permissions.administrator = False
     member.roles = []
     return member
@@ -136,7 +170,8 @@ def mock_member() -> MagicMock:
 @pytest.fixture
 def mock_admin_member() -> MagicMock:
     """Return a MagicMock standing in for a discord.Member with Administrator."""
-    member = MagicMock(spec=discord.Member)
+    member = MagicMock()
+    member.__class__ = discord.Member
     member.guild_permissions.administrator = True
     member.roles = []
     return member
@@ -145,10 +180,12 @@ def mock_admin_member() -> MagicMock:
 @pytest.fixture
 def mock_mod_member() -> MagicMock:
     """Return a MagicMock standing in for a Member with a moderator role."""
-    role = MagicMock(spec=discord.Role)
+    role = MagicMock()
+    role.__class__ = discord.Role
     role.id = 987654321
 
-    member = MagicMock(spec=discord.Member)
+    member = MagicMock()
+    member.__class__ = discord.Member
     member.guild_permissions.administrator = False
     member.roles = [role]
     return member

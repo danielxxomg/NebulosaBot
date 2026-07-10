@@ -62,10 +62,6 @@ filterwarnings = [
     "ignore:.*asyncio.iscoroutinefunction.*:DeprecationWarning",
     # hypothesis deadline flake on slow CI runners (handled via @settings(deadline=None))
     "ignore::hypothesis.errors.HypothesisDeprecationWarning",
-    # AsyncMock coroutine never-awaited (coverage bytecode scanning + gc)
-    "ignore:.*AsyncMockMixin._execute_mock_call.*:RuntimeWarning",
-    # PytestUnraisableExceptionWarning from gc-collected unawaited coroutines
-    "ignore::pytest.PytestUnraisableExceptionWarning",
     # discord.ui.TextInput.label deprecated in favor of discord.ui.Label (full migration deferred)
     "ignore::DeprecationWarning:discord.ui",
 ]

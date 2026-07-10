@@ -235,15 +235,22 @@ def _load_i18n(tmp_path: Path) -> Generator[None, None, None]:
 
 @pytest.fixture
 def sentinel_bot() -> MagicMock:
-    """Return a mock NebulosaBot wired for sentinel i18n tests."""
+    """Return a mock NebulosaBot wired for sentinel i18n tests.
+
+    No ``spec`` on infraction_service/logging_service — avoids auto-creating
+    AsyncMock children for unused async methods that leak unawaited coroutines.
+    """
     bot = MagicMock()
-    bot.db = AsyncMock()
-    bot.infraction_service = MagicMock(spec=InfractionService)
+    bot.db = AsyncMock(return_value=None)
+    bot.infraction_service = MagicMock()
     bot.infraction_service.warn = AsyncMock()
     bot.infraction_service.unwarn = AsyncMock()
     bot.infraction_service.get_modlogs = AsyncMock()
-    bot.logging_service = MagicMock(spec=LoggingService)
+    bot.infraction_service.check_escalation = MagicMock()
+    bot.logging_service = MagicMock()
     bot.logging_service.log_moderation_action = AsyncMock()
+    bot.logging_service._should_log = MagicMock()
+    bot.logging_service._send_log = MagicMock()
     bot.user = MagicMock()
     bot.user.id = 999999999
     return bot
@@ -256,7 +263,11 @@ def cog_es(sentinel_bot: MagicMock) -> SentinelCog:
 
 
 def _make_ctx(guild_id: int) -> MagicMock:
-    """Build a mock Context with the given guild_id."""
+    """Build a mock Context with the given guild_id.
+
+    No ``spec`` on guild — avoids auto-creating AsyncMock children for
+    async Guild methods that leak unawaited coroutines.
+    """
     ctx = MagicMock()
     guild = MagicMock()
     guild.id = guild_id
@@ -268,7 +279,7 @@ def _make_ctx(guild_id: int) -> MagicMock:
     ctx.author = MagicMock()
     ctx.author.id = 111111111
     ctx.author.mention = "<@111111111>"
-    ctx.channel = MagicMock(spec=discord.TextChannel)
+    ctx.channel = MagicMock()
     ctx.channel.mention = "<#999>"
     ctx.channel.overwrites_for = MagicMock(return_value=discord.PermissionOverwrite())
     ctx.channel.set_permissions = AsyncMock()
