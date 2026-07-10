@@ -25,6 +25,103 @@ def test_manual_exists_and_non_empty(manual_text: str) -> None:
     assert len(manual_text) > 0
 
 
+# ---------------------------------------------------------------------------
+# C4: Required structural headings (docs-manual/spec.md — Required sections)
+# ---------------------------------------------------------------------------
+
+REQUIRED_SECTION_HEADINGS = [
+    "Vista general",           # Overview / Quick Start context
+    "Inicio rápido",           # Quick Start
+    "Configuración",           # Configuration
+    "Moderación",              # Commands — Moderation (audience: moderators)
+    "Sistema de tickets",      # Ticket System
+    "Economía",                # Economy (referenced by /daily, /coins, etc.)
+    "Bienvenida y despedida",  # Welcome/Goodbye
+    "Deuda conocida",          # Known Debt
+    "Referencia de comandos",  # Commands by audience (reference section)
+]
+
+
+def test_manual_has_required_section_headings(manual_text: str) -> None:
+    """C4: Manual MUST contain all required structural sections.
+
+    Spec (docs-manual/spec.md — Required sections scenario): "THEN it SHALL
+    contain sections for: Quick Start, Configuration, Commands (by audience),
+    Ticket System, Economy, Welcome/Goodbye, and Known Debt."
+    """
+    missing = []
+    for heading in REQUIRED_SECTION_HEADINGS:
+        if heading.lower() not in manual_text.lower():
+            missing.append(heading)
+    assert not missing, f"Missing required manual sections: {missing}"
+
+
+# ---------------------------------------------------------------------------
+# C4: All bot commands documented (docs-manual/spec.md — All commands scenario)
+# ---------------------------------------------------------------------------
+
+# Canonical list of hybrid commands across all cogs. Each MUST appear in the
+# manual at least once. Discovered from bot/cogs/*.py command definitions.
+EXPECTED_COMMANDS = [
+    # Core
+    "ping",
+    "help",
+    "status",
+    "sync",
+    # Sentinel (moderation)
+    "warn",
+    "unwarn",
+    "mute",
+    "unmute",
+    "kick",
+    "ban",
+    "lock",
+    "unlock",
+    "modlogs",
+    # Tickets
+    "ticket_panel",
+    "create_category",
+    "list_categories",
+    "delete_category",
+    "configure_fields",
+    "subticket",
+    "reopen",
+    "unclaim",
+    "transfer",
+    "note",
+    # Greetings
+    "welcome",
+    "goodbye",
+    "welcome_test",
+    "goodbye_test",
+    # Stellar (economy)
+    "daily",
+    "coins",
+    "leaderboard",
+    "rank",
+    # Utility
+    "avatar",
+    "serverinfo",
+    "userinfo",
+    # Ocio
+    "dados",
+    "banana",
+    # Setup
+    "setup",
+]
+
+
+def test_manual_documents_all_bot_commands(manual_text: str) -> None:
+    """C4: Every hybrid command across all cogs MUST appear in the manual.
+
+    Spec (docs-manual/spec.md — All commands documented scenario): "THEN
+    every command SHALL appear at least once with a brief description."
+    """
+    lower = manual_text.lower()
+    missing = [cmd for cmd in EXPECTED_COMMANDS if f"/{cmd}" not in lower]
+    assert not missing, f"Commands not documented in manual: {missing}"
+
+
 def test_manual_has_close_confirmation_section(manual_text: str) -> None:
     """Manual MUST describe the close confirmation dialog behavior."""
     lower = manual_text.lower()
