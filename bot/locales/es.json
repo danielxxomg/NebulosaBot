@@ -220,7 +220,20 @@
       "transfer_confirm_title": "Confirmar Transferencia",
       "transfer_confirm_description": "Este ticket ya está reclamado por <@{current}>. ¿Transferirlo a ti?",
       "transfer_cancelled_message": "Transferencia de ticket cancelada.",
-      "transfer_timeout_message": "La confirmación de transferencia expiró. El ticket permanece sin cambios."
+      "transfer_timeout_message": "La confirmación de transferencia expiró. El ticket permanece sin cambios.",
+      "edit_category": "Editar Categoría",
+      "edit_category_button": "Editar Categoría",
+      "edit_category_success": "✅ Categoría Actualizada",
+      "edit_category_success_description": "La categoría del ticket ha sido actualizada a **{category}**.",
+      "edit_category_rename_warning": "\n\n⚠️ No se pudo renombrar el canal. La categoría fue actualizada de todos modos.",
+      "edit_category_limit_title": "Límite Alcanzado",
+      "edit_category_limit_description": "El autor del ticket ya tiene un ticket abierto en esa categoría. Cada usuario puede tener solo un ticket abierto por categoría.",
+      "edit_category_closed_title": "Ticket Cerrado",
+      "edit_category_closed_description": "No se puede editar la categoría de un ticket cerrado. Reabre el ticket primero.",
+      "edit_category_mods_only_title": "Solo Moderadores",
+      "edit_category_mods_only_description": "Solo los moderadores pueden editar las categorías de tickets.",
+      "edit_category_no_categories_title": "Sin Categorías",
+      "edit_category_no_categories_description": "No hay categorías de tickets disponibles. Pide a un admin que cree una con `/create_category`."
     },
     "subticket": {
       "help_title": "Sub-tickets",

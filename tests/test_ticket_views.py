@@ -1153,3 +1153,569 @@ class TestModalModRoleResolution:
         bot.ticket_service.create_ticket_channel.assert_awaited_once()
         call_kwargs = bot.ticket_service.create_ticket_channel.call_args.kwargs
         assert call_kwargs["mod_role"] is None
+
+
+# ===========================================================================
+# Phase 3 — Edit Category Button + Ephemeral Select (task 3.3 RED)
+# ===========================================================================
+
+
+class TestEditCategoryButton:
+    """Verify Edit Category button on TicketActionsView: i18n, mod gate, select."""
+
+    @staticmethod
+    def _make_edit_interaction(
+        *,
+        guild_id: int = 123456789,
+        user_id: int = 111111111,
+        channel_id: int = 888888888,
+    ) -> MagicMock:
+        """Return a mock Interaction wired for the edit category button."""
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.guild_id = guild_id
+        interaction.channel_id = channel_id
+        interaction.response = MagicMock()
+        interaction.response.send_message = AsyncMock()
+        interaction.response.edit_message = AsyncMock()
+        interaction.response.is_done.return_value = False
+        interaction.followup = MagicMock()
+        interaction.followup.send = AsyncMock()
+        interaction.original_response = AsyncMock()
+
+        guild = MagicMock()
+        guild.id = guild_id
+        interaction.guild = guild
+
+        user = MagicMock(spec=discord.Member)
+        user.id = user_id
+        interaction.user = user
+
+        bot = MagicMock()
+        bot.db = MagicMock()
+        bot.db.get_ticket_by_channel = AsyncMock()
+        bot.db.get_ticket_categories = AsyncMock(return_value=[])
+        bot._guild_mod_role_cache = {}
+        bot.ticket_service = MagicMock()
+        interaction.client = bot
+
+        return interaction
+
+    @staticmethod
+    def _ticket_row(*, status: str = "open", category_id: str | None = "cat-uuid") -> dict:
+        return {
+            "id": "ticket-uuid-edit",
+            "ticketNumber": 5,
+            "guildId": "123456789",
+            "authorId": "111111111",
+            "channelId": "888888888",
+            "categoryId": category_id,
+            "status": status,
+            "claimedBy": None,
+            "transcriptUrl": None,
+            "createdAt": "2026-01-15T10:00:00+00:00",
+            "closedAt": None,
+            "lastActivity": "2026-01-15T10:00:00+00:00",
+        }
+
+    @staticmethod
+    def _category_rows() -> list[dict]:
+        return [
+            {
+                "id": "cat-uuid-1",
+                "guildId": "123456789",
+                "name": "Support",
+                "emoji": None,
+                "description": "General support",
+                "position": 0,
+                "active": True,
+                "createdAt": "2026-01-01T00:00:00",
+                "fieldDefinitions": [],
+            },
+            {
+                "id": "cat-uuid-2",
+                "guildId": "123456789",
+                "name": "Billing",
+                "emoji": None,
+                "description": "Billing issues",
+                "position": 1,
+                "active": True,
+                "createdAt": "2026-01-01T00:00:00",
+                "fieldDefinitions": [],
+            },
+        ]
+
+    def test_edit_category_button_exists_on_view(self) -> None:
+        """TicketActionsView MUST have a button with custom_id='ticket:edit-category'."""
+        from bot.views.tickets import TicketActionsView
+
+        view = TicketActionsView(guild_id="123456789")
+        buttons = [
+            c for c in view.children
+            if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:edit-category"
+        ]
+        assert len(buttons) == 1
+        assert buttons[0].style == discord.ButtonStyle.secondary
+
+    def test_edit_button_label_resolved_via_i18n(self) -> None:
+        """Edit category button label MUST be resolved via t() at init time."""
+        from bot.views.tickets import TicketActionsView
+
+        with patch("bot.views.tickets.t", return_value="Editar Categoría") as mock_t:
+            view = TicketActionsView(guild_id="123456789")
+
+        mock_t.assert_any_call("123456789", "tickets.actions.edit_category_button")
+        button = next(
+            c for c in view.children
+            if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:edit-category"
+        )
+        assert button.label == "Editar Categoría"
+
+    @pytest.mark.asyncio
+    async def test_edit_button_non_mod_rejected(self) -> None:
+        """Non-mod clicking Edit Category MUST receive ephemeral rejection."""
+        from bot.views.tickets import TicketActionsView
+
+        view = TicketActionsView(guild_id="123456789")
+        interaction = self._make_edit_interaction()
+        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row()
+
+        with patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=False):
+            await view.edit_category_button.callback(interaction)
+
+        interaction.response.send_message.assert_awaited_once()
+        call_kwargs = interaction.response.send_message.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
+
+    @pytest.mark.asyncio
+    async def test_edit_button_mod_shows_ephemeral_select(self) -> None:
+        """Mod clicking Edit Category MUST see ephemeral _EditCategoryView with select."""
+        from bot.views.tickets import TicketActionsView, _EditCategoryView
+
+        view = TicketActionsView(guild_id="123456789")
+        interaction = self._make_edit_interaction()
+        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row()
+        interaction.client.db.get_ticket_categories.return_value = self._category_rows()
+
+        with patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=True):
+            await view.edit_category_button.callback(interaction)
+
+        interaction.response.send_message.assert_awaited_once()
+        call_kwargs = interaction.response.send_message.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
+        assert isinstance(call_kwargs.get("view"), _EditCategoryView)
+
+    @pytest.mark.asyncio
+    async def test_edit_button_no_categories_shows_message(self) -> None:
+        """When no active categories exist, MUST show ephemeral no-categories message."""
+        from bot.views.tickets import TicketActionsView
+
+        view = TicketActionsView(guild_id="123456789")
+        interaction = self._make_edit_interaction()
+        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row()
+        interaction.client.db.get_ticket_categories.return_value = []
+
+        with patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=True):
+            await view.edit_category_button.callback(interaction)
+
+        interaction.response.send_message.assert_awaited_once()
+        call_kwargs = interaction.response.send_message.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
+        # Should NOT have a view (just a message embed).
+        assert call_kwargs.get("view") is None
+
+
+class TestEditCategorySelect:
+    """Verify _EditCategorySelect callback: mod re-check, closed, limit, rename."""
+
+    @staticmethod
+    def _make_select_interaction(
+        *,
+        guild_id: int = 123456789,
+        user_id: int = 111111111,
+        channel_id: int = 888888888,
+    ) -> MagicMock:
+        """Return a mock Interaction wired for the edit category select callback."""
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.guild_id = guild_id
+        interaction.channel_id = channel_id
+        interaction.response = MagicMock()
+        interaction.response.send_message = AsyncMock()
+        interaction.response.edit_message = AsyncMock()
+        interaction.response.is_done.return_value = False
+        interaction.followup = MagicMock()
+        interaction.followup.send = AsyncMock()
+
+        guild = MagicMock()
+        guild.id = guild_id
+        interaction.guild = guild
+
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.id = channel_id
+        channel.guild = guild
+        interaction.channel = channel
+
+        user = MagicMock(spec=discord.Member)
+        user.id = user_id
+        interaction.user = user
+
+        bot = MagicMock()
+        bot.db = MagicMock()
+        bot.db.get_ticket_by_channel = AsyncMock()
+        bot._guild_mod_role_cache = {}
+        bot.ticket_service = MagicMock()
+        interaction.client = bot
+
+        return interaction
+
+    @staticmethod
+    def _ticket_row(*, status: str = "open") -> dict:
+        return {
+            "id": "ticket-uuid-select",
+            "ticketNumber": 5,
+            "guildId": "123456789",
+            "authorId": "111111111",
+            "channelId": "888888888",
+            "categoryId": "cat-uuid-1",
+            "status": status,
+            "claimedBy": None,
+            "transcriptUrl": None,
+            "createdAt": "2026-01-15T10:00:00+00:00",
+            "closedAt": None,
+            "lastActivity": "2026-01-15T10:00:00+00:00",
+        }
+
+    @staticmethod
+    def _make_select(
+        guild: MagicMock,
+        categories: list | None = None,
+        ticket_row: dict | None = None,
+    ) -> object:
+        """Build an _EditCategorySelect with real category options."""
+        from bot.models.ticket_category import TicketCategory
+        from bot.views.tickets import _EditCategorySelect
+
+        if categories is None:
+            categories = [
+                TicketCategory(
+                    id="cat-uuid-2", guild_id="123456789", name="Billing",
+                    description="Billing issues", position=1,
+                ),
+            ]
+        if ticket_row is None:
+            ticket_row = {
+                "id": "ticket-uuid-select",
+                "ticketNumber": 5,
+                "guildId": "123456789",
+                "authorId": "111111111",
+                "channelId": "888888888",
+                "categoryId": "cat-uuid-1",
+                "status": "open",
+                "claimedBy": None,
+                "transcriptUrl": None,
+                "createdAt": "2026-01-15T10:00:00+00:00",
+                "closedAt": None,
+                "lastActivity": "2026-01-15T10:00:00+00:00",
+            }
+        options = [
+            discord.SelectOption(label=cat.name, value=cat.id, description=cat.description)
+            for cat in categories
+        ]
+        return _EditCategorySelect(options, guild, categories, ticket_row)
+
+    @pytest.mark.asyncio
+    async def test_select_non_mod_rejected_on_submit(self) -> None:
+        """Select callback MUST re-check is_mod_check and reject non-mods."""
+
+        guild = MagicMock()
+        guild.id = 123456789
+        select = self._make_select(guild)
+        interaction = self._make_select_interaction()
+        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row()
+        # Simulate selecting "Billing".
+        select._values = ["cat-uuid-2"]
+
+        with patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=False):
+            await select.callback(interaction)
+
+        interaction.response.send_message.assert_awaited_once()
+        call_kwargs = interaction.response.send_message.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
+        interaction.client.ticket_service.edit_ticket_category.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_select_closed_ticket_rejected(self) -> None:
+        """Select callback MUST reject closed tickets with ephemeral message."""
+
+        guild = MagicMock()
+        guild.id = 123456789
+        closed_row = self._ticket_row(status="closed")
+        select = self._make_select(guild, ticket_row=closed_row)
+        interaction = self._make_select_interaction()
+        interaction.client.db.get_ticket_by_channel.return_value = closed_row
+        select._values = ["cat-uuid-2"]
+
+        with patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=True):
+            await select.callback(interaction)
+
+        interaction.response.send_message.assert_awaited_once()
+        call_kwargs = interaction.response.send_message.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
+        interaction.client.ticket_service.edit_ticket_category.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_select_calls_edit_ticket_category(self) -> None:
+        """Valid selection MUST call edit_ticket_category on the service."""
+        from bot.models.ticket import Ticket
+
+        guild = MagicMock()
+        guild.id = 123456789
+        select = self._make_select(guild)
+        interaction = self._make_select_interaction()
+        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row()
+        select._values = ["cat-uuid-2"]
+
+        updated_ticket = Ticket(
+            id="ticket-uuid-select", ticket_number=5, guild_id="123456789",
+            author_id="111111111", channel_id="888888888", status="open",
+            created_at="2026-01-15T10:00:00+00:00",
+            last_activity="2026-01-15T10:00:00+00:00", category_id="cat-uuid-2",
+        )
+        interaction.client.ticket_service.edit_ticket_category = AsyncMock(
+            return_value=(updated_ticket, True),
+        )
+
+        with patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=True):
+            await select.callback(interaction)
+
+        interaction.client.ticket_service.edit_ticket_category.assert_awaited_once()
+        call_kwargs = interaction.client.ticket_service.edit_ticket_category.call_args.kwargs
+        assert call_kwargs["is_mod"] is True
+
+    @pytest.mark.asyncio
+    async def test_select_limit_violation_shows_specific_ux(self) -> None:
+        """Limit ValueError from edit_ticket_category MUST show edit_category_limit_* UX."""
+
+        guild = MagicMock()
+        guild.id = 123456789
+        select = self._make_select(guild)
+        interaction = self._make_select_interaction()
+        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row()
+        select._values = ["cat-uuid-2"]
+
+        # Mirror the real invariant message from check_one_ticket_per_user_per_category.
+        interaction.client.ticket_service.edit_ticket_category = AsyncMock(
+            side_effect=ValueError(
+                "User 111111111 already has an open ticket in category 'cat-uuid-2'"
+            ),
+        )
+
+        # Patch t() to return the raw key so we can verify the right key is used.
+        with (
+            patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=True),
+            patch("bot.views.tickets.t", side_effect=lambda gid, key, **kw: key),
+        ):
+            await select.callback(interaction)
+
+        interaction.response.send_message.assert_awaited_once()
+        call_kwargs = interaction.response.send_message.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
+        # Verify the embed uses edit_category_limit_* keys, NOT the generic/unexpected key.
+        embed = call_kwargs["embed"]
+        assert embed.title == "tickets.actions.edit_category_limit_title"
+        assert "tickets.actions.edit_category_limit_description" in embed.description
+
+    @pytest.mark.asyncio
+    async def test_select_closed_during_dropdown_window_is_rejected(self) -> None:
+        """Stale ``self._ticket_row`` MUST NOT bypass the closed check.
+
+        The select is built with an OPEN row (captured when the button was
+        clicked) but the DB now reports the ticket as closed — the callback
+        MUST re-fetch and reject with the closed UX.
+        """
+
+        guild = MagicMock()
+        guild.id = 123456789
+        # Select carries a stale OPEN row from button-open time.
+        select = self._make_select(guild, ticket_row=self._ticket_row(status="open"))
+        interaction = self._make_select_interaction()
+        # DB now reports it CLOSED.
+        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row(
+            status="closed",
+        )
+        select._values = ["cat-uuid-2"]
+
+        with (
+            patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=True),
+            patch("bot.views.tickets.t", side_effect=lambda gid, key, **kw: key),
+        ):
+            await select.callback(interaction)
+
+        # Service MUST NOT run on a ticket the DB reports closed.
+        interaction.client.ticket_service.edit_ticket_category.assert_not_called()
+        interaction.response.send_message.assert_awaited_once()
+        call_kwargs = interaction.response.send_message.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
+        embed = call_kwargs["embed"]
+        assert embed.title == "tickets.actions.edit_category_closed_title"
+        assert "tickets.actions.edit_category_closed_description" in embed.description
+
+    @pytest.mark.asyncio
+    async def test_select_service_closed_valueerror_shows_closed_ux(self) -> None:
+        """Service closing the ticket under us MUST show closed keys, not limit.
+
+        The DB row is still open (race) but the service re-fetches internally
+        and raises a closed ValueError — the callback MUST map it to the
+        closed UX, NOT the limit UX.
+        """
+
+        guild = MagicMock()
+        guild.id = 123456789
+        select = self._make_select(guild)
+        interaction = self._make_select_interaction()
+        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row()
+        select._values = ["cat-uuid-2"]
+
+        interaction.client.ticket_service.edit_ticket_category = AsyncMock(
+            side_effect=ValueError(
+                "Cannot edit category of a closed ticket (status='closed')"
+            ),
+        )
+
+        with (
+            patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=True),
+            patch("bot.views.tickets.t", side_effect=lambda gid, key, **kw: key),
+        ):
+            await select.callback(interaction)
+
+        interaction.response.send_message.assert_awaited_once()
+        call_kwargs = interaction.response.send_message.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
+        embed = call_kwargs["embed"]
+        # MUST use the closed keys, NOT the limit keys.
+        assert embed.title == "tickets.actions.edit_category_closed_title"
+        assert "tickets.actions.edit_category_closed_description" in embed.description
+        assert "edit_category_limit" not in embed.title
+        assert "edit_category_limit" not in (embed.description or "")
+
+    @pytest.mark.asyncio
+    async def test_select_other_valueerror_does_not_show_limit_ux(self) -> None:
+        """A non-closed, non-limit ValueError MUST NOT show limit keys.
+
+        The generic fallback uses common.error.unexpected_title with str(exc)
+        as the description — never the misleading edit_category_limit_* keys.
+        """
+
+        guild = MagicMock()
+        guild.id = 123456789
+        select = self._make_select(guild)
+        interaction = self._make_select_interaction()
+        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row()
+        select._values = ["cat-uuid-2"]
+
+        bogus_message = "Ticket some-uuid not found"
+        interaction.client.ticket_service.edit_ticket_category = AsyncMock(
+            side_effect=ValueError(bogus_message),
+        )
+
+        with (
+            patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=True),
+            patch("bot.views.tickets.t", side_effect=lambda gid, key, **kw: key),
+        ):
+            await select.callback(interaction)
+
+        interaction.response.send_message.assert_awaited_once()
+        call_kwargs = interaction.response.send_message.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
+        embed = call_kwargs["embed"]
+        # MUST NOT map to the limit keys.
+        assert "edit_category_limit" not in embed.title
+        assert "edit_category_limit" not in (embed.description or "")
+        # Generic fallback title is the unexpected error key, with str(exc) as body.
+        assert embed.title == "common.error.unexpected_title"
+        assert embed.description == bogus_message
+
+    @pytest.mark.asyncio
+    async def test_select_rename_failure_shows_warning(self) -> None:
+        """When rename_succeeded=False, MUST show success with rename warning."""
+        from bot.models.ticket import Ticket
+
+        guild = MagicMock()
+        guild.id = 123456789
+        select = self._make_select(guild)
+        interaction = self._make_select_interaction()
+        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row()
+        select._values = ["cat-uuid-2"]
+
+        updated_ticket = Ticket(
+            id="ticket-uuid-select", ticket_number=5, guild_id="123456789",
+            author_id="111111111", channel_id="888888888", status="open",
+            created_at="2026-01-15T10:00:00+00:00",
+            last_activity="2026-01-15T10:00:00+00:00", category_id="cat-uuid-2",
+        )
+        # rename_succeeded=False — the channel rename failed.
+        interaction.client.ticket_service.edit_ticket_category = AsyncMock(
+            return_value=(updated_ticket, False),
+        )
+
+        with patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=True):
+            await select.callback(interaction)
+
+        interaction.response.send_message.assert_awaited_once()
+        call_kwargs = interaction.response.send_message.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
+        # Embed description MUST contain the rename warning.
+        embed = call_kwargs["embed"]
+        assert embed.description is not None and len(embed.description) > 0
+
+    @pytest.mark.asyncio
+    async def test_select_success_shows_confirmation(self) -> None:
+        """Successful edit MUST show ephemeral success embed."""
+        from bot.models.ticket import Ticket
+
+        guild = MagicMock()
+        guild.id = 123456789
+        select = self._make_select(guild)
+        interaction = self._make_select_interaction()
+        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row()
+        select._values = ["cat-uuid-2"]
+
+        updated_ticket = Ticket(
+            id="ticket-uuid-select", ticket_number=5, guild_id="123456789",
+            author_id="111111111", channel_id="888888888", status="open",
+            created_at="2026-01-15T10:00:00+00:00",
+            last_activity="2026-01-15T10:00:00+00:00", category_id="cat-uuid-2",
+        )
+        interaction.client.ticket_service.edit_ticket_category = AsyncMock(
+            return_value=(updated_ticket, True),
+        )
+
+        with patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=True):
+            await select.callback(interaction)
+
+        interaction.response.send_message.assert_awaited_once()
+        call_kwargs = interaction.response.send_message.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
+
+    def test_select_view_timeout_300(self) -> None:
+        """_EditCategoryView MUST have timeout=300."""
+        from bot.models.ticket_category import TicketCategory
+        from bot.views.tickets import _EditCategoryView
+
+        guild = MagicMock()
+        guild.id = 123456789
+        categories = [
+            TicketCategory(
+                id="cat-uuid-2", guild_id="123456789", name="Billing",
+                description="Billing", position=1,
+            ),
+        ]
+        options = [discord.SelectOption(label="Billing", value="cat-uuid-2")]
+        ticket_row = {
+            "id": "ticket-uuid-select", "ticketNumber": 5, "guildId": "123456789",
+            "authorId": "111111111", "channelId": "888888888", "categoryId": "cat-uuid-1",
+            "status": "open", "claimedBy": None, "transcriptUrl": None,
+            "createdAt": "2026-01-15T10:00:00+00:00", "closedAt": None,
+            "lastActivity": "2026-01-15T10:00:00+00:00",
+        }
+        view = _EditCategoryView(options, guild, categories, ticket_row)
+        assert view.timeout == 300
