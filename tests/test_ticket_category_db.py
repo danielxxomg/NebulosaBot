@@ -100,7 +100,7 @@ class TestCountOpenTicketsByCategory:
 
 
 class TestUpdateTicketCategoryFieldDefinitions:
-    """update_ticket_category_field_definitions(category_id, guild_id, field_defs) — guild+id scoped."""
+    """update_ticket_category_field_definitions(guild_id, category_id, field_defs) — guild+id scoped."""
 
     @pytest.mark.asyncio
     async def test_updates_field_definitions(self, db: Database, fake_client: FakeSupabaseClient) -> None:
@@ -108,7 +108,7 @@ class TestUpdateTicketCategoryFieldDefinitions:
         defs = [{"key": "nick", "label": "Nickname", "style": "short", "required": True}]
         fake_client.set_table_data("ticket_category", [])
 
-        await db.update_ticket_category_field_definitions("cat-1", "g1", defs)
+        await db.update_ticket_category_field_definitions("g1", "cat-1", defs)
 
         update_calls = fake_client.get_table_calls("ticket_category")
         assert len(update_calls) == 1
@@ -120,7 +120,7 @@ class TestUpdateTicketCategoryFieldDefinitions:
         """Applies eq('id') AND eq('guildId') filters."""
         fake_client.set_table_data("ticket_category", [])
 
-        await db.update_ticket_category_field_definitions("cat-1", "g1", [])
+        await db.update_ticket_category_field_definitions("g1", "cat-1", [])
 
         filters = fake_client.get_table_filters("ticket_category")
         assert ("eq", "id", "cat-1") in filters
@@ -130,4 +130,4 @@ class TestUpdateTicketCategoryFieldDefinitions:
     async def test_raises_without_connect(self, disconnected_db: Database) -> None:
         """Raises RuntimeError when not connected."""
         with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.update_ticket_category_field_definitions("cat-1", "g1", [])
+            await disconnected_db.update_ticket_category_field_definitions("g1", "cat-1", [])

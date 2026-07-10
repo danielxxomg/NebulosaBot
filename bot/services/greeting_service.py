@@ -88,7 +88,7 @@ class GreetingService:
 
         Performs a Supabase upsert so it works for both new and existing guilds.
         """
-        await self._db.upsert_greeting_config(config)
+        await self._db.upsert_greeting_config(config.guild_id, config)
 
         cache_key = CACHE_KEY_TEMPLATE.format(guild_id=config.guild_id)
         self._cache.invalidate(cache_key)

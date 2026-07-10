@@ -105,11 +105,11 @@ class TicketCategoryDBMixin:
 
     async def update_ticket_category_field_definitions(
         self: Any,
-        category_id: str,
         guild_id: str,
+        category_id: str,
         field_definitions: list[dict],
     ) -> None:
-        """Update ``fieldDefinitions`` for a ticket category, scoped by id and guildId.
+        """Update ``fieldDefinitions`` for a ticket category, scoped by guildId and id.
 
         The guild scope prevents one guild from modifying another guild's
         categories even if the category ID is known.
@@ -117,7 +117,7 @@ class TicketCategoryDBMixin:
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
 
-        logger.debug("DB update_ticket_category_field_definitions(%s, guild=%s)", category_id, guild_id)
+        logger.debug("DB update_ticket_category_field_definitions(guild=%s, cat=%s)", guild_id, category_id)
         await (
             self._client.table("ticket_category")
             .update({"fieldDefinitions": field_definitions})

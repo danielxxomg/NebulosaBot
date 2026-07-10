@@ -30,17 +30,18 @@ class GreetingDBMixin:
         rows = _unwrap(response)
         return rows[0] if rows else None
 
-    async def upsert_greeting_config(self: Any, config: Any) -> None:
+    async def upsert_greeting_config(self: Any, guild_id: str, config: Any) -> None:
         """Insert or update a greeting_config row.
 
         Args:
+            guild_id: The guild snowflake — used as the upsert key.
             config: A :class:`~bot.models.greeting_config.GreetingConfig`
                 instance whose ``to_db_dict()`` produces camelCase keys.
         """
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
 
-        logger.debug("DB upsert_greeting_config(%r)", config.guild_id)
+        logger.debug("DB upsert_greeting_config(%r)", guild_id)
         await self._client.table("greeting_config").upsert(config.to_db_dict()).execute()
         if self._on_write is not None:
-            await self._on_write("greeting_config", str(config.guild_id))
+            await self._on_write("greeting_config", str(guild_id))

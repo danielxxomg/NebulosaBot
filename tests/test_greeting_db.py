@@ -44,14 +44,14 @@ def _mock_greeting_config(guild_id: str = "g1") -> MagicMock:
 
 
 class TestUpsertGreetingConfig:
-    """upsert_greeting_config(config) — upsert + _on_write hook."""
+    """upsert_greeting_config(guild_id, config) — upsert + _on_write hook."""
 
     @pytest.mark.asyncio
     async def test_persists_config(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """Calls upsert with config.to_db_dict() payload."""
         config = _mock_greeting_config("g1")
 
-        await db.upsert_greeting_config(config)
+        await db.upsert_greeting_config("g1", config)
 
         upsert_calls = fake_client.get_table_calls("greeting_config")
         assert len(upsert_calls) == 1
@@ -66,7 +66,7 @@ class TestUpsertGreetingConfig:
         db._on_write = on_write
         config = _mock_greeting_config("g42")
 
-        await db.upsert_greeting_config(config)
+        await db.upsert_greeting_config("g42", config)
 
         on_write.assert_awaited_once_with("greeting_config", "g42")
 
@@ -77,11 +77,11 @@ class TestUpsertGreetingConfig:
         config = _mock_greeting_config("g1")
 
         # Should not raise.
-        await db.upsert_greeting_config(config)
+        await db.upsert_greeting_config("g1", config)
 
     @pytest.mark.asyncio
     async def test_raises_without_connect(self, disconnected_db: Database) -> None:
         """Raises RuntimeError when not connected."""
         config = _mock_greeting_config("g1")
         with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.upsert_greeting_config(config)
+            await disconnected_db.upsert_greeting_config("g1", config)
