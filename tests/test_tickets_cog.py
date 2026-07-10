@@ -2658,6 +2658,41 @@ class TestUnclaimCommand:
         assert call_args.args[1] == "222222222"
         assert call_args.kwargs.get("is_mod") is True
 
+    async def test_unclaim_by_configured_mod_role_succeeds(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """C3: Non-admin with configured cached mod role can /unclaim successfully.
+
+        The existing test_unclaim_by_mod_succeeds uses administrator=True.
+        This test proves a non-admin holding the guild's configured moderator
+        role passes the shared is_mod_check predicate.
+        """
+        mod_role_id = 987654321
+        slash_ctx.author.id = 222222222  # different from claimer
+        slash_ctx.author.guild_permissions.administrator = False
+        role = MagicMock(spec=discord.Role)
+        role.id = mod_role_id
+        slash_ctx.author.roles = [role]
+        ticket_bot._guild_mod_role_cache = {123456789: str(mod_role_id)}
+
+        claimed_row = _ticket_row(status="claimed")
+        claimed_row["claimedBy"] = "111111111"
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=claimed_row)
+
+        unclaimed = Ticket.from_db_row({**claimed_row, "status": "open", "claimedBy": None})
+        ticket_bot.ticket_service.unclaim_ticket = AsyncMock(return_value=unclaimed)
+
+        await tickets_cog.unclaim.callback(tickets_cog, slash_ctx)
+
+        ticket_bot.ticket_service.unclaim_ticket.assert_awaited_once()
+        call_args = ticket_bot.ticket_service.unclaim_ticket.call_args
+        assert call_args.args[1] == "222222222"
+        assert call_args.kwargs.get("is_mod") is True
+
     async def test_unclaim_by_non_claimer_non_mod_rejected(
         self,
         tickets_cog: TicketsCog,

@@ -1894,6 +1894,49 @@ async def test_create_ticket_channel_renames_with_sanitized_actual(
 
 
 @pytest.mark.asyncio
+async def test_create_ticket_channel_subticket_uses_sanitized_parent_category_name(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """C2: Subticket channel MUST use sanitize_channel_name with parent's category name.
+
+    Spec (channel-naming): "Subtickets resolve the parent category."
+    The resulting channel name MUST match the `{category}-{username}-{number}` pattern
+    using the parent's category name, not a hardcoded 'ticket' fallback.
+    """
+    guild = _mock_guild_for_channel(channel_name="soporte-parentowner-0001")
+    category = MagicMock(spec=discord.CategoryChannel)
+    parent_owner = MagicMock(spec=discord.Member)
+    parent_owner.id = 222222222
+    parent_owner.__str__ = MagicMock(return_value="ParentOwner#0001")
+    parent_owner.display_name = "ParentOwner"
+
+    # Parent ticket exists and is valid (no self-ref, no sub-of-sub, same guild).
+    parent_row = _parent_row(parent_id=None, guild_id="123456789")
+    mock_db.get_ticket.return_value = parent_row
+    mock_db.get_max_ticket_number.return_value = 0
+    mock_db.insert_ticket.return_value = {**ticket_row, "parentId": "parent-uuid-001", "ticketNumber": 1}
+
+    channel, ticket = await service.create_ticket_channel(
+        guild,
+        category,
+        parent_owner,
+        guild_id="123456789",
+        category_name="Soporte",  # parent's resolved category name
+        parent_id="parent-uuid-001",
+    )
+
+    # Channel name uses the parent category name, NOT 'ticket'.
+    create_kwargs = guild.create_text_channel.call_args.kwargs
+    name = create_kwargs["name"]
+    assert name == "soporte-parentowner-0001"
+    # Pattern check: {category}-{username}-{number}
+    assert name.startswith("soporte-parentowner-"), f"Expected parent category name in channel name, got: {name}"
+    assert ticket.parent_id == "parent-uuid-001"
+
+
+@pytest.mark.asyncio
 async def test_reopen_uses_sanitized_channel_name(
     service: TicketService,
     mock_db: AsyncMock,
@@ -2198,6 +2241,65 @@ async def test_close_ticket_full_auto_silent(
     # Channel deleted after silent delay.
     channel.delete.assert_awaited_once()
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_close_ticket_full_countdown_cancelled_error_logs_and_reraises(
+    service: TicketService,
+    mock_db: AsyncMock,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """C1: CancelledError during countdown MUST be logged, re-raised, and MUST NOT delete channel.
+
+    Design contract (design.md): "It logs and re-raises CancelledError, so a
+    cancelled task never reaches deletion."
+    """
+    import asyncio
+    import logging
+
+    channel = _mock_channel_for_close()
+    bot = _mock_bot_for_close()
+    ticket = _ticket_model()
+
+    open_row = {
+        "id": ticket.id,
+        "ticketNumber": 42,
+        "guildId": "123456789",
+        "authorId": "111111111",
+        "channelId": "888888888",
+        "categoryId": None,
+        "status": "open",
+        "claimedBy": None,
+        "transcriptUrl": None,
+        "createdAt": "2026-01-15T10:00:00",
+        "closedAt": None,
+        "lastActivity": "2026-01-15T10:00:00",
+    }
+    closed_row = {**open_row, "status": "closed", "closedAt": "2026-06-16T18:00:00"}
+    mock_db.get_ticket.side_effect = [
+        open_row,    # close_ticket pre-read
+        closed_row,  # close_ticket re-read
+    ]
+
+    # First sleep raises CancelledError (simulates task cancellation during countdown).
+    async def _cancel_on_first_sleep(*_args, **_kwargs):
+        raise asyncio.CancelledError()
+
+    countdown_msg = AsyncMock()
+    channel.send.return_value = countdown_msg
+
+    with (
+        patch("bot.services.ticket_service.asyncio.sleep", side_effect=_cancel_on_first_sleep),
+        caplog.at_level(logging.WARNING, logger="bot.services.ticket_service"),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await service.close_ticket_full(channel, ticket, "999999999", bot=bot, manual=True)
+
+    # CancelledError was logged.
+    assert any("cancel" in r.message.lower() for r in caplog.records)
+
+    # Channel was NOT deleted — cancellation prevented deletion.
+    channel.delete.assert_not_awaited()
 
 
 @pytest.mark.asyncio
