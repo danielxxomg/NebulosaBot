@@ -82,19 +82,21 @@ class TicketCategoryDBMixin:
         logger.debug("DB delete_ticket_category(%s)", category_id)
         await self._client.table("ticket_category").delete().eq("id", category_id).execute()
 
-    async def count_open_tickets_by_category(self: Any, category_id: str) -> int:
+    async def count_open_tickets_by_category(self: Any, guild_id: str, category_id: str) -> int:
         """Return the number of open/claimed tickets referencing *category_id*.
 
         Uses ``count="exact"`` to avoid fetching all rows — the server
-        returns the count directly.
+        returns the count directly.  Scoped by *guild_id* so one guild
+        cannot see another guild's ticket counts.
         """
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
 
-        logger.debug("DB count_open_tickets_by_category(%s)", category_id)
+        logger.debug("DB count_open_tickets_by_category(%s, %s)", guild_id, category_id)
         response = await (
             self._client.table("ticket")
             .select("id", count="exact")
+            .eq("guildId", guild_id)
             .eq("categoryId", category_id)
             .in_("status", ["open", "claimed"])
             .execute()

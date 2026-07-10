@@ -280,7 +280,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
         cat_name = row.get("name", category_id)
         try:
-            open_count = await self.bot.db.count_open_tickets_by_category(category_id)
+            open_count = await self.bot.db.count_open_tickets_by_category(gid, category_id)
         except Exception:
             logger.exception("Failed to count open tickets for category %s", category_id)
             await ctx.send(embed=_err(gid, "tickets.delete.failed"), ephemeral=True)

@@ -52,33 +52,33 @@ Chain strategy: stacked-to-main
 
 ## Phase 6: Member Datetime Contract Fix (PR 2)
 
-- [ ] 6.1 [GREEN] Verify `bot/models/member.py` — `from_db_row` parses ISO strings for `lastDailyReset`, `lastDaily`, `lastXpGain` via `datetime.fromisoformat()`. Already done in 1.3; confirm tests pass. Ver: `uv run pytest tests/test_member_model.py -x`
+- [x] 6.1 [GREEN] Verify `bot/models/member.py` — `from_db_row` parses ISO strings for `lastDailyReset`, `lastDaily`, `lastXpGain` via `datetime.fromisoformat()`. Already done in 1.3; confirm tests pass. Ver: `uv run pytest tests/test_member_model.py -x`
 
 ## Phase 7: DB Facade Contract Corrections (PR 2)
 
-- [ ] 7.1 [GREEN] Fix `bot/core/db/ticket_category_db.py` — add `guild_id: str` param to `count_open_tickets_by_category(self, guild_id, category_id)`, add `.eq("guildId", guild_id)` filter. Ver: sig matches `(self, guild_id, category_id)`
-- [ ] 7.2 [GREEN] Fix `bot/core/db/infraction_db.py` — add `guild_id: str` param to `deactivate_infraction(self, guild_id, infraction_id)`, add `.eq("guildId", guild_id)` filter. Ver: sig matches `(self, guild_id, infraction_id)`
-- [ ] 7.3 [GREEN] Fix `bot/cogs/tickets.py` line 283 — pass `guild_id` to `count_open_tickets_by_category(guild_id, category_id)`. Ver: call site matches new signature
-- [ ] 7.4 [GREEN] Fix `bot/services/infraction_service.py` line 95 — pass `guild_id` to `deactivate_infraction(guild_id, infraction_id)`. Ver: `unwarn()` passes guild_id through
+- [x] 7.1 [GREEN] Fix `bot/core/db/ticket_category_db.py` — add `guild_id: str` param to `count_open_tickets_by_category(self, guild_id, category_id)`, add `.eq("guildId", guild_id)` filter. Ver: sig matches `(self, guild_id, category_id)`
+- [x] 7.2 [GREEN] Fix `bot/core/db/infraction_db.py` — add `guild_id: str` param to `deactivate_infraction(self, guild_id, infraction_id)`, add `.eq("guildId", guild_id)` filter. Ver: sig matches `(self, guild_id, infraction_id)`
+- [x] 7.3 [GREEN] Fix `bot/cogs/tickets.py` line 283 — pass `guild_id` to `count_open_tickets_by_category(guild_id, category_id)`. Ver: call site matches new signature
+- [x] 7.4 [GREEN] Fix `bot/services/infraction_service.py` line 95 — pass `guild_id` to `deactivate_infraction(guild_id, infraction_id)`. Ver: `unwarn()` passes guild_id through
 
 ## Phase 8: Update Existing Tests for New Signatures (PR 2)
 
-- [ ] 8.1 [GREEN] Update `tests/conftest.py` — `mock_db.count_open_tickets_by_category` and `mock_db.deactivate_infraction` still AsyncMock (signatures don't affect mocks). Confirm no changes needed.
-- [ ] 8.2 [GREEN] Update `tests/test_database.py::TestCountOpenTicketsByCategory` — pass `guild_id` to all `count_open_tickets_by_category` calls, assert `("eq", "guildId", guild_id)` in filters. Ver: `uv run pytest tests/test_database.py::TestCountOpenTicketsByCategory -x`
-- [ ] 8.3 [GREEN] Update `tests/test_tickets_cog.py` — update `count_open_tickets_by_category` mock calls to expect `guild_id` arg. Ver: `uv run pytest tests/test_tickets_cog.py -x`
-- [ ] 8.4 [GREEN] Update `tests/test_infraction_service.py` — update `deactivate_infraction` mock calls to expect `guild_id` arg. Ver: `uv run pytest tests/test_infraction_service.py -x`
-- [ ] 8.5 [GREEN] Update `tests/test_sentinel_cog.py` — update `deactivate_infraction` mock calls to expect `guild_id` arg. Ver: `uv run pytest tests/test_sentinel_cog.py -x`
+- [x] 8.1 [GREEN] Update `tests/conftest.py` — `mock_db.count_open_tickets_by_category` and `mock_db.deactivate_infraction` still AsyncMock (signatures don't affect mocks). Confirm no changes needed.
+- [x] 8.2 [GREEN] Update `tests/test_database.py::TestCountOpenTicketsByCategory` — pass `guild_id` to all `count_open_tickets_by_category` calls, assert `("eq", "guildId", guild_id)` in filters. Ver: `uv run pytest tests/test_database.py::TestCountOpenTicketsByCategory -x`
+- [x] 8.3 [GREEN] Update `tests/test_tickets_cog.py` — update `count_open_tickets_by_category` mock calls to expect `guild_id` arg. Ver: `uv run pytest tests/test_tickets_cog.py -x`
+- [x] 8.4 [GREEN] Update `tests/test_infraction_service.py` — update `deactivate_infraction` mock calls to expect `guild_id` arg. Ver: `uv run pytest tests/test_infraction_service.py -x`
+- [x] 8.5 [GREEN] Update `tests/test_sentinel_cog.py` — update `deactivate_infraction` mock calls to expect `guild_id` arg. Ver: `uv run pytest tests/test_sentinel_cog.py -x`
 
 ## Phase 9: New DB Facade Tests (PR 2)
 
-- [ ] 9.1 [RED] Create `tests/test_ticket_category_db.py` — test `count_open_tickets_by_category(guild_id, cat_id)` returns exact count with `guildId` filter; `update_ticket_category_field_definitions` filters by both `id` and `guildId`. Ver: `uv run pytest tests/test_ticket_category_db.py -x`
-- [ ] 9.2 [RED] Create `tests/test_ticket_db.py` — test `get_stale_tickets` filters by time threshold, `get_open_ticket_channel_ids` extracts channel IDs, `update_ticket_last_activity` updates by channel. Ver: `uv run pytest tests/test_ticket_db.py -x`
-- [ ] 9.3 [RED] Create `tests/test_greeting_db.py` — test `upsert_greeting_config` persists and fires `_on_write`. Ver: `uv run pytest tests/test_greeting_db.py -x`
-- [ ] 9.4 [RED] Create `tests/test_infraction_db.py` — test `deactivate_infraction(guild_id, id)` sets `active=false` with `guildId` filter. Ver: `uv run pytest tests/test_infraction_db.py -x`
+- [x] 9.1 [RED] Create `tests/test_ticket_category_db.py` — test `count_open_tickets_by_category(guild_id, cat_id)` returns exact count with `guildId` filter; `update_ticket_category_field_definitions` filters by both `id` and `guildId`. Ver: `uv run pytest tests/test_ticket_category_db.py -x`
+- [x] 9.2 [RED] Create `tests/test_ticket_db.py` — test `get_stale_tickets` filters by time threshold, `get_open_ticket_channel_ids` extracts channel IDs, `update_ticket_last_activity` updates by channel. Ver: `uv run pytest tests/test_ticket_db.py -x`
+- [x] 9.3 [RED] Create `tests/test_greeting_db.py` — test `upsert_greeting_config` persists and fires `_on_write`. Ver: `uv run pytest tests/test_greeting_db.py -x`
+- [x] 9.4 [RED] Create `tests/test_infraction_db.py` — test `deactivate_infraction(guild_id, id)` sets `active=false` with `guildId` filter. Ver: `uv run pytest tests/test_infraction_db.py -x`
 
 ## Phase 10: PR 2 Verification
 
-- [ ] 10.1 Run `uv run pytest` — all green. Run `uv run ruff check .` and `uv run mypy bot`. Commit: `fix(db): guild-scope facade methods + model datetime parsing + facade tests`
+- [x] 10.1 Run `uv run pytest` — all green. Run `uv run ruff check .` and `uv run mypy bot`. Commit: `fix(db): guild-scope facade methods + model datetime parsing + facade tests`
 
 ---
 

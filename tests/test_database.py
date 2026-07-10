@@ -1516,7 +1516,7 @@ class TestCountOpenTicketsByCategory:
         # With count="exact", the FakeQueryBuilder will set response.count = len(data)
         fake_client.set_table_data("ticket", [{"id": "t1"}, {"id": "t2"}])
 
-        result = await db.count_open_tickets_by_category("cat-1")
+        result = await db.count_open_tickets_by_category("g1", "cat-1")
 
         assert result == 2
 
@@ -1525,18 +1525,19 @@ class TestCountOpenTicketsByCategory:
         """count_open_tickets_by_category() MUST return 0 when no open tickets exist."""
         fake_client.set_table_data("ticket", [])
 
-        result = await db.count_open_tickets_by_category("cat-empty")
+        result = await db.count_open_tickets_by_category("g1", "cat-empty")
 
         assert result == 0
 
     @pytest.mark.asyncio
-    async def test_filters_by_category_and_status(self, db: Database, fake_client: FakeSupabaseClient) -> None:
-        """count_open_tickets_by_category() MUST filter by categoryId and status IN (open, claimed)."""
+    async def test_filters_by_guild_category_and_status(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """count_open_tickets_by_category() MUST filter by guildId, categoryId and status IN (open, claimed)."""
         fake_client.set_table_data("ticket", [])
 
-        await db.count_open_tickets_by_category("cat-1")
+        await db.count_open_tickets_by_category("g1", "cat-1")
 
         filters = fake_client.get_table_filters("ticket")
+        assert ("eq", "guildId", "g1") in filters
         assert ("eq", "categoryId", "cat-1") in filters
         assert ("in_", "status", ["open", "claimed"]) in filters
 
@@ -1544,7 +1545,7 @@ class TestCountOpenTicketsByCategory:
     async def test_raises_without_connect(self, disconnected_db: Database) -> None:
         """count_open_tickets_by_category() MUST raise RuntimeError if connect() wasn't called."""
         with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.count_open_tickets_by_category("cat-1")
+            await disconnected_db.count_open_tickets_by_category("g1", "cat-1")
 
 
 # ===========================================================================
