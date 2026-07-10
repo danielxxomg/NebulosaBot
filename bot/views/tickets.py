@@ -389,6 +389,8 @@ class TicketActionsView(discord.ui.View):
                         child.label = t(guild_id, "tickets.actions.claim_button")
                     elif child.custom_id == "ticket:close":
                         child.label = t(guild_id, "tickets.actions.close_button")
+                    elif child.custom_id == "ticket:edit-category":
+                        child.label = t(guild_id, "tickets.actions.edit_category_button")
 
     @staticmethod
     async def _get_ticket(
@@ -504,6 +506,7 @@ class TicketActionsView(discord.ui.View):
             )
             confirm_view.message = await interaction.original_response()
             return
+        # Ticket not claimed — proceed with direct claim.
         ticket_id = ticket_row["id"]
         staff_id = str(interaction.user.id)
         assert bot.ticket_service is not None
@@ -616,6 +619,79 @@ class TicketActionsView(discord.ui.View):
         )
         confirm_view.message = await interaction.original_response()
 
+    @discord.ui.button(
+        label="Edit Category", style=discord.ButtonStyle.secondary,
+        custom_id="ticket:edit-category", emoji="✏️",
+    )
+    async def edit_category_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button[discord.ui.View],
+    ) -> None:
+        """Persistent staff-gated Edit Category button.
+
+        Fetches active categories for the guild and shows an ephemeral
+        ``_EditCategoryView`` dropdown (timeout=300s).
+        """
+        bot: NebulosaBot = interaction.client  # type: ignore[assignment]
+        channel_id = interaction.channel_id
+        guild = interaction.guild
+        guild_id = str(interaction.guild_id) if interaction.guild_id else None
+        # Dynamic label resolution at interaction time.
+        if guild_id is not None:
+            button.label = t(guild_id, "tickets.actions.edit_category_button")
+        if channel_id is None or guild is None or guild_id is None:
+            return
+        if not await is_mod_check(interaction):
+            await interaction.response.send_message(
+                embed=error_embed(
+                    t(guild_id, "tickets.actions.edit_category_mods_only_title"),
+                    t(guild_id, "tickets.actions.edit_category_mods_only_description"),
+                    guild_id=guild_id, bot=bot, guild=guild,
+                ),
+                ephemeral=True,
+            )
+            return
+        # Fetch the ticket to pass ticket_row to the select callback.
+        assert bot.db is not None
+        ticket_row = await bot.db.get_ticket_by_channel(str(channel_id))
+        if ticket_row is None:
+            await interaction.response.send_message(
+                embed=error_embed(
+                    t(guild_id, "tickets.actions.edit_category_mods_only_title"),
+                    t(guild_id, "tickets.actions.claim_not_ticket_description"),
+                    guild_id=guild_id, bot=bot, guild=guild,
+                ),
+                ephemeral=True,
+            )
+            return
+        # Fetch active categories.
+        rows = await bot.db.get_ticket_categories(guild_id)
+        categories = [TicketCategory.from_db_row(r) for r in rows if r.get("active", True)]
+        if not categories:
+            await interaction.response.send_message(
+                embed=error_embed(
+                    t(guild_id, "tickets.actions.edit_category_no_categories_title"),
+                    t(guild_id, "tickets.actions.edit_category_no_categories_description"),
+                    guild_id=guild_id, bot=bot, guild=guild,
+                ),
+                ephemeral=True,
+            )
+            return
+        options = [
+            discord.SelectOption(
+                label=cat.name,
+                value=cat.id,
+                description=(cat.description[:100] if cat.description else None),
+                emoji=cat.emoji,
+            )
+            for cat in categories
+        ]
+        view = _EditCategoryView(options, guild, categories, ticket_row)
+        await interaction.response.send_message(
+            t(guild_id, "tickets.open.select_category"),
+            view=view,
+            ephemeral=True,
+        )
+
 
 class _CategorySelectView(discord.ui.View):
     """Ephemeral view with a category select dropdown."""
@@ -670,4 +746,153 @@ class _CategorySelect(discord.ui.Select[discord.ui.View]):
 
         await interaction.response.send_modal(
             TicketIntakeModal(guild, category_id, category_name, field_definitions=field_definitions)
+        )
+
+
+class _EditCategoryView(discord.ui.View):
+    """Ephemeral view (300s) with a category select for editing ticket category."""
+
+    __slots__ = ()
+
+    def __init__(
+        self,
+        options: list[discord.SelectOption],
+        guild: discord.Guild,
+        categories: list[TicketCategory],
+        ticket_row: dict[str, Any],
+    ) -> None:
+        super().__init__(timeout=300)
+        self.add_item(_EditCategorySelect(options, guild, categories, ticket_row))
+
+
+class _EditCategorySelect(discord.ui.Select[discord.ui.View]):
+    """Select dropdown for editing a ticket's category.
+
+    The callback re-validates mod/admin (the ephemeral select persists 300s),
+    rejects closed tickets, and delegates to ``edit_ticket_category``.
+    """
+
+    __slots__ = ("_categories", "_guild", "_ticket_row")
+
+    def __init__(
+        self,
+        options: list[discord.SelectOption],
+        guild: discord.Guild,
+        categories: list[TicketCategory],
+        ticket_row: dict[str, Any],
+    ) -> None:
+        guild_id = str(guild.id)
+        super().__init__(
+            placeholder=t(guild_id, "tickets.open.select_category"),
+            min_values=1, max_values=1, options=options,
+        )
+        self._guild = guild
+        self._categories = categories
+        self._ticket_row = ticket_row
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        new_category_id = self.values[0]
+        guild = self._guild
+        guild_id = str(guild.id)
+        bot: NebulosaBot = interaction.client  # type: ignore[assignment]
+
+        # Re-validate mod/admin (300s ephemeral window).
+        if not await is_mod_check(interaction):
+            await interaction.response.send_message(
+                embed=error_embed(
+                    t(guild_id, "tickets.actions.edit_category_mods_only_title"),
+                    t(guild_id, "tickets.actions.edit_category_mods_only_description"),
+                    guild_id=guild_id, bot=bot, guild=guild,
+                ),
+                ephemeral=True,
+            )
+            return
+
+        # Re-fetch the ticket fresh from the DB before the closed check and
+        # service call. ``self._ticket_row`` was captured when the Edit
+        # Category button was clicked (stale during the 300s dropdown window),
+        # so a ticket closed in that window would slip past the gate.
+        channel = interaction.channel
+        if not isinstance(channel, discord.TextChannel):
+            return
+        assert bot.db is not None
+        ticket_row = await bot.db.get_ticket_by_channel(str(channel.id))
+        if ticket_row is None:
+            await interaction.response.send_message(
+                embed=error_embed(
+                    t(guild_id, "tickets.actions.edit_category_closed_title"),
+                    t(guild_id, "tickets.actions.edit_category_closed_description"),
+                    guild_id=guild_id, bot=bot, guild=guild,
+                ),
+                ephemeral=True,
+            )
+            return
+        if ticket_row.get("status") == "closed":
+            await interaction.response.send_message(
+                embed=error_embed(
+                    t(guild_id, "tickets.actions.edit_category_closed_title"),
+                    t(guild_id, "tickets.actions.edit_category_closed_description"),
+                    guild_id=guild_id, bot=bot, guild=guild,
+                ),
+                ephemeral=True,
+            )
+            return
+
+        ticket_id = ticket_row["id"]
+        actor_id = str(interaction.user.id)
+        assert bot.ticket_service is not None
+
+        # Resolve category name for success message.
+        category_name = next(
+            (opt.label for opt in self.options if opt.value == new_category_id),
+            new_category_id,
+        )
+
+        try:
+            _ticket, rename_succeeded = await bot.ticket_service.edit_ticket_category(
+                ticket_id, new_category_id,
+                channel=channel, actor_id=actor_id, is_mod=True,
+            )
+        except ValueError as exc:
+            # The service raises descriptive ValueError messages; map them to
+            # the matching UX instead of a blanket limit message.
+            msg = str(exc).lower()
+            if "closed" in msg:
+                title = t(guild_id, "tickets.actions.edit_category_closed_title")
+                description = t(
+                    guild_id, "tickets.actions.edit_category_closed_description",
+                )
+            elif "already has an open" in msg:
+                title = t(guild_id, "tickets.actions.edit_category_limit_title")
+                description = t(
+                    guild_id, "tickets.actions.edit_category_limit_description",
+                )
+            else:
+                # Generic error — NOT the limit keys, which would mislead users.
+                title = t(guild_id, "common.error.unexpected_title")
+                description = str(exc)
+            await interaction.response.send_message(
+                embed=error_embed(
+                    title, description,
+                    guild_id=guild_id, bot=bot, guild=guild,
+                ),
+                ephemeral=True,
+            )
+            return
+
+        # Build success description, appending rename warning if needed.
+        description = t(
+            guild_id, "tickets.actions.edit_category_success_description",
+            category=category_name,
+        )
+        if not rename_succeeded:
+            description += t(guild_id, "tickets.actions.edit_category_rename_warning")
+
+        await interaction.response.send_message(
+            embed=success_embed(
+                t(guild_id, "tickets.actions.edit_category_success"),
+                description,
+                guild_id=guild_id, bot=bot, guild=guild,
+            ),
+            ephemeral=True,
         )

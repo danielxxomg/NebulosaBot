@@ -220,7 +220,20 @@
       "transfer_confirm_title": "Confirm Transfer",
       "transfer_confirm_description": "This ticket is already claimed by <@{current}>. Transfer it to yourself?",
       "transfer_cancelled_message": "Ticket transfer cancelled.",
-      "transfer_timeout_message": "Transfer confirmation timed out. The ticket remains unchanged."
+      "transfer_timeout_message": "Transfer confirmation timed out. The ticket remains unchanged.",
+      "edit_category": "Edit Category",
+      "edit_category_button": "Edit Category",
+      "edit_category_success": "✅ Category Updated",
+      "edit_category_success_description": "Ticket category has been updated to **{category}**.",
+      "edit_category_rename_warning": "\n\n⚠️ The channel could not be renamed. The category was still updated.",
+      "edit_category_limit_title": "Limit Reached",
+      "edit_category_limit_description": "The ticket author already has an open ticket in that category. Each user can have only one open ticket per category.",
+      "edit_category_closed_title": "Ticket Closed",
+      "edit_category_closed_description": "Cannot edit the category of a closed ticket. Reopen it first.",
+      "edit_category_mods_only_title": "Mods Only",
+      "edit_category_mods_only_description": "Only moderators can edit ticket categories.",
+      "edit_category_no_categories_title": "No Categories",
+      "edit_category_no_categories_description": "No ticket categories are available. Ask an admin to create one with `/create_category`."
     },
     "subticket": {
       "help_title": "Sub-tickets",
