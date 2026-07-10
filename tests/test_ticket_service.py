@@ -1868,7 +1868,7 @@ async def test_create_ticket_channel_uses_sanitized_name(
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1}
 
-    channel, ticket = await service.create_ticket_channel(
+    _, __ = await service.create_ticket_channel(
         guild, category, author, guild_id="123456789", category_name="Soporte",
     )
 
@@ -1925,7 +1925,7 @@ async def test_create_ticket_channel_subticket_uses_sanitized_parent_category_na
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {**ticket_row, "parentId": "parent-uuid-001", "ticketNumber": 1}
 
-    channel, ticket = await service.create_ticket_channel(
+    _channel, ticket = await service.create_ticket_channel(
         guild,
         category,
         parent_owner,
@@ -2201,7 +2201,10 @@ async def test_close_ticket_full_manual_countdown(
 
     # Message edited 4 times: "4", "3", "2", "1".
     assert countdown_msg.edit.await_count == 4
-    edit_contents = [call.args[0] if call.args else call.kwargs.get("content") for call in countdown_msg.edit.call_args_list]
+    edit_contents = [
+        call.args[0] if call.args else call.kwargs.get("content")
+        for call in countdown_msg.edit.call_args_list
+    ]
     assert edit_contents == ["4", "3", "2", "1"]
 
     # Channel deleted after countdown.
@@ -2290,7 +2293,7 @@ async def test_close_ticket_full_countdown_cancelled_error_logs_and_reraises(
 
     # First sleep raises CancelledError (simulates task cancellation during countdown).
     async def _cancel_on_first_sleep(*_args, **_kwargs):
-        raise asyncio.CancelledError()
+        raise asyncio.CancelledError
 
     countdown_msg = AsyncMock()
     channel.send.return_value = countdown_msg
@@ -2485,3 +2488,224 @@ async def test_unclaim_ticket_not_found(
 
     with pytest.raises(ValueError, match=r"not found"):
         await service.unclaim_ticket("nonexistent", "userA", is_mod=False)
+
+
+# ===========================================================================
+# PR2 Phase 2 — Characterization tests for helper wiring
+# ===========================================================================
+#
+# These tests capture the CURRENT behavior of create_ticket_channel and
+# reopen_ticket so we can verify behavior is preserved after wiring
+# ticket_helpers (build_ticket_overwrites, resolve_mod_role,
+# resolve_member_safe, resolve_category_name).
+
+
+class TestCreateTicketChannelOverwrites:
+    """Characterization: create_ticket_channel permission overwrites paths."""
+
+    @pytest.mark.asyncio
+    async def test_overwrites_include_mod_role_when_provided(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+        ticket_row: dict,
+    ) -> None:
+        """With mod_role provided, overwrites MUST include 4 principals:
+        default_role (denied), bot (read+send), author (read+send), mod (read+send).
+        """
+        guild = _mock_guild_for_channel()
+        category = MagicMock(spec=discord.CategoryChannel)
+        author = _mock_author()
+        mod_role = MagicMock(name="ModRole")
+        mod_role.id = 222
+
+        mock_db.get_max_ticket_number.return_value = 0
+        mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1}
+
+        await service.create_ticket_channel(
+            guild, category, author,
+            guild_id="123456789", category_name="Support", mod_role=mod_role,
+        )
+
+        create_kwargs = guild.create_text_channel.call_args.kwargs
+        overwrites = create_kwargs["overwrites"]
+
+        # 4 principals: default_role, bot, author, mod
+        assert len(overwrites) == 4
+        assert guild.default_role in overwrites
+        assert guild.me in overwrites
+        assert author in overwrites
+        assert mod_role in overwrites
+
+        # Permissions: default_role denied, others get read+send.
+        assert overwrites[guild.default_role].read_messages is False
+        assert overwrites[guild.me].read_messages is True
+        assert overwrites[guild.me].send_messages is True
+        assert overwrites[author].read_messages is True
+        assert overwrites[author].send_messages is True
+        assert overwrites[mod_role].read_messages is True
+        assert overwrites[mod_role].send_messages is True
+
+    @pytest.mark.asyncio
+    async def test_overwrites_exclude_mod_role_when_none(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+        ticket_row: dict,
+    ) -> None:
+        """Without mod_role, overwrites MUST include 3 principals only."""
+        guild = _mock_guild_for_channel()
+        category = MagicMock(spec=discord.CategoryChannel)
+        author = _mock_author()
+
+        mock_db.get_max_ticket_number.return_value = 0
+        mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1}
+
+        await service.create_ticket_channel(
+            guild, category, author,
+            guild_id="123456789", category_name="Support",
+        )
+
+        create_kwargs = guild.create_text_channel.call_args.kwargs
+        overwrites = create_kwargs["overwrites"]
+
+        # 3 principals: default_role, bot, author (no mod).
+        assert len(overwrites) == 3
+        assert guild.default_role in overwrites
+        assert guild.me in overwrites
+        assert author in overwrites
+
+
+class TestReopenTicketChannelConstruction:
+    """Characterization: reopen_ticket channel-construction block."""
+
+    @pytest.mark.asyncio
+    async def test_reopen_overwrites_include_mod_role_from_guild_config(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """When guild config has modRoleId, reopen overwrites MUST include the mod role."""
+        ticket_id = "ticket-uuid-003"
+        closed_row = _closed_ticket_row()
+        reopened_row = {**closed_row, "channelId": "555555555", "status": "open", "closedAt": None}
+
+        mock_db.get_ticket.side_effect = [closed_row, reopened_row]
+        mock_db.get_guild.return_value = {
+            "id": "123456789",
+            "ticketCategoryId": "100000000",
+            "modRoleId": "222222222",
+        }
+        mock_db.get_ticket_category = AsyncMock(return_value={"name": "Soporte"})
+
+        category_channel = MagicMock(spec=discord.CategoryChannel)
+        guild = _mock_guild_for_reopen(category_channel=category_channel)
+
+        mod_role = MagicMock(name="ModRole")
+        mod_role.id = 222222222
+        guild.get_role = MagicMock(return_value=mod_role)
+
+        author_member = MagicMock()
+        author_member.display_name = "DanielXX"
+        guild.get_member = MagicMock(return_value=author_member)
+
+        await service.reopen_ticket(ticket_id, guild=guild)
+
+        create_kwargs = guild.create_text_channel.call_args.kwargs
+        overwrites = create_kwargs["overwrites"]
+
+        # 4 principals when mod role resolves.
+        assert len(overwrites) == 4
+        assert guild.default_role in overwrites
+        assert guild.me in overwrites
+        assert author_member in overwrites
+        assert mod_role in overwrites
+
+        # Permissions verified.
+        assert overwrites[guild.default_role].read_messages is False
+        assert overwrites[mod_role].read_messages is True
+        assert overwrites[mod_role].send_messages is True
+
+    @pytest.mark.asyncio
+    async def test_reopen_overwrites_exclude_mod_role_when_not_configured(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """When no modRoleId in guild config, reopen overwrites MUST exclude mod."""
+        ticket_id = "ticket-uuid-003"
+        closed_row = _closed_ticket_row()
+        reopened_row = {**closed_row, "channelId": "555555555", "status": "open", "closedAt": None}
+
+        mock_db.get_ticket.side_effect = [closed_row, reopened_row]
+        mock_db.get_guild.return_value = {
+            "id": "123456789",
+            "ticketCategoryId": "100000000",
+            "modRoleId": None,
+        }
+        mock_db.get_ticket_category = AsyncMock(return_value={"name": "Soporte"})
+
+        category_channel = MagicMock(spec=discord.CategoryChannel)
+        guild = _mock_guild_for_reopen(category_channel=category_channel)
+
+        author_member = MagicMock()
+        author_member.display_name = "DanielXX"
+        guild.get_member = MagicMock(return_value=author_member)
+
+        await service.reopen_ticket(ticket_id, guild=guild)
+
+        create_kwargs = guild.create_text_channel.call_args.kwargs
+        overwrites = create_kwargs["overwrites"]
+
+        # 3 principals: default_role, bot, author (no mod).
+        assert len(overwrites) == 3
+        assert guild.default_role in overwrites
+        assert guild.me in overwrites
+        assert author_member in overwrites
+
+    @pytest.mark.asyncio
+    async def test_reopen_channel_name_from_category_author_ticket_number(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """Reopen channel name MUST be {category}-{author}-{ticket_number} sanitized."""
+        ticket_id = "ticket-uuid-003"
+        closed_row = _closed_ticket_row()
+        reopened_row = {**closed_row, "channelId": "555555555", "status": "open", "closedAt": None}
+
+        mock_db.get_ticket.side_effect = [closed_row, reopened_row]
+        mock_db.get_guild.return_value = {
+            "id": "123456789",
+            "ticketCategoryId": "100000000",
+            "modRoleId": None,
+        }
+        mock_db.get_ticket_category = AsyncMock(return_value={"name": "Soporte"})
+
+        category_channel = MagicMock(spec=discord.CategoryChannel)
+        guild = _mock_guild_for_reopen(category_channel=category_channel)
+
+        author_member = MagicMock()
+        author_member.display_name = "DanielXX"
+        guild.get_member = MagicMock(return_value=author_member)
+
+        await service.reopen_ticket(ticket_id, guild=guild)
+
+        create_kwargs = guild.create_text_channel.call_args.kwargs
+        # Channel name: soporte-danielxx-0003 (ticket_number=3 from _closed_ticket_row).
+        assert create_kwargs["name"] == "soporte-danielxx-0003"
+
+    @pytest.mark.asyncio
+    async def test_reopen_spanish_error_text_on_non_closed_ticket(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """Spanish invariant error text MUST be preserved verbatim for non-closed tickets."""
+        ticket_id = "ticket-uuid-003"
+        open_row = {**_closed_ticket_row(), "status": "open"}
+        mock_db.get_ticket.return_value = open_row
+        guild = _mock_guild_for_reopen(category_channel=None)
+
+        with pytest.raises(ValueError, match=r"Solo se pueden reabrir tickets cerrados\. Estado actual: open"):
+            await service.reopen_ticket(ticket_id, guild=guild)

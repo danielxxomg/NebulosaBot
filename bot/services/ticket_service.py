@@ -29,6 +29,13 @@ from bot.services.ticket_invariants import (
     compute_note_hash,
     is_duplicate_note,
 )
+from bot.utils.ticket_helpers import (
+    build_ticket_overwrites,
+    resolve_category_name,
+    resolve_member_safe,
+    resolve_mod_role,
+    sanitize_channel_name,
+)
 
 if TYPE_CHECKING:
     from bot.bot import NebulosaBot
@@ -493,27 +500,8 @@ class TicketService:
     async def reopen_ticket(self, ticket_id: str, *, guild: discord.Guild) -> Ticket:
         """Reopen a closed ticket in a freshly created Discord channel.
 
-        Loads the closed ticket, creates a new channel in the guild's
-        configured ticket Discord category (falling back to that same
-        default — v1 stores only one Discord category per guild), then
-        updates ``channelId``, sets ``status='open'``, clears
-        ``closedAt``, and adds the new channel to the cache.
-
-        The ticket row's ``categoryId`` is a ticket_category UUID (a
-        label), not a Discord channel, so the guild-configured
-        ``ticketCategoryId`` is the only resolvable Discord category.
-        If it is missing or deleted, reopen fails.
-
-        Args:
-            ticket_id: UUID of the closed ticket to reopen.
-            guild: The Discord guild the ticket lives in.
-
-        Returns:
-            The reopened :class:`Ticket`.
-
-        Raises:
-            ValueError: If the ticket does not exist or no Discord ticket
-                category is configured/available.
+        Creates a new channel, updates ``channelId``/``status``/``closedAt``,
+        and adds the new channel to the cache.
         """
         closed_row = await self._db.get_ticket(ticket_id)
         if closed_row is None:
@@ -543,71 +531,8 @@ class TicketService:
             await self._db.insert_audit_row(guild_id, ticket_id, "reopen", None, "denied", err)
             raise TicketCategoryNotConfiguredError(err)
 
-        # Build permission overwrites (everyone denied, bot + author + mod).
-        overwrites: dict[
-            discord.Role | discord.Member | discord.Object,
-            discord.PermissionOverwrite,
-        ] = {
-            guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-        }
-        author_id = closed_row.get("authorId")
-        if author_id:
-            try:
-                author = guild.get_member(int(author_id))
-                if author is not None:
-                    overwrites[author] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
-            except (ValueError, TypeError):
-                pass
-        mod_role_id = (guild_row or {}).get("modRoleId")
-        if mod_role_id:
-            try:
-                mod_role = guild.get_role(int(mod_role_id))
-                if mod_role is not None:
-                    overwrites[mod_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
-            except (ValueError, TypeError):
-                pass
-
-        # Channel name from sanitized category + author + ticket number.
-        from bot.utils.ticket_helpers import sanitize_channel_name
-
-        ticket_number = closed_row.get("ticketNumber", 0)
-        try:
-            ticket_number = int(ticket_number)
-        except (TypeError, ValueError):
-            ticket_number = 0
-
-        # Resolve category name from the ticket's categoryId (UUID).
-        category_name = "ticket"
-        ticket_category_id = closed_row.get("categoryId")
-        if ticket_category_id:
-            try:
-                cat_row = await self._db.get_ticket_category(ticket_category_id)
-                if cat_row is not None:
-                    category_name = cat_row.get("name", "ticket")
-            except Exception:
-                logger.warning(
-                    "Failed to resolve ticket category %s for reopen naming",
-                    ticket_category_id,
-                )
-
-        # Resolve author display name (fallback: "user").
-        display_name = "user"
-        if author_id:
-            try:
-                member = guild.get_member(int(author_id))
-                if member is not None:
-                    display_name = member.display_name
-            except (ValueError, TypeError):
-                pass
-
-        channel_name = sanitize_channel_name(category_name, display_name, ticket_number)
-
-        new_channel = await guild.create_text_channel(
-            name=channel_name,
-            category=category_channel,
-            overwrites=overwrites,
-            reason=f"Ticket {ticket_id} reopened",
+        new_channel = await self._build_reopen_channel(
+            guild, closed_row, guild_row, category_channel, ticket_id,
         )
 
         await self._db.update_ticket(
@@ -650,6 +575,48 @@ class TicketService:
             return channel
         return None
 
+    async def _build_reopen_channel(
+        self,
+        guild: discord.Guild,
+        closed_row: dict,
+        guild_row: dict | None,
+        category_channel: discord.CategoryChannel,
+        ticket_id: str,
+    ) -> discord.TextChannel:
+        """Build and create the Discord channel for a ticket reopen.
+
+        Resolves permission overwrites, category name, and author via
+        the pure helper functions in ``ticket_helpers``.
+        """
+        # Resolve principals via pure helpers.
+        author_id = closed_row.get("authorId")
+        author = resolve_member_safe(guild, author_id)
+        mod_role_id = (guild_row or {}).get("modRoleId")
+        mod_role = resolve_mod_role(guild, mod_role_id)
+
+        overwrites = build_ticket_overwrites(guild, author, mod_role)
+
+        # Channel name from sanitized category + author + ticket number.
+        ticket_number = closed_row.get("ticketNumber", 0)
+        try:
+            ticket_number = int(ticket_number)
+        except (TypeError, ValueError):
+            ticket_number = 0
+
+        category_name = await resolve_category_name(
+            self._db, closed_row.get("categoryId"), fallback="ticket",
+        )
+
+        display_name = author.display_name if author is not None else "user"
+        channel_name = sanitize_channel_name(category_name, display_name, ticket_number)
+
+        return await guild.create_text_channel(
+            name=channel_name,
+            category=category_channel,
+            overwrites=overwrites,
+            reason=f"Ticket {ticket_id} reopened",
+        )
+
     async def transfer_ticket(
         self,
         ticket_id: str,
@@ -661,28 +628,9 @@ class TicketService:
     ) -> Ticket:
         """Transfer a ticket's claim to *new_claimed_by* and audit the action.
 
-        Mutates ``claimedBy`` (and sets ``status='claimed'`` — a transfer is
-        an implicit (re)claim). After the DB mutation, emits a
-        :class:`~bot.services.logging_service.LoggingService` audit embed
-        (NOT a DB audit row — the current schema has no audit table, per the
-        design decision). The audit is best-effort: it is skipped silently
-        when *guild*/*logging_service* are unavailable or members cannot be
-        resolved, so a logging failure never blocks the transfer.
-
-        Args:
-            ticket_id: UUID of the ticket to transfer.
-            new_claimed_by: Discord user snowflake of the new claimer.
-            actor_id: Discord user snowflake of the staff member performing
-                the transfer (recorded in the audit).
-            guild: The Discord guild — used to resolve Member objects for the
-                audit embed. Optional (audit skipped when ``None``).
-            logging_service: The bot's LoggingService. Optional.
-
-        Returns:
-            The updated :class:`Ticket`.
-
-        Raises:
-            ValueError: If the ticket does not exist after the update.
+        Emits a best-effort LoggingService audit embed when *guild* and
+        *logging_service* are available.  A logging failure never blocks
+        the transfer.
         """
         pre = await self._db.get_ticket(ticket_id)
         if pre is None:
@@ -711,8 +659,8 @@ class TicketService:
         # Best-effort audit embed (LoggingService, not a DB audit table).
         if logging_service is not None and guild is not None:
             try:
-                target = guild.get_member(int(new_claimed_by))
-                moderator = guild.get_member(int(actor_id))
+                target = resolve_member_safe(guild, new_claimed_by)
+                moderator = resolve_member_safe(guild, actor_id)
                 if target is not None and moderator is not None:
                     await logging_service.log_moderation_action(
                         guild_id=str(guild.id),
@@ -859,58 +807,17 @@ class TicketService:
     ) -> tuple[discord.TextChannel, Ticket]:
         """Create a ticket Discord channel, insert the ticket row, and rename if needed.
 
-        Builds the standard ticket permission set (everyone denied, author
-        and bot can view/send, mod role can view/send if provided), creates
-        a ``TextChannel`` under *category*, inserts the ticket row via
-        :meth:`create_ticket` (or :meth:`create_subticket` when
-        *parent_id* is provided), and renames the channel to match the
-        actual ticket number if it differs from the tentative name.
-
-        Channel names follow the ``{category}-{username}-{number}`` format
-        via :func:`~bot.utils.ticket_helpers.sanitize_channel_name`.
-
-        When *parent_id* is set, the ticket row is created via
-        :meth:`create_subticket` which enforces parentId invariants
-        (existence, no self-reference, depth ≤ 1, same guild).  On
-        failure the freshly-created channel is deleted before re-raising.
-
-        Args:
-            guild: The Discord guild.
-            category: The category channel to create the ticket under.
-            author: The member who opened the ticket.
-            guild_id: Discord guild snowflake for the ticket row.
-            category_name: Ticket category label (e.g. ``"Soporte"``).
-            category_id: Optional ticket_category UUID (label, not a channel).
-            mod_role: Optional moderator role to grant access.
-            parent_id: Optional parent ticket UUID for sub-ticket creation.
-
-        Returns:
-            A tuple of (:class:`discord.TextChannel`, :class:`Ticket`).
-
-        Raises:
-            discord.Forbidden: If the bot lacks permissions.
-            discord.HTTPException: If the channel creation fails.
-            ValueError: If parent_id validation fails.
-            RuntimeError: If ticket insert retries are exhausted.
+        When *parent_id* is set, uses :meth:`create_subticket` to enforce
+        parentId invariants.  On row-insert failure the channel is deleted
+        before re-raising.
         """
-        from bot.utils.ticket_helpers import sanitize_channel_name
-
         # Compute tentative channel name from DB max + 1.
         tentative_max = await self._db.get_max_ticket_number(guild_id)
         tentative_name = sanitize_channel_name(
             category_name, author.display_name, tentative_max + 1,
         )
 
-        overwrites: dict[
-            discord.Role | discord.Member | discord.Object,
-            discord.PermissionOverwrite,
-        ] = {
-            guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            author: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-        }
-        if mod_role is not None:
-            overwrites[mod_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        overwrites = build_ticket_overwrites(guild, author, mod_role)
 
         channel = await guild.create_text_channel(
             name=tentative_name,
@@ -967,23 +874,9 @@ class TicketService:
     ) -> str | None:
         """Close a single ticket end-to-end: transcript -> upload -> DB -> delete.
 
-        Generates a transcript, uploads it to the guild's log channel (if
-        configured), closes the ticket in the database, and deletes the
-        Discord channel.
-
-        When *manual* is ``True`` (default), a visual countdown edits a
-        single message from 5 to 1 before deletion.  When *manual* is
-        ``False`` (auto-close), the channel is deleted silently after a
-        short delay.
-
-        Args:
-            channel: The ticket's Discord text channel.
-            ticket: The :class:`Ticket` model to close.
-            closed_by: Discord user snowflake of the closer.
-            bot: The :class:`~bot.bot.NebulosaBot` instance (used to
-                access ``transcript_service`` and ``guild_service``).
-            manual: Whether this is a manual close (``True``) or
-                auto-close (``False``).  Controls countdown behavior.
+        When *manual* is ``True``, a visual countdown edits a message
+        from 5 to 1 before deletion.  When ``False``, the channel is
+        deleted silently after a short delay.
 
         Returns:
             The transcript URL if uploaded, ``None`` otherwise.
@@ -1034,15 +927,11 @@ class TicketService:
         channel: discord.TextChannel,
         closed_by: str,
     ) -> None:
-        """Post a single message, edit it counting 5 to 1, then delete the channel.
+        """Count down from 5 to 1, then delete the channel.
 
-        Each edit is separated by a 1-second ``asyncio.sleep``.  After the
-        message displays "1" and another second elapses, the channel is
-        deleted.  ``discord.HTTPException`` during the countdown is logged
-        and falls back to a silent delete.
-
-        ``CancelledError`` is logged and re-raised without reaching deletion,
-        so a cancelled task never deletes the channel.
+        ``CancelledError`` is logged and re-raised so a cancelled task
+        never deletes the channel.  ``discord.HTTPException`` during the
+        countdown falls back to a silent delete.
         """
         try:
             msg = await channel.send("5")

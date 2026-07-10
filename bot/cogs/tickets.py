@@ -414,12 +414,14 @@ class TicketsCog(commands.Cog, name="Tickets"):
     async def _resolve_parent_owner(
         guild: discord.Guild, parent_author_id: str, ctx: commands.Context
     ) -> discord.Member | None:
+        from bot.utils.ticket_helpers import resolve_member_safe
+
         gid = str(guild.id)
         if not parent_author_id:
             await ctx.send(embed=_err(gid, "tickets.subticket.owner_not_found"))
             return None
         try:
-            member = guild.get_member(int(parent_author_id))
+            member = resolve_member_safe(guild, parent_author_id)
             if member is not None:
                 return member
             return await guild.fetch_member(int(parent_author_id))

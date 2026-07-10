@@ -131,7 +131,7 @@ def build_ticket_overwrites(
 
 def resolve_mod_role(
     guild: discord.Guild,
-    role_id: object,
+    role_id: str | int | None,
 ) -> discord.Role | None:
     """Resolve a Discord role from a raw config ID, suppressing errors.
 
@@ -153,7 +153,7 @@ def resolve_mod_role(
 
 def resolve_member_safe(
     guild: discord.Guild,
-    member_id: object,
+    member_id: str | int | None,
 ) -> discord.Member | None:
     """Resolve a guild member from a raw snowflake, suppressing errors.
 
@@ -194,7 +194,7 @@ async def resolve_category_name(
     try:
         row = await db.get_ticket_category(category_id)
         if row is not None:
-            return row.get("name", fallback)
+            return str(row.get("name", fallback))
     except Exception:
         logger.warning("Failed to resolve ticket category %s", category_id)
     return fallback

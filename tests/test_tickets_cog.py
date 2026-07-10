@@ -13,6 +13,7 @@ TDD cycle: RED → GREEN — tests specify expected behavior of existing code.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -2335,8 +2336,6 @@ class TestConfigMissingErrorMessages:
 # PR3 — /configure_fields set command
 # ===========================================================================
 
-import json
-
 
 class TestConfigureFieldsCommand:
     """Tests for /configure_fields set <category_id> <fields_json>.
@@ -2586,9 +2585,7 @@ class TestConfigureFieldsPermissions:
         if hasattr(cmd, "app_command") and getattr(cmd.app_command, "checks", None):
             return True
         cb = getattr(cmd, "callback", None)
-        if cb and getattr(cb, "__discord_app_commands_checks__", None):
-            return True
-        return False
+        return bool(cb and getattr(cb, "__discord_app_commands_checks__", None))
 
     def test_configure_fields_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
         assert self._is_mod_gated(tickets_cog.configure_fields), "/configure_fields MUST be gated by @is_mod()"
@@ -2863,7 +2860,9 @@ class TestSubticketModRoleResolution:
 
         parent_row = {**_ticket_row(ticket_number=5), "authorId": parent_author_id, "categoryId": parent_cat_id}
         mock_db.get_ticket_by_channel = AsyncMock(return_value=parent_row)
-        mock_db.get_ticket_category = AsyncMock(return_value={"name": "Support", "id": parent_cat_id} if parent_cat_id else None)
+        mock_db.get_ticket_category = AsyncMock(
+            return_value={"name": "Support", "id": parent_cat_id} if parent_cat_id else None
+        )
 
         parent_owner = MagicMock(spec=discord.Member)
         parent_owner.id = int(parent_author_id)

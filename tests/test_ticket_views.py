@@ -17,7 +17,6 @@ import pytest
 from bot.models.ticket import Ticket
 from bot.utils.embeds import build_ticket_embed
 
-
 # ===========================================================================
 # deploy_ticket_panel — shared helper (ticket-panel-persistence, Phase 2)
 # ===========================================================================
@@ -285,7 +284,9 @@ class TestBuildTicketEmbedCustomFields:
             last_activity="2026-01-01T00:00:00",
             custom_fields={"evidence": long_value},
         )
-        definitions = [{"key": "evidence", "label": "Evidence", "style": "short", "required": False, "max_length": 1000}]
+        definitions = [
+            {"key": "evidence", "label": "Evidence", "style": "short", "required": False, "max_length": 1000},
+        ]
         embed = build_ticket_embed(ticket, guild_id="123", field_definitions=definitions)
         evidence_field = next(f for f in embed.fields if f.name == "Evidence")
         assert len(evidence_field.value) <= 1024
@@ -322,7 +323,9 @@ class TestBuildTicketEmbedCustomFields:
             last_activity="2026-01-01T00:00:00",
             custom_fields={"player_nick": "DarkSlayer42"},
         )
-        definitions = [{"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True, "max_length": 100}]
+        definitions = [
+            {"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True, "max_length": 100},
+        ]
         embed = build_ticket_embed(ticket, guild_id="123", field_definitions=definitions)
         field_names = [f.name for f in embed.fields]
         assert "Player Nickname" in field_names
@@ -365,7 +368,9 @@ class TestTicketIntakeModalDynamicFields:
 
     def test_single_field_definition_adds_third_input(self) -> None:
         """With 1 field_definition, modal MUST have 3 TextInputs."""
-        defs = [{"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True, "max_length": 100}]
+        defs = [
+            {"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True, "max_length": 100},
+        ]
         modal, _ = self._make_modal(field_definitions=defs)
         text_inputs = [c for c in modal.children if isinstance(c, discord.ui.TextInput)]
         assert len(text_inputs) == 3
@@ -407,7 +412,16 @@ class TestTicketIntakeModalDynamicFields:
 
     def test_placeholder_set_on_input(self) -> None:
         """A field with placeholder MUST set it on the TextInput."""
-        defs = [{"key": "player_nick", "label": "Nick", "style": "short", "required": True, "max_length": 100, "placeholder": "In-game name"}]
+        defs = [
+            {
+                "key": "player_nick",
+                "label": "Nick",
+                "style": "short",
+                "required": True,
+                "max_length": 100,
+                "placeholder": "In-game name",
+            },
+        ]
         modal, _ = self._make_modal(field_definitions=defs)
         text_inputs = [c for c in modal.children if isinstance(c, discord.ui.TextInput)]
         assert text_inputs[2].placeholder == "In-game name"
@@ -465,7 +479,6 @@ class TestTicketIntakeModalSubmit:
     @pytest.mark.asyncio
     async def test_submit_with_custom_fields_passes_to_create(self) -> None:
         """on_submit MUST collect dynamic field values into custom_fields and pass to _create_ticket_after_modal."""
-        from bot.views.tickets import TicketIntakeModal
 
         defs = [{"key": "player_nick", "label": "Nick", "style": "short", "required": True, "max_length": 100}]
         modal, _ = self._build_modal_with_mocked_inputs(defs, custom_values=["DarkSlayer42"])
@@ -490,7 +503,6 @@ class TestTicketIntakeModalSubmit:
     @pytest.mark.asyncio
     async def test_submit_required_field_empty_shows_error(self) -> None:
         """on_submit with a blank required field MUST send an ephemeral error and NOT create a ticket."""
-        from bot.views.tickets import TicketIntakeModal
 
         defs = [{"key": "player_nick", "label": "Nick", "style": "short", "required": True, "max_length": 100}]
         modal, _ = self._build_modal_with_mocked_inputs(defs, custom_values=[""])
@@ -510,7 +522,6 @@ class TestTicketIntakeModalSubmit:
     @pytest.mark.asyncio
     async def test_submit_optional_field_empty_excluded(self) -> None:
         """on_submit with a blank optional field MUST exclude it from custom_fields."""
-        from bot.views.tickets import TicketIntakeModal
 
         defs = [
             {"key": "player_nick", "label": "Nick", "style": "short", "required": True, "max_length": 100},
@@ -541,7 +552,6 @@ class TestTicketIntakeModalSubmit:
     @pytest.mark.asyncio
     async def test_submit_no_definitions_passes_empty_custom_fields(self) -> None:
         """on_submit with no field_definitions MUST pass custom_fields={} to create."""
-        from bot.views.tickets import TicketIntakeModal
 
         modal, _ = self._build_modal_with_mocked_inputs([], custom_values=[])
 
@@ -580,7 +590,6 @@ class TestCloseButtonConfirmation:
         is_author: bool = True,
     ) -> MagicMock:
         """Return a mock Interaction wired for the close button callback."""
-        from bot.views.tickets import TicketActionsView
 
         interaction = MagicMock(spec=discord.Interaction)
         interaction.guild_id = guild_id
@@ -762,6 +771,7 @@ class TestCloseButtonConfirmation:
     @pytest.mark.asyncio
     async def test_close_non_author_non_mod_rejected(self) -> None:
         """Non-author non-mod clicking close MUST be rejected (existing guard preserved)."""
+        from bot.views.confirmation import ConfirmCancelView
         from bot.views.tickets import TicketActionsView
 
         view = TicketActionsView(guild_id="123456789")
