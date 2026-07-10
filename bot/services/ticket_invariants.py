@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -174,6 +175,67 @@ def check_can_delete_note(note_author_id: str, actor_id: str) -> None:
     """
     if actor_id != note_author_id:
         raise ValueError("Only the note's author may delete a note")
+
+
+# ---------------------------------------------------------------------------
+# Per-user-per-category limit
+# ---------------------------------------------------------------------------
+
+
+def check_one_ticket_per_user_per_category(
+    user_id: str,
+    category_id: str | None,
+    parent_id: str | None,
+    count_fn: Callable[[str, str], int],
+) -> None:
+    """Validate that *user_id* does not already have an open ticket in *category_id*.
+
+    An open ticket is one with status ``open`` or ``claimed``.  The check is
+    skipped when *parent_id* is not ``None`` (subticket carve-out) or when
+    *category_id* is ``None`` (uncategorized tickets have no limit).
+
+    *count_fn* is injected for testability — it receives ``(user_id,
+    category_id)`` and must return the number of open/claimed tickets the user
+    already has in that category.
+
+    Raises ``ValueError`` when the user already has an open ticket in the
+    given category.
+    """
+    if parent_id is not None:
+        return
+    if category_id is None:
+        return
+    open_count = count_fn(user_id, category_id)
+    if open_count > 0:
+        raise ValueError(
+            f"User {user_id} already has an open ticket in category {category_id!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Edit category permission
+# ---------------------------------------------------------------------------
+
+
+def check_can_edit_category(
+    actor_id: str,
+    ticket: dict[str, Any],
+    *,
+    is_mod: bool,
+) -> None:
+    """Validate that *actor_id* may edit the ticket's category.
+
+    Edit is allowed only when the actor has the mod role or admin permission
+    (``is_mod=True``).  Ticket authors without the mod role are denied.
+
+    Mirrors :func:`check_can_unclaim`'s ``is_mod`` keyword signature so the
+    pure invariant is not coupled to Discord objects.
+
+    Raises ``ValueError`` on any violation.
+    """
+    if is_mod:
+        return
+    raise ValueError("Only moderators can edit a ticket's category")
 
 
 # ---------------------------------------------------------------------------

@@ -79,6 +79,10 @@ class FakeQueryBuilder:
         self._filters.append(("eq", column, value))
         return self
 
+    def neq(self, column: str, value: Any) -> FakeQueryBuilder:
+        self._filters.append(("neq", column, value))
+        return self
+
     def in_(self, column: str, values: list) -> FakeQueryBuilder:
         self._filters.append(("in_", column, values))
         return self
