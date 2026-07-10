@@ -52,12 +52,22 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "--cov=bot --cov-fail-under=75 --randomly-seed=42"
 filterwarnings = [
+    # Lock zero-warning discipline — any unhandled warning becomes a test failure.
+    # Listed FIRST so it ends up LAST in Python's internal filter chain (filters
+    # are prepended, first match wins) — explicit ignore entries below take priority.
+    "error",
     # discord.py 2.x triggers this under PYTHONASYNCIODEBUG=1
     "ignore:.*coroutine.*is not a coroutine:DeprecationWarning",
     # pytest-asyncio internal deprecation on Python 3.14
     "ignore:.*asyncio.iscoroutinefunction.*:DeprecationWarning",
     # hypothesis deadline flake on slow CI runners (handled via @settings(deadline=None))
     "ignore::hypothesis.errors.HypothesisDeprecationWarning",
+    # AsyncMock coroutine never-awaited (coverage bytecode scanning + gc)
+    "ignore:.*AsyncMockMixin._execute_mock_call.*:RuntimeWarning",
+    # PytestUnraisableExceptionWarning from gc-collected unawaited coroutines
+    "ignore::pytest.PytestUnraisableExceptionWarning",
+    # discord.ui.TextInput.label deprecated in favor of discord.ui.Label (full migration deferred)
+    "ignore::DeprecationWarning:discord.ui",
 ]
 
 [tool.setuptools.packages.find]

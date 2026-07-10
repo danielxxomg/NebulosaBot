@@ -41,6 +41,22 @@ BACKFILL_CONCURRENCY_LIMIT = 50
 
 logger = logging.getLogger(__name__)
 
+# Ordered extension paths loaded during setup_hook(). Each path is attempted
+# once in order; a failure is logged at ERROR and does not prevent subsequent
+# paths or tree.sync().
+EXTENSIONS: tuple[str, ...] = (
+    "bot.cogs.core",
+    "bot.cogs.sentinel",
+    "bot.cogs.tickets",
+    "bot.cogs.stellar",
+    "bot.cogs.greetings",
+    "bot.cogs.utility",
+    "bot.cogs.ocio",
+    "bot.cogs.setup",
+    "bot.listeners.xp_listener",
+    "bot.listeners.audit_listener",
+)
+
 # -- Sentry for missing guild config (used by get_prefix fallback) ----------
 
 
@@ -221,35 +237,12 @@ class NebulosaBot(commands.Bot):
         logger.info("i18n locales loaded")
 
         # --- 4. Load cogs ---
-        await self.load_extension("bot.cogs.core")
-        logger.info("Cog loaded: CoreCog")
-
-        await self.load_extension("bot.cogs.sentinel")
-        logger.info("Cog loaded: SentinelCog")
-
-        await self.load_extension("bot.cogs.tickets")
-        logger.info("Cog loaded: TicketsCog")
-
-        await self.load_extension("bot.cogs.stellar")
-        logger.info("Cog loaded: StellarCog")
-
-        await self.load_extension("bot.cogs.greetings")
-        logger.info("Cog loaded: GreetingsCog")
-
-        await self.load_extension("bot.cogs.utility")
-        logger.info("Cog loaded: UtilityCog")
-
-        await self.load_extension("bot.cogs.ocio")
-        logger.info("Cog loaded: OcioCog")
-
-        await self.load_extension("bot.cogs.setup")
-        logger.info("Cog loaded: SetupCog")
-
-        await self.load_extension("bot.listeners.xp_listener")
-        logger.info("Listener loaded: XPListener")
-
-        await self.load_extension("bot.listeners.audit_listener")
-        logger.info("Listener loaded: AuditListener")
+        for ext_path in EXTENSIONS:
+            try:
+                await self.load_extension(ext_path)
+                logger.info("Extension loaded: %s", ext_path)
+            except Exception:
+                logger.exception("Failed to load extension %s", ext_path)
 
         # --- 5. Tree sync ---
         logger.info("Syncing command tree ...")
