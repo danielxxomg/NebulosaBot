@@ -40,21 +40,21 @@ Chain strategy: stacked-to-main
 
 ## Phase 2: Service Wiring & Reopen Extraction (PR 2)
 
-- [ ] 2.1 **RED** — Write characterization tests in `tests/test_ticket_service.py` for `create_ticket_channel` permission overwrites, member resolution, and mod role resolution paths
-- [ ] 2.2 **RED** — Write characterization tests for `reopen_ticket` channel-construction block: name, category, permission overwrites, Spanish invariant error text
-- [ ] 2.3 **GREEN** — Wire `create_ticket_channel` in `bot/services/ticket_service.py` to call `build_ticket_overwrites()`, `resolve_mod_role()`, `resolve_member_safe()` from `ticket_helpers`
-- [ ] 2.4 **GREEN** — Extract `_build_reopen_channel()` as private async method in `TicketService`; wire `reopen_ticket` to call it
-- [ ] 2.5 **GREEN** — Wire `resolve_category_name()` in `create_ticket_channel` for category name resolution
-- [ ] 2.6 **REFACTOR** — Verify service characterization tests pass; Spanish error text unchanged; run `uv run pytest tests/test_ticket_service.py`
+- [x] 2.1 **RED** — Write characterization tests in `tests/test_ticket_service.py` for `create_ticket_channel` permission overwrites, member resolution, and mod role resolution paths
+- [x] 2.2 **RED** — Write characterization tests for `reopen_ticket` channel-construction block: name, category, permission overwrites, Spanish invariant error text
+- [x] 2.3 **GREEN** — Wire `create_ticket_channel` in `bot/services/ticket_service.py` to call `build_ticket_overwrites()`, `resolve_mod_role()`, `resolve_member_safe()` from `ticket_helpers`
+- [x] 2.4 **GREEN** — Extract `_build_reopen_channel()` as private async method in `TicketService`; wire `reopen_ticket` to call it
+- [x] 2.5 **GREEN** — Wire `resolve_category_name()` in `create_ticket_channel` for category name resolution
+- [x] 2.6 **REFACTOR** — Verify service characterization tests pass; Spanish error text unchanged; run `uv run pytest tests/test_ticket_service.py`
 
 ## Phase 3: Cog & View Wiring (PR 3)
 
-- [ ] 3.1 **RED** — Write characterization tests in `tests/test_tickets_cog.py` for subticket role/category resolution paths
-- [ ] 3.2 **RED** — Write characterization tests in `tests/test_ticket_views.py` for modal mod-role resolution after config lookup
-- [ ] 3.3 **GREEN** — Wire `bot/cogs/tickets.py` subticket creation to use `resolve_mod_role()` and `resolve_category_name()` from `ticket_helpers`
-- [ ] 3.4 **GREEN** — Wire `bot/views/tickets.py` modal handler to use `resolve_mod_role()` from `ticket_helpers`
-- [ ] 3.5 **GREEN** — Update mock fixtures in `tests/test_tickets_cog.py` and `tests/test_ticket_views.py` for new helper call paths
-- [ ] 3.6 **REFACTOR** — Run full suite `uv run pytest`; verify 341+ tests pass, zero behavior changes, no import cycles
+- [x] 3.1 **RED** — Write characterization tests in `tests/test_tickets_cog.py` for subticket role/category resolution paths
+- [x] 3.2 **RED** — Write characterization tests in `tests/test_ticket_views.py` for modal mod-role resolution after config lookup
+- [x] 3.3 **GREEN** — Wire `bot/cogs/tickets.py` subticket creation to use `resolve_mod_role()` and `resolve_category_name()` from `ticket_helpers`
+- [x] 3.4 **GREEN** — Wire `bot/views/tickets.py` modal handler to use `resolve_mod_role()` from `ticket_helpers`
+- [x] 3.5 **GREEN** — Update mock fixtures in `tests/test_tickets_cog.py` and `tests/test_ticket_views.py` for new helper call paths
+- [x] 3.6 **REFACTOR** — Run full suite `uv run pytest`; verify 341+ tests pass, zero behavior changes, no import cycles
 
 ## Phase 4: Verification & Cleanup
 

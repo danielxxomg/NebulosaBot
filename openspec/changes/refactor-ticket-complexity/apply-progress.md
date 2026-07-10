@@ -1,10 +1,11 @@
-# Apply Progress: refactor-ticket-complexity (PR 1)
+# Apply Progress: refactor-ticket-complexity
 
 ## PR 1 — Characterization Tests & Pure Helpers
 
 **Status**: ✅ Complete
 **Mode**: Strict TDD
 **Branch**: `refactor-ticket-complexity/pr1` (stacked-to-main)
+**Commit**: `feat(tickets): add pure helpers and characterization tests for ticket subsystem refactor`
 
 ### TDD Cycle Evidence
 
@@ -20,7 +21,7 @@
 | 1.8 | `tests/test_ticket_helpers.py` | Unit | ✅ 26/26 | ✅ Written | ✅ 49/49 | ✅ Covered by 1.4 | ✅ Clean |
 | 1.9 | N/A (verify) | N/A | N/A | N/A | N/A | N/A | ✅ 49/49 pass, 0 warnings |
 
-### Test Summary
+### Test Summary (PR 1)
 
 - **Total new tests written**: 23
 - **Total tests passing**: 49 (26 existing + 23 new)
@@ -28,12 +29,47 @@
 - **Layers used**: Unit (23)
 - **Pure functions created**: 4 (`build_ticket_overwrites`, `resolve_mod_role`, `resolve_member_safe`, `resolve_category_name`)
 
-### Files Changed
+### Files Changed (PR 1)
 
 | File | Action | What Was Done |
 |------|--------|---------------|
 | `bot/utils/ticket_helpers.py` | Modified | Added `TicketCategoryReader` Protocol + 4 pure helper functions |
 | `tests/test_ticket_helpers.py` | Modified | Added 23 characterization tests across 4 test classes |
+
+---
+
+## PR 2 — Service Wiring & Reopen Extraction
+
+**Status**: ✅ Complete
+**Mode**: Strict TDD
+**Branch**: stacked-to-main (after PR 1)
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 2.1 | `tests/test_ticket_service.py` | Unit | ✅ 87/87 | ✅ Written | ✅ 93/93 | ✅ 2 cases (with_mod, without_mod) | ✅ Clean |
+| 2.2 | `tests/test_ticket_service.py` | Unit | ✅ 87/87 | ✅ Written | ✅ 93/93 | ✅ 4 cases (mod_overwrites, no_mod_overwrites, channel_name, spanish_error) | ✅ Clean |
+| 2.3 | N/A (wiring) | N/A | N/A | N/A | ✅ Wired | ➖ Behavior preserved | ✅ Clean |
+| 2.4 | N/A (extraction) | N/A | N/A | N/A | ✅ Extracted | ➖ Behavior preserved | ✅ Clean |
+| 2.5 | N/A (wiring) | N/A | N/A | N/A | ✅ Wired | ➖ Behavior preserved | ✅ Clean |
+| 2.6 | N/A (verify) | N/A | N/A | N/A | N/A | N/A | ✅ 93/93 pass, 0 warnings |
+
+### Test Summary (PR 2)
+
+- **Total new tests written**: 6
+- **Total tests passing**: 93 (87 existing + 6 new characterization)
+- **Full suite**: 1363 passed, 3 skipped, 0 warnings
+- **Layers used**: Unit (6)
+- **Approval tests**: 6 (characterization of existing behavior)
+
+### Files Changed (PR 2)
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `bot/services/ticket_service.py` | Modified | Imported helpers, wired `create_ticket_channel` to use `build_ticket_overwrites()`, extracted `_build_reopen_channel()` using all 4 helpers, removed duplicate local imports |
+| `tests/test_ticket_service.py` | Modified | Added 6 characterization tests in `TestCreateTicketChannelOverwrites` and `TestReopenTicketChannelConstruction` |
+| `openspec/changes/refactor-ticket-complexity/tasks.md` | Modified | Marked Phase 2 tasks 2.1–2.6 as [x] |
 
 ### Deviations from Design
 
@@ -45,11 +81,59 @@ None.
 
 ### Workload / PR Boundary
 
-- Mode: stacked PR slice (PR 1 of 3)
-- Current work unit: Characterization tests + 4 pure helpers + protocol
-- Boundary: Starts from `master`; ends with helpers + tests committed
-- Estimated review budget impact: ~170 changed lines (well under 400)
+- Mode: stacked PR slice (PR 2 of 3)
+- Current work unit: Service wiring + reopen extraction
+- Boundary: Starts after PR1 helpers; ends with service wired + tests green
+- Estimated review budget impact: ~120 changed lines (well under 400)
 
-### Commit
+---
 
-- `feat(tickets): add pure helpers and characterization tests for ticket subsystem refactor`
+## PR 3 — Cog & View Wiring (Final Slice)
+
+**Status**: ✅ Complete
+**Mode**: Strict TDD
+**Branch**: stacked-to-main (after PR 2)
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 3.1 | `tests/test_tickets_cog.py` | Unit | ✅ 1363/1363 | ✅ Written | ✅ 1375/1375 | ✅ 9 cases (valid_role, none_role, invalid_role, nonexistent_role, cat_from_db, no_cat_id, db_none, db_error, missing_name) | ✅ Clean |
+| 3.2 | `tests/test_ticket_views.py` | Unit | ✅ 1363/1363 | ✅ Written | ✅ 1375/1375 | ✅ 3 cases (valid_role, none_role, invalid_role) | ✅ Clean |
+| 3.3 | N/A (wiring) | N/A | N/A | N/A | ✅ Wired | ➖ Behavior preserved | ✅ Clean |
+| 3.4 | N/A (wiring) | N/A | N/A | N/A | ✅ Wired | ➖ Behavior preserved | ✅ Clean |
+| 3.5 | N/A (fixtures) | N/A | N/A | N/A | ✅ No fixture changes needed | ➖ Existing mocks work with helpers | ✅ Clean |
+| 3.6 | N/A (verify) | N/A | N/A | N/A | N/A | N/A | ✅ 1375/1375 pass, 0 warnings |
+
+### Test Summary (PR 3)
+
+- **Total new tests written**: 12
+- **Total tests passing**: 1375 (1363 existing + 12 new characterization)
+- **Full suite**: 1375 passed, 3 skipped, 0 warnings
+- **Layers used**: Unit (12)
+- **Characterization tests**: 12 (verify behavior preserved after wiring)
+
+### Files Changed (PR 3)
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `bot/cogs/tickets.py` | Modified | Imported `resolve_mod_role` + `resolve_category_name`, replaced inline mod_role/category resolution in `subticket_create` with helper calls |
+| `bot/views/tickets.py` | Modified | Imported `resolve_mod_role`, replaced inline mod_role resolution in `_create_ticket_after_modal`, removed unused `contextlib` import |
+| `tests/test_tickets_cog.py` | Modified | Added 9 characterization tests in `TestSubticketModRoleResolution` and `TestSubticketCategoryNameResolution` |
+| `tests/test_ticket_views.py` | Modified | Added 3 characterization tests in `TestModalModRoleResolution` |
+| `openspec/changes/refactor-ticket-complexity/tasks.md` | Modified | Marked Phase 3 tasks 3.1–3.6 as [x] |
+
+### Deviations from Design
+
+None — implementation matches design.
+
+### Issues Found
+
+None.
+
+### Workload / PR Boundary
+
+- Mode: stacked PR slice (PR 3 of 3 — final)
+- Current work unit: Cog + view wiring
+- Boundary: Starts after PR2 service wiring; ends with all callers using helpers
+- Estimated review budget impact: ~60 changed lines (well under 400)

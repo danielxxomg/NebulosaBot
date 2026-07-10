@@ -2824,3 +2824,311 @@ class TestUnclaimCommand:
             hasattr(cmd, "app_command") and bool(cmd.app_command.checks)
         )
         assert not has_is_mod, "/unclaim MUST NOT use @is_mod() — claimer can also unclaim"
+
+
+# ===========================================================================
+# PR3 — Subticket role/category resolution characterization (tasks 3.1)
+# ===========================================================================
+
+
+class TestSubticketModRoleResolution:
+    """Characterize subticket_create mod_role resolution paths.
+
+    Currently: ``if config.mod_role_id: guild.get_role(int(config.mod_role_id))``
+    wrapped in ``contextlib.suppress(ValueError, TypeError)``.
+
+    After PR3 wiring: replaced by ``resolve_mod_role()`` helper.
+    Behavior MUST remain identical.
+    """
+
+    @staticmethod
+    def _wire_subticket_for_mod_role(
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db: MagicMock,
+        *,
+        mod_role_id: str | None = None,
+        parent_author_id: str = "111111111",
+        parent_cat_id: str | None = "cat-uuid-001",
+        mock_ticket_channel: MagicMock | None = None,
+    ) -> MagicMock:
+        """Wire a subticket_create call focused on mod_role resolution."""
+        config = MagicMock()
+        config.ticket_category_id = "100000000"
+        config.mod_role_id = mod_role_id
+        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
+
+        category_channel = MagicMock(spec=discord.CategoryChannel)
+        slash_ctx.guild.get_channel = MagicMock(return_value=category_channel)
+
+        parent_row = {**_ticket_row(ticket_number=5), "authorId": parent_author_id, "categoryId": parent_cat_id}
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=parent_row)
+        mock_db.get_ticket_category = AsyncMock(return_value={"name": "Support", "id": parent_cat_id} if parent_cat_id else None)
+
+        parent_owner = MagicMock(spec=discord.Member)
+        parent_owner.id = int(parent_author_id)
+        parent_owner.mention = f"<@{parent_author_id}>"
+        slash_ctx.guild.get_member = MagicMock(return_value=parent_owner)
+
+        subticket = Ticket.from_db_row({**_ticket_row(ticket_number=6), "parentId": parent_row["id"]})
+        if mock_ticket_channel is not None:
+            ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, subticket))
+        else:
+            ch = MagicMock()
+            ch.send = AsyncMock()
+            ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(ch, subticket))
+
+        return parent_owner
+
+    async def test_subticket_valid_mod_role_passed_to_service(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db: MagicMock,
+        mock_ticket_channel: MagicMock,
+    ) -> None:
+        """Valid config.mod_role_id → resolved Role passed as mod_role kwarg."""
+        mod_role = MagicMock(spec=discord.Role)
+        slash_ctx.guild.get_role = MagicMock(return_value=mod_role)
+
+        self._wire_subticket_for_mod_role(
+            slash_ctx, ticket_bot, mock_db,
+            mod_role_id="987654321",
+            mock_ticket_channel=mock_ticket_channel,
+        )
+
+        await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
+
+        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
+        call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
+        assert call_kwargs["mod_role"] is mod_role
+
+    async def test_subticket_none_mod_role_id_passes_none(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db: MagicMock,
+        mock_ticket_channel: MagicMock,
+    ) -> None:
+        """config.mod_role_id=None → mod_role=None passed to service."""
+        self._wire_subticket_for_mod_role(
+            slash_ctx, ticket_bot, mock_db,
+            mod_role_id=None,
+            mock_ticket_channel=mock_ticket_channel,
+        )
+
+        await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
+
+        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
+        call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
+        assert call_kwargs["mod_role"] is None
+
+    async def test_subticket_invalid_mod_role_id_passes_none(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db: MagicMock,
+        mock_ticket_channel: MagicMock,
+    ) -> None:
+        """config.mod_role_id='not-a-number' → ValueError suppressed, mod_role=None."""
+        self._wire_subticket_for_mod_role(
+            slash_ctx, ticket_bot, mock_db,
+            mod_role_id="not-a-number",
+            mock_ticket_channel=mock_ticket_channel,
+        )
+
+        await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
+
+        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
+        call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
+        assert call_kwargs["mod_role"] is None
+
+    async def test_subticket_nonexistent_role_passes_none(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db: MagicMock,
+        mock_ticket_channel: MagicMock,
+    ) -> None:
+        """config.mod_role_id valid but guild.get_role returns None → mod_role=None."""
+        slash_ctx.guild.get_role = MagicMock(return_value=None)
+
+        self._wire_subticket_for_mod_role(
+            slash_ctx, ticket_bot, mock_db,
+            mod_role_id="987654321",
+            mock_ticket_channel=mock_ticket_channel,
+        )
+
+        await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
+
+        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
+        call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
+        assert call_kwargs["mod_role"] is None
+
+
+class TestSubticketCategoryNameResolution:
+    """Characterize subticket_create category_name resolution from parent ticket.
+
+    Currently: manual DB lookup via ``self.bot.db.get_ticket_category(parent_cat_id)``
+    with fallback to ``"ticket"`` on missing/None/error.
+
+    After PR3 wiring: replaced by ``resolve_category_name()`` helper.
+    Behavior MUST remain identical.
+    """
+
+    @staticmethod
+    def _wire_subticket_for_category(
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db: MagicMock,
+        *,
+        parent_cat_id: str | None = "cat-uuid-001",
+        db_category_row: dict | None = None,
+        db_raises: bool = False,
+        mock_ticket_channel: MagicMock | None = None,
+    ) -> None:
+        """Wire a subticket_create call focused on category_name resolution."""
+        config = MagicMock()
+        config.ticket_category_id = "100000000"
+        config.mod_role_id = None
+        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
+
+        category_channel = MagicMock(spec=discord.CategoryChannel)
+        slash_ctx.guild.get_channel = MagicMock(return_value=category_channel)
+
+        parent_row = {**_ticket_row(ticket_number=5), "authorId": "111111111", "categoryId": parent_cat_id}
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=parent_row)
+
+        if db_raises:
+            mock_db.get_ticket_category = AsyncMock(side_effect=Exception("DB down"))
+        else:
+            mock_db.get_ticket_category = AsyncMock(return_value=db_category_row)
+
+        parent_owner = MagicMock(spec=discord.Member)
+        parent_owner.id = 111111111
+        parent_owner.mention = "<@111111111>"
+        slash_ctx.guild.get_member = MagicMock(return_value=parent_owner)
+
+        subticket = Ticket.from_db_row({**_ticket_row(ticket_number=6), "parentId": parent_row["id"]})
+        if mock_ticket_channel is not None:
+            ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, subticket))
+        else:
+            ch = MagicMock()
+            ch.send = AsyncMock()
+            ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(ch, subticket))
+
+    async def test_subticket_category_name_from_parent_category(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db: MagicMock,
+        mock_ticket_channel: MagicMock,
+    ) -> None:
+        """Parent has categoryId + DB returns category → category_name from DB row."""
+        self._wire_subticket_for_category(
+            slash_ctx, ticket_bot, mock_db,
+            parent_cat_id="cat-uuid-001",
+            db_category_row={"name": "Soporte Técnico", "id": "cat-uuid-001"},
+            mock_ticket_channel=mock_ticket_channel,
+        )
+
+        await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
+
+        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
+        call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
+        assert call_kwargs["category_name"] == "Soporte Técnico"
+
+    async def test_subticket_no_parent_category_id_defaults_to_ticket(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db: MagicMock,
+        mock_ticket_channel: MagicMock,
+    ) -> None:
+        """Parent has categoryId=None → category_name='ticket' (no DB call)."""
+        self._wire_subticket_for_category(
+            slash_ctx, ticket_bot, mock_db,
+            parent_cat_id=None,
+            mock_ticket_channel=mock_ticket_channel,
+        )
+
+        await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
+
+        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
+        call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
+        assert call_kwargs["category_name"] == "ticket"
+        # No DB call for category lookup when parent_cat_id is None.
+        mock_db.get_ticket_category.assert_not_awaited()
+
+    async def test_subticket_db_returns_none_category_defaults_to_ticket(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db: MagicMock,
+        mock_ticket_channel: MagicMock,
+    ) -> None:
+        """Parent has categoryId but DB returns None → category_name='ticket'."""
+        self._wire_subticket_for_category(
+            slash_ctx, ticket_bot, mock_db,
+            parent_cat_id="cat-uuid-001",
+            db_category_row=None,
+            mock_ticket_channel=mock_ticket_channel,
+        )
+
+        await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
+
+        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
+        call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
+        assert call_kwargs["category_name"] == "ticket"
+
+    async def test_subticket_db_category_error_defaults_to_ticket(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db: MagicMock,
+        mock_ticket_channel: MagicMock,
+    ) -> None:
+        """DB raises during category lookup → category_name='ticket' (logged, not fatal)."""
+        self._wire_subticket_for_category(
+            slash_ctx, ticket_bot, mock_db,
+            parent_cat_id="cat-uuid-001",
+            db_raises=True,
+            mock_ticket_channel=mock_ticket_channel,
+        )
+
+        with patch("bot.cogs.tickets.logger.warning"):
+            await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
+
+        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
+        call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
+        assert call_kwargs["category_name"] == "ticket"
+
+    async def test_subticket_db_category_missing_name_defaults_to_ticket(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db: MagicMock,
+        mock_ticket_channel: MagicMock,
+    ) -> None:
+        """DB category row has no 'name' key → category_name='ticket'."""
+        self._wire_subticket_for_category(
+            slash_ctx, ticket_bot, mock_db,
+            parent_cat_id="cat-uuid-001",
+            db_category_row={"id": "cat-uuid-001"},  # missing 'name'
+            mock_ticket_channel=mock_ticket_channel,
+        )
+
+        await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
+
+        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
+        call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
+        assert call_kwargs["category_name"] == "ticket"

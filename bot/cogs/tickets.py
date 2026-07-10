@@ -24,7 +24,12 @@ from bot.services.ticket_service import TicketCategoryNotConfiguredError
 from bot.utils.brand import INFO
 from bot.utils.checks import is_mod, is_mod_check
 from bot.utils.embeds import build_ticket_embed, error_embed, info_embed, success_embed
-from bot.utils.ticket_helpers import resolve_ticket_for_channel, resolve_ticket_for_reopen
+from bot.utils.ticket_helpers import (
+    resolve_category_name,
+    resolve_mod_role,
+    resolve_ticket_for_channel,
+    resolve_ticket_for_reopen,
+)
 from bot.views.tickets import (
     TicketActionsView,
     TicketIntakeModal,
@@ -480,20 +485,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
         )  # type: ignore[assignment]
         if parent_owner is None:
             return
-        mod_role: discord.Role | None = None
-        if config.mod_role_id:
-            with contextlib.suppress(ValueError, TypeError):
-                mod_role = guild.get_role(int(config.mod_role_id))
+        mod_role = resolve_mod_role(guild, config.mod_role_id)
         # Resolve parent's category name for channel naming.
-        sub_cat_name = "ticket"
-        parent_cat_id = parent_row.get("categoryId")
-        if parent_cat_id:
-            try:
-                cat_row = await self.bot.db.get_ticket_category(parent_cat_id)
-                if cat_row is not None:
-                    sub_cat_name = cat_row.get("name", "ticket")
-            except Exception:
-                logger.warning("Failed to resolve parent category %s for subticket naming", parent_cat_id)
+        sub_cat_name = await resolve_category_name(self.bot.db, parent_row.get("categoryId"))
         try:
             channel, subticket = await self.bot.ticket_service.create_ticket_channel(
                 guild,
