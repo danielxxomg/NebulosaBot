@@ -54,3 +54,31 @@ class TestBrandModuleExports:
         for token in tokens:
             assert hasattr(brand, token), f"Missing token: {token}"
             assert isinstance(getattr(brand, token), int), f"{token} must be int"
+
+
+class TestNoHardcodedHexColors:
+    """No production module under bot/ may use hardcoded hex color literals."""
+
+    def test_no_hardcoded_hex_in_embed_colors(self) -> None:
+        """Scan bot/**/*.py (excluding brand.py) for hex color literals in embed color assignments.
+
+        Spec (brand-tokens/spec.md — no hardcoded hex scenario): "THEN zero
+        matches are found in embed color assignments."
+        """
+        import re
+        from pathlib import Path
+
+        bot_dir = Path(__file__).resolve().parent.parent / "bot"
+        hex_pattern = re.compile(r"0x[0-9A-Fa-f]{6}\b")
+        violations: list[str] = []
+
+        for py_file in sorted(bot_dir.rglob("*.py")):
+            if py_file.name == "brand.py":
+                continue
+            text = py_file.read_text(encoding="utf-8")
+            for lineno, line in enumerate(text.splitlines(), start=1):
+                # Only flag lines that look like color assignments
+                if "color" in line.lower() and hex_pattern.search(line):
+                    violations.append(f"{py_file.relative_to(bot_dir.parent)}:{lineno}: {line.strip()}")
+
+        assert not violations, "Hardcoded hex colors found in production code:\n" + "\n".join(violations)

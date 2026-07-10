@@ -188,3 +188,59 @@ def test_manual_has_branding_notes(manual_text: str) -> None:
             "avatar del bot", "bot avatar", "paleta", "palette",
         ]
     ), "Missing branding notes"
+
+
+# ---------------------------------------------------------------------------
+# Dynamic hybrid command discovery (docs-manual/spec.md — discovery scenario)
+# ---------------------------------------------------------------------------
+
+
+def _discover_hybrid_commands() -> list[str]:
+    """Discover all top-level @hybrid_command names from cog classes at runtime.
+
+    Walks every cog module under bot/cogs/, inspects Cog subclasses for
+    HybridCommand attributes, and returns sorted unique command names
+    (excluding subcommands which have a parent).
+    """
+    import importlib
+    import pkgutil
+
+    import bot.cogs as cogs_pkg
+
+    names: set[str] = set()
+    for _importer, modname, _ispkg in pkgutil.iter_modules(cogs_pkg.__path__):
+        if modname.startswith("_"):
+            continue
+        mod = importlib.import_module(f"bot.cogs.{modname}")
+        for attr_name in dir(mod):
+            cls = getattr(mod, attr_name, None)
+            if cls is None or not isinstance(cls, type):
+                continue
+            if not hasattr(cls, "__cog_commands__"):
+                continue
+            for cmd_attr_name in dir(cls):
+                cmd = getattr(cls, cmd_attr_name, None)
+                if cmd is None:
+                    continue
+                if type(cmd).__name__ != "HybridCommand":
+                    continue
+                # Skip subcommands — they appear under their parent in the manual
+                if getattr(cmd, "parent", None) is not None:
+                    continue
+                names.add(cmd.name)
+    return sorted(names)
+
+
+def test_dynamic_discovery_all_hybrid_commands_in_manual(manual_text: str) -> None:
+    """Every top-level @hybrid_command must appear in MANUAL.md.
+
+    Spec (docs-manual/spec.md — all hybrid commands scenario): "THEN every
+    discovered command name appears at least once."
+    Discovery is resilient to cog load order (sorted alphabetically).
+    """
+    discovered = _discover_hybrid_commands()
+    assert len(discovered) > 0, "No hybrid commands discovered from cog classes"
+
+    lower = manual_text.lower()
+    missing = [cmd for cmd in discovered if f"/{cmd}" not in lower]
+    assert not missing, f"Discovered hybrid commands not in manual: {missing}"
