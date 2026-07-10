@@ -206,7 +206,21 @@
       "close_success_description": "The ticket has been closed.",
       "closed_channel_title": "Ticket Closed",
       "closed_channel_message": "Ticket closed",
-      "closed_channel_transcript": " — [Transcript]({url})"
+      "closed_channel_transcript": " — [Transcript]({url})",
+      "unclaim_success_title": "✅ Ticket Unclaimed",
+      "unclaim_success_description": "The ticket has been unclaimed and is now open.",
+      "unclaim_not_claimed_title": "Not Claimed",
+      "unclaim_not_claimed_description": "This ticket is not currently claimed.",
+      "unclaim_not_ticket_title": "Unclaim Failed",
+      "unclaim_not_ticket_description": "This channel is not an active ticket channel.",
+      "unclaim_permission_denied_title": "Permission Denied",
+      "unclaim_permission_denied_description": "Only the claimer or a moderator can unclaim this ticket.",
+      "unclaim_failed_title": "Unclaim Failed",
+      "unclaim_failed_description": "Could not unclaim the ticket. Please try again.",
+      "transfer_confirm_title": "Confirm Transfer",
+      "transfer_confirm_description": "This ticket is already claimed by <@{current}>. Transfer it to yourself?",
+      "transfer_cancelled_message": "Ticket transfer cancelled.",
+      "transfer_timeout_message": "Transfer confirmation timed out. The ticket remains unchanged."
     },
     "subticket": {
       "help_title": "Sub-tickets",

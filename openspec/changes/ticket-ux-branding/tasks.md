@@ -80,31 +80,31 @@ Chain strategy: stacked-to-main
 
 ### Phase 3.1: i18n Keys
 
-- [ ] 3.1.1 Add unclaim and transfer-confirm keys to `bot/locales/en.json` and `bot/locales/es.json`
+- [x] 3.1.1 Add unclaim and transfer-confirm keys to `bot/locales/en.json` and `bot/locales/es.json`
 
 ### Phase 3.2: Unclaim Invariant
 
-- [ ] 3.2.1 RED: Write `tests/contract/test_ticket_invariants.py` additions — `check_can_unclaim(claimer, ticket)` grants; `check_can_unclaim(mod, ticket)` grants; `check_can_unclaim(other, ticket)` denies
-- [ ] 3.2.2 GREEN: Modify `bot/services/ticket_invariants.py` — add `check_can_unclaim(actor_id, ticket, *, is_mod)` with claimer-or-mod logic
-- [ ] 3.2.3 REFACTOR: `uv run pytest tests/contract/test_ticket_invariants.py` passes
+- [x] 3.2.1 RED: Write `tests/contract/test_ticket_invariants.py` additions — `check_can_unclaim(claimer, ticket)` grants; `check_can_unclaim(mod, ticket)` grants; `check_can_unclaim(other, ticket)` denies
+- [x] 3.2.2 GREEN: Modify `bot/services/ticket_invariants.py` — add `check_can_unclaim(actor_id, ticket, *, is_mod)` with claimer-or-mod logic
+- [x] 3.2.3 REFACTOR: `uv run pytest tests/contract/test_ticket_invariants.py` passes
 
 ### Phase 3.3: Unclaim Service
 
-- [ ] 3.3.1 RED: Write `tests/test_ticket_service.py` additions — `unclaim_ticket()` sets claimedBy=null, status=open, writes audit; unclaimed ticket raises `ValueError`
-- [ ] 3.3.2 GREEN: Modify `bot/services/ticket_service.py` — add `unclaim_ticket(ticket_id, actor_id, *, is_mod)` calling invariant then DB update + audit
-- [ ] 3.3.3 REFACTOR: `uv run pytest tests/test_ticket_service.py` passes
+- [x] 3.3.1 RED: Write `tests/test_ticket_service.py` additions — `unclaim_ticket()` sets claimedBy=null, status=open, writes audit; unclaimed ticket raises `ValueError`
+- [x] 3.3.2 GREEN: Modify `bot/services/ticket_service.py` — add `unclaim_ticket(ticket_id, actor_id, *, is_mod)` calling invariant then DB update + audit
+- [x] 3.3.3 REFACTOR: `uv run pytest tests/test_ticket_service.py` passes
 
 ### Phase 3.4: Unclaim Command + Mod Predicate
 
-- [ ] 3.4.1 RED: Write `tests/test_tickets_cog.py` additions — `/unclaim` by claimer succeeds; by mod succeeds; by non-claimer non-mod rejected; on unclaimed ticket rejected
-- [ ] 3.4.2 GREEN: Add shared `is_mod_check` predicate to `bot/utils/checks.py`; modify `bot/cogs/tickets.py` — add `/unclaim` hybrid command using shared predicate
-- [ ] 3.4.3 REFACTOR: `uv run pytest tests/test_tickets_cog.py` passes
+- [x] 3.4.1 RED: Write `tests/test_tickets_cog.py` additions — `/unclaim` by claimer succeeds; by mod succeeds; by non-claimer non-mod rejected; on unclaimed ticket rejected
+- [x] 3.4.2 GREEN: Add shared `is_mod_check` predicate to `bot/utils/checks.py`; modify `bot/cogs/tickets.py` — add `/unclaim` hybrid command using shared predicate
+- [x] 3.4.3 REFACTOR: `uv run pytest tests/test_tickets_cog.py` passes
 
 ### Phase 3.5: Claim-on-Claimed Transfer Confirm
 
-- [ ] 3.5.1 RED: Write `tests/test_ticket_views.py` additions — claim on claimed ticket shows ephemeral transfer confirm; confirm calls `transfer_ticket()`; cancel dismisses
-- [ ] 3.5.2 GREEN: Modify `bot/views/tickets.py` — claim callback checks if ticket already claimed; if so, sends ephemeral `ConfirmCancelView` with transfer message; confirm calls `transfer_ticket()`
-- [ ] 3.5.3 Verify: `uv run pytest` — full suite green
+- [x] 3.5.1 RED: Write `tests/test_ticket_views.py` additions — claim on claimed ticket shows ephemeral transfer confirm; confirm calls `transfer_ticket()`; cancel dismisses
+- [x] 3.5.2 GREEN: Modify `bot/views/tickets.py` — claim callback checks if ticket already claimed; if so, sends ephemeral `ConfirmCancelView` with transfer message; confirm calls `transfer_ticket()`
+- [x] 3.5.3 Verify: `uv run pytest` — full suite green
 
 ---
 

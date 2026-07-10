@@ -206,7 +206,21 @@
       "close_success_description": "El ticket ha sido cerrado.",
       "closed_channel_title": "Ticket Cerrado",
       "closed_channel_message": "Ticket cerrado",
-      "closed_channel_transcript": " — [Transcripción]({url})"
+      "closed_channel_transcript": " — [Transcripción]({url})",
+      "unclaim_success_title": "✅ Ticket Liberado",
+      "unclaim_success_description": "El ticket ha sido liberado y ahora está abierto.",
+      "unclaim_not_claimed_title": "No Reclamado",
+      "unclaim_not_claimed_description": "Este ticket no está reclamado actualmente.",
+      "unclaim_not_ticket_title": "Error al Liberar",
+      "unclaim_not_ticket_description": "Este canal no es un canal de ticket activo.",
+      "unclaim_permission_denied_title": "Permiso Denegado",
+      "unclaim_permission_denied_description": "Solo quien reclamó el ticket o un moderador puede liberarlo.",
+      "unclaim_failed_title": "Error al Liberar",
+      "unclaim_failed_description": "No se pudo liberar el ticket. Intenta de nuevo.",
+      "transfer_confirm_title": "Confirmar Transferencia",
+      "transfer_confirm_description": "Este ticket ya está reclamado por <@{current}>. ¿Transferirlo a ti?",
+      "transfer_cancelled_message": "Transferencia de ticket cancelada.",
+      "transfer_timeout_message": "La confirmación de transferencia expiró. El ticket permanece sin cambios."
     },
     "subticket": {
       "help_title": "Sub-tickets",
