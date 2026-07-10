@@ -130,7 +130,7 @@ disable_error_code = ["attr-defined"]
 
 [[tool.mypy.overrides]]
 module = "bot.cogs.*"
-disable_error_code = ["attr-defined", "no-untyped-def", "arg-type", "type-arg", "untyped-decorator", "no-untyped-call", "unused-ignore"]
+disable_error_code = ["untyped-decorator"]
 
 [[tool.mypy.overrides]]
 module = "bot.core.*"
