@@ -22,8 +22,6 @@ import pytest
 
 from bot.cogs.sentinel import SentinelCog, _build_modlog_pages
 from bot.core.i18n import load_locales, set_guild_language
-from bot.services.infraction_service import InfractionService
-from bot.services.logging_service import LoggingService
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -276,7 +274,7 @@ def _make_ctx(guild_id: int) -> MagicMock:
     guild.me.top_role = MagicMock()
     guild.me.top_role.__le__ = MagicMock(return_value=False)
     ctx.guild = guild
-    ctx.author = MagicMock()
+    ctx.author = MagicMock(spec=discord.Member)
     ctx.author.id = 111111111
     ctx.author.mention = "<@111111111>"
     ctx.channel = MagicMock()

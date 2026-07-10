@@ -11,7 +11,7 @@ import contextlib
 import json
 import logging
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import discord
 from discord import app_commands
@@ -163,7 +163,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @is_mod()
     async def ticket_panel(
         self,
-        ctx: commands.Context,
+        ctx: commands.Context[Any],
         *,
         title: str = "Support Tickets",
         description_text: str = (
@@ -197,7 +197,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @is_mod()
     async def create_category(
         self,
-        ctx: commands.Context,
+        ctx: commands.Context[Any],
         name: str,
         emoji: str | None = None,
         description: str | None = None,
@@ -232,7 +232,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @commands.hybrid_command(name="list_categories", description="List all active ticket categories.")
     @app_commands.default_permissions(administrator=True)
     @is_mod()
-    async def list_categories(self, ctx: commands.Context) -> None:
+    async def list_categories(self, ctx: commands.Context[Any]) -> None:
         if ctx.guild is None:
             return
         assert self.bot.db is not None
@@ -269,7 +269,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @app_commands.describe(category_id="The UUID of the category to delete")
     @app_commands.default_permissions(administrator=True)
     @is_mod()
-    async def delete_category(self, ctx: commands.Context, category_id: str) -> None:
+    async def delete_category(self, ctx: commands.Context[Any], category_id: str) -> None:
         if ctx.guild is None:
             return
         assert self.bot.db is not None
@@ -311,7 +311,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     )
     @app_commands.default_permissions(administrator=True)
     @is_mod()
-    async def configure_fields(self, ctx: commands.Context) -> None:
+    async def configure_fields(self, ctx: commands.Context[Any]) -> None:
         """Configure custom intake fields for a ticket category."""
         gid = str(ctx.guild.id) if ctx.guild else None
         await ctx.send(embed=_info(gid, "tickets.configure_fields.help"), ephemeral=True)
@@ -325,7 +325,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @is_mod()
     async def configure_fields_set(
         self,
-        ctx: commands.Context,
+        ctx: commands.Context[Any],
         category_id: str,
         fields_json: str,
     ) -> None:
@@ -406,13 +406,13 @@ class TicketsCog(commands.Cog, name="Tickets"):
         description="Manage sub-tickets linked to a parent ticket.",
     )
     @is_mod()
-    async def subticket(self, ctx: commands.Context) -> None:
+    async def subticket(self, ctx: commands.Context[Any]) -> None:
         gid = str(ctx.guild.id) if ctx.guild else None
         await ctx.send(embed=_info(gid, "tickets.subticket.help"))
 
     @staticmethod
     async def _resolve_parent_owner(
-        guild: discord.Guild, parent_author_id: str, ctx: commands.Context
+        guild: discord.Guild, parent_author_id: str, ctx: commands.Context[Any]
     ) -> discord.Member | None:
         from bot.utils.ticket_helpers import resolve_member_safe
 
@@ -433,7 +433,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @subticket.command(name="create", description="Create a sub-ticket linked to a parent ticket.")
     @app_commands.describe(parent_id="The UUID of the parent ticket (omitted: uses current channel)")
     @is_mod()
-    async def subticket_create(self, ctx: commands.Context, parent_id: str | None = None) -> None:
+    async def subticket_create(self, ctx: commands.Context[Any], parent_id: str | None = None) -> None:
         if ctx.guild is None:
             await ctx.send(embed=_err(None, "tickets.subticket.server_only"))
             return
@@ -484,7 +484,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             author
             if str(author.id) == parent_author_id
             else await self._resolve_parent_owner(guild, parent_author_id, ctx)
-        )  # type: ignore[assignment]
+        )
         if parent_owner is None:
             return
         mod_role = resolve_mod_role(guild, config.mod_role_id)
@@ -517,7 +517,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @commands.hybrid_command(name="reopen", description="Reopen a closed ticket.")
     @app_commands.describe(ticket_ref="Optional ticket reference: '#0003', '0003', a UUID, or 'ticket:#0003'")
     @is_mod()
-    async def reopen(self, ctx: commands.Context, *, ticket_ref: str | None = None) -> None:
+    async def reopen(self, ctx: commands.Context[Any], *, ticket_ref: str | None = None) -> None:
         if ctx.guild is None:
             await ctx.send(embed=_err(None, "tickets.reopen.server_only"))
             return
@@ -554,7 +554,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @commands.hybrid_command(name="transfer", description="Transfer a ticket to another staff member.")
     @app_commands.describe(member="The staff member to transfer the ticket to")
     @is_mod()
-    async def transfer(self, ctx: commands.Context, member: discord.Member) -> None:
+    async def transfer(self, ctx: commands.Context[Any], member: discord.Member) -> None:
         if ctx.guild is None:
             await ctx.send(embed=_err(None, "tickets.transfer.server_only"))
             return
@@ -584,8 +584,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
         await ctx.send(embed=_ok(gid, "tickets.transfer.success", member=member.mention))
 
-    @commands.hybrid_command(name="unclaim", description="Release a claimed ticket back to open status.")
-    async def unclaim(self, ctx: commands.Context) -> None:
+    @commands.hybrid_command(name="unclaim", description="Release a claimed ticket back to open status.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    async def unclaim(self, ctx: commands.Context[Any]) -> None:
         """Unclaim a ticket — available to the claimer or moderators."""
         if ctx.guild is None:
             await ctx.send(embed=_err(None, "tickets.actions.unclaim_not_ticket_title"))
@@ -695,14 +695,14 @@ class TicketsCog(commands.Cog, name="Tickets"):
 
     @commands.hybrid_group(name="note", fallback="help", description="Manage staff notes on tickets.")
     @is_mod()
-    async def note(self, ctx: commands.Context) -> None:
+    async def note(self, ctx: commands.Context[Any]) -> None:
         gid = str(ctx.guild.id) if ctx.guild else None
         await ctx.send(embed=_info(gid, "tickets.note.help"))
 
     @note.command(name="add", description="Add a staff note to the current ticket.")
     @app_commands.describe(content="The note text")
     @is_mod()
-    async def note_add(self, ctx: commands.Context, content: str) -> None:
+    async def note_add(self, ctx: commands.Context[Any], content: str) -> None:
         gid = str(ctx.guild.id) if ctx.guild else None
         assert self.bot.ticket_service is not None
         row = await resolve_ticket_for_channel(self.bot, ctx.channel.id, gid, action="note_add")
@@ -717,7 +717,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
         await ctx.send(embed=_ok(gid, "tickets.note.add_success", id=note.id))
 
-    async def _send_notes_private(self, ctx: commands.Context, embed: discord.Embed) -> None:
+    async def _send_notes_private(self, ctx: commands.Context[Any], embed: discord.Embed) -> None:
         gid = str(ctx.guild.id) if ctx.guild else None
         if ctx.interaction is not None:
             await ctx.send(embed=embed, ephemeral=True)
@@ -732,7 +732,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
 
     @note.command(name="list", description="List all staff notes on the current ticket.")
     @is_mod()
-    async def note_list(self, ctx: commands.Context) -> None:
+    async def note_list(self, ctx: commands.Context[Any]) -> None:
         gid = str(ctx.guild.id) if ctx.guild else None
         assert self.bot.ticket_service is not None
         row = await resolve_ticket_for_channel(self.bot, ctx.channel.id, gid, action="note_list")
@@ -761,7 +761,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @note.command(name="delete", description="Delete a staff note from the current ticket.")
     @app_commands.describe(note_id="The UUID of the note to delete")
     @is_mod()
-    async def note_delete(self, ctx: commands.Context, note_id: str) -> None:
+    async def note_delete(self, ctx: commands.Context[Any], note_id: str) -> None:
         gid = str(ctx.guild.id) if ctx.guild else None
         assert self.bot.ticket_service is not None
         row = await resolve_ticket_for_channel(self.bot, ctx.channel.id, gid, action="note_delete")

@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import random
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import discord
 from discord import app_commands
@@ -42,11 +42,11 @@ class OcioCog(commands.Cog, name="Ocio"):
     # Commands
     # ==================================================================
 
-    @commands.hybrid_command(name="dados", description="Roll a dice.")
+    @commands.hybrid_command(name="dados", description="Roll a dice.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
     @app_commands.describe(sides="Number of sides (2-100)")
     async def dados(
         self,
-        ctx: commands.Context,
+        ctx: commands.Context[Any],
         sides: app_commands.Range[int, 2, 100] = 6,
     ) -> None:
         """Roll a die with *sides* faces and reply with the result."""
@@ -59,8 +59,8 @@ class OcioCog(commands.Cog, name="Ocio"):
         )
         await ctx.send(embed=embed)
 
-    @commands.hybrid_command(name="banana", description="Measure something in bananas.")
-    async def banana(self, ctx: commands.Context) -> None:
+    @commands.hybrid_command(name="banana", description="Measure something in bananas.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    async def banana(self, ctx: commands.Context[Any]) -> None:
         """Reply with a banana image and a random measurement (2-30 cm)."""
         guild_id = ctx.guild.id if ctx.guild else None
 
