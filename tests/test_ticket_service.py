@@ -14,7 +14,7 @@ Covers:
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
@@ -1897,3 +1897,184 @@ async def test_close_success_audit_failure_continues(
     # Close succeeded — ticket is closed despite audit failure.
     assert ticket.status == "closed"
     assert any("audit" in r.message.lower() for r in caplog.records)
+
+
+# ===========================================================================
+# PR2 — close_ticket_full countdown (task 2.3.1 RED)
+# ===========================================================================
+
+
+def _mock_channel_for_close(*, channel_id: int = 888888888) -> MagicMock:
+    """Return a mock TextChannel wired for close_ticket_full."""
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.id = channel_id
+    channel.send = AsyncMock()
+    channel.delete = AsyncMock()
+    channel.guild = MagicMock()
+    channel.guild.id = 123456789
+    return channel
+
+
+def _mock_bot_for_close() -> MagicMock:
+    """Return a mock NebulosaBot wired for close_ticket_full."""
+    bot = MagicMock()
+    bot.transcript_service = None
+    bot.guild_service = None
+    return bot
+
+
+def _ticket_model(*, ticket_id: str = "ticket-uuid-close") -> Ticket:
+    """Return a sample Ticket model for close tests."""
+    return Ticket(
+        id=ticket_id,
+        ticket_number=42,
+        guild_id="123456789",
+        author_id="111111111",
+        channel_id="888888888",
+        status="open",
+        created_at="2026-01-15T10:00:00",
+        last_activity="2026-01-15T10:00:00",
+    )
+
+
+@pytest.mark.asyncio
+async def test_close_ticket_full_manual_countdown(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """close_ticket_full(manual=True) MUST send ONE message and edit 5→1, then delete channel."""
+    channel = _mock_channel_for_close()
+    bot = _mock_bot_for_close()
+    ticket = _ticket_model()
+
+    open_row = {
+        "id": ticket.id,
+        "ticketNumber": 42,
+        "guildId": "123456789",
+        "authorId": "111111111",
+        "channelId": "888888888",
+        "categoryId": None,
+        "status": "open",
+        "claimedBy": None,
+        "transcriptUrl": None,
+        "createdAt": "2026-01-15T10:00:00",
+        "closedAt": None,
+        "lastActivity": "2026-01-15T10:00:00",
+    }
+    closed_row = {**open_row, "status": "closed", "closedAt": "2026-06-16T18:00:00"}
+    mock_db.get_ticket.side_effect = [
+        open_row,    # close_ticket pre-read (invariant check)
+        closed_row,  # close_ticket re-read
+    ]
+
+    # Mock the countdown message.
+    countdown_msg = AsyncMock()
+    channel.send.return_value = countdown_msg
+
+    with patch("bot.services.ticket_service.asyncio.sleep", new_callable=AsyncMock):
+        result = await service.close_ticket_full(channel, ticket, "999999999", bot=bot, manual=True)
+
+    # ONE message sent (the "5").
+    channel.send.assert_awaited_once()
+    assert channel.send.call_args.args == ("5",)
+
+    # Message edited 4 times: "4", "3", "2", "1".
+    assert countdown_msg.edit.await_count == 4
+    edit_contents = [call.args[0] if call.args else call.kwargs.get("content") for call in countdown_msg.edit.call_args_list]
+    assert edit_contents == ["4", "3", "2", "1"]
+
+    # Channel deleted after countdown.
+    channel.delete.assert_awaited_once()
+    assert result is None  # no transcript
+
+
+@pytest.mark.asyncio
+async def test_close_ticket_full_auto_silent(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """close_ticket_full(manual=False) MUST delete silently — no countdown messages."""
+    channel = _mock_channel_for_close()
+    bot = _mock_bot_for_close()
+    ticket = _ticket_model()
+
+    open_row = {
+        "id": ticket.id,
+        "ticketNumber": 42,
+        "guildId": "123456789",
+        "authorId": "111111111",
+        "channelId": "888888888",
+        "categoryId": None,
+        "status": "open",
+        "claimedBy": None,
+        "transcriptUrl": None,
+        "createdAt": "2026-01-15T10:00:00",
+        "closedAt": None,
+        "lastActivity": "2026-01-15T10:00:00",
+    }
+    closed_row = {**open_row, "status": "closed", "closedAt": "2026-06-16T18:00:00"}
+    mock_db.get_ticket.side_effect = [
+        open_row,    # close_ticket pre-read (invariant check)
+        closed_row,  # close_ticket re-read
+    ]
+
+    with patch("bot.services.ticket_service.asyncio.sleep", new_callable=AsyncMock):
+        result = await service.close_ticket_full(channel, ticket, "auto", bot=bot, manual=False)
+
+    # NO messages sent (silent delete).
+    channel.send.assert_not_awaited()
+
+    # Channel deleted after silent delay.
+    channel.delete.assert_awaited_once()
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_close_ticket_full_countdown_failure_fallback(
+    service: TicketService,
+    mock_db: AsyncMock,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """When countdown edit fails, MUST log warning and fall back to silent delete."""
+    import logging
+
+    channel = _mock_channel_for_close()
+    bot = _mock_bot_for_close()
+    ticket = _ticket_model()
+
+    open_row = {
+        "id": ticket.id,
+        "ticketNumber": 42,
+        "guildId": "123456789",
+        "authorId": "111111111",
+        "channelId": "888888888",
+        "categoryId": None,
+        "status": "open",
+        "claimedBy": None,
+        "transcriptUrl": None,
+        "createdAt": "2026-01-15T10:00:00",
+        "closedAt": None,
+        "lastActivity": "2026-01-15T10:00:00",
+    }
+    closed_row = {**open_row, "status": "closed", "closedAt": "2026-06-16T18:00:00"}
+    mock_db.get_ticket.side_effect = [
+        open_row,    # close_ticket pre-read (invariant check)
+        closed_row,  # close_ticket re-read
+    ]
+
+    # Send succeeds but edit fails (simulates permission loss during countdown).
+    countdown_msg = AsyncMock()
+    countdown_msg.edit = AsyncMock(side_effect=discord.HTTPException(MagicMock(), "rate limited"))
+    channel.send.return_value = countdown_msg
+
+    with (
+        patch("bot.services.ticket_service.asyncio.sleep", new_callable=AsyncMock),
+        caplog.at_level(logging.WARNING, logger="bot.services.ticket_service"),
+    ):
+        await service.close_ticket_full(channel, ticket, "999999999", bot=bot, manual=True)
+
+    # Warning logged about countdown failure.
+    assert any("countdown" in r.message.lower() or "fallback" in r.message.lower() for r in caplog.records)
+
+    # Channel still deleted via fallback.
+    channel.delete.assert_awaited_once()

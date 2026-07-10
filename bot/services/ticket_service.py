@@ -867,12 +867,18 @@ class TicketService:
         closed_by: str,
         *,
         bot: NebulosaBot,
+        manual: bool = True,
     ) -> str | None:
         """Close a single ticket end-to-end: transcript -> upload -> DB -> delete.
 
         Generates a transcript, uploads it to the guild's log channel (if
         configured), closes the ticket in the database, and deletes the
-        Discord channel after a short delay.
+        Discord channel.
+
+        When *manual* is ``True`` (default), a visual countdown edits a
+        single message from 5 to 1 before deletion.  When *manual* is
+        ``False`` (auto-close), the channel is deleted silently after a
+        short delay.
 
         Args:
             channel: The ticket's Discord text channel.
@@ -880,6 +886,8 @@ class TicketService:
             closed_by: Discord user snowflake of the closer.
             bot: The :class:`~bot.bot.NebulosaBot` instance (used to
                 access ``transcript_service`` and ``guild_service``).
+            manual: Whether this is a manual close (``True``) or
+                auto-close (``False``).  Controls countdown behavior.
 
         Returns:
             The transcript URL if uploaded, ``None`` otherwise.
@@ -914,10 +922,43 @@ class TicketService:
 
         await self.close_ticket(ticket.id, closed_by=closed_by, transcript_url=transcript_url)
 
-        await asyncio.sleep(CHANNEL_DELETE_DELAY)
-        try:
-            await channel.delete(reason=f"Ticket closed by {closed_by}")
-        except discord.HTTPException:
-            logger.exception("Failed to delete ticket channel %s", channel.id)
+        if manual:
+            await self._countdown_and_delete(channel, closed_by)
+        else:
+            await asyncio.sleep(CHANNEL_DELETE_DELAY)
+            try:
+                await channel.delete(reason=f"Ticket closed by {closed_by}")
+            except discord.HTTPException:
+                logger.exception("Failed to delete ticket channel %s", channel.id)
 
         return transcript_url
+
+    @staticmethod
+    async def _countdown_and_delete(
+        channel: discord.TextChannel,
+        closed_by: str,
+    ) -> None:
+        """Post a single message, edit it counting 5 to 1, then delete the channel.
+
+        Each edit is separated by a 1-second ``asyncio.sleep``.  After the
+        message displays "1" and another second elapses, the channel is
+        deleted.  ``discord.HTTPException`` during the countdown is logged
+        and falls back to a silent delete.
+        """
+        try:
+            msg = await channel.send("5")
+            for i in range(4, 0, -1):
+                await asyncio.sleep(1)
+                await msg.edit(content=str(i))
+            await asyncio.sleep(1)
+            await channel.delete(reason=f"Ticket closed by {closed_by}")
+        except discord.HTTPException:
+            logger.warning(
+                "Countdown failed for channel %s — falling back to silent delete",
+                channel.id,
+                exc_info=True,
+            )
+            try:
+                await channel.delete(reason=f"Ticket closed by {closed_by} (countdown fallback)")
+            except discord.HTTPException:
+                logger.exception("Failed to delete ticket channel %s after countdown failure", channel.id)

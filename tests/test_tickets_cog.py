@@ -607,7 +607,9 @@ class TestTicketActionsView:
         mock_ticket_channel: MagicMock,
         mock_db,
     ) -> None:
-        """Close button → close_ticket_full called (handles transcript + DB + delete)."""
+        """Close button → ephemeral ConfirmCancelView sent (close deferred to confirm)."""
+        from bot.views.confirmation import ConfirmCancelView
+
         ticket_interaction.client = ticket_bot
         ticket_interaction.channel = mock_ticket_channel
 
@@ -619,11 +621,11 @@ class TestTicketActionsView:
         view = TicketActionsView()
         await view.close_button.callback(ticket_interaction)
 
-        ticket_bot.ticket_service.close_ticket_full.assert_awaited_once()
-        call_args = ticket_bot.ticket_service.close_ticket_full.call_args
-        assert call_args.args[0] == mock_ticket_channel  # channel
-        assert call_args.args[2] == "111111111"  # closer_id
-        assert call_args.kwargs["bot"] == ticket_bot
+        # Button sends ephemeral ConfirmCancelView (not close_ticket_full directly).
+        ticket_interaction.response.send_message.assert_awaited_once()
+        call_kwargs = ticket_interaction.response.send_message.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
+        assert isinstance(call_kwargs.get("view"), ConfirmCancelView)
 
 
 class TestAutoCloseStaleTickets:
@@ -653,6 +655,33 @@ class TestAutoCloseStaleTickets:
         await tickets_cog.auto_close_stale_tickets()
 
         ticket_bot.ticket_service.close_ticket_full.assert_called_once()
+
+    async def test_auto_close_passes_manual_false(
+        self,
+        tickets_cog: TicketsCog,
+        ticket_bot: MagicMock,
+        ticket_guild: MagicMock,
+        mock_ticket_channel: MagicMock,
+    ) -> None:
+        """Auto-close MUST call close_ticket_full with manual=False (silent delete)."""
+        ticket_bot.guilds = [ticket_guild]
+
+        stale_ticket = MagicMock()
+        stale_ticket.id = "ticket-uuid-001"
+        stale_ticket.channel_id = "444444444"
+
+        ticket_bot.ticket_service.get_stale_tickets = AsyncMock(return_value=[stale_ticket])
+        ticket_bot.get_channel = MagicMock(return_value=mock_ticket_channel)
+
+        config = MagicMock()
+        config.log_channel_id = None
+        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
+
+        await tickets_cog.auto_close_stale_tickets()
+
+        ticket_bot.ticket_service.close_ticket_full.assert_called_once()
+        call_kwargs = ticket_bot.ticket_service.close_ticket_full.call_args.kwargs
+        assert call_kwargs["manual"] is False
 
     async def test_auto_close_ignores_fresh_tickets(
         self,

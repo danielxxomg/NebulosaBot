@@ -120,7 +120,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
                         logger.warning("Ticket %s channel %s not found — skipping", ticket.id, ticket.channel_id)
                         continue
                     await self.bot.ticket_service.close_ticket_full(
-                        channel, ticket, "auto", bot=self.bot
+                        channel, ticket, "auto", bot=self.bot, manual=False
                     )
                     closed += 1
                 except Exception:

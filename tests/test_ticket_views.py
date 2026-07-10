@@ -503,3 +503,221 @@ class TestTicketIntakeModalSubmit:
         mock_create.assert_awaited_once()
         call_kwargs = mock_create.call_args.kwargs
         assert call_kwargs["custom_fields"] == {}
+
+
+# ===========================================================================
+# PR2 — Close Confirmation (task 2.2.1 RED)
+# ===========================================================================
+
+
+class TestCloseButtonConfirmation:
+    """Verify close button sends ephemeral ConfirmCancelView before closing."""
+
+    @staticmethod
+    def _make_close_interaction(
+        *,
+        guild_id: int = 123456789,
+        user_id: int = 111111111,
+        channel_id: int = 888888888,
+        is_author: bool = True,
+    ) -> MagicMock:
+        """Return a mock Interaction wired for the close button callback."""
+        from bot.views.tickets import TicketActionsView
+
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.guild_id = guild_id
+        interaction.channel_id = channel_id
+        interaction.response = MagicMock()
+        interaction.response.send_message = AsyncMock()
+        interaction.response.defer = AsyncMock()
+        interaction.response.is_done.return_value = False
+        interaction.followup = MagicMock()
+        interaction.followup.send = AsyncMock()
+        interaction.original_response = AsyncMock()
+
+        guild = MagicMock()
+        guild.id = guild_id
+        interaction.guild = guild
+
+        user = MagicMock(spec=discord.Member)
+        user.id = user_id
+        interaction.user = user
+
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.id = channel_id
+        channel.send = AsyncMock()
+        interaction.channel = channel
+
+        bot = MagicMock()
+        bot.db = MagicMock()
+        bot.db.get_ticket_by_channel = AsyncMock()
+        bot.guild_service = MagicMock()
+        bot.ticket_service = MagicMock()
+        interaction.client = bot
+
+        return interaction
+
+    @staticmethod
+    def _ticket_row_for_close(*, author_id: str = "111111111", status: str = "open") -> dict:
+        return {
+            "id": "ticket-uuid-close",
+            "ticketNumber": 7,
+            "guildId": "123456789",
+            "authorId": author_id,
+            "channelId": "888888888",
+            "categoryId": None,
+            "status": status,
+            "claimedBy": None,
+            "transcriptUrl": None,
+            "createdAt": "2026-01-15T10:00:00+00:00",
+            "closedAt": None,
+            "lastActivity": "2026-01-15T10:00:00+00:00",
+        }
+
+    @pytest.mark.asyncio
+    async def test_close_button_sends_ephemeral_confirm_view(self) -> None:
+        """Close button MUST send an ephemeral ConfirmCancelView (not close immediately)."""
+        from bot.views.confirmation import ConfirmCancelView
+        from bot.views.tickets import TicketActionsView
+
+        view = TicketActionsView(guild_id="123456789")
+        interaction = self._make_close_interaction()
+        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row_for_close()
+
+        await view.close_button.callback(interaction)
+
+        # MUST send an ephemeral message with a ConfirmCancelView.
+        interaction.response.send_message.assert_awaited_once()
+        call_kwargs = interaction.response.send_message.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
+        assert isinstance(call_kwargs.get("view"), ConfirmCancelView)
+
+    @pytest.mark.asyncio
+    async def test_close_button_does_not_close_immediately(self) -> None:
+        """Close button MUST NOT call close_ticket_full — confirm callback does that."""
+        from bot.views.tickets import TicketActionsView
+
+        view = TicketActionsView(guild_id="123456789")
+        interaction = self._make_close_interaction()
+        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row_for_close()
+        interaction.client.ticket_service.close_ticket_full = AsyncMock()
+
+        await view.close_button.callback(interaction)
+
+        # close_ticket_full MUST NOT be called yet.
+        interaction.client.ticket_service.close_ticket_full.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_close_confirm_calls_close_ticket_full(self) -> None:
+        """Confirm callback MUST call close_ticket_full(manual=True)."""
+        from bot.views.confirmation import ConfirmCancelView
+        from bot.views.tickets import TicketActionsView
+
+        view = TicketActionsView(guild_id="123456789")
+        interaction = self._make_close_interaction()
+        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row_for_close()
+        interaction.client.ticket_service.close_ticket_full = AsyncMock(return_value=None)
+
+        await view.close_button.callback(interaction)
+
+        # Extract the ConfirmCancelView that was sent.
+        sent_view = interaction.response.send_message.call_args.kwargs["view"]
+        assert isinstance(sent_view, ConfirmCancelView)
+
+        # Build a confirm interaction.
+        confirm_interaction = MagicMock(spec=discord.Interaction)
+        confirm_interaction.user = interaction.user
+        confirm_interaction.response = MagicMock()
+        confirm_interaction.response.edit_message = AsyncMock()
+        confirm_interaction.response.send_message = AsyncMock()
+        confirm_interaction.followup = MagicMock()
+        confirm_interaction.followup.send = AsyncMock()
+        confirm_interaction.channel = interaction.channel
+        confirm_interaction.guild = interaction.guild
+        confirm_interaction.guild_id = interaction.guild_id
+        confirm_interaction.client = interaction.client
+
+        await sent_view._on_confirm(confirm_interaction)
+
+        interaction.client.ticket_service.close_ticket_full.assert_awaited_once()
+        call_args = interaction.client.ticket_service.close_ticket_full.call_args
+        assert call_args.kwargs.get("manual") is True
+
+    @pytest.mark.asyncio
+    async def test_close_cancel_shows_ephemeral_cancelled(self) -> None:
+        """Cancel callback MUST edit the ephemeral message with a cancelled embed."""
+        from bot.views.confirmation import ConfirmCancelView
+        from bot.views.tickets import TicketActionsView
+
+        view = TicketActionsView(guild_id="123456789")
+        interaction = self._make_close_interaction()
+        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row_for_close()
+
+        await view.close_button.callback(interaction)
+
+        sent_view = interaction.response.send_message.call_args.kwargs["view"]
+        assert isinstance(sent_view, ConfirmCancelView)
+
+        # Simulate cancel.
+        cancel_interaction = MagicMock(spec=discord.Interaction)
+        cancel_interaction.user = interaction.user
+        cancel_interaction.response = MagicMock()
+        cancel_interaction.response.edit_message = AsyncMock()
+        cancel_interaction.response.send_message = AsyncMock()
+
+        await sent_view.cancel_button.callback(cancel_interaction)
+
+        # MUST edit the ephemeral message.
+        cancel_interaction.response.edit_message.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_close_other_user_confirm_rejected(self) -> None:
+        """Confirm from a different user MUST be rejected (not close the ticket)."""
+        from bot.views.confirmation import ConfirmCancelView
+        from bot.views.tickets import TicketActionsView
+
+        view = TicketActionsView(guild_id="123456789")
+        interaction = self._make_close_interaction(user_id=111111111)
+        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row_for_close()
+        interaction.client.ticket_service.close_ticket_full = AsyncMock()
+
+        await view.close_button.callback(interaction)
+
+        sent_view = interaction.response.send_message.call_args.kwargs["view"]
+        assert isinstance(sent_view, ConfirmCancelView)
+
+        # A different user tries to confirm.
+        other_interaction = MagicMock(spec=discord.Interaction)
+        other_user = MagicMock(spec=discord.Member)
+        other_user.id = 999999999  # different from closer
+        other_interaction.user = other_user
+        other_interaction.response = MagicMock()
+        other_interaction.response.send_message = AsyncMock()
+        other_interaction.response.edit_message = AsyncMock()
+
+        await sent_view.confirm_button.callback(other_interaction)
+
+        # MUST send rejection, NOT close the ticket.
+        other_interaction.response.send_message.assert_awaited_once()
+        interaction.client.ticket_service.close_ticket_full.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_close_non_author_non_mod_rejected(self) -> None:
+        """Non-author non-mod clicking close MUST be rejected (existing guard preserved)."""
+        from bot.views.tickets import TicketActionsView
+
+        view = TicketActionsView(guild_id="123456789")
+        interaction = self._make_close_interaction(user_id=999999999)
+        # Ticket authored by someone else.
+        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row_for_close(author_id="111111111")
+
+        # Patch is_mod_check to return False.
+        with patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=False):
+            await view.close_button.callback(interaction)
+
+        # MUST send rejection embed (ephemeral), not a confirm view.
+        interaction.response.send_message.assert_awaited_once()
+        call_kwargs = interaction.response.send_message.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
+        # The embed should be an error (not a ConfirmCancelView).
+        assert "view" not in call_kwargs or not isinstance(call_kwargs.get("view"), ConfirmCancelView)

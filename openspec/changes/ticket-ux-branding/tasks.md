@@ -54,25 +54,25 @@ Chain strategy: stacked-to-main
 
 ### Phase 2.1: i18n Keys
 
-- [ ] 2.1.1 Add close confirmation keys to `bot/locales/en.json` and `bot/locales/es.json` (confirm_title, confirm_description, confirm_button, cancel_button, cancelled_message, timeout_message, unauthorized_message)
+- [x] 2.1.1 Add close confirmation keys to `bot/locales/en.json` and `bot/locales/es.json` (confirm_title, confirm_description, confirm_button, cancel_button, cancelled_message, timeout_message, unauthorized_message)
 
 ### Phase 2.2: Close Confirmation View
 
-- [ ] 2.2.1 RED: Write `tests/test_ticket_views.py` additions — close button triggers ephemeral `ConfirmCancelView`; confirm proceeds to close flow; cancel shows ephemeral message; dismiss/timeout keeps ticket open; other user's confirm rejected
-- [ ] 2.2.2 GREEN: Modify `bot/views/tickets.py` — close button callback sends ephemeral `ConfirmCancelView`; confirm callback calls `close_ticket_full(manual=True)`; cancel/third-party handled
-- [ ] 2.2.3 REFACTOR: `uv run pytest tests/test_ticket_views.py` passes
+- [x] 2.2.1 RED: Write `tests/test_ticket_views.py` additions — close button triggers ephemeral `ConfirmCancelView`; confirm proceeds to close flow; cancel shows ephemeral message; dismiss/timeout keeps ticket open; other user's confirm rejected
+- [x] 2.2.2 GREEN: Modify `bot/views/tickets.py` — close button callback sends ephemeral `ConfirmCancelView`; confirm callback calls `close_ticket_full(manual=True)`; cancel/third-party handled
+- [x] 2.2.3 REFACTOR: `uv run pytest tests/test_ticket_views.py` passes
 
 ### Phase 2.3: Countdown Service
 
-- [ ] 2.3.1 RED: Write `tests/test_ticket_service.py` additions — `close_ticket_full(manual=True)` posts ONE message, edits 5→1 with 1s sleep, then deletes channel; `close_ticket_full(manual=False)` deletes silently; `CancelledError` logged and re-raised without deletion
-- [ ] 2.3.2 GREEN: Modify `bot/services/ticket_service.py` — add `manual` param to `close_ticket_full()`; implement countdown loop (send, edit 5..1, sleep, delete); keep silent path for auto-close
-- [ ] 2.3.3 REFACTOR: `uv run pytest tests/test_ticket_service.py` passes
+- [x] 2.3.1 RED: Write `tests/test_ticket_service.py` additions — `close_ticket_full(manual=True)` posts ONE message, edits 5→1 with 1s sleep, then deletes channel; `close_ticket_full(manual=False)` deletes silently; `CancelledError` logged and re-raised without deletion
+- [x] 2.3.2 GREEN: Modify `bot/services/ticket_service.py` — add `manual` param to `close_ticket_full()`; implement countdown loop (send, edit 5..1, sleep, delete); keep silent path for auto-close
+- [x] 2.3.3 REFACTOR: `uv run pytest tests/test_ticket_service.py` passes
 
 ### Phase 2.4: Auto-close Wiring
 
-- [ ] 2.4.1 RED: Write integration test — auto-close task calls `close_ticket_full(manual=False)`, no countdown messages posted
-- [ ] 2.4.2 GREEN: Update auto-close callers to pass `manual=False`
-- [ ] 2.4.3 Verify: `uv run pytest` — full suite green
+- [x] 2.4.1 RED: Write integration test — auto-close task calls `close_ticket_full(manual=False)`, no countdown messages posted
+- [x] 2.4.2 GREEN: Update auto-close callers to pass `manual=False`
+- [x] 2.4.3 Verify: `uv run pytest` — full suite green
 
 ---
 
