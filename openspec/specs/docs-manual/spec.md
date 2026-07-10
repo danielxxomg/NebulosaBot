@@ -2,74 +2,86 @@
 
 ## Purpose
 
-Ensure a user-facing Spanish manual exists and covers all bot commands organized by audience.
+Comprehensive Spanish user manual covering all bot functionality with per-command syntax, permission tables, and atomic operation documentation.
 
 ## Requirements
 
-### Requirement: User manual exists
+### Requirement: User manual structure
 
-`docs/MANUAL.md` MUST exist in Spanish and MUST cover all bot commands organized by audience (users, moderators, administrators). The manual MUST document the following ticket UX behaviors: close confirmation dialog (ephemeral Confirm/Cancel), `/unclaim` command (claimer or mods), claim-on-claimed transfer confirmation, channel naming format (`{category}-{username}-{number}`), and brand palette notes (purple/violet embeds, bot avatar footer).
+`docs/MANUAL.md` MUST exist in Spanish with exactly 7 sections: Inicio Rápido, Comandos de Usuario, Comandos de Moderación, Comandos de Administración, Configuración, Sistema de Tickets, Comandos Híbridos. Each section MUST have a one-line purpose description.
 
-#### Scenario: Manual file present
+#### Scenario: Manual file exists with correct structure
 
 - GIVEN the repository root
-- WHEN inspecting `docs/MANUAL.md`
-- THEN the file exists and is non-empty
+- WHEN `docs/MANUAL.md` is read
+- THEN the file exists, is non-empty, and contains exactly 7 `##` section headings in the specified order
 
-#### Scenario: Required sections
+#### Scenario: Each section has a purpose line
 
-- GIVEN `docs/MANUAL.md` is read
-- WHEN scanning its headings
-- THEN it SHALL contain sections for: Quick Start, Configuration, Commands (by audience), Ticket System, Economy, Welcome/Goodbye, and Known Debt
+- GIVEN each of the 7 sections in the manual
+- WHEN the section content is read
+- THEN the first non-heading line is a brief purpose description
 
-#### Scenario: All commands documented
+### Requirement: Per-command syntax and permissions
 
-- GIVEN the commands across all cogs
-- WHEN reading the manual's command sections
-- THEN every command SHALL appear at least once with a brief description
+Each command entry MUST include: command name, description, Discord syntax in code block, permission level (everyone/mod/admin), parameters in table format with name/type/required/description, and at least one practical example.
+
+#### Scenario: Command entry has all required fields
+
+- GIVEN any command documented in the manual
+- WHEN the command entry is inspected
+- THEN it contains: name, description, syntax code block, permission badge, parameter table, and at least one example
+
+#### Scenario: Slash and prefix syntax both documented
+
+- GIVEN a hybrid command
+- WHEN the syntax section is read
+- THEN both `/command` and `!command` syntax variants are shown
+
+### Requirement: Moderation commands atomic operations
+
+Moderation commands (warn, mute, kick, ban) MUST document each as an atomic operation with: what it does, permission required, DM notification behavior, and audit log entry.
+
+#### Scenario: Warn command is fully documented
+
+- GIVEN the moderation section
+- WHEN the warn command entry is read
+- THEN it documents: infraction recording, DM notification, permission requirement, and audit log behavior
+
+#### Scenario: Kick/ban confirmation dialogs documented
+
+- GIVEN the moderation section
+- WHEN kick or ban entries are read
+- THEN they document the ephemeral Confirm/Cancel confirmation dialog
+
+### Requirement: Ticket system section completeness
+
+The ticket system section MUST document: creation flow, claiming, closing (with confirmation dialog), channel naming format, and all subcommands.
+
+#### Scenario: Ticket creation flow documented
+
+- GIVEN the ticket system section
+- WHEN the creation flow is read
+- THEN it describes the category selector, intake modal, and channel creation
 
 #### Scenario: Close confirmation documented
 
-- GIVEN the Ticket System section
-- WHEN reading about closing tickets
-- THEN the manual describes the ephemeral Confirm/Cancel dialog and that dismiss = cancel
+- GIVEN the ticket system section
+- WHEN the close operation is read
+- THEN it describes the ephemeral Confirm/Cancel dialog and that dismiss = cancel
 
-#### Scenario: Unclaim command documented
+### Requirement: Hybrid commands section
 
-- GIVEN the Ticket System section
-- WHEN reading about claim management
-- THEN `/unclaim` is documented with its permissions (claimer or mods)
+A dedicated hybrid commands section MUST list all 17 hybrid commands with their slash and prefix syntax, and explain the difference between slash and prefix invocations.
 
-#### Scenario: Claim-on-claimed transfer documented
+#### Scenario: All hybrid commands listed
 
-- GIVEN the Ticket System section
-- WHEN reading about claiming tickets
-- THEN the manual describes that claiming an already-claimed ticket shows a transfer confirmation
+- GIVEN the hybrid commands section
+- WHEN the section is read
+- THEN all 17 hybrid commands are listed with both `/command` and `!command` syntax
 
-#### Scenario: Channel naming documented
+#### Scenario: Slash vs prefix behavior explained
 
-- GIVEN the Ticket System section
-- WHEN reading about ticket channels
-- THEN the manual describes the `{category}-{username}-{number}` naming format
-
-### Requirement: Dynamic hybrid command discovery test
-
-The system MUST have a test that discovers all `@commands.hybrid_command` decorated functions at runtime and asserts each appears in `docs/MANUAL.md` with a description.
-
-#### Scenario: all hybrid commands appear in manual
-
-- GIVEN all cog modules imported and `@hybrid_command` functions discovered
-- WHEN each command name is searched in `docs/MANUAL.md`
-- THEN every discovered command name appears at least once
-
-#### Scenario: each command has a description
-
-- GIVEN a hybrid command name found in MANUAL.md
-- WHEN the surrounding text is inspected
-- THEN a non-empty description line follows the command name
-
-#### Scenario: discovery is resilient to cog load order
-
-- GIVEN cog modules imported in arbitrary order
-- WHEN command discovery runs
-- THEN the discovered command set is identical regardless of import order
+- GIVEN the hybrid commands section
+- WHEN the introduction is read
+- THEN it explains that slash commands show errors as ephemeral replies while prefix commands send to channel

@@ -10,78 +10,50 @@ Purple/violet brand palette for all embed colors and bot avatar footer icon repl
 
 The system MUST define brand color constants in a `bot/utils/brand.py` module. The palette MUST use purple/violet family: PRIMARY (#9B5DE5), ACCENT (#A855F7), SUCCESS (#10B981), WARNING (#F59E0B), ERROR (#EF4444), INFO (#8B5CF6).
 
-#### Scenario: Brand module exists
+#### Scenario: Brand module exists with all palette values
 
 - GIVEN the bot codebase
 - WHEN `bot/utils/brand.py` is imported
-- THEN it exports PRIMARY, ACCENT, SUCCESS, WARNING, ERROR, INFO color constants
+- THEN it exports PRIMARY, ACCENT, SUCCESS, WARNING, ERROR, INFO with the specified hex values
 
-#### Scenario: Embeds use brand colors
+#### Scenario: Embeds use brand tokens not hardcoded colors
 
-- GIVEN any embed built via `_make_embed()` or `build_ticket_embed()`
-- WHEN the embed is rendered
-- THEN the embed color uses a brand token (not the old `COLOR_*` constants)
+- GIVEN any embed color assignment in bot/ source code (excluding brand.py)
+- WHEN the code is scanned for 6-digit hex literals (`#[0-9A-Fa-f]{6}`)
+- THEN zero matches are found — all colors reference brand tokens
 
 ### Requirement: Bot avatar footer icon
 
-The default embed footer icon MUST use `bot.user.display_avatar.url` instead of the hardcoded imgur URL.
+The default embed footer icon MUST use `bot.user.display_avatar.url` instead of hardcoded URLs.
 
-#### Scenario: Footer uses bot avatar
+#### Scenario: Default embed uses bot avatar
 
 - GIVEN an embed built with `_make_embed()`
-- WHEN the footer icon is set
-- THEN the icon URL resolves to `bot.user.display_avatar.url`
+- WHEN no guild context is provided
+- THEN the footer icon uses `bot.user.display_avatar.url`
 
-### Requirement: Guild icon for guild-context embeds
+### Requirement: Guild-context footer and thumbnail
 
-Embeds in guild-specific contexts (ticket panel, logging, server info) MUST use `guild.icon.url` as the footer or thumbnail icon when available.
+Embeds in guild-specific contexts (tickets, logging, moderation) MUST use `guild.icon.url` as footer or thumbnail when available, falling back to bot avatar.
 
-#### Scenario: Ticket panel uses guild icon
+#### Scenario: Guild embed uses guild icon
 
-- GIVEN a guild with a custom icon
-- WHEN the ticket panel embed is rendered
-- THEN the embed footer or thumbnail uses `guild.icon.url`
+- GIVEN a guild with a custom icon set
+- WHEN a guild-context embed is rendered (ticket, log, moderation)
+- THEN the footer or thumbnail uses `guild.icon.url`
 
-#### Scenario: Guild has no icon fallback
+#### Scenario: Guild without icon falls back to bot avatar
 
 - GIVEN a guild without a custom icon
 - WHEN a guild-context embed is rendered
-- THEN the embed falls back to `bot.user.display_avatar.url`
+- THEN the footer icon falls back to `bot.user.display_avatar.url`
 
 ### Requirement: All cogs adopt brand palette
 
-Every cog and service that builds embeds (sentinel, stellar, core, logging_service, etc.) MUST use brand tokens instead of the old `COLOR_*` constants.
+Every cog and service that builds embeds (Sentinel, Core, LoggingService, Stellar, Tickets) MUST use brand tokens instead of hardcoded color constants.
 
-#### Scenario: Logging service uses brand colors
+#### Scenario: No hardcoded colors in production embed code
 
-- GIVEN `LoggingService` builds a log embed
-- WHEN the embed color is set
-- THEN it uses a brand token from `bot/utils/brand.py`
-
-#### Scenario: Sentinel uses brand colors
-
-- GIVEN `SentinelCog` builds a moderation embed
-- WHEN the embed color is set
-- THEN it uses a brand token instead of `COLOR_ERROR`/`COLOR_SUCCESS`/etc.
-
-### Requirement: Brand token contract tests
-
-The system MUST have contract tests proving all 6 brand tokens (PRIMARY, ACCENT, SUCCESS, WARNING, ERROR, INFO) are importable from `bot/utils/brand.py` with correct hex values. Tests MUST also prove no production module uses hardcoded hex color literals instead of brand tokens.
-
-#### Scenario: all 6 tokens are importable
-
-- GIVEN the `bot.utils.brand` module
-- WHEN each of PRIMARY, ACCENT, SUCCESS, WARNING, ERROR, INFO is imported
-- THEN no ImportError is raised
-
-#### Scenario: token hex values match palette spec
-
-- GIVEN the brand module constants
-- WHEN their hex values are inspected
-- THEN PRIMARY is `#9B5DE5`, ACCENT is `#A855F7`, SUCCESS is `#10B981`, WARNING is `#F59E0B`, ERROR is `#EF4444`, INFO is `#8B5CF6`
-
-#### Scenario: no hardcoded hex in production code
-
-- GIVEN all files under `bot/` (excluding `brand.py`)
-- WHEN a regex scan for 6-digit hex literals (`#[0-9A-Fa-f]{6}`) is performed
-- THEN zero matches are found in embed color assignments
+- GIVEN all Python files under `bot/` (excluding `brand.py`)
+- WHEN scanned for hardcoded 6-digit hex color literals in embed assignments
+- THEN zero matches are found
