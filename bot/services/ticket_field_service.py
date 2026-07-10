@@ -88,11 +88,10 @@ def validate_field_definitions(raw: Any) -> list[dict[str, Any]]:
 
         # --- placeholder (optional) ---
         placeholder = item.get("placeholder")
-        if placeholder is not None:
-            if not isinstance(placeholder, str) or len(placeholder) > _MAX_PLACEHOLDER_LEN:
-                raise ValueError(
-                    f"field_definitions[{i}].placeholder must be a string of at most {_MAX_PLACEHOLDER_LEN} characters"
-                )
+        if placeholder is not None and (not isinstance(placeholder, str) or len(placeholder) > _MAX_PLACEHOLDER_LEN):
+            raise ValueError(
+                f"field_definitions[{i}].placeholder must be a string of at most {_MAX_PLACEHOLDER_LEN} characters"
+            )
 
         # Build normalized entry — strip unknown keys.
         entry: dict[str, Any] = {

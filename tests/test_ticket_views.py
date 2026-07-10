@@ -369,8 +369,9 @@ class TestTicketIntakeModalDynamicFields:
         modal, _ = self._make_modal(field_definitions=defs)
         text_inputs = [c for c in modal.children if isinstance(c, discord.ui.TextInput)]
         assert len(text_inputs) == 3
-        # Third input label is the field label.
-        assert text_inputs[2].label == "Player Nickname"
+        # Third input label is the field label (use serialized payload to avoid
+        # deprecated TextInput.label property).
+        assert text_inputs[2].to_component_dict()["label"] == "Player Nickname"
 
     def test_three_field_definitions_adds_five_inputs(self) -> None:
         """With 3 field_definitions, modal MUST have 5 TextInputs (Discord max)."""
