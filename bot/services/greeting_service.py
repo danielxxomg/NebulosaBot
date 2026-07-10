@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import discord
 
@@ -67,7 +67,7 @@ class GreetingService:
         cached = self._cache.get(cache_key)
         if cached is not None:
             logger.debug("GreetingService cache HIT for guild %s", guild_id)
-            return cached
+            return cast(GreetingConfig, cached)
 
         # Cache miss → DB.
         logger.debug("GreetingService cache MISS for guild %s — fetching from DB", guild_id)
@@ -117,7 +117,7 @@ class GreetingService:
             return
 
         if not config.welcome_card_enabled:
-            await _send_text_only_if_message(channel, config.welcome_message or "", member)
+            await _send_text_only_if_message(channel, config.welcome_message or "", member)  # type: ignore[arg-type]  # guild.get_channel returns broader union; text channel guaranteed by guild config
             return
 
         avatar_url = _resolve_avatar_url(member)
@@ -126,7 +126,7 @@ class GreetingService:
             username=member.display_name,
             avatar_url=avatar_url,
             guild_name=member.guild.name,
-            member_count=member.guild.member_count,
+            member_count=member.guild.member_count or 0,
             card_type="welcome",
         )
 
@@ -167,7 +167,7 @@ class GreetingService:
             return
 
         if not config.goodbye_card_enabled:
-            await _send_text_only_if_message(channel, config.goodbye_message or "", member)
+            await _send_text_only_if_message(channel, config.goodbye_message or "", member)  # type: ignore[arg-type]  # guild.get_channel returns broader union; text channel guaranteed by guild config
             return
 
         avatar_url = _resolve_avatar_url(member)
@@ -176,7 +176,7 @@ class GreetingService:
             username=member.display_name,
             avatar_url=avatar_url,
             guild_name=member.guild.name,
-            member_count=member.guild.member_count,
+            member_count=member.guild.member_count or 0,
             card_type="goodbye",
         )
 
@@ -199,7 +199,7 @@ class GreetingService:
 # ------------------------------------------------------------------
 
 
-def _format_template(template: str, member) -> str:
+def _format_template(template: str, member: discord.Member) -> str:
     """Format a message template string with member placeholders.
 
     Supported placeholders: ``{mention}``, ``{user}``, ``{server}``.
@@ -215,7 +215,9 @@ def _format_template(template: str, member) -> str:
         return template
 
 
-async def _send_text_only_if_message(channel, message_template: str, member) -> None:
+async def _send_text_only_if_message(
+    channel: discord.abc.Messageable, message_template: str, member: discord.Member,
+) -> None:
     """Send a formatted text-only message to *channel* when the template is set.
 
     Used by the card-disabled path: no file is attached, and nothing is sent
@@ -226,7 +228,7 @@ async def _send_text_only_if_message(channel, message_template: str, member) -> 
         await channel.send(content=content)
 
 
-def _resolve_avatar_url(member) -> str | None:
+def _resolve_avatar_url(member: discord.Member) -> str | None:
     """Return the display avatar URL for *member*, or ``None`` on failure."""
     try:
         return str(member.display_avatar.url)

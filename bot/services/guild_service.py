@@ -13,7 +13,7 @@ Also updates ``bot._guild_mod_role_cache`` so ``is_mod()`` checks in
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from bot.constants import FALLBACK_PREFIX
 from bot.core.i18n import set_guild_language
@@ -72,14 +72,14 @@ class GuildService:
         cached = self._cache.get(cache_key)
         if cached is not None:
             logger.debug("GuildService cache HIT for guild %s", guild_id)
-            set_guild_language(guild_id, cached.language)
-            return cached
+            config = cast(GuildConfig, cached)
+            set_guild_language(guild_id, config.language)
+            return config
 
         # --- cache miss → DB ---
         logger.debug("GuildService cache MISS for guild %s — fetching from DB", guild_id)
         row = await self._db.get_guild(guild_id)
 
-        config: GuildConfig
         if row is not None:
             config = GuildConfig.from_db_row(row)
         else:
