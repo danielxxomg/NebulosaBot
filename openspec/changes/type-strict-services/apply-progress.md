@@ -69,3 +69,23 @@
 - `uv run mypy bot` — **Success: no issues found in 65 source files**
 - `uv run pytest tests/test_mypy_config.py` — **5 passed**
 - `uv run pytest` — **1376 passed, 3 skipped, 0 warnings**
+
+## Warning Fixes (post-verify)
+
+### W1 — Ruff E501 line-length
+- `bot/services/economy_service.py:274` — broke `get_leaderboard` signature across lines (130 → ≤120 chars)
+- `bot/services/ticket_service.py:558` — broke `_resolve_ticket_category` signature across lines (123 → ≤120 chars)
+- `uv run ruff check` on both files: **All checks passed**
+
+### W2 — Document extra greeting_service.py type:ignore suppressions
+`greeting_service.py:120,170` each carry `# type: ignore[arg-type]` with inline rationale:
+> "guild.get_channel returns broader union; text channel guaranteed by guild config"
+
+These two suppressions are beyond the four originally planned in design.md
+(logging_service ×2 `arg-type`, image_service ×2 `attr-defined`). They are
+narrow and necessary: `guild.get_channel()` returns `abc.GuildChannel | None`
+but the greeting config guarantees a text channel at runtime. The design's
+four-ignore plan covered stub limitations only; these two cover the discord.py
+API's broader return type, which is a distinct suppression category. No code
+change required — the rationale is already in the inline comments; this note
+completes the artifact trail.
