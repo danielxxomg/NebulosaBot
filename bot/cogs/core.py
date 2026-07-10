@@ -45,7 +45,7 @@ class CoreCog(commands.Cog, name="Core"):
     # Commands
     # ==================================================================
 
-    @commands.hybrid_command(name="ping", description="Show the bot's WebSocket latency.")
+    @commands.hybrid_command(name="ping", description="Show the bot's WebSocket latency.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
     async def ping(self, ctx: NebulosaContext) -> None:
         """Reply with the current gateway latency in milliseconds."""
         guild_id = ctx.guild.id if ctx.guild else None
@@ -57,7 +57,7 @@ class CoreCog(commands.Cog, name="Core"):
         )
         await ctx.send(embed=embed, ephemeral=True)
 
-    @commands.hybrid_command(
+    @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
         name="status",
         description="Show database and cache health.",
     )
@@ -136,7 +136,7 @@ class CoreCog(commands.Cog, name="Core"):
         )
         await ctx.send(embed=embed, ephemeral=True)
 
-    @commands.hybrid_command(
+    @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
         name="help",
         description="Show available commands grouped by module.",
     )

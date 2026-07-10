@@ -79,7 +79,7 @@ def sentinel_cog(sentinel_bot) -> SentinelCog:
 @pytest.fixture
 def mod_author() -> MagicMock:
     """Return a mock moderator with a known ID."""
-    m = MagicMock()
+    m = MagicMock(spec=discord.Member)
     m.id = 111111111
     m.mention = "<@111111111>"
     m.name = "TestMod"

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import discord
 from discord import app_commands
@@ -51,8 +51,8 @@ class StellarCog(commands.Cog, name="Stellar"):
     # /daily
     # ------------------------------------------------------------------
 
-    @commands.hybrid_command(name="daily", description="Claim your daily coin reward.")
-    async def daily(self, ctx: commands.Context) -> None:  # type: ignore[override]
+    @commands.hybrid_command(name="daily", description="Claim your daily coin reward.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    async def daily(self, ctx: commands.Context[Any]) -> None:
         """Claim the daily coin reward with streak tracking."""
         guild_id = str(ctx.guild.id) if ctx.guild else ""
         user_id = str(ctx.author.id)
@@ -92,11 +92,11 @@ class StellarCog(commands.Cog, name="Stellar"):
     # /coins
     # ------------------------------------------------------------------
 
-    @commands.hybrid_command(name="coins", description="Check your coin balance or someone else's.")
+    @commands.hybrid_command(name="coins", description="Check your coin balance or someone else's.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
     @app_commands.describe(member="The member to check (defaults to yourself)")
     async def coins(
         self,
-        ctx: commands.Context,
+        ctx: commands.Context[Any],
         member: discord.Member | None = None,
     ) -> None:
         """Show the coin balance for yourself or a target member."""
@@ -129,14 +129,14 @@ class StellarCog(commands.Cog, name="Stellar"):
     # /leaderboard
     # ------------------------------------------------------------------
 
-    @commands.hybrid_command(
+    @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
         name="leaderboard",
         description="View the server leaderboard by XP or coins.",
     )
     @app_commands.describe(lb_type="Leaderboard type: 'xp' or 'coins' (default: xp)")
     async def leaderboard(
         self,
-        ctx: commands.Context,
+        ctx: commands.Context[Any],
         lb_type: str = "xp",
     ) -> None:
         """Display the top-10 leaderboard for XP or coins."""
@@ -191,14 +191,14 @@ class StellarCog(commands.Cog, name="Stellar"):
     # /rank
     # ------------------------------------------------------------------
 
-    @commands.hybrid_command(
+    @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
         name="rank",
         description="View your rank card or someone else's.",
     )
     @app_commands.describe(member="The member to check (defaults to yourself)")
     async def rank(
         self,
-        ctx: commands.Context,
+        ctx: commands.Context[Any],
         member: discord.Member | None = None,
     ) -> None:
         """Generate and send a rank card for yourself or a target member."""
