@@ -21,6 +21,8 @@ NebulosaBot es un bot de Discord con **8 módulos** y **47 comandos** (slash + p
 
 **Formato de comandos**: todos son híbridos — funcionan como slash (`/comando`) y como prefijo (configurable por servidor). El bot soporta español e inglés para las respuestas en tiempo real; los nombres de comandos y sus descripciones en Discord permanecen en inglés.
 
+**Identidad visual**: los embeds del bot usan una paleta púrpura/violeta como color principal. El avatar del bot aparece como ícono en el pie de los embeds cuando está disponible; si el servidor tiene ícono propio, los embeds de contexto (logs, tickets) usan el ícono del servidor con fallback al del bot.
+
 **Ayuda en vivo**: usa `/help` para listar todos los módulos disponibles, o `/help <módulo>` para ver los comandos de un módulo específico. Este manual es una guía de referencia; `/help` es siempre la fuente de verdad sobre comandos registrados.
 
 ---
@@ -225,13 +227,14 @@ Los sub-tickets permiten derivar un ticket secundario vinculado a uno principal.
 | Crear sub-ticket (canal actual) | `/subticket create` | Nuevo ticket vinculado al ticket del canal actual |
 | Crear sub-ticket (por ID) | `/subticket create <parent_uuid>` | Nuevo ticket vinculado al ticket especificado |
 
-#### Reabrir, transferir y notas
+#### Reabrir, transferir, unclaim y notas
 
 | Tarea | Comando | Resultado |
 |-------|---------|-----------|
 | Reabrir ticket (canal actual) | `/reopen` | Reabre el ticket cerrado de este canal |
 | Reabrir ticket (por referencia) | `/reopen #0003` | Reabre por número, UUID o referencia |
 | Transferir ticket | `/transfer @staff` | Transfiere la propiedad del ticket a otro staff |
+| Liberar ticket | `/unclaim` | Devuelve el ticket a estado abierto (solo el claimer o moderadores) |
 | Agregar nota | `/note add "texto de la nota"` | Nota privada visible solo para mods |
 | Listar notas | `/note list` | Lista todas las notas del ticket (por DM o ephemeral) |
 | Eliminar nota | `/note delete <uuid>` | Elimina una nota específica |
@@ -323,6 +326,7 @@ Los tickets sin actividad por **48 horas** se cierran automáticamente. El bot r
 | `/configure_fields set` | `<uuid_cat> <json_campos>` | Mod | Define campos personalizados |
 | `/subticket create` | `[uuid_padre]` | Mod | Crea sub-ticket vinculado |
 | `/reopen` | `[referencia]` | Mod | Reabre ticket cerrado |
+| `/unclaim` | — | Mod | Libera el ticket (claimer o mods) |
 | `/transfer` | `<@staff>` | Mod | Transfiere ticket |
 | `/note add` | `<contenido>` | Mod | Agrega nota privada |
 | `/note list` | — | Mod | Lista notas del ticket |
@@ -387,10 +391,36 @@ Cada categoría puede definir campos que aparecen en el modal de apertura:
 |--------|---------|-------------|
 | **Claim** | Interacción con botón | El staff toma propiedad del ticket |
 | **Transferir** | `/transfer @otro_staff` | Cambia el responsable del ticket |
-| **Cerrar** | Interacción con botón | Cierra el ticket (archiva el canal) |
+| **Unclaim** | `/unclaim` | Libera el ticket reclamado (el claimer o cualquier mod) |
+| **Cerrar** | Interacción con botón | Cierra el ticket con confirmación ephemeral |
 | **Reabrir** | `/reopen` o `/reopen #0003` | Restaura un ticket cerrado |
 | **Nota** | `/note add "texto"` | Nota privada solo visible para mods |
 | **Sub-ticket** | `/subticket create` | Deriva un ticket secundario vinculado |
+
+### Cierre de tickets — confirmación y cuenta regresiva
+
+Al hacer clic en el botón **Cerrar**, el bot muestra un **diálogo de confirmación ephemeral** (solo visible para quien hizo clic) con opciones de Confirmar y Cancelar:
+
+- **Confirmar**: el bot genera el transcript, cierra el ticket en la base de datos, envía un único mensaje con el número **5** y lo edita secuenciando 5 → 4 → 3 → 2 → 1 (un segundo entre cada edición). Al llegar a 1, espera un segundo más y elimina el canal.
+- **Cancelar** o **cerrar el diálogo**: el ticket permanece abierto, sin cambios.
+- **Ignorar** (dejar que el diálogo expire a los 30 segundos): equivale a cancelar — el ticket no se cierra.
+
+El cierre automático (48 horas sin actividad) elimina el canal silenciosamente, sin cuenta regresiva.
+
+### Claim sobre ticket ya reclamado — transferencia
+
+Si un moderador hace clic en **Claim** en un ticket que ya tiene un responsable, el bot muestra un diálogo de confirmación ephemeral indicando quién es el claimer actual. Al confirmar, el ticket se transfiere al nuevo moderador. Al cancelar, no se realizan cambios.
+
+### Formato de nombres de canal
+
+Los canales de ticket siguen el formato `{category}-{username}-{number}` (categoría-usuario-número):
+
+- `soporte-danielxx-0042` — categoría "Soporte", usuario "DanielXX", ticket #42.
+- `técnico-alice-0007` — categoría "Técnico", usuario "Alice", ticket #7.
+
+El formato se aplica a: creación inicial, reapertura, sub-tickets y renombrado post-creación. Los caracteres especiales se sanitizan (tildes se eliminan, espacios se convierten en guiones, caracteres no alfanuméricos se eliminan). Si el nombre excede 100 caracteres, se trunca preservando el sufijo `-{número}`.
+
+Cuando el usuario o la categoría no pueden resolverse (por ejemplo, al reabrir un ticket cuyo autor ya no está en el servidor), se usan los valores por defecto `ticket` (categoría) y `user` (usuario).
 
 ### Sub-tickets
 
