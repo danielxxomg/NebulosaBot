@@ -95,23 +95,28 @@ def _category_row() -> dict:
 
 @pytest.fixture
 def ticket_bot(mock_db) -> MagicMock:
-    """Return a mock NebulosaBot for tickets tests."""
+    """Return a mock NebulosaBot for tickets tests.
+
+    All AsyncMock children have explicit ``return_value`` because
+    ``AsyncMock().return_value`` is itself an ``AsyncMock`` — calling
+    ``.get()`` on that implicit child creates an unawaited coroutine.
+    """
     bot = MagicMock()
     bot.db = mock_db
     bot.ticket_service = MagicMock()
-    bot.ticket_service.create_ticket = AsyncMock()
-    bot.ticket_service.close_ticket = AsyncMock()
+    bot.ticket_service.create_ticket = AsyncMock(return_value=None)
+    bot.ticket_service.close_ticket = AsyncMock(return_value=None)
     bot.ticket_service.close_ticket_full = AsyncMock(return_value=None)
-    bot.ticket_service.claim_ticket = AsyncMock()
-    bot.ticket_service.get_stale_tickets = AsyncMock()
+    bot.ticket_service.claim_ticket = AsyncMock(return_value=None)
+    bot.ticket_service.get_stale_tickets = AsyncMock(return_value=[])
     bot.ticket_service.is_ticket_channel = MagicMock(return_value=False)
     bot.ticket_service.sync_channel_cache = MagicMock()
-    bot.ticket_service.create_ticket_channel = AsyncMock()
+    bot.ticket_service.create_ticket_channel = AsyncMock(return_value=None)
     bot.transcript_service = MagicMock()
-    bot.transcript_service.generate = AsyncMock()
-    bot.transcript_service.upload = AsyncMock()
+    bot.transcript_service.generate = AsyncMock(return_value=None)
+    bot.transcript_service.upload = AsyncMock(return_value=None)
     bot.guild_service = MagicMock()
-    bot.guild_service.get_config = AsyncMock()
+    bot.guild_service.get_config = AsyncMock(return_value=None)
     bot.guilds = []
     return bot
 
