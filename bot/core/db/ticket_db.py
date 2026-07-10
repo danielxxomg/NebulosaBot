@@ -186,6 +186,47 @@ class TicketDBMixin:
         rows = _unwrap(response)
         return [r["channelId"] for r in rows]
 
+    async def count_user_open_tickets_in_category(
+        self: Any,
+        guild_id: str,
+        author_id: str,
+        category_id: str,
+        *,
+        exclude_ticket_id: str | None = None,
+    ) -> int:
+        """Return the number of open/claimed tickets for *author_id* in *category_id*.
+
+        Uses ``count="exact"`` to avoid fetching all rows — the server
+        returns the count directly.  Scoped by *guild_id* so one guild
+        cannot see another guild's ticket counts.
+
+        When *exclude_ticket_id* is provided, that ticket is excluded from
+        the count (used on the edit path so the ticket being edited does not
+        count against itself).
+        """
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        logger.debug(
+            "DB count_user_open_tickets_in_category(%s, %s, %s, exclude=%s)",
+            guild_id,
+            author_id,
+            category_id,
+            exclude_ticket_id,
+        )
+        query = (
+            self._client.table("ticket")
+            .select("id", count="exact")
+            .eq("guildId", guild_id)
+            .eq("authorId", author_id)
+            .eq("categoryId", category_id)
+            .in_("status", ["open", "claimed"])
+        )
+        if exclude_ticket_id is not None:
+            query = query.neq("id", exclude_ticket_id)
+        response = await query.execute()
+        return response.count or 0
+
     async def update_ticket_last_activity(self: Any, guild_id: str, channel_id: str, timestamp: str) -> None:
         """Set ``lastActivity`` for the ticket with the given channel ID in a guild.
 

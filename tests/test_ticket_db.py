@@ -195,3 +195,105 @@ class TestUpdateTicketLastActivity:
         """Raises RuntimeError when not connected."""
         with pytest.raises(RuntimeError, match="connect"):
             await disconnected_db.update_ticket_last_activity("g1", "ch-001", "2024-06-15T12:00:00+00:00")
+
+
+# ===========================================================================
+# count_user_open_tickets_in_category — per-author category count
+# ===========================================================================
+
+
+class TestCountUserOpenTicketsInCategory:
+    """count_user_open_tickets_in_category(guild_id, author_id, category_id) — 4 filters + exclude."""
+
+    @pytest.mark.asyncio
+    async def test_returns_count(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """Returns the count of matching open/claimed tickets."""
+        rows = [{"id": "t1"}, {"id": "t2"}]
+        fake_client.set_table_data("ticket", rows)
+
+        result = await db.count_user_open_tickets_in_category("g1", "userA", "cat-Support")
+
+        assert result == 2
+
+    @pytest.mark.asyncio
+    async def test_returns_zero_when_none(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """Returns 0 when no matching tickets exist."""
+        fake_client.set_table_data("ticket", [])
+
+        result = await db.count_user_open_tickets_in_category("g1", "userA", "cat-Support")
+
+        assert result == 0
+
+    @pytest.mark.asyncio
+    async def test_filters_by_guild_id(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """Applies eq('guildId', ...) filter."""
+        fake_client.set_table_data("ticket", [])
+
+        await db.count_user_open_tickets_in_category("g42", "userA", "cat-Support")
+
+        filters = fake_client.get_table_filters("ticket")
+        assert ("eq", "guildId", "g42") in filters, f"Missing guildId filter, got: {filters}"
+
+    @pytest.mark.asyncio
+    async def test_filters_by_author_id(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """Applies eq('authorId', ...) filter."""
+        fake_client.set_table_data("ticket", [])
+
+        await db.count_user_open_tickets_in_category("g1", "user99", "cat-Support")
+
+        filters = fake_client.get_table_filters("ticket")
+        assert ("eq", "authorId", "user99") in filters, f"Missing authorId filter, got: {filters}"
+
+    @pytest.mark.asyncio
+    async def test_filters_by_category_id(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """Applies eq('categoryId', ...) filter."""
+        fake_client.set_table_data("ticket", [])
+
+        await db.count_user_open_tickets_in_category("g1", "userA", "cat-Billing")
+
+        filters = fake_client.get_table_filters("ticket")
+        assert ("eq", "categoryId", "cat-Billing") in filters, f"Missing categoryId filter, got: {filters}"
+
+    @pytest.mark.asyncio
+    async def test_filters_by_status(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """Applies in_('status', ['open', 'claimed']) filter."""
+        fake_client.set_table_data("ticket", [])
+
+        await db.count_user_open_tickets_in_category("g1", "userA", "cat-Support")
+
+        filters = fake_client.get_table_filters("ticket")
+        assert ("in_", "status", ["open", "claimed"]) in filters, f"Missing status filter, got: {filters}"
+
+    @pytest.mark.asyncio
+    async def test_exclude_ticket_id_filters_out_ticket(
+        self, db: Database, fake_client: FakeSupabaseClient
+    ) -> None:
+        """When exclude_ticket_id is set, applies ne('id', ...) or neq filter."""
+        fake_client.set_table_data("ticket", [{"id": "t1"}])
+
+        await db.count_user_open_tickets_in_category(
+            "g1", "userA", "cat-Support", exclude_ticket_id="t-exclude"
+        )
+
+        filters = fake_client.get_table_filters("ticket")
+        neq_filters = [f for f in filters if f[0] in ("neq", "ne", "not.eq")]
+        assert len(neq_filters) >= 1, f"Expected neq filter for exclude_ticket_id, got: {filters}"
+        assert neq_filters[0][1] == "id"
+        assert neq_filters[0][2] == "t-exclude"
+
+    @pytest.mark.asyncio
+    async def test_no_exclude_when_not_provided(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """Without exclude_ticket_id, no neq filter is applied."""
+        fake_client.set_table_data("ticket", [])
+
+        await db.count_user_open_tickets_in_category("g1", "userA", "cat-Support")
+
+        filters = fake_client.get_table_filters("ticket")
+        neq_filters = [f for f in filters if f[0] in ("neq", "ne", "not.eq")]
+        assert len(neq_filters) == 0, f"Unexpected neq filter, got: {filters}"
+
+    @pytest.mark.asyncio
+    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
+        """Raises RuntimeError when not connected."""
+        with pytest.raises(RuntimeError, match="connect"):
+            await disconnected_db.count_user_open_tickets_in_category("g1", "userA", "cat-Support")
