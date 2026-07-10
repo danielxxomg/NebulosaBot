@@ -46,6 +46,8 @@ def mock_db() -> AsyncMock:
     # PR1 audit + dedup DB methods (wired by PR2 service integration).
     db.insert_audit_row = AsyncMock(return_value={})
     db.get_recent_notes_for_dedup = AsyncMock(return_value=[])
+    # PR4 channel naming: category lookup for reopen.
+    db.get_ticket_category = AsyncMock(return_value=None)
     return db
 
 
@@ -1577,7 +1579,7 @@ async def test_reopen_deleted_category_raises_typed_exception(
 # ===========================================================================
 
 
-def _mock_guild_for_channel(*, channel_name: str = "ticket-0001", channel_id: int = 999999999) -> MagicMock:
+def _mock_guild_for_channel(*, channel_name: str = "support-testuser-0001", channel_id: int = 999999999) -> MagicMock:
     """Return a mock guild wired for create_ticket_channel."""
     guild = MagicMock()
     guild.id = 123456789
@@ -1596,6 +1598,7 @@ def _mock_author() -> MagicMock:
     author = MagicMock(spec=discord.Member)
     author.id = 111111111
     author.__str__ = MagicMock(return_value="TestUser#0001")
+    author.display_name = "TestUser"
     return author
 
 
@@ -1606,19 +1609,22 @@ async def test_create_ticket_channel_creates_channel_and_inserts(
     ticket_row: dict,
 ) -> None:
     """create_ticket_channel MUST create a Discord channel AND insert a ticket row."""
-    guild = _mock_guild_for_channel()
+    guild = _mock_guild_for_channel(channel_name="support-testuser-0001")
     category = MagicMock(spec=discord.CategoryChannel)
     author = _mock_author()
 
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1}
 
-    channel, ticket = await service.create_ticket_channel(guild, category, author, "ticket-0001", guild_id="123456789")
+    channel, ticket = await service.create_ticket_channel(
+        guild, category, author, guild_id="123456789", category_name="Support",
+    )
 
     # Channel created with correct overwrites.
     guild.create_text_channel.assert_awaited_once()
     create_kwargs = guild.create_text_channel.call_args.kwargs
     assert create_kwargs["category"] is category
+    assert create_kwargs["name"] == "support-testuser-0001"
 
     # Ticket inserted via create_ticket (DB called).
     mock_db.insert_ticket.assert_awaited_once()
@@ -1640,18 +1646,20 @@ async def test_create_ticket_channel_renames_if_number_differs(
     ticket_row: dict,
 ) -> None:
     """When tentative name differs from actual ticket number, channel MUST be renamed."""
-    # Channel created with tentative name "ticket-0001" but DB returns ticketNumber=42.
-    guild = _mock_guild_for_channel(channel_name="ticket-0001")
+    # Channel created with tentative name "support-testuser-0001" but DB returns ticketNumber=42.
+    guild = _mock_guild_for_channel(channel_name="support-testuser-0001")
     category = MagicMock(spec=discord.CategoryChannel)
     author = _mock_author()
 
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 42}
 
-    channel, ticket = await service.create_ticket_channel(guild, category, author, "ticket-0001", guild_id="123456789")
+    channel, ticket = await service.create_ticket_channel(
+        guild, category, author, guild_id="123456789", category_name="Support",
+    )
 
     # Channel renamed to match actual ticket number.
-    channel.edit.assert_awaited_once_with(name="ticket-0042")
+    channel.edit.assert_awaited_once_with(name="support-testuser-0042")
     assert ticket.ticket_number == 42
 
 
@@ -1662,14 +1670,16 @@ async def test_create_ticket_channel_no_rename_if_name_matches(
     ticket_row: dict,
 ) -> None:
     """When tentative name matches actual ticket number, no rename is needed."""
-    guild = _mock_guild_for_channel(channel_name="ticket-0001")
+    guild = _mock_guild_for_channel(channel_name="support-testuser-0001")
     category = MagicMock(spec=discord.CategoryChannel)
     author = _mock_author()
 
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1}
 
-    channel, ticket = await service.create_ticket_channel(guild, category, author, "ticket-0001", guild_id="123456789")
+    channel, ticket = await service.create_ticket_channel(
+        guild, category, author, guild_id="123456789", category_name="Support",
+    )
 
     # No rename needed.
     channel.edit.assert_not_awaited()
@@ -1691,7 +1701,7 @@ async def test_create_ticket_channel_passes_category_id(
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1, "categoryId": "cat-uuid-001"}
 
     _channel, _ticket = await service.create_ticket_channel(
-        guild, category, author, "ticket-0001", guild_id="123456789", category_id="cat-uuid-001"
+        guild, category, author, guild_id="123456789", category_name="Support", category_id="cat-uuid-001",
     )
 
     insert_kwargs = mock_db.insert_ticket.call_args.kwargs
@@ -1721,8 +1731,8 @@ async def test_create_ticket_channel_forwards_subject_and_description(
         guild,
         category,
         author,
-        "ticket-0001",
         guild_id="123456789",
+        category_name="Support",
         subject="Login broken",
         description="Cannot access since Monday",
     )
@@ -1801,7 +1811,7 @@ async def test_create_ticket_channel_forwards_custom_fields(
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1, "customFields": cf}
 
     _channel, ticket = await service.create_ticket_channel(
-        guild, category, author, "ticket-0001", guild_id="123456789", custom_fields=cf
+        guild, category, author, guild_id="123456789", category_name="Support", custom_fields=cf
     )
 
     insert_kwargs = mock_db.insert_ticket.call_args.kwargs
@@ -1824,12 +1834,173 @@ async def test_create_ticket_channel_without_custom_fields(
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1, "customFields": None}
 
     _channel, ticket = await service.create_ticket_channel(
-        guild, category, author, "ticket-0001", guild_id="123456789"
+        guild, category, author, guild_id="123456789", category_name="Support"
     )
 
     insert_kwargs = mock_db.insert_ticket.call_args.kwargs
     assert insert_kwargs["custom_fields"] is None
     assert ticket.custom_fields is None
+
+
+# ===========================================================================
+# PR4 — channel naming: sanitize_channel_name wiring
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_create_ticket_channel_uses_sanitized_name(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """create_ticket_channel MUST use sanitize_channel_name for the channel name."""
+    guild = _mock_guild_for_channel(channel_name="soporte-testuser-0001")
+    category = MagicMock(spec=discord.CategoryChannel)
+    author = _mock_author()
+
+    mock_db.get_max_ticket_number.return_value = 0
+    mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1}
+
+    channel, ticket = await service.create_ticket_channel(
+        guild, category, author, guild_id="123456789", category_name="Soporte",
+    )
+
+    # Channel created with sanitized name.
+    create_kwargs = guild.create_text_channel.call_args.kwargs
+    assert create_kwargs["name"] == "soporte-testuser-0001"
+
+
+@pytest.mark.asyncio
+async def test_create_ticket_channel_renames_with_sanitized_actual(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """When tentative != actual, rename MUST use sanitized format."""
+    guild = _mock_guild_for_channel(channel_name="soporte-testuser-0001")
+    category = MagicMock(spec=discord.CategoryChannel)
+    author = _mock_author()
+
+    mock_db.get_max_ticket_number.return_value = 0
+    mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 42}
+
+    channel, ticket = await service.create_ticket_channel(
+        guild, category, author, guild_id="123456789", category_name="Soporte",
+    )
+
+    # Channel renamed to sanitized actual name.
+    channel.edit.assert_awaited_once_with(name="soporte-testuser-0042")
+    assert ticket.ticket_number == 42
+
+
+@pytest.mark.asyncio
+async def test_reopen_uses_sanitized_channel_name(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """reopen_ticket MUST use sanitize_channel_name with resolved category + author."""
+    ticket_id = "ticket-uuid-003"
+    closed_row = _closed_ticket_row()
+    reopened_row = {
+        **closed_row,
+        "channelId": "555555555",
+        "status": "open",
+        "closedAt": None,
+    }
+
+    mock_db.get_ticket.side_effect = [closed_row, reopened_row]
+    mock_db.get_guild.return_value = {
+        "id": "123456789",
+        "ticketCategoryId": "100000000",
+        "modRoleId": None,
+    }
+    # Category lookup returns a name.
+    mock_db.get_ticket_category = AsyncMock(return_value={"name": "Soporte", "id": "cat-uuid-001"})
+
+    category_channel = MagicMock(spec=discord.CategoryChannel)
+    guild = _mock_guild_for_reopen(category_channel=category_channel)
+    # Author member with display name.
+    author_member = MagicMock()
+    author_member.display_name = "DanielXX"
+    guild.get_member = MagicMock(return_value=author_member)
+
+    await service.reopen_ticket(ticket_id, guild=guild)
+
+    # Channel created with sanitized name.
+    guild.create_text_channel.assert_awaited_once()
+    create_kwargs = guild.create_text_channel.call_args.kwargs
+    assert create_kwargs["name"] == "soporte-danielxx-0003"
+
+
+@pytest.mark.asyncio
+async def test_reopen_fallback_when_category_not_found(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """When category lookup fails, reopen MUST fall back to 'ticket' prefix."""
+    ticket_id = "ticket-uuid-003"
+    closed_row = _closed_ticket_row()
+    reopened_row = {
+        **closed_row,
+        "channelId": "555555555",
+        "status": "open",
+        "closedAt": None,
+    }
+
+    mock_db.get_ticket.side_effect = [closed_row, reopened_row]
+    mock_db.get_guild.return_value = {
+        "id": "123456789",
+        "ticketCategoryId": "100000000",
+        "modRoleId": None,
+    }
+    # Category lookup returns None (not found).
+    mock_db.get_ticket_category = AsyncMock(return_value=None)
+
+    category_channel = MagicMock(spec=discord.CategoryChannel)
+    guild = _mock_guild_for_reopen(category_channel=category_channel)
+    guild.get_member = MagicMock(return_value=None)
+
+    await service.reopen_ticket(ticket_id, guild=guild)
+
+    guild.create_text_channel.assert_awaited_once()
+    create_kwargs = guild.create_text_channel.call_args.kwargs
+    # Fallback: ticket-user-0003
+    assert create_kwargs["name"] == "ticket-user-0003"
+
+
+@pytest.mark.asyncio
+async def test_reopen_fallback_when_author_not_in_guild(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """When author member is not found, reopen MUST fall back to 'user'."""
+    ticket_id = "ticket-uuid-003"
+    closed_row = _closed_ticket_row()
+    reopened_row = {
+        **closed_row,
+        "channelId": "555555555",
+        "status": "open",
+        "closedAt": None,
+    }
+
+    mock_db.get_ticket.side_effect = [closed_row, reopened_row]
+    mock_db.get_guild.return_value = {
+        "id": "123456789",
+        "ticketCategoryId": "100000000",
+        "modRoleId": None,
+    }
+    mock_db.get_ticket_category = AsyncMock(return_value={"name": "Soporte", "id": "cat-uuid-001"})
+
+    category_channel = MagicMock(spec=discord.CategoryChannel)
+    guild = _mock_guild_for_reopen(category_channel=category_channel)
+    # Author not found in guild.
+    guild.get_member = MagicMock(return_value=None)
+
+    await service.reopen_ticket(ticket_id, guild=guild)
+
+    guild.create_text_channel.assert_awaited_once()
+    create_kwargs = guild.create_text_channel.call_args.kwargs
+    assert create_kwargs["name"] == "soporte-user-0003"
 
 
 # ===========================================================================

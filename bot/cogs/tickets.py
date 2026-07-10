@@ -481,19 +481,23 @@ class TicketsCog(commands.Cog, name="Tickets"):
         if config.mod_role_id:
             with contextlib.suppress(ValueError, TypeError):
                 mod_role = guild.get_role(int(config.mod_role_id))
-        try:
-            tmax = await self.bot.db.get_max_ticket_number(gid)
-        except Exception:
-            logger.exception("Failed to fetch max ticket number")
-            await ctx.send(embed=_err(gid, "tickets.subticket.number_failed"))
-            return
+        # Resolve parent's category name for channel naming.
+        sub_cat_name = "ticket"
+        parent_cat_id = parent_row.get("categoryId")
+        if parent_cat_id:
+            try:
+                cat_row = await self.bot.db.get_ticket_category(parent_cat_id)
+                if cat_row is not None:
+                    sub_cat_name = cat_row.get("name", "ticket")
+            except Exception:
+                logger.warning("Failed to resolve parent category %s for subticket naming", parent_cat_id)
         try:
             channel, subticket = await self.bot.ticket_service.create_ticket_channel(
                 guild,
                 cat_ch,
                 parent_owner,
-                f"ticket-{tmax + 1:04d}",
                 guild_id=gid,
+                category_name=sub_cat_name,
                 parent_id=pid,
                 mod_role=mod_role,
             )
@@ -505,10 +509,6 @@ class TicketsCog(commands.Cog, name="Tickets"):
             logger.exception("Failed to create sub-ticket in DB (parent=%s)", pid)
             await ctx.send(embed=_err(gid, "tickets.subticket.creation_failed"))
             return
-        actual = f"ticket-{subticket.ticket_number:04d}"
-        if channel.name != actual:
-            with contextlib.suppress(discord.HTTPException):
-                await channel.edit(name=actual)
         await channel.send(content=parent_owner.mention, embed=build_ticket_embed(subticket, guild_id=gid))
         await ctx.send(embed=_ok(gid, "tickets.subticket.success", channel=channel.mention))
         logger.info(

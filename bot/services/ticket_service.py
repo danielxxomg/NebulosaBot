@@ -568,12 +568,40 @@ class TicketService:
             except (ValueError, TypeError):
                 pass
 
-        # Channel name from the existing ticket number (kept stable on reopen).
+        # Channel name from sanitized category + author + ticket number.
+        from bot.utils.ticket_helpers import sanitize_channel_name
+
         ticket_number = closed_row.get("ticketNumber", 0)
         try:
-            channel_name = f"ticket-{int(ticket_number):04d}"
+            ticket_number = int(ticket_number)
         except (TypeError, ValueError):
-            channel_name = "ticket"
+            ticket_number = 0
+
+        # Resolve category name from the ticket's categoryId (UUID).
+        category_name = "ticket"
+        ticket_category_id = closed_row.get("categoryId")
+        if ticket_category_id:
+            try:
+                cat_row = await self._db.get_ticket_category(ticket_category_id)
+                if cat_row is not None:
+                    category_name = cat_row.get("name", "ticket")
+            except Exception:
+                logger.warning(
+                    "Failed to resolve ticket category %s for reopen naming",
+                    ticket_category_id,
+                )
+
+        # Resolve author display name (fallback: "user").
+        display_name = "user"
+        if author_id:
+            try:
+                member = guild.get_member(int(author_id))
+                if member is not None:
+                    display_name = member.display_name
+            except (ValueError, TypeError):
+                pass
+
+        channel_name = sanitize_channel_name(category_name, display_name, ticket_number)
 
         new_channel = await guild.create_text_channel(
             name=channel_name,
@@ -819,9 +847,9 @@ class TicketService:
         guild: discord.Guild,
         category: discord.CategoryChannel,
         author: discord.Member,
-        channel_name: str,
         *,
         guild_id: str,
+        category_name: str,
         category_id: str | None = None,
         mod_role: discord.Role | None = None,
         parent_id: str | None = None,
@@ -838,6 +866,9 @@ class TicketService:
         *parent_id* is provided), and renames the channel to match the
         actual ticket number if it differs from the tentative name.
 
+        Channel names follow the ``{category}-{username}-{number}`` format
+        via :func:`~bot.utils.ticket_helpers.sanitize_channel_name`.
+
         When *parent_id* is set, the ticket row is created via
         :meth:`create_subticket` which enforces parentId invariants
         (existence, no self-reference, depth ≤ 1, same guild).  On
@@ -847,8 +878,8 @@ class TicketService:
             guild: The Discord guild.
             category: The category channel to create the ticket under.
             author: The member who opened the ticket.
-            channel_name: Tentative name for the new channel (e.g. ``ticket-0001``).
             guild_id: Discord guild snowflake for the ticket row.
+            category_name: Ticket category label (e.g. ``"Soporte"``).
             category_id: Optional ticket_category UUID (label, not a channel).
             mod_role: Optional moderator role to grant access.
             parent_id: Optional parent ticket UUID for sub-ticket creation.
@@ -862,6 +893,14 @@ class TicketService:
             ValueError: If parent_id validation fails.
             RuntimeError: If ticket insert retries are exhausted.
         """
+        from bot.utils.ticket_helpers import sanitize_channel_name
+
+        # Compute tentative channel name from DB max + 1.
+        tentative_max = await self._db.get_max_ticket_number(guild_id)
+        tentative_name = sanitize_channel_name(
+            category_name, author.display_name, tentative_max + 1,
+        )
+
         overwrites: dict[
             discord.Role | discord.Member | discord.Object,
             discord.PermissionOverwrite,
@@ -874,7 +913,7 @@ class TicketService:
             overwrites[mod_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
 
         channel = await guild.create_text_channel(
-            name=channel_name,
+            name=tentative_name,
             category=category,
             overwrites=overwrites,
             reason=f"Ticket opened by {author}",
@@ -906,7 +945,9 @@ class TicketService:
                 await channel.delete(reason="Ticket row creation failed")
             raise
 
-        actual_name = f"ticket-{ticket.ticket_number:04d}"
+        actual_name = sanitize_channel_name(
+            category_name, author.display_name, ticket.ticket_number,
+        )
         if channel.name != actual_name:
             try:
                 await channel.edit(name=actual_name)
