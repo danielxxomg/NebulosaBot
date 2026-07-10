@@ -74,6 +74,7 @@ async def _create_ticket_after_modal(
     interaction: discord.Interaction,
     guild: discord.Guild,
     category_id: str,
+    category_name: str,
     subject: str | None,
     description: str | None,
     *,
@@ -133,16 +134,14 @@ async def _create_ticket_after_modal(
 
     author = interaction.user
     assert isinstance(author, discord.Member)
-    tentative_max = await bot.db.get_max_ticket_number(guild_id)
-    channel_name = f"ticket-{tentative_max + 1:04d}"
 
     try:
         channel, ticket = await bot.ticket_service.create_ticket_channel(
             guild,
             ticket_category_channel,
             author,
-            channel_name,
             guild_id=guild_id,
+            category_name=category_name,
             category_id=category_id,
             mod_role=mod_role,
             subject=subject,
@@ -228,6 +227,7 @@ class TicketIntakeModal(discord.ui.Modal):
         )
         self._guild = guild
         self._category_id = category_id
+        self._category_name = category_name
         self._field_definitions = field_definitions or []
 
         self.title_input: discord.ui.TextInput[TicketIntakeModal] = discord.ui.TextInput(
@@ -303,6 +303,7 @@ class TicketIntakeModal(discord.ui.Modal):
             interaction,
             self._guild,
             self._category_id,
+            self._category_name,
             subject=subject,
             description=description,
             custom_fields=custom_fields,

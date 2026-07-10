@@ -87,6 +87,8 @@ def _contract_db() -> AsyncMock:
     # PR2 cog reopen resolution paths (TI-029 / TI-037).
     db.get_ticket_by_number = AsyncMock()
     db.get_ticket_by_channel = AsyncMock()
+    # PR4 channel naming: category lookup for reopen.
+    db.get_ticket_category = AsyncMock(return_value=None)
     return db
 
 

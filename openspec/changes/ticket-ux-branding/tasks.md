@@ -112,25 +112,25 @@ Chain strategy: stacked-to-main
 
 ### Phase 4.1: Sanitize Helper
 
-- [ ] 4.1.1 RED: Write `tests/test_ticket_helpers.py` — `sanitize_channel_name("Soporte", "DanielXX", 42)` returns `soporte-danielxx-0042`; special chars stripped; empty inputs use fallbacks; long names truncated preserving `-{number:04d}` suffix
-- [ ] 4.1.2 GREEN: Modify `bot/utils/ticket_helpers.py` — add `sanitize_channel_name(category, username, ticket_number)` with NFKD fold, lowercase, strip non-`[a-z0-9-]`, collapse hyphens, truncate to 100 preserving suffix
-- [ ] 4.1.3 REFACTOR: `uv run pytest tests/test_ticket_helpers.py` passes
+- [x] 4.1.1 RED: Write `tests/test_ticket_helpers.py` — `sanitize_channel_name("Soporte", "DanielXX", 42)` returns `soporte-danielxx-0042`; special chars stripped; empty inputs use fallbacks; long names truncated preserving `-{number:04d}` suffix
+- [x] 4.1.2 GREEN: Modify `bot/utils/ticket_helpers.py` — add `sanitize_channel_name(category, username, ticket_number)` with NFKD fold, lowercase, strip non-`[a-z0-9-]`, collapse hyphens, truncate to 100 preserving suffix
+- [x] 4.1.3 REFACTOR: `uv run pytest tests/test_ticket_helpers.py` passes
 
 ### Phase 4.2: Service Wiring
 
-- [ ] 4.2.1 RED: Write `tests/test_ticket_service.py` additions — `create_ticket_channel()` uses `sanitize_channel_name()`; `reopen_ticket()` uses new naming format
-- [ ] 4.2.2 GREEN: Modify `bot/services/ticket_service.py` — replace `ticket-{number:04d}` formatting in `create_ticket_channel()`, `reopen_ticket()`, and subticket paths with `sanitize_channel_name()` calls
-- [ ] 4.2.3 REFACTOR: `uv run pytest tests/test_ticket_service.py` passes
+- [x] 4.2.1 RED: Write `tests/test_ticket_service.py` additions — `create_ticket_channel()` uses `sanitize_channel_name()`; `reopen_ticket()` uses new naming format
+- [x] 4.2.2 GREEN: Modify `bot/services/ticket_service.py` — replace `ticket-{number:04d}` formatting in `create_ticket_channel()`, `reopen_ticket()`, and subticket paths with `sanitize_channel_name()` calls
+- [x] 4.2.3 REFACTOR: `uv run pytest tests/test_ticket_service.py` passes
 
 ### Phase 4.3: i18n Keys for Naming
 
-- [ ] 4.3.1 Add channel naming format description key to `bot/locales/en.json` and `bot/locales/es.json` (if needed for panel embed)
+- [x] 4.3.1 Add channel naming format description key to `bot/locales/en.json` and `bot/locales/es.json` (if needed for panel embed) — SKIPPED: naming is a background behavior, no panel-facing i18n needed
 
 ### Phase 4.4: Spanish MANUAL.md
 
-- [ ] 4.4.1 RED: Write `tests/test_manual.py` — assert `docs/MANUAL.md` exists, is non-empty, contains headings for close confirmation, `/unclaim`, transfer-on-claim, channel naming, brand palette
-- [ ] 4.4.2 GREEN: Modify `docs/MANUAL.md` — update Spanish manual sections 1, 6, 7, 8: add close confirmation dialog behavior (dismiss=cancel), `/unclaim` command docs, claim-on-claimed transfer flow, `{category}-{username}-{number}` naming format, purple/violet brand note
-- [ ] 4.4.3 REFACTOR: `uv run pytest tests/test_manual.py` passes; `uv run pytest` — full suite green
+- [x] 4.4.1 RED: Write `tests/test_manual.py` — assert `docs/MANUAL.md` exists, is non-empty, contains headings for close confirmation, `/unclaim`, transfer-on-claim, channel naming, brand palette
+- [x] 4.4.2 GREEN: Modify `docs/MANUAL.md` — update Spanish manual sections 1, 6, 7, 8: add close confirmation dialog behavior (dismiss=cancel), `/unclaim` command docs, claim-on-claimed transfer flow, `{category}-{username}-{number}` naming format, purple/violet brand note
+- [x] 4.4.3 REFACTOR: `uv run pytest tests/test_manual.py` passes; `uv run pytest` — full suite green
 
 ---
 

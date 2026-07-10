@@ -7,6 +7,8 @@ ticket-by-channel lookup pattern used in 7+ command handlers.
 from __future__ import annotations
 
 import logging
+import re
+import unicodedata
 from typing import TYPE_CHECKING, Any
 
 from bot.core.i18n import t
@@ -17,6 +19,62 @@ if TYPE_CHECKING:
     from bot.bot import NebulosaBot
 
 logger = logging.getLogger(__name__)
+
+# Discord channel name limit is 100 characters.
+_CHANNEL_NAME_MAX = 100
+# Suffix format: "-NNNN" (5 chars for typical 4-digit numbers).
+_SUFFIX_FMT = "-{number:04d}"
+
+
+def sanitize_channel_name(
+    category: str,
+    username: str,
+    ticket_number: int,
+) -> str:
+    """Generate a sanitized Discord channel name from ticket metadata.
+
+    Applies Unicode NFKD ASCII folding, lowercase, whitespace-to-hyphen,
+    strips non-``[a-z0-9-]``, collapses/strips hyphens, uses ``ticket``/
+    ``user`` fallbacks for empty inputs, and truncates the prefix while
+    preserving ``-{number:04d}`` within 100 characters.
+
+    Args:
+        category: Ticket category name (e.g. ``"Soporte Técnico"``).
+        username: Ticket author's display name.
+        ticket_number: Sequential ticket number.
+
+    Returns:
+        A lowercase, hyphen-separated channel name safe for Discord.
+    """
+
+    def _slugify(text: str, fallback: str) -> str:
+        # NFKD ASCII folding — strips accents.
+        folded = unicodedata.normalize("NFKD", text)
+        ascii_text = folded.encode("ascii", "ignore").decode("ascii")
+        # Lowercase.
+        slug = ascii_text.lower()
+        # Whitespace → hyphen.
+        slug = re.sub(r"\s+", "-", slug)
+        # Strip non-[a-z0-9-].
+        slug = re.sub(r"[^a-z0-9-]", "", slug)
+        # Collapse consecutive hyphens.
+        slug = re.sub(r"-{2,}", "-", slug)
+        # Strip leading/trailing hyphens.
+        slug = slug.strip("-")
+        return slug or fallback
+
+    cat_slug = _slugify(category, "ticket")
+    user_slug = _slugify(username, "user")
+    suffix = _SUFFIX_FMT.format(number=ticket_number)
+
+    prefix = f"{cat_slug}-{user_slug}"
+
+    # Truncate prefix to fit within _CHANNEL_NAME_MAX, preserving suffix.
+    max_prefix_len = _CHANNEL_NAME_MAX - len(suffix)
+    if len(prefix) > max_prefix_len:
+        prefix = prefix[:max_prefix_len].rstrip("-")
+
+    return f"{prefix}{suffix}"
 
 
 async def resolve_ticket_for_channel(
