@@ -21,7 +21,7 @@ from bot.core.i18n import t
 from bot.models.ticket_category import TicketCategory
 from bot.services.ticket_field_service import validate_field_definitions
 from bot.services.ticket_service import TicketCategoryNotConfiguredError
-from bot.utils.checks import is_mod
+from bot.utils.checks import is_mod, is_mod_check
 from bot.utils.brand import INFO
 from bot.utils.embeds import build_ticket_embed, error_embed, info_embed, success_embed
 from bot.utils.ticket_helpers import resolve_ticket_for_channel, resolve_ticket_for_reopen
@@ -630,18 +630,18 @@ class TicketsCog(commands.Cog, name="Tickets"):
             )
             return
 
-        # Resolve actor_is_mod: admin OR configured mod role.
+        # Resolve actor_is_mod: use shared predicate (single source of truth).
         actor_is_mod = False
         if isinstance(ctx.author, discord.Member):
-            if ctx.author.guild_permissions.administrator:
-                actor_is_mod = True
-            else:
-                mod_role_id = (getattr(self.bot, "_guild_mod_role_cache", {}) or {}).get(int(gid))
-                if mod_role_id:
-                    try:
-                        actor_is_mod = any(r.id == int(mod_role_id) for r in ctx.author.roles)
-                    except (ValueError, TypeError):
-                        pass
+            # Build a lightweight interaction-like object for is_mod_check,
+            # which expects (user, guild, guild_id, client) attributes.
+            _interaction = type("_Interaction", (), {
+                "user": ctx.author,
+                "guild": ctx.guild,
+                "guild_id": int(gid),
+                "client": self.bot,
+            })()
+            actor_is_mod = await is_mod_check(_interaction)
 
         try:
             ticket = await self.bot.ticket_service.unclaim_ticket(row["id"], actor_id, is_mod=actor_is_mod)

@@ -1040,6 +1040,9 @@ class TicketService:
         message displays "1" and another second elapses, the channel is
         deleted.  ``discord.HTTPException`` during the countdown is logged
         and falls back to a silent delete.
+
+        ``CancelledError`` is logged and re-raised without reaching deletion,
+        so a cancelled task never deletes the channel.
         """
         try:
             msg = await channel.send("5")
@@ -1048,6 +1051,12 @@ class TicketService:
                 await msg.edit(content=str(i))
             await asyncio.sleep(1)
             await channel.delete(reason=f"Ticket closed by {closed_by}")
+        except asyncio.CancelledError:
+            logger.warning(
+                "Countdown cancelled for channel %s — channel NOT deleted",
+                channel.id,
+            )
+            raise
         except discord.HTTPException:
             logger.warning(
                 "Countdown failed for channel %s — falling back to silent delete",
