@@ -24,6 +24,7 @@ from bot.services.ticket_invariants import (
     check_can_delete_note,
     check_can_reopen,
     check_can_transfer,
+    check_can_unclaim,
     check_subticket_parent,
     compute_note_hash,
     is_duplicate_note,
@@ -253,6 +254,60 @@ class TicketService:
         except Exception:
             logger.warning("Failed to write claim audit row for ticket %s", ticket_id, exc_info=True)
         logger.info("Ticket %s claimed by %s", ticket_id, claimed_by)
+        return ticket
+
+    async def unclaim_ticket(
+        self,
+        ticket_id: str,
+        actor_id: str,
+        *,
+        is_mod: bool,
+    ) -> Ticket:
+        """Unclaim a ticket, releasing it back to open status.
+
+        Sets ``status='open'`` and ``claimedBy`` to ``None``. Enforces the
+        unclaim invariant (claimer OR mod) BEFORE mutating and writes a
+        ``ticket_audit`` row on both success and denied paths.
+
+        Args:
+            ticket_id: UUID of the ticket to unclaim.
+            actor_id: Discord user snowflake of the actor requesting unclaim.
+            is_mod: Whether the actor has the moderator role.
+
+        Returns:
+            The updated :class:`Ticket`.
+
+        Raises:
+            ValueError: If the ticket does not exist, is not claimed, or
+                the actor is neither the claimer nor a mod.
+        """
+        pre = await self._db.get_ticket(ticket_id)
+        if pre is None:
+            raise ValueError(f"Ticket {ticket_id} not found")
+        guild_id = pre.get("guildId", "")
+
+        try:
+            check_can_unclaim(actor_id, pre, is_mod=is_mod)
+        except ValueError as exc:
+            await self._db.insert_audit_row(guild_id, ticket_id, "unclaim", actor_id, "denied", str(exc))
+            raise
+
+        await self._db.update_ticket(
+            ticket_id,
+            status="open",
+            claimedBy=None,
+        )
+
+        row = await self._db.get_ticket(ticket_id)
+        if row is None:
+            raise ValueError(f"Ticket {ticket_id} not found after unclaim")
+        ticket = Ticket.from_db_row(row)
+
+        try:
+            await self._db.insert_audit_row(guild_id, ticket_id, "unclaim", actor_id, "success", None)
+        except Exception:
+            logger.warning("Failed to write unclaim audit row for ticket %s", ticket_id, exc_info=True)
+        logger.info("Ticket %s unclaimed by %s", ticket_id, actor_id)
         return ticket
 
     async def get_stale_tickets(self, guild_id: str, hours: int = 48) -> list[Ticket]:
