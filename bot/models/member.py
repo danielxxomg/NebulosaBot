@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 
 def _parse_dt(value: str | datetime | None) -> datetime | None:
@@ -32,7 +33,7 @@ class Member:
     last_xp_gain: datetime | None = None
 
     @classmethod
-    def from_db_row(cls, row: dict) -> Member:
+    def from_db_row(cls, row: dict[str, Any]) -> Member:
         """Build a Member from a Supabase row (camelCase keys).
 
         ISO-8601 strings for datetime fields are parsed via
@@ -52,7 +53,7 @@ class Member:
             last_xp_gain=_parse_dt(row.get("lastXpGain")),
         )
 
-    def to_db_dict(self) -> dict:
+    def to_db_dict(self) -> dict[str, Any]:
         """Convert to a dict with camelCase keys for Supabase."""
         return {
             "guildId": self.guild_id,

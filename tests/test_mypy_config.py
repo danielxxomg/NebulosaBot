@@ -83,6 +83,27 @@ class TestMypyOverrides:
         disabled = override.get("disable_error_code", [])
         assert "attr-defined" in disabled, f"bot.bot override must disable 'attr-defined', got: {disabled}"
 
+    def test_attr_defined_not_suppressed_in_other_bot_modules(
+        self, mypy_overrides: list[dict],
+    ) -> None:
+        """Production bot modules other than bot.bot MUST still report attr-defined.
+
+        tests.* may suppress attr-defined as separate tech debt; production
+        bot.* packages must not hide it except the known bot.bot debt.
+        """
+        offenders: list[str] = []
+        for override in mypy_overrides:
+            module = str(override.get("module", ""))
+            if not module.startswith("bot.") or module == "bot.bot":
+                continue
+            disabled = override.get("disable_error_code", [])
+            if "attr-defined" in disabled:
+                offenders.append(module)
+        assert offenders == [], (
+            "attr-defined must not be suppressed outside bot.bot; "
+            f"found in: {offenders}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Scenario: bot.cogs.* override narrowed to untyped-decorator only
@@ -126,4 +147,23 @@ class TestMypyNoServicesWildcard:
         ]
         assert len(services_overrides) == 0, (
             f"bot.services.* override still present — remove it: {services_overrides}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Scenario: bot.models.* wildcard override removed (type-strict-models)
+# ---------------------------------------------------------------------------
+
+
+class TestMypyNoModelsWildcard:
+    """No override MUST target bot.models.* — models must be strict-typed."""
+
+    def test_no_models_wildcard_override(self, mypy_overrides: list[dict]) -> None:
+        """bot.models.* override MUST NOT exist."""
+        models_overrides = [
+            o for o in mypy_overrides
+            if o.get("module") == "bot.models.*"
+        ]
+        assert len(models_overrides) == 0, (
+            f"bot.models.* override still present — remove it: {models_overrides}"
         )
