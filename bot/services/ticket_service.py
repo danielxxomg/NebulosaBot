@@ -1132,8 +1132,22 @@ class TicketService:
             )
             raise
         except discord.NotFound:
-            # Channel already gone (double-close, manual delete, or race).
-            logger.info("Ticket channel %s already deleted during countdown", channel.id)
+            # NotFound during the countdown could mean the message was deleted
+            # (msg.edit) while the channel is still alive.  Attempt one final
+            # channel.delete before concluding the channel is gone.
+            logger.info(
+                "Resource disappeared during countdown for channel %s — attempting final delete",
+                channel.id,
+            )
+            try:
+                await channel.delete(reason=f"Ticket closed by {closed_by}")
+            except discord.NotFound:
+                logger.info("Ticket channel %s already deleted during countdown", channel.id)
+            except discord.HTTPException:
+                logger.exception(
+                    "Failed to delete ticket channel %s after countdown NotFound",
+                    channel.id,
+                )
         except discord.HTTPException:
             logger.warning(
                 "Countdown failed for channel %s — falling back to silent delete",
