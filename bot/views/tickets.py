@@ -17,7 +17,7 @@ from bot.core.i18n import t
 from bot.models.ticket_category import TicketCategory
 from bot.utils.brand import INFO, SUCCESS, WARNING
 from bot.utils.checks import is_mod_check
-from bot.utils.embeds import error_embed, guild_footer_icon, success_embed
+from bot.utils.embeds import error_embed, guild_footer_icon, info_embed, success_embed
 from bot.utils.ticket_helpers import resolve_mod_role
 
 if TYPE_CHECKING:
@@ -923,3 +923,32 @@ class _EditCategorySelect(discord.ui.Select[discord.ui.View]):
             ),
             ephemeral=True,
         )
+
+        # Best-effort channel audit embed (non-ephemeral).
+        old_category_id = ticket_row.get("categoryId")
+        old_label = next(
+            (opt.label for opt in self.options if opt.value == old_category_id),
+            None,
+        )
+        old_category_name = old_label if old_label is not None else "—"
+
+        try:
+            audit_embed = info_embed(
+                t(guild_id, "tickets.actions.edit_category_audit_title"),
+                t(
+                    guild_id,
+                    "tickets.actions.edit_category_audit_description",
+                    old_category=old_category_name,
+                    new_category=category_name,
+                    actor=interaction.user.mention,
+                ),
+                guild_id=guild_id,
+                bot=bot,
+                guild=guild,
+            )
+            await channel.send(embed=audit_embed)
+        except discord.HTTPException:
+            logger.warning(
+                "Failed to send audit embed in channel %s", channel.id,
+                exc_info=True,
+            )

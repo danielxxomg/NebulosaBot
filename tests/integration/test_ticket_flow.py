@@ -8,7 +8,6 @@ TDD cycle: RED → GREEN — tests specify expected behavior of existing code.
 
 from __future__ import annotations
 
-import io
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -17,7 +16,6 @@ import pytest
 
 from bot.cogs.tickets import (
     TicketActionsView,
-    _CategorySelect,
 )
 from bot.models.ticket import Ticket
 
@@ -229,9 +227,7 @@ class TestTicketFlow:
         mock_db.get_ticket_by_channel = AsyncMock(return_value=ticket_row)
 
         # Ticket service close_ticket_full returns transcript URL.
-        ticket_bot.ticket_service.close_ticket_full = AsyncMock(
-            return_value="https://cdn.example.com/transcript.html"
-        )
+        ticket_bot.ticket_service.close_ticket_full = AsyncMock(return_value="https://cdn.example.com/transcript.html")
 
         # Invoke close_button.
         view = TicketActionsView()
@@ -261,8 +257,20 @@ class TestCustomFieldsFlow:
         return {
             **_make_category_row(),
             "fieldDefinitions": [
-                {"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True, "max_length": 100},
-                {"key": "evidence_url", "label": "Evidence URL", "style": "short", "required": False, "max_length": 200},
+                {
+                    "key": "player_nick",
+                    "label": "Player Nickname",
+                    "style": "short",
+                    "required": True,
+                    "max_length": 100,
+                },
+                {
+                    "key": "evidence_url",
+                    "label": "Evidence URL",
+                    "style": "short",
+                    "required": False,
+                    "max_length": 200,
+                },
             ],
         }
 
@@ -406,7 +414,13 @@ class TestCustomFieldsFlow:
             {"key": "evidence_url", "label": "Evidence URL", "style": "short", "required": False, "max_length": 200},
         ]
 
-        ticket_row = {**_make_ticket_row(ticket_number=1), "customFields": {"player_nick": "DarkSlayer42", "evidence_url": "https://imgur.com/proof"}}
+        ticket_row = {
+            **_make_ticket_row(ticket_number=1),
+            "customFields": {
+                "player_nick": "DarkSlayer42",
+                "evidence_url": "https://imgur.com/proof",
+            },
+        }
         ticket = Ticket.from_db_row(ticket_row)
 
         embed = build_ticket_embed(ticket, guild_id="123456789", field_definitions=field_defs)
@@ -436,7 +450,13 @@ class TestCustomFieldsFlow:
         ]
 
         # Ticket was submitted with both fields.
-        ticket_row = {**_make_ticket_row(ticket_number=1), "customFields": {"player_nick": "DarkSlayer42", "evidence_url": "https://imgur.com/proof"}}
+        ticket_row = {
+            **_make_ticket_row(ticket_number=1),
+            "customFields": {
+                "player_nick": "DarkSlayer42",
+                "evidence_url": "https://imgur.com/proof",
+            },
+        }
         ticket = Ticket.from_db_row(ticket_row)
 
         embed = build_ticket_embed(ticket, guild_id="123456789", field_definitions=current_defs)

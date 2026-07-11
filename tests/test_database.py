@@ -48,7 +48,7 @@ class FakeQueryBuilder:
         self._orders: list[tuple[str, bool]] = []  # (column, desc)
         self._limits: list[int] = []
         self._execute_count: int = 0
-        self._count: int | None = None  # for count="exact" support
+        self._count: str | None = None  # for count="exact" support
 
     # Chain methods — all return self
     def table(self, name: str) -> FakeQueryBuilder:
@@ -249,7 +249,7 @@ class TestConnect:
         mock_client = MagicMock()
 
         async def mock_execute_fail() -> MagicMock:
-            raise Exception("connection refused")
+            raise ConnectionError("connection refused")
 
         mock_client.table.return_value.select.return_value.limit.return_value.execute = mock_execute_fail
 
@@ -739,9 +739,25 @@ class TestUpdateMemberDaily:
     @pytest.mark.asyncio
     async def test_update_member_daily_updates_existing(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """update_member_daily() MUST call rpc('set_member_daily') and return result."""
-        fake_client.set_rpc_result([{"coins": 150, "dailyStreak": 3, "lastDailyReset": "2024-06-15T00:00:00Z", "lastDaily": "2024-06-15T12:00:00Z"}])
+        fake_client.set_rpc_result(
+            [
+                {
+                    "coins": 150,
+                    "dailyStreak": 3,
+                    "lastDailyReset": "2024-06-15T00:00:00Z",
+                    "lastDaily": "2024-06-15T12:00:00Z",
+                },
+            ]
+        )
 
-        result = await db.update_member_daily("g1", "u1", 100, 3, "2024-06-15T00:00:00Z", "2024-06-15T12:00:00Z")
+        result = await db.update_member_daily(
+            "g1",
+            "u1",
+            100,
+            3,
+            "2024-06-15T00:00:00Z",
+            "2024-06-15T12:00:00Z",
+        )
 
         assert result["coins"] == 150
         assert result["dailyStreak"] == 3
@@ -749,7 +765,16 @@ class TestUpdateMemberDaily:
     @pytest.mark.asyncio
     async def test_update_member_daily_creates_new_member(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """update_member_daily() MUST call rpc which handles upsert on new member."""
-        fake_client.set_rpc_result([{"coins": 50, "dailyStreak": 1, "lastDailyReset": "2024-06-15T00:00:00Z", "lastDaily": "2024-06-15T12:00:00Z"}])
+        fake_client.set_rpc_result(
+            [
+                {
+                    "coins": 50,
+                    "dailyStreak": 1,
+                    "lastDailyReset": "2024-06-15T00:00:00Z",
+                    "lastDaily": "2024-06-15T12:00:00Z",
+                },
+            ]
+        )
 
         result = await db.update_member_daily("g1", "u1", 50, 1, "2024-06-15T00:00:00Z", "2024-06-15T12:00:00Z")
 
@@ -1634,9 +1659,25 @@ class TestRpcSetMemberDaily:
     @pytest.mark.asyncio
     async def test_calls_rpc_set_member_daily(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """update_member_daily() MUST call rpc('set_member_daily') once."""
-        fake_client.set_rpc_result([{"coins": 150, "dailyStreak": 3, "lastDailyReset": "2024-06-15T00:00:00Z", "lastDaily": "2024-06-15T12:00:00Z"}])
+        fake_client.set_rpc_result(
+            [
+                {
+                    "coins": 150,
+                    "dailyStreak": 3,
+                    "lastDailyReset": "2024-06-15T00:00:00Z",
+                    "lastDaily": "2024-06-15T12:00:00Z",
+                },
+            ]
+        )
 
-        result = await db.update_member_daily("g1", "u1", 100, 3, "2024-06-15T00:00:00Z", "2024-06-15T12:00:00Z")
+        result = await db.update_member_daily(
+            "g1",
+            "u1",
+            100,
+            3,
+            "2024-06-15T00:00:00Z",
+            "2024-06-15T12:00:00Z",
+        )
 
         assert len(fake_client._rpc_calls) == 1
         assert fake_client._rpc_calls[0][0] == "set_member_daily"
@@ -1746,7 +1787,7 @@ class TestDatabaseFacade:
 
     def test_database_preserves_slots(self) -> None:
         """Database MUST have __slots__ (inherited from DatabaseBase)."""
-        db = Database(url="https://test.supabase.co", key="test-key")
+        Database(url="https://test.supabase.co", key="test-key")
         assert hasattr(Database, "__slots__")
         # Verify the slot names are correct
         assert "_client" in Database.__slots__
@@ -1779,9 +1820,7 @@ class TestUpdateTicketCategoryFieldDefinitions:
         assert update_calls[0][1]["fieldDefinitions"] == defs
 
     @pytest.mark.asyncio
-    async def test_filters_by_id_and_guild_id(
-        self, db: Database, fake_client: FakeSupabaseClient
-    ) -> None:
+    async def test_filters_by_id_and_guild_id(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """update_ticket_category_field_definitions() MUST apply eq('id') AND eq('guildId')."""
         fake_client.set_table_data("ticket_category", [])
 
@@ -1847,7 +1886,7 @@ class TestDatabaseFacadePR1Methods:
         """Database MUST expose update_ticket_category_field_definitions()."""
         db = Database(url="https://test.supabase.co", key="test-key")
         assert hasattr(db, "update_ticket_category_field_definitions")
-        assert callable(getattr(db, "update_ticket_category_field_definitions"))
+        assert callable(db.update_ticket_category_field_definitions)
 
 
 # ===========================================================================
@@ -1860,9 +1899,7 @@ class TestUpdateGuildPanelOnWrite:
     """Verify Database.update_guild_panel() calls _on_write hook after successful DB write."""
 
     @pytest.mark.asyncio
-    async def test_calls_on_write_after_successful_update(
-        self, db: Database, fake_client: FakeSupabaseClient
-    ) -> None:
+    async def test_calls_on_write_after_successful_update(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """update_guild_panel() MUST call self._on_write('guild', guild_id) after the DB write succeeds."""
         on_write = AsyncMock()
         db._on_write = on_write
@@ -1872,9 +1909,7 @@ class TestUpdateGuildPanelOnWrite:
         on_write.assert_awaited_once_with("guild", "g1")
 
     @pytest.mark.asyncio
-    async def test_does_not_call_on_write_when_not_set(
-        self, db: Database, fake_client: FakeSupabaseClient
-    ) -> None:
+    async def test_does_not_call_on_write_when_not_set(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """update_guild_panel() MUST NOT raise when _on_write is None."""
         db._on_write = None
 

@@ -1405,6 +1405,7 @@ class TestEditCategorySelect:
 
         user = MagicMock(spec=discord.Member)
         user.id = user_id
+        user.mention = f"<@{user_id}>"
         interaction.user = user
 
         bot = MagicMock()
@@ -1768,3 +1769,130 @@ class TestEditCategorySelect:
         }
         view = _EditCategoryView(options, guild, categories, ticket_row)
         assert view.timeout == 300
+
+    @pytest.mark.asyncio
+    async def test_select_success_sends_channel_audit_embed(self) -> None:
+        """Successful edit MUST send a non-ephemeral info_embed to the channel with old/new category and actor."""
+        from bot.models.ticket import Ticket
+        from bot.models.ticket_category import TicketCategory
+
+        guild = MagicMock()
+        guild.id = 123456789
+        # Include BOTH old (Support) and new (Billing) categories so old label resolves
+        select = self._make_select(
+            guild,
+            categories=[
+                TicketCategory(
+                    id="cat-uuid-1", guild_id="123456789", name="Support",
+                    description="General support", position=0,
+                ),
+                TicketCategory(
+                    id="cat-uuid-2", guild_id="123456789", name="Billing",
+                    description="Billing issues", position=1,
+                ),
+            ],
+        )
+        interaction = self._make_select_interaction()
+        # ticket_row categoryId=cat-uuid-1 → matches Support option
+        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row()
+        select._values = ["cat-uuid-2"]
+
+        updated_ticket = Ticket(
+            id="ticket-uuid-select", ticket_number=5, guild_id="123456789",
+            author_id="111111111", channel_id="888888888", status="open",
+            created_at="2026-01-15T10:00:00+00:00",
+            last_activity="2026-01-15T10:00:00+00:00", category_id="cat-uuid-2",
+        )
+        interaction.client.ticket_service.edit_ticket_category = AsyncMock(
+            return_value=(updated_ticket, True),
+        )
+
+        with patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=True):
+            await select.callback(interaction)
+
+        # Ephemeral success still sent
+        interaction.response.send_message.assert_awaited_once()
+        call_kwargs = interaction.response.send_message.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
+
+        # Channel audit embed sent (non-ephemeral)
+        interaction.channel.send.assert_awaited_once()
+        channel_kwargs = interaction.channel.send.call_args.kwargs
+        assert "embed" in channel_kwargs
+        audit_embed = channel_kwargs["embed"]
+        # Audit embed contains old label, new label, and actor mention
+        assert audit_embed.description is not None
+        assert "Support" in audit_embed.description  # old category label (cat-uuid-1 → Support)
+        assert "Billing" in audit_embed.description  # new category label (cat-uuid-2)
+        assert "<@111111111>" in audit_embed.description  # actor mention
+
+    @pytest.mark.asyncio
+    async def test_select_audit_uses_dash_when_categoryid_none(self) -> None:
+        """Audit embed MUST show '—' when old categoryId is None (never raw UUID)."""
+        from bot.models.ticket import Ticket
+
+        guild = MagicMock()
+        guild.id = 123456789
+        select = self._make_select(guild)
+        interaction = self._make_select_interaction()
+        # Old ticket has categoryId=None
+        row = self._ticket_row()
+        row["categoryId"] = None
+        interaction.client.db.get_ticket_by_channel.return_value = row
+        select._values = ["cat-uuid-2"]
+
+        updated_ticket = Ticket(
+            id="ticket-uuid-select", ticket_number=5, guild_id="123456789",
+            author_id="111111111", channel_id="888888888", status="open",
+            created_at="2026-01-15T10:00:00+00:00",
+            last_activity="2026-01-15T10:00:00+00:00", category_id="cat-uuid-2",
+        )
+        interaction.client.ticket_service.edit_ticket_category = AsyncMock(
+            return_value=(updated_ticket, True),
+        )
+
+        with patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=True):
+            await select.callback(interaction)
+
+        interaction.channel.send.assert_awaited_once()
+        audit_embed = interaction.channel.send.call_args.kwargs["embed"]
+        assert audit_embed.description is not None
+        assert "—" in audit_embed.description
+        # Must NOT leak any UUID
+        assert "cat-uuid" not in audit_embed.description
+
+    @pytest.mark.asyncio
+    async def test_select_audit_send_failure_is_non_fatal(self) -> None:
+        """channel.send raising HTTPException MUST NOT prevent success or crash."""
+        from bot.models.ticket import Ticket
+
+        guild = MagicMock()
+        guild.id = 123456789
+        select = self._make_select(guild)
+        interaction = self._make_select_interaction()
+        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row()
+        select._values = ["cat-uuid-2"]
+
+        updated_ticket = Ticket(
+            id="ticket-uuid-select", ticket_number=5, guild_id="123456789",
+            author_id="111111111", channel_id="888888888", status="open",
+            created_at="2026-01-15T10:00:00+00:00",
+            last_activity="2026-01-15T10:00:00+00:00", category_id="cat-uuid-2",
+        )
+        interaction.client.ticket_service.edit_ticket_category = AsyncMock(
+            return_value=(updated_ticket, True),
+        )
+        interaction.channel.send = AsyncMock(
+            side_effect=discord.HTTPException(MagicMock(), "rate limited"),
+        )
+
+        with patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=True):
+            await select.callback(interaction)
+
+        # Ephemeral success MUST still be sent
+        interaction.response.send_message.assert_awaited_once()
+        call_kwargs = interaction.response.send_message.call_args.kwargs
+        assert call_kwargs.get("ephemeral") is True
+
+        # channel.send was attempted (audit was attempted, just failed)
+        interaction.channel.send.assert_awaited_once()
