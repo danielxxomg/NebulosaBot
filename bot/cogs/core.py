@@ -45,7 +45,13 @@ class CoreCog(commands.Cog, name="Core"):
     # Commands
     # ==================================================================
 
-    @commands.hybrid_command(name="ping", description=app_commands.locale_str("Muestra la latencia WebSocket del bot.", key="slash.descriptions.ping"))  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @commands.hybrid_command(
+        name="ping",
+        description=app_commands.locale_str(
+            "Muestra la latencia WebSocket del bot.",
+            key="slash.descriptions.ping",
+        ),
+    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
     async def ping(self, ctx: NebulosaContext) -> None:
         """Reply with the current gateway latency in milliseconds."""
         guild_id = ctx.guild.id if ctx.guild else None
@@ -59,7 +65,10 @@ class CoreCog(commands.Cog, name="Core"):
 
     @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
         name="status",
-        description=app_commands.locale_str("Muestra el estado de la base de datos y la caché.", key="slash.descriptions.status"),
+        description=app_commands.locale_str(
+            "Muestra el estado de la base de datos y la caché.",
+            key="slash.descriptions.status",
+        ),
     )
     @app_commands.default_permissions(moderate_members=True)
     async def status(self, ctx: NebulosaContext) -> None:
@@ -138,9 +147,17 @@ class CoreCog(commands.Cog, name="Core"):
 
     @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
         name="help",
-        description=app_commands.locale_str("Muestra los comandos disponibles agrupados por módulo.", key="slash.descriptions.help"),
+        description=app_commands.locale_str(
+            "Muestra los comandos disponibles agrupados por módulo.",
+            key="slash.descriptions.help",
+        ),
     )
-    @app_commands.describe(module=app_commands.locale_str("Mostrar ayuda para un módulo específico", key="slash.describes.help.module"))
+    @app_commands.describe(
+        module=app_commands.locale_str(
+            "Mostrar ayuda para un módulo específico",
+            key="slash.describes.help.module",
+        )
+    )
     async def help_command(self, ctx: NebulosaContext, module: str | None = None) -> None:
         """Display help — all modules (paginated), or a single module if specified.
 
@@ -188,7 +205,10 @@ class CoreCog(commands.Cog, name="Core"):
 
     @commands.hybrid_command(
         name="sync",
-        description=app_commands.locale_str("Sincronizar el árbol de comandos (solo admin).", key="slash.descriptions.sync"),
+        description=app_commands.locale_str(
+            "Sincronizar el árbol de comandos (solo admin).",
+            key="slash.descriptions.sync",
+        ),
     )
     @is_admin()
     async def sync(self, ctx: NebulosaContext) -> None:
