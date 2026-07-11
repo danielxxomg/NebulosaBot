@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 
 import discord
 
+from bot.core.i18n import t
+
 if TYPE_CHECKING:
     pass
 
@@ -23,6 +25,7 @@ class EmbedPaginator(discord.ui.View):
 
     Args:
         pages: List of :class:`discord.Embed` pages to paginate through.
+        guild_id: Discord guild ID for i18n resolution of button labels.
         timeout: Seconds of inactivity before :meth:`on_timeout` fires.
             Defaults to 120.
         custom_id_prefix: Prefix for stable ``custom_id`` values on each
@@ -36,6 +39,7 @@ class EmbedPaginator(discord.ui.View):
         self,
         pages: list[discord.Embed],
         *,
+        guild_id: str | int | None = None,
         timeout: float = 120.0,
         custom_id_prefix: str = "paginator:",
     ) -> None:
@@ -47,22 +51,26 @@ class EmbedPaginator(discord.ui.View):
         # Build stable custom_ids for persistent view support.
         self._custom_id_prefix = custom_id_prefix
 
-        # Set custom_ids on the buttons after init.
+        # Override decorator defaults with localized labels.
+        gid = str(guild_id) if guild_id is not None else None
         for child in self.children:
             if isinstance(child, discord.ui.Button):
                 if child.custom_id is None or child.custom_id == "paginator:prev":
                     child.custom_id = f"{custom_id_prefix}prev"
+                    child.label = t(gid, "paginator.previous")
                 elif child.custom_id == "paginator:next":
                     child.custom_id = f"{custom_id_prefix}next"
+                    child.label = t(gid, "paginator.next")
                 elif child.custom_id == "paginator:stop":
                     child.custom_id = f"{custom_id_prefix}stop"
+                    child.label = t(gid, "paginator.stop")
 
         self.update_buttons()
 
     # -- Button definitions ---------------------------------------------
 
     @discord.ui.button(
-        label="\u25c0 Previous",
+        label="◀ Previous",
         style=discord.ButtonStyle.secondary,
         custom_id="paginator:prev",
     )
