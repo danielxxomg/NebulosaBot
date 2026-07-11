@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 
 @dataclass
@@ -28,10 +29,10 @@ class Ticket:
     parent_id: str | None = None  # self-referential; one level deep (sub-tickets)
     subject: str | None = None
     description: str | None = None
-    custom_fields: dict | None = None
+    custom_fields: dict[str, Any] | None = None
 
     @classmethod
-    def from_db_row(cls, row: dict) -> Ticket:
+    def from_db_row(cls, row: dict[str, Any]) -> Ticket:
         """Build a Ticket from a Supabase row (camelCase keys)."""
         return cls(
             id=row["id"],
@@ -52,7 +53,7 @@ class Ticket:
             custom_fields=row.get("customFields"),
         )
 
-    def to_db_dict(self) -> dict:
+    def to_db_dict(self) -> dict[str, Any]:
         """Convert to a dict with camelCase keys for Supabase."""
         return {
             "id": self.id,
