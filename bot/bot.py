@@ -319,6 +319,7 @@ class NebulosaBot(commands.Bot):
         eagerly so every command handler can access it synchronously.
         """
         ctx = await super().get_context(message, cls=cls)
+        assert isinstance(ctx, NebulosaContext)
 
         if ctx.guild is not None and self.guild_service is not None:
             try:

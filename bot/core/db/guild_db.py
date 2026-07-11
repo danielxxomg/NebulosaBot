@@ -18,7 +18,7 @@ class GuildDBMixin:
     Uses ``self._client`` from :class:`DatabaseBase`.
     """
 
-    async def get_guild(self: Any, guild_id: str) -> dict | None:
+    async def get_guild(self: Any, guild_id: str) -> dict[str, Any] | None:
         """Fetch a guild row by its Discord snowflake *guild_id*.
 
         Returns the raw camelCase row dict, or ``None`` if the guild has

@@ -62,7 +62,7 @@ ClientFactory = Callable[[str, str], Awaitable[Any]]
 # ------------------------------------------------------------------
 
 
-def _record_for_event(data: dict) -> dict:
+def _record_for_event(data: dict[str, Any]) -> dict[str, Any]:
     """Return the record dict relevant to *data*.
 
     INSERT/UPDATE (and any non-DELETE type) read from ``record``; DELETE
@@ -78,7 +78,7 @@ def _record_for_event(data: dict) -> dict:
     return data.get("record") or {}
 
 
-def _normalize_cdc_payload(payload: dict, table_hint: str | None = None) -> tuple[str | None, dict]:
+def _normalize_cdc_payload(payload: dict[str, Any], table_hint: str | None = None) -> tuple[str | None, dict[str, Any]]:
     """Normalize a CDC payload from the realtime-py SDK.
 
     The SDK (v2.31.0+) delivers callbacks with the envelope
@@ -106,7 +106,7 @@ def _normalize_cdc_payload(payload: dict, table_hint: str | None = None) -> tupl
     return table, record
 
 
-def _extract_guild_id(table: str, record: dict) -> str | None:
+def _extract_guild_id(table: str, record: dict[str, Any]) -> str | None:
     """Map a CDC *record* to its guild_id based on the source *table*.
 
     ``guild`` rows carry the guild snowflake as ``id``; ``greeting_config``
@@ -126,7 +126,7 @@ def _extract_guild_id(table: str, record: dict) -> str | None:
     return str(value)
 
 
-def _extract_ticket_id(record: dict) -> str | None:
+def _extract_ticket_id(record: dict[str, Any]) -> str | None:
     """Return the ``ticketId`` from a ``ticket_note`` record (or ``None``)."""
     value = record.get("ticketId")
     if value is None:
@@ -521,7 +521,7 @@ class RealtimeCacheSubscriber:
     # CDC callback + handler
     # ------------------------------------------------------------------
 
-    def _cdc_callback(self, payload: dict, table_hint: str | None = None) -> None:
+    def _cdc_callback(self, payload: dict[str, Any], table_hint: str | None = None) -> None:
         """Sync SDK callback — schedule the async handler on the loop.
 
         The Supabase Realtime SDK invokes postgres_changes callbacks
@@ -538,7 +538,7 @@ class RealtimeCacheSubscriber:
             # No running loop (e.g. during shutdown) — drop the event.
             logger.debug("Dropping CDC event — no running event loop")
 
-    async def _handle_cdc(self, payload: dict, table_hint: str | None = None) -> None:
+    async def _handle_cdc(self, payload: dict[str, Any], table_hint: str | None = None) -> None:
         """Route a CDC payload to the correct guild invalidation."""
         self._received_count += 1
         table, record = _normalize_cdc_payload(payload, table_hint)
@@ -737,7 +737,7 @@ class RealtimeCacheSubscriber:
 
         self._last_check = window_end
 
-    async def _safe_rows(self, builder: Any) -> list[dict]:
+    async def _safe_rows(self, builder: Any) -> list[dict[str, Any]]:
         """Execute *builder* and return its ``data`` list, resiliently.
 
         Real Supabase builders expose an awaitable ``execute``; some test

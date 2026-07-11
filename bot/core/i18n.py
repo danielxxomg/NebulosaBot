@@ -24,13 +24,14 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 # Module-level state --------------------------------------------------------
 
 # Locale dictionaries keyed by locale code ("es", "en").
-_locales: dict[str, dict] = {}
+_locales: dict[str, dict[str, Any]] = {}
 
 # Guild ID (str) → language code ("es", "en").
 _guild_languages: dict[str, str] = {}

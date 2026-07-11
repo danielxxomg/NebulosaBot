@@ -90,7 +90,7 @@ class XPListener(commands.Cog):
             channel_id = config.get("levelUpChannelId")
             if channel_id:
                 resolved = guild.get_channel(int(channel_id))
-                if resolved is not None:
+                if resolved is not None and isinstance(resolved, discord.abc.Messageable):
                     target_channel = resolved
 
         guild_id = str(guild.id)
