@@ -124,9 +124,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
                     if not isinstance(channel, discord.TextChannel):
                         logger.warning("Ticket %s channel %s not found — skipping", ticket.id, ticket.channel_id)
                         continue
-                    await self.bot.ticket_service.close_ticket_full(
-                        channel, ticket, "auto", bot=self.bot, manual=False
-                    )
+                    await self.bot.ticket_service.close_ticket_full(channel, ticket, "auto", bot=self.bot, manual=False)
                     closed += 1
                 except Exception:
                     logger.exception("Failed to auto-close stale ticket %s", ticket.id)
@@ -149,16 +147,26 @@ class TicketsCog(commands.Cog, name="Tickets"):
         assert self.bot.db is not None
         try:
             now = datetime.now(UTC).isoformat()
-            await self.bot.db.update_ticket_last_activity(
-                str(message.guild.id), str(message.channel.id), now
-            )
+            await self.bot.db.update_ticket_last_activity(str(message.guild.id), str(message.channel.id), now)
         except Exception:
             logger.exception("Failed to update lastActivity for channel %s", message.channel.id)
 
-    @commands.hybrid_command(name="ticket_panel", description=app_commands.locale_str("Desplegar el panel de tickets en el canal actual.", key="slash.descriptions.ticket_panel"))
+    @commands.hybrid_command(
+        name="ticket_panel",
+        description=app_commands.locale_str(
+            "Desplegar el panel de tickets en el canal actual.",
+            key="slash.descriptions.ticket_panel",
+        ),
+    )
     @app_commands.describe(
-        title=app_commands.locale_str("Título opcional para el embed del panel", key="slash.describes.ticket_panel.title"),
-        description_text=app_commands.locale_str("Descripción opcional para el embed del panel", key="slash.describes.ticket_panel.description_text"),
+        title=app_commands.locale_str(
+            "Título opcional para el embed del panel",
+            key="slash.describes.ticket_panel.title",
+        ),
+        description_text=app_commands.locale_str(
+            "Descripción opcional para el embed del panel",
+            key="slash.describes.ticket_panel.description_text",
+        ),
     )
     @app_commands.default_permissions(administrator=True)
     @is_mod()
@@ -175,8 +183,12 @@ class TicketsCog(commands.Cog, name="Tickets"):
         gid = str(ctx.guild.id)
         try:
             await deploy_ticket_panel(
-                ctx.channel, gid, bot=self.bot, guild=ctx.guild,
-                title=title, description_text=description_text,
+                ctx.channel,
+                gid,
+                bot=self.bot,
+                guild=ctx.guild,
+                title=title,
+                description_text=description_text,
             )
         except discord.Forbidden:
             await ctx.send(embed=_err(gid, "tickets.panel.permission_denied"), ephemeral=True)
@@ -187,7 +199,13 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
         await ctx.send(embed=_ok(gid, "tickets.panel.success"), ephemeral=True)
 
-    @commands.hybrid_command(name="create_category", description=app_commands.locale_str("Crear una nueva categoría de tickets.", key="slash.descriptions.create_category"))
+    @commands.hybrid_command(
+        name="create_category",
+        description=app_commands.locale_str(
+            "Crear una nueva categoría de tickets.",
+            key="slash.descriptions.create_category",
+        ),
+    )
     @app_commands.describe(
         name=app_commands.locale_str("Nombre de la categoría", key="slash.describes.create_category.name"),
         emoji=app_commands.locale_str("Emoji opcional", key="slash.describes.create_category.emoji"),
@@ -230,7 +248,13 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
         await ctx.send(embed=_ok(gid, "tickets.create.success", name=cat.name, id=cat.id), ephemeral=True)
 
-    @commands.hybrid_command(name="list_categories", description=app_commands.locale_str("Listar todas las categorías de tickets activas.", key="slash.descriptions.list_categories"))
+    @commands.hybrid_command(
+        name="list_categories",
+        description=app_commands.locale_str(
+            "Listar todas las categorías de tickets activas.",
+            key="slash.descriptions.list_categories",
+        ),
+    )
     @app_commands.default_permissions(administrator=True)
     @is_mod()
     async def list_categories(self, ctx: commands.Context[Any]) -> None:
@@ -266,8 +290,19 @@ class TicketsCog(commands.Cog, name="Tickets"):
         embed.set_footer(text=t(gid, "tickets.open.footer"))
         await ctx.send(embed=embed, ephemeral=True)
 
-    @commands.hybrid_command(name="delete_category", description=app_commands.locale_str("Eliminar una categoría de tickets por ID.", key="slash.descriptions.delete_category"))
-    @app_commands.describe(category_id=app_commands.locale_str("El UUID de la categoría a eliminar", key="slash.describes.delete_category.category_id"))
+    @commands.hybrid_command(
+        name="delete_category",
+        description=app_commands.locale_str(
+            "Eliminar una categoría de tickets por ID.",
+            key="slash.descriptions.delete_category",
+        ),
+    )
+    @app_commands.describe(
+        category_id=app_commands.locale_str(
+            "El UUID de la categoría a eliminar",
+            key="slash.describes.delete_category.category_id",
+        )
+    )
     @app_commands.default_permissions(administrator=True)
     @is_mod()
     async def delete_category(self, ctx: commands.Context[Any], category_id: str) -> None:
@@ -308,7 +343,10 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @commands.hybrid_group(
         name="configure_fields",
         fallback="help",
-        description=app_commands.locale_str("Configurar campos de entrada personalizados para una categoría de tickets.", key="slash.descriptions.configure_fields._"),
+        description=app_commands.locale_str(
+            "Configurar campos de entrada personalizados para una categoría de tickets.",
+            key="slash.descriptions.configure_fields._",
+        ),
     )
     @app_commands.default_permissions(administrator=True)
     @is_mod()
@@ -317,10 +355,22 @@ class TicketsCog(commands.Cog, name="Tickets"):
         gid = str(ctx.guild.id) if ctx.guild else None
         await ctx.send(embed=_info(gid, "tickets.configure_fields.help"), ephemeral=True)
 
-    @configure_fields.command(name="set", description=app_commands.locale_str("Definir campos para una categoría de tickets.", key="slash.descriptions.configure_fields.set"))
+    @configure_fields.command(
+        name="set",
+        description=app_commands.locale_str(
+            "Definir campos para una categoría de tickets.",
+            key="slash.descriptions.configure_fields.set",
+        ),
+    )
     @app_commands.describe(
-        category_id=app_commands.locale_str("El UUID de la categoría de tickets", key="slash.describes.configure_fields.set.category_id"),
-        fields_json=app_commands.locale_str('Array JSON de definiciones de campos, ej. \'[{"key":"player_nick","label":"Nickname del jugador"}]\'', key="slash.describes.configure_fields.set.fields_json"),
+        category_id=app_commands.locale_str(
+            "El UUID de la categoría de tickets",
+            key="slash.describes.configure_fields.set.category_id",
+        ),
+        fields_json=app_commands.locale_str(
+            'Array JSON de definiciones de campos, ej. \'[{"key":"player_nick","label":"Nickname del jugador"}]\'',
+            key="slash.describes.configure_fields.set.fields_json",
+        ),
     )
     @app_commands.default_permissions(administrator=True)
     @is_mod()
@@ -404,7 +454,10 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @commands.hybrid_group(
         name="subticket",
         fallback="help",
-        description=app_commands.locale_str("Gestionar sub-tickets vinculados a un ticket padre.", key="slash.descriptions.subticket._"),
+        description=app_commands.locale_str(
+            "Gestionar sub-tickets vinculados a un ticket padre.",
+            key="slash.descriptions.subticket._",
+        ),
     )
     @is_mod()
     async def subticket(self, ctx: commands.Context[Any]) -> None:
@@ -431,8 +484,19 @@ class TicketsCog(commands.Cog, name="Tickets"):
             await ctx.send(embed=_err(gid, "tickets.subticket.owner_not_found_resolve"))
             return None
 
-    @subticket.command(name="create", description=app_commands.locale_str("Crear un sub-ticket vinculado a un ticket padre.", key="slash.descriptions.subticket.create"))
-    @app_commands.describe(parent_id=app_commands.locale_str("El UUID del ticket padre (omitido: usa el canal actual)", key="slash.describes.subticket.create.parent_id"))
+    @subticket.command(
+        name="create",
+        description=app_commands.locale_str(
+            "Crear un sub-ticket vinculado a un ticket padre.",
+            key="slash.descriptions.subticket.create",
+        ),
+    )
+    @app_commands.describe(
+        parent_id=app_commands.locale_str(
+            "El UUID del ticket padre (omitido: usa el canal actual)",
+            key="slash.describes.subticket.create.parent_id",
+        )
+    )
     @is_mod()
     async def subticket_create(self, ctx: commands.Context[Any], parent_id: str | None = None) -> None:
         if ctx.guild is None:
@@ -515,8 +579,19 @@ class TicketsCog(commands.Cog, name="Tickets"):
             "Sub-ticket #%d created (parent=%s, guild=%s, author=%s)", subticket.ticket_number, pid, guild.id, author.id
         )
 
-    @commands.hybrid_command(name="reopen", description=app_commands.locale_str("Reabrir un ticket cerrado.", key="slash.descriptions.reopen"))
-    @app_commands.describe(ticket_ref=app_commands.locale_str("Referencia opcional del ticket: '#0003', '0003', un UUID, o 'ticket:#0003'", key="slash.describes.reopen.ticket_ref"))
+    @commands.hybrid_command(
+        name="reopen",
+        description=app_commands.locale_str(
+            "Reabrir un ticket cerrado.",
+            key="slash.descriptions.reopen",
+        ),
+    )
+    @app_commands.describe(
+        ticket_ref=app_commands.locale_str(
+            "Referencia opcional del ticket: '#0003', '0003', un UUID, o 'ticket:#0003'",
+            key="slash.describes.reopen.ticket_ref",
+        )
+    )
     @is_mod()
     async def reopen(self, ctx: commands.Context[Any], *, ticket_ref: str | None = None) -> None:
         if ctx.guild is None:
@@ -552,8 +627,19 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
         await ctx.send(embed=_ok(gid, "tickets.reopen.success"))
 
-    @commands.hybrid_command(name="transfer", description=app_commands.locale_str("Transferir un ticket a otro miembro del staff.", key="slash.descriptions.transfer"))
-    @app_commands.describe(member=app_commands.locale_str("El miembro del staff al que transferir el ticket", key="slash.describes.transfer.member"))
+    @commands.hybrid_command(
+        name="transfer",
+        description=app_commands.locale_str(
+            "Transferir un ticket a otro miembro del staff.",
+            key="slash.descriptions.transfer",
+        ),
+    )
+    @app_commands.describe(
+        member=app_commands.locale_str(
+            "El miembro del staff al que transferir el ticket",
+            key="slash.describes.transfer.member",
+        )
+    )
     @is_mod()
     async def transfer(self, ctx: commands.Context[Any], member: discord.Member) -> None:
         if ctx.guild is None:
@@ -585,7 +671,13 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
         await ctx.send(embed=_ok(gid, "tickets.transfer.success", member=member.mention))
 
-    @commands.hybrid_command(name="unclaim", description=app_commands.locale_str("Liberar un ticket reclamado de vuelta a estado abierto.", key="slash.descriptions.unclaim"))  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @commands.hybrid_command(
+        name="unclaim",
+        description=app_commands.locale_str(
+            "Liberar un ticket reclamado de vuelta a estado abierto.",
+            key="slash.descriptions.unclaim",
+        ),
+    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
     async def unclaim(self, ctx: commands.Context[Any]) -> None:
         """Unclaim a ticket — available to the claimer or moderators."""
         if ctx.guild is None:
@@ -635,12 +727,16 @@ class TicketsCog(commands.Cog, name="Tickets"):
         if isinstance(ctx.author, discord.Member):
             # Build a lightweight interaction-like object for is_mod_check,
             # which expects (user, guild, guild_id, client) attributes.
-            _interaction = type("_Interaction", (), {
-                "user": ctx.author,
-                "guild": ctx.guild,
-                "guild_id": int(gid),
-                "client": self.bot,
-            })()
+            _interaction = type(
+                "_Interaction",
+                (),
+                {
+                    "user": ctx.author,
+                    "guild": ctx.guild,
+                    "guild_id": int(gid),
+                    "client": self.bot,
+                },
+            )()
             actor_is_mod = await is_mod_check(_interaction)
 
         try:
@@ -694,14 +790,32 @@ class TicketsCog(commands.Cog, name="Tickets"):
 
         await ctx.send(embed=_ok(gid, "tickets.actions.unclaim_success"))
 
-    @commands.hybrid_group(name="note", fallback="help", description=app_commands.locale_str("Gestionar notas del staff en tickets.", key="slash.descriptions.note._"))
+    @commands.hybrid_group(
+        name="note",
+        fallback="help",
+        description=app_commands.locale_str(
+            "Gestionar notas del staff en tickets.",
+            key="slash.descriptions.note._",
+        ),
+    )
     @is_mod()
     async def note(self, ctx: commands.Context[Any]) -> None:
         gid = str(ctx.guild.id) if ctx.guild else None
         await ctx.send(embed=_info(gid, "tickets.note.help"))
 
-    @note.command(name="add", description=app_commands.locale_str("Agregar una nota del staff al ticket actual.", key="slash.descriptions.note.add"))
-    @app_commands.describe(content=app_commands.locale_str("El texto de la nota", key="slash.describes.note.add.content"))
+    @note.command(
+        name="add",
+        description=app_commands.locale_str(
+            "Agregar una nota del staff al ticket actual.",
+            key="slash.descriptions.note.add",
+        ),
+    )
+    @app_commands.describe(
+        content=app_commands.locale_str(
+            "El texto de la nota",
+            key="slash.describes.note.add.content",
+        )
+    )
     @is_mod()
     async def note_add(self, ctx: commands.Context[Any], content: str) -> None:
         gid = str(ctx.guild.id) if ctx.guild else None
@@ -731,7 +845,13 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
         await ctx.send(embed=_ok(gid, "tickets.note.list_sent"))
 
-    @note.command(name="list", description=app_commands.locale_str("Listar todas las notas del staff en el ticket actual.", key="slash.descriptions.note.list"))
+    @note.command(
+        name="list",
+        description=app_commands.locale_str(
+            "Listar todas las notas del staff en el ticket actual.",
+            key="slash.descriptions.note.list",
+        ),
+    )
     @is_mod()
     async def note_list(self, ctx: commands.Context[Any]) -> None:
         gid = str(ctx.guild.id) if ctx.guild else None
@@ -759,8 +879,19 @@ class TicketsCog(commands.Cog, name="Tickets"):
         embed.set_footer(text=t(gid, "tickets.open.footer"))
         await self._send_notes_private(ctx, embed)
 
-    @note.command(name="delete", description=app_commands.locale_str("Eliminar una nota del staff del ticket actual.", key="slash.descriptions.note.delete"))
-    @app_commands.describe(note_id=app_commands.locale_str("El UUID de la nota a eliminar", key="slash.describes.note.delete.note_id"))
+    @note.command(
+        name="delete",
+        description=app_commands.locale_str(
+            "Eliminar una nota del staff del ticket actual.",
+            key="slash.descriptions.note.delete",
+        ),
+    )
+    @app_commands.describe(
+        note_id=app_commands.locale_str(
+            "El UUID de la nota a eliminar",
+            key="slash.describes.note.delete.note_id",
+        )
+    )
     @is_mod()
     async def note_delete(self, ctx: commands.Context[Any], note_id: str) -> None:
         gid = str(ctx.guild.id) if ctx.guild else None
