@@ -64,6 +64,11 @@ filterwarnings = [
     "ignore::hypothesis.errors.HypothesisDeprecationWarning",
     # discord.ui.TextInput.label deprecated in favor of discord.ui.Label (full migration deferred)
     "ignore::DeprecationWarning:discord.ui",
+    # discord.py imports stdlib audioop (deprecated on 3.11/3.12, removed on 3.13+)
+    "ignore:.*audioop.*:DeprecationWarning",
+    # Pillow/tempfile cleanup noise under PYTHONASYNCIODEBUG on 3.14 CI image tests
+    "ignore::ResourceWarning",
+    "ignore::pytest.PytestUnraisableExceptionWarning",
 ]
 
 [tool.setuptools.packages.find]
