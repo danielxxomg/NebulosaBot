@@ -27,13 +27,6 @@ logger = logging.getLogger(__name__)
 
 CHANNEL_DELETE_DELAY = 5  # seconds
 
-# Default panel text — used by both /ticket_panel and startup self-heal.
-DEFAULT_TICKET_PANEL_TITLE = "Support Tickets"
-DEFAULT_TICKET_PANEL_DESCRIPTION = (
-    "Click the button below to open a support ticket."
-    " A staff member will assist you shortly."
-)
-
 
 async def deploy_ticket_panel(
     channel: discord.abc.Messageable,
@@ -41,8 +34,8 @@ async def deploy_ticket_panel(
     *,
     bot: NebulosaBot,
     guild: discord.Guild | None = None,
-    title: str = DEFAULT_TICKET_PANEL_TITLE,
-    description_text: str = DEFAULT_TICKET_PANEL_DESCRIPTION,
+    title: str | None = None,
+    description_text: str | None = None,
 ) -> discord.Message:
     """Deploy a ticket panel embed with a persistent TicketPanelView.
 
@@ -50,11 +43,21 @@ async def deploy_ticket_panel(
     calls ``guild_service.update_guild_panel()`` to persist the message
     and channel IDs.  Returns the sent message.
 
+    When *title* or *description_text* is ``None``, the localized default
+    is resolved via ``t()`` using the guild's language.
+
     Raises ``discord.Forbidden`` if the bot lacks send permissions.
     """
+    resolved_title = title if title is not None else t(guild_id, "tickets.panel.default_title")
+    resolved_description = (
+        description_text
+        if description_text is not None
+        else t(guild_id, "tickets.panel.default_description")
+    )
+
     embed = discord.Embed(
-        title=title,
-        description=description_text,
+        title=resolved_title,
+        description=resolved_description,
         color=INFO,
         timestamp=datetime.now(UTC),
     )
@@ -361,7 +364,7 @@ class TicketPanelView(discord.ui.View):
                 if isinstance(child, discord.ui.Button) and child.custom_id == "ticket:open":
                     child.label = t(guild_id, "tickets.panel.open_button")
 
-    @discord.ui.button(label="Open Ticket", style=discord.ButtonStyle.primary, custom_id="ticket:open", emoji="🎫")
+    @discord.ui.button(label="Abrir Ticket", style=discord.ButtonStyle.primary, custom_id="ticket:open", emoji="🎫")
     async def open_ticket_button(
         self, interaction: discord.Interaction, button: discord.ui.Button[discord.ui.View]
     ) -> None:
@@ -431,7 +434,7 @@ class TicketActionsView(discord.ui.View):
             return None, t(guild_id, f"tickets.actions.{action}_already_closed_description")
         return row, None
 
-    @discord.ui.button(label="Claim", style=discord.ButtonStyle.success, custom_id="ticket:claim", emoji="✋")
+    @discord.ui.button(label="Reclamar", style=discord.ButtonStyle.success, custom_id="ticket:claim", emoji="✋")
     async def claim_button(self, interaction: discord.Interaction, button: discord.ui.Button[discord.ui.View]) -> None:
         bot: NebulosaBot = interaction.client  # type: ignore[assignment]
         channel_id = interaction.channel_id
@@ -555,7 +558,7 @@ class TicketActionsView(discord.ui.View):
         embed = build_ticket_embed(ticket, claimed_by=interaction.user, guild_id=guild_id, bot=bot, guild=guild)
         await interaction.response.edit_message(embed=embed, view=self)
 
-    @discord.ui.button(label="Close", style=discord.ButtonStyle.danger, custom_id="ticket:close", emoji="🔒")
+    @discord.ui.button(label="Cerrar", style=discord.ButtonStyle.danger, custom_id="ticket:close", emoji="🔒")
     async def close_button(self, interaction: discord.Interaction, button: discord.ui.Button[discord.ui.View]) -> None:
         bot: NebulosaBot = interaction.client  # type: ignore[assignment]
         channel_id = interaction.channel_id
@@ -647,7 +650,7 @@ class TicketActionsView(discord.ui.View):
         confirm_view.message = await interaction.original_response()
 
     @discord.ui.button(
-        label="Edit Category", style=discord.ButtonStyle.secondary,
+        label="Editar Categoría", style=discord.ButtonStyle.secondary,
         custom_id="ticket:edit-category", emoji="✏️",
     )
     async def edit_category_button(
