@@ -6,7 +6,7 @@ and the guild's ``guild_config`` without manual service lookups.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from discord.ext import commands
 
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from bot.models.guild import GuildConfig
 
 
-class NebulosaContext(commands.Context):
+class NebulosaContext(commands.Context):  # type: ignore[type-arg]  # circular import: cannot import NebulosaBot
     """Custom context that exposes the bot's infrastructure services.
 
     ``guild_config`` is pre-populated by ``NebulosaBot.get_context()``
@@ -31,6 +31,8 @@ class NebulosaContext(commands.Context):
             await ctx.db.get_guild("123")        # Database shortcut
     """
 
+    _guild_config: GuildConfig | None
+
     # ----------------------------------------------------------------
     # Service accessors (delegate to bot)
     # ----------------------------------------------------------------
@@ -38,12 +40,12 @@ class NebulosaContext(commands.Context):
     @property
     def db(self) -> Database:
         """The bot's :class:`Database` instance."""
-        return self.bot.db
+        return cast(Database, self.bot.db)
 
     @property
     def cache(self) -> TTLCache:
         """The bot's :class:`TTLCache` instance."""
-        return self.bot.cache
+        return cast(TTLCache, self.bot.cache)
 
     @property
     def guild_config(self) -> GuildConfig | None:

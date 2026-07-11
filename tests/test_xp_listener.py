@@ -21,11 +21,18 @@ import discord
 import pytest
 from discord.ext import commands
 
+from bot.core.i18n import set_guild_language
 from bot.listeners.xp_listener import XPListener
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _force_english_for_test_guild() -> None:
+    """Isolate XP embeds from other tests' guild language mutations."""
+    set_guild_language("123456789", "en")
 
 
 @pytest.fixture

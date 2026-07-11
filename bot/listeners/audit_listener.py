@@ -52,6 +52,8 @@ class AuditListener(commands.Cog):
             return
         if before.guild is None:
             return
+        if not isinstance(before.channel, discord.abc.GuildChannel):
+            return
         if not self._logging.can_log_in_channel(before.channel):
             return
 
