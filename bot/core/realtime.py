@@ -296,6 +296,7 @@ class RealtimeCacheSubscriber:
         "_supabase_url",
         "_unhealthy_cycles",
         "_watchdog_task",
+        "_watchdog_warned",
         "recent_writes",
         "ticket_guild_cache",
     )
@@ -321,6 +322,7 @@ class RealtimeCacheSubscriber:
         self._subscribed_at: float = 0.0
         self._event_count: int = 0
         self._received_count: int = 0
+        self._watchdog_warned: bool = False
         self._unhealthy_cycles: int = 0
         self._poll_fallback_enabled: bool = False
         # Poll from epoch zero so the first cycle covers the full history.
@@ -771,8 +773,14 @@ class RealtimeCacheSubscriber:
     # ------------------------------------------------------------------
 
     async def _watchdog_check_once(self) -> None:
-        """Warn if no CDC events arrive 30 s after the first SUBSCRIBED."""
+        """Warn once if no CDC events arrive 30 s after the first SUBSCRIBED.
+
+        Subsequent ticks stay silent so a misconfigured publication does not
+        spam logs every 30 seconds (production logs showed perpetual warnings).
+        """
         if self._status != "SUBSCRIBED" or self._subscribed_at == 0.0:
+            return
+        if self._watchdog_warned:
             return
         now = time.monotonic()
         elapsed = now - self._subscribed_at
@@ -780,6 +788,7 @@ class RealtimeCacheSubscriber:
             logger.warning(
                 "No CDC events received — check that supabase_realtime publication includes the required tables"
             )
+            self._watchdog_warned = True
 
     async def _watchdog_loop(self) -> None:
         while True:
