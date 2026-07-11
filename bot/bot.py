@@ -19,7 +19,7 @@ from bot.constants import FALLBACK_PREFIX
 from bot.core.cache import TTLCache
 from bot.core.context import NebulosaContext
 from bot.core.database import Database, create_realtime_client
-from bot.core.i18n import load_locales, t
+from bot.core.i18n import LocaleTranslator, load_locales, t, validate_slash_localizations
 from bot.core.realtime import RealtimeCacheSubscriber
 from bot.services.economy_service import EconomyService
 from bot.services.greeting_service import GreetingService
@@ -244,7 +244,13 @@ class NebulosaBot(commands.Bot):
             except Exception:
                 logger.exception("Failed to load extension %s", ext_path)
 
-        # --- 5. Tree sync ---
+        # --- 5. Validate slash localizations + set translator + tree sync ---
+        logger.info("Validating slash localizations ...")
+        validate_slash_localizations(self.tree)
+
+        logger.info("Setting translator ...")
+        await self.tree.set_translator(LocaleTranslator())
+
         logger.info("Syncing command tree ...")
         await self.tree.sync()
         logger.info("Command tree synced")
@@ -354,7 +360,10 @@ class NebulosaBot(commands.Bot):
             if cog is not None and cog.has_app_command_error_handler():
                 return
 
-        embed = error_embed("Unexpected Error", str(error))
+        guild_id = interaction.guild.id if interaction.guild else None
+        title = t(guild_id, "common.error.unexpected_title")
+        description = t(guild_id, "common.error.unexpected_message")
+        embed = error_embed(title, description)
 
         try:
             if interaction.response.is_done():

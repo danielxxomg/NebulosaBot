@@ -4,6 +4,7 @@
     "error": {
       "title": "Error",
       "unexpected_title": "Unexpected Error",
+      "unexpected_message": "An unexpected error occurred. Please try again.",
       "command_error_title": "Command Error",
       "dm_failed_description": "I couldn't DM you. Please enable DMs to receive command errors privately."
     },
@@ -15,6 +16,186 @@
     },
     "warning": {
       "title": "Warning"
+    }
+  },
+  "slash": {
+    "descriptions": {
+      "ping": "Show the bot's WebSocket latency.",
+      "status": "Show database and cache health.",
+      "help": "Show available commands grouped by module.",
+      "sync": "Sync the command tree (admin only).",
+      "warn": "Warn a member.",
+      "unwarn": "Remove the most recent warning from a member.",
+      "mute": "Timeout a member.",
+      "unmute": "Remove a member's timeout.",
+      "kick": "Kick a member from the server.",
+      "ban": "Ban a member from the server.",
+      "lock": "Lock a channel (deny send_messages for @everyone).",
+      "unlock": "Unlock a channel (allow send_messages for @everyone).",
+      "modlogs": "View moderation history for a member.",
+      "ticket_panel": "Deploy the ticket panel to the current channel.",
+      "create_category": "Create a new ticket category.",
+      "list_categories": "List all active ticket categories.",
+      "delete_category": "Delete a ticket category by ID.",
+      "reopen": "Reopen a closed ticket.",
+      "transfer": "Transfer a ticket to another staff member.",
+      "unclaim": "Release a claimed ticket back to open status.",
+      "avatar": "Show a member's avatar.",
+      "serverinfo": "Show server information.",
+      "userinfo": "Show user information.",
+      "setup": "Configure guild settings (ticket category, mod role, log channel, language).",
+      "daily": "Claim your daily coin reward.",
+      "coins": "Check your coin balance or someone else's.",
+      "leaderboard": "View the server leaderboard by XP or coins.",
+      "rank": "View your rank card or someone else's.",
+      "welcome_test": "Send a test welcome card in this channel (admin only).",
+      "goodbye_test": "Send a test goodbye card in this channel (admin only).",
+      "dados": "Roll a dice.",
+      "banana": "Measure something in bananas.",
+      "configure_fields": {
+        "_": "Configure custom intake fields for a ticket category.",
+        "set": "Set field definitions for a ticket category."
+      },
+      "subticket": {
+        "_": "Manage sub-tickets linked to a parent ticket.",
+        "create": "Create a sub-ticket linked to a parent ticket."
+      },
+      "note": {
+        "_": "Manage staff notes on tickets.",
+        "add": "Add a staff note to the current ticket.",
+        "list": "List all staff notes on the current ticket.",
+        "delete": "Delete a staff note from the current ticket."
+      },
+      "welcome": {
+        "_": "Configure welcome card settings.",
+        "channel": "Set the channel for welcome messages.",
+        "toggle": "Toggle welcome messages on or off.",
+        "message": "Set the welcome message template."
+      },
+      "goodbye": {
+        "_": "Configure goodbye card settings.",
+        "channel": "Set the channel for goodbye messages.",
+        "toggle": "Toggle goodbye messages on or off.",
+        "message": "Set the goodbye message template."
+      }
+    },
+    "describes": {
+      "help": {
+        "module": "Show help for a specific module"
+      },
+      "warn": {
+        "member": "The member to warn",
+        "reason": "Reason for the warning"
+      },
+      "unwarn": {
+        "member": "The member to unwarn"
+      },
+      "mute": {
+        "member": "The member to mute",
+        "duration": "Duration (e.g. \"1h\", \"30m\", \"1h30m\"). Default: 1h",
+        "reason": "Reason for the mute"
+      },
+      "unmute": {
+        "member": "The member to unmute"
+      },
+      "kick": {
+        "member": "The member to kick",
+        "reason": "Reason for the kick"
+      },
+      "ban": {
+        "member": "The member to ban",
+        "reason": "Reason for the ban",
+        "delete_days": "Days of messages to delete (0-7, default: 0)"
+      },
+      "lock": {
+        "channel": "The channel to lock (default: current channel)"
+      },
+      "unlock": {
+        "channel": "The channel to unlock (default: current channel)"
+      },
+      "modlogs": {
+        "member": "The member whose modlogs to view",
+        "type": "Filter by infraction type (WARN, MUTE, KICK, BAN)",
+        "after": "Show only infractions after this date (ISO, e.g. 2026-01-01)"
+      },
+      "ticket_panel": {
+        "title": "Optional title for the panel embed",
+        "description_text": "Optional description for the panel embed"
+      },
+      "create_category": {
+        "name": "Category name",
+        "emoji": "Optional emoji",
+        "description": "Optional description",
+        "position": "Display order"
+      },
+      "delete_category": {
+        "category_id": "The UUID of the category to delete"
+      },
+      "reopen": {
+        "ticket_ref": "Optional ticket reference: '#0003', '0003', a UUID, or 'ticket:#0003'"
+      },
+      "transfer": {
+        "member": "The staff member to transfer the ticket to"
+      },
+      "avatar": {
+        "member": "Whose avatar to show (default: you)"
+      },
+      "userinfo": {
+        "member": "Whose info to show (default: you)"
+      },
+      "setup": {
+        "ticket_category": "Category for ticket channels",
+        "mod_role": "Optional moderator role",
+        "log_channel": "Optional moderation log channel",
+        "language": "Optional server language"
+      },
+      "coins": {
+        "member": "The member to check (defaults to yourself)"
+      },
+      "leaderboard": {
+        "lb_type": "Leaderboard type: 'xp' or 'coins' (default: xp)"
+      },
+      "rank": {
+        "member": "The member to check (defaults to yourself)"
+      },
+      "dados": {
+        "sides": "Number of sides (2-100)"
+      },
+      "configure_fields": {
+        "set": {
+          "category_id": "The UUID of the ticket category",
+          "fields_json": "JSON array of field definitions, e.g. '[{\"key\":\"player_nick\",\"label\":\"Player Nickname\"}]'"
+        }
+      },
+      "subticket": {
+        "create": {
+          "parent_id": "The UUID of the parent ticket (omitted: uses current channel)"
+        }
+      },
+      "note": {
+        "add": {
+          "content": "The note text"
+        },
+        "delete": {
+          "note_id": "The UUID of the note to delete"
+        }
+      },
+      "welcome": {
+        "channel": {
+          "channel": "The channel for welcome messages"
+        },
+        "message": {
+          "template": "Message template (placeholders: {user}, {server}, {mention})"
+        }
+      },
+      "goodbye": {
+        "channel": {
+          "channel": "The channel for goodbye messages"
+        },
+        "message": {
+          "template": "Message template (placeholders: {user}, {server}, {mention})"
+        }
+      }
     }
   },
   "core": {
@@ -115,7 +296,9 @@
       "deploy_error_description": "The panel was sent but the IDs could not be saved. It will not survive a bot restart.",
       "permission_denied_title": "Permission Denied",
       "permission_denied_description": "I don't have permission to send messages here.",
-      "open_button": "Open Ticket"
+      "open_button": "Open Ticket",
+      "default_title": "Support Tickets",
+      "default_description": "Click the button below to open a support ticket. A staff member will assist you shortly."
     },
     "create": {
       "server_only_title": "Server Only",
@@ -501,6 +684,15 @@
       "toggle_disabled_description": "Goodbye messages are now **disabled**.",
       "message_set_description": "Goodbye message template updated."
     }
+  },
+  "buttons": {
+    "confirm": "Confirm",
+    "cancel": "Cancel"
+  },
+  "paginator": {
+    "previous": "◀ Previous",
+    "next": "Next ▶",
+    "stop": "⏹ Stop"
   },
   "confirm": {
     "not_owner_title": "Not Allowed",

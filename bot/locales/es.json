@@ -4,6 +4,7 @@
     "error": {
       "title": "Error",
       "unexpected_title": "Error Inesperado",
+      "unexpected_message": "Ocurrió un error inesperado. Intenta de nuevo.",
       "command_error_title": "Error de Comando",
       "dm_failed_description": "No pude enviarte un mensaje directo. Por favor, habilita los DMs para recibir errores de comandos de forma privada."
     },
@@ -15,6 +16,186 @@
     },
     "warning": {
       "title": "Advertencia"
+    }
+  },
+  "slash": {
+    "descriptions": {
+      "ping": "Muestra la latencia WebSocket del bot.",
+      "status": "Muestra el estado de la base de datos y la caché.",
+      "help": "Muestra los comandos disponibles agrupados por módulo.",
+      "sync": "Sincroniza el árbol de comandos (solo administradores).",
+      "warn": "Advertir a un miembro.",
+      "unwarn": "Eliminar la advertencia más reciente de un miembro.",
+      "mute": "Silenciar a un miembro.",
+      "unmute": "Eliminar el silenciamiento de un miembro.",
+      "kick": "Expulsar a un miembro del servidor.",
+      "ban": "Prohibir a un miembro del servidor.",
+      "lock": "Bloquear un canal (denegar enviar mensajes a @everyone).",
+      "unlock": "Desbloquear un canal (permitir enviar mensajes a @everyone).",
+      "modlogs": "Ver el historial de moderación de un miembro.",
+      "ticket_panel": "Desplegar el panel de tickets en el canal actual.",
+      "create_category": "Crear una nueva categoría de tickets.",
+      "list_categories": "Listar todas las categorías de tickets activas.",
+      "delete_category": "Eliminar una categoría de tickets por ID.",
+      "reopen": "Reabrir un ticket cerrado.",
+      "transfer": "Transferir un ticket a otro miembro del staff.",
+      "unclaim": "Liberar un ticket reclamado de vuelta al estado abierto.",
+      "avatar": "Mostrar el avatar de un miembro.",
+      "serverinfo": "Mostrar información del servidor.",
+      "userinfo": "Mostrar información de un usuario.",
+      "setup": "Configurar ajustes del servidor (categoría de tickets, rol de moderador, canal de registro, idioma).",
+      "daily": "Reclamar tu recompensa diaria de monedas.",
+      "coins": "Consultar tu saldo de monedas o el de otro miembro.",
+      "leaderboard": "Ver la clasificación del servidor por XP o monedas.",
+      "rank": "Ver tu tarjeta de rango o la de otro miembro.",
+      "welcome_test": "Enviar una tarjeta de bienvenida de prueba en este canal (solo administradores).",
+      "goodbye_test": "Enviar una tarjeta de despedida de prueba en este canal (solo administradores).",
+      "dados": "Tirar un dado.",
+      "banana": "Medir algo en bananas.",
+      "configure_fields": {
+        "_": "Configurar campos de ingreso personalizados para una categoría de tickets.",
+        "set": "Establecer definiciones de campos para una categoría de tickets."
+      },
+      "subticket": {
+        "_": "Gestionar sub-tickets vinculados a un ticket padre.",
+        "create": "Crear un sub-ticket vinculado a un ticket padre."
+      },
+      "note": {
+        "_": "Gestionar notas de staff en tickets.",
+        "add": "Agregar una nota de staff al ticket actual.",
+        "list": "Listar todas las notas de staff del ticket actual.",
+        "delete": "Eliminar una nota de staff del ticket actual."
+      },
+      "welcome": {
+        "_": "Configurar ajustes de la tarjeta de bienvenida.",
+        "channel": "Establecer el canal para mensajes de bienvenida.",
+        "toggle": "Activar o desactivar los mensajes de bienvenida.",
+        "message": "Establecer la plantilla del mensaje de bienvenida."
+      },
+      "goodbye": {
+        "_": "Configurar ajustes de la tarjeta de despedida.",
+        "channel": "Establecer el canal para mensajes de despedida.",
+        "toggle": "Activar o desactivar los mensajes de despedida.",
+        "message": "Establecer la plantilla del mensaje de despedida."
+      }
+    },
+    "describes": {
+      "help": {
+        "module": "Mostrar ayuda para un módulo específico"
+      },
+      "warn": {
+        "member": "El miembro a advertir",
+        "reason": "Razón de la advertencia"
+      },
+      "unwarn": {
+        "member": "El miembro al que quitar la advertencia"
+      },
+      "mute": {
+        "member": "El miembro a silenciar",
+        "duration": "Duración (ej. \"1h\", \"30m\", \"1h30m\"). Predeterminado: 1h",
+        "reason": "Razón del silenciamiento"
+      },
+      "unmute": {
+        "member": "El miembro a desilenciar"
+      },
+      "kick": {
+        "member": "El miembro a expulsar",
+        "reason": "Razón de la expulsión"
+      },
+      "ban": {
+        "member": "El miembro a prohibir",
+        "reason": "Razón de la prohibición",
+        "delete_days": "Días de mensajes a eliminar (0-7, predeterminado: 0)"
+      },
+      "lock": {
+        "channel": "El canal a bloquear (predeterminado: canal actual)"
+      },
+      "unlock": {
+        "channel": "El canal a desbloquear (predeterminado: canal actual)"
+      },
+      "modlogs": {
+        "member": "El miembro cuyo historial de moderación ver",
+        "type": "Filtrar por tipo de infracción (WARN, MUTE, KICK, BAN)",
+        "after": "Mostrar solo infracciones después de esta fecha (ISO, ej. 2026-01-01)"
+      },
+      "ticket_panel": {
+        "title": "Título opcional para el embed del panel",
+        "description_text": "Descripción opcional para el embed del panel"
+      },
+      "create_category": {
+        "name": "Nombre de la categoría",
+        "emoji": "Emoji opcional",
+        "description": "Descripción opcional",
+        "position": "Orden de visualización"
+      },
+      "delete_category": {
+        "category_id": "El UUID de la categoría a eliminar"
+      },
+      "reopen": {
+        "ticket_ref": "Referencia de ticket opcional: '#0003', '0003', un UUID, o 'ticket:#0003'"
+      },
+      "transfer": {
+        "member": "El miembro del staff al que transferir el ticket"
+      },
+      "avatar": {
+        "member": "De quién mostrar el avatar (predeterminado: tú)"
+      },
+      "userinfo": {
+        "member": "De quién mostrar la información (predeterminado: tú)"
+      },
+      "setup": {
+        "ticket_category": "Categoría para canales de tickets",
+        "mod_role": "Rol de moderador opcional",
+        "log_channel": "Canal de registro de moderación opcional",
+        "language": "Idioma del servidor opcional"
+      },
+      "coins": {
+        "member": "El miembro a consultar (predeterminado: tú)"
+      },
+      "leaderboard": {
+        "lb_type": "Tipo de clasificación: 'xp' o 'coins' (predeterminado: xp)"
+      },
+      "rank": {
+        "member": "El miembro a consultar (predeterminado: tú)"
+      },
+      "dados": {
+        "sides": "Número de lados (2-100)"
+      },
+      "configure_fields": {
+        "set": {
+          "category_id": "El UUID de la categoría de tickets",
+          "fields_json": "Array JSON de definiciones de campos, ej. '[{\"key\":\"player_nick\",\"label\":\"Apodo del Jugador\"}]'"
+        }
+      },
+      "subticket": {
+        "create": {
+          "parent_id": "El UUID del ticket padre (omitido: usa el canal actual)"
+        }
+      },
+      "note": {
+        "add": {
+          "content": "El texto de la nota"
+        },
+        "delete": {
+          "note_id": "El UUID de la nota a eliminar"
+        }
+      },
+      "welcome": {
+        "channel": {
+          "channel": "El canal para mensajes de bienvenida"
+        },
+        "message": {
+          "template": "Plantilla de mensaje (comodines: {user}, {server}, {mention})"
+        }
+      },
+      "goodbye": {
+        "channel": {
+          "channel": "El canal para mensajes de despedida"
+        },
+        "message": {
+          "template": "Plantilla de mensaje (comodines: {user}, {server}, {mention})"
+        }
+      }
     }
   },
   "core": {
@@ -115,7 +296,9 @@
       "deploy_error_description": "El panel fue enviado pero los IDs no pudieron guardarse. No sobrevivirá un reinicio del bot.",
       "permission_denied_title": "Permiso Denegado",
       "permission_denied_description": "No tengo permiso para enviar mensajes aquí.",
-      "open_button": "Abrir Ticket"
+      "open_button": "Abrir Ticket",
+      "default_title": "Tickets de Soporte",
+      "default_description": "Haz clic en el botón para abrir un ticket de soporte. Un miembro del staff te atenderá pronto."
     },
     "create": {
       "server_only_title": "Solo Servidores",
@@ -501,6 +684,15 @@
       "toggle_disabled_description": "Los mensajes de despedida ahora están **deshabilitados**.",
       "message_set_description": "Plantilla de mensaje de despedida actualizada."
     }
+  },
+  "buttons": {
+    "confirm": "Confirmar",
+    "cancel": "Cancelar"
+  },
+  "paginator": {
+    "previous": "◀ Anterior",
+    "next": "Siguiente ▶",
+    "stop": "⏹ Detener"
   },
   "confirm": {
     "not_owner_title": "No Permitido",

@@ -16,7 +16,7 @@ from discord.ext import commands
 
 from bot.constants import FALLBACK_PREFIX
 from bot.core.context import NebulosaContext
-from bot.core.i18n import t
+from bot.core.i18n import SLASH_DESCRIPTIONS, t
 from bot.utils.brand import INFO, SUCCESS
 from bot.utils.checks import is_admin
 from bot.utils.embeds import error_embed, info_embed
@@ -45,7 +45,7 @@ class CoreCog(commands.Cog, name="Core"):
     # Commands
     # ==================================================================
 
-    @commands.hybrid_command(name="ping", description="Show the bot's WebSocket latency.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @commands.hybrid_command(name="ping", description=app_commands.locale_str("Muestra la latencia WebSocket del bot.", key="slash.descriptions.ping"))  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
     async def ping(self, ctx: NebulosaContext) -> None:
         """Reply with the current gateway latency in milliseconds."""
         guild_id = ctx.guild.id if ctx.guild else None
@@ -59,7 +59,7 @@ class CoreCog(commands.Cog, name="Core"):
 
     @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
         name="status",
-        description="Show database and cache health.",
+        description=app_commands.locale_str("Muestra el estado de la base de datos y la caché.", key="slash.descriptions.status"),
     )
     @app_commands.default_permissions(moderate_members=True)
     async def status(self, ctx: NebulosaContext) -> None:
@@ -138,9 +138,9 @@ class CoreCog(commands.Cog, name="Core"):
 
     @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
         name="help",
-        description="Show available commands grouped by module.",
+        description=app_commands.locale_str("Muestra los comandos disponibles agrupados por módulo.", key="slash.descriptions.help"),
     )
-    @app_commands.describe(module="Show help for a specific module")
+    @app_commands.describe(module=app_commands.locale_str("Mostrar ayuda para un módulo específico", key="slash.describes.help.module"))
     async def help_command(self, ctx: NebulosaContext, module: str | None = None) -> None:
         """Display help — all modules (paginated), or a single module if specified.
 
@@ -183,22 +183,26 @@ class CoreCog(commands.Cog, name="Core"):
             await ctx.send(embed=pages[0], ephemeral=True)
             return
 
-        view = EmbedPaginator(pages, custom_id_prefix="help:")
+        view = EmbedPaginator(pages, guild_id=guild_id, custom_id_prefix="help:")
         await ctx.send(embed=pages[0], view=view, ephemeral=True)
 
     @commands.hybrid_command(
         name="sync",
-        description="Sync the command tree (admin only).",
+        description=app_commands.locale_str("Sincronizar el árbol de comandos (solo admin).", key="slash.descriptions.sync"),
     )
     @is_admin()
     async def sync(self, ctx: NebulosaContext) -> None:
         """Re-sync slash commands globally.
 
         Gated behind the Administrator permission via ``@is_admin()``.
+        Validates slash localizations before syncing.
         """
+        from bot.core.i18n import validate_slash_localizations
+
         guild_id = ctx.guild.id if ctx.guild else None
         await ctx.defer(ephemeral=True)
         try:
+            validate_slash_localizations(self.bot.tree)
             synced = await self.bot.tree.sync()
             embed = discord.Embed(
                 title=t(guild_id, "core.sync.title"),
@@ -245,6 +249,23 @@ def _resolve_prefix(ctx: NebulosaContext) -> str:
     return FALLBACK_PREFIX
 
 
+def _resolve_command_description(
+    cmd: commands.Command,
+    guild_id: int | None,
+) -> str:
+    """Resolve a command's description in the guild's language.
+
+    Priority:
+        1. If cmd.qualified_name or cmd.name is in SLASH_DESCRIPTIONS → t(guild_id, key)
+        2. Else → str(cmd.description) raw fallback
+        3. If description is empty → "No description."
+    """
+    i18n_key = SLASH_DESCRIPTIONS.get(cmd.qualified_name) or SLASH_DESCRIPTIONS.get(cmd.name)
+    if i18n_key is not None:
+        return t(guild_id, i18n_key)
+    return cmd.description or "No description."
+
+
 def _build_cog_help_embed(
     bot: NebulosaBot,
     cog_name: str,
@@ -279,7 +300,7 @@ def _build_cog_help_embed(
     )
 
     for cmd in visible:
-        desc = cmd.description or "No description."
+        desc = _resolve_command_description(cmd, guild_id)
         is_hybrid = isinstance(cmd, commands.HybridCommand)
         suffix = " [prefix + slash]" if is_hybrid else " [prefix]"
 

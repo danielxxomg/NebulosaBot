@@ -779,39 +779,67 @@ class TestHandleModErrorI18n:
 
 
 class TestPaginatorButtonI18n:
-    """EmbedPaginator button labels use universal symbols (no i18n needed)."""
+    """EmbedPaginator button labels are localized via t()."""
 
-    def test_paginator_es_buttons(self) -> None:
-        """Paginator buttons have universal symbols and correct custom_ids."""
-        import discord
-
+    def test_paginator_es_buttons(self, tmp_path: Path) -> None:
+        """Spanish guild paginator buttons show Spanish labels."""
+        from bot.core import i18n as i18n_mod
         from bot.utils.paginator import EmbedPaginator
 
-        page = discord.Embed(title="test")
-        view = EmbedPaginator([page, page], custom_id_prefix="modlogs:")
+        # Load real locales (the autouse fixture replaced them with markers).
+        orig_locales = dict(i18n_mod._locales)
+        orig_guild_langs = dict(i18n_mod._guild_languages)
+        i18n_mod._locales.clear()
+        i18n_mod._guild_languages.clear()
+        load_locales(Path("bot/locales"))
+        set_guild_language(str(_GUILD_ID_ES), "es")
 
-        buttons = [c for c in view.children if isinstance(c, discord.ui.Button)]
-        labels = {b.custom_id: b.label for b in buttons}
+        try:
+            page = discord.Embed(title="test")
+            view = EmbedPaginator([page, page], guild_id=str(_GUILD_ID_ES), custom_id_prefix="modlogs:")
 
-        # EmbedPaginator uses universal symbols, not localized text
-        prev_label = labels["modlogs:prev"]
-        next_label = labels["modlogs:next"]
-        assert prev_label is not None and "◀ Previous" in prev_label
-        assert next_label is not None and "Next ▶" in next_label
+            buttons = [c for c in view.children if isinstance(c, discord.ui.Button)]
+            labels = {b.custom_id: b.label for b in buttons}
 
-    def test_paginator_en_buttons(self) -> None:
-        """EN guild also gets universal paginator button labels."""
-        import discord
+            prev_label = labels["modlogs:prev"]
+            next_label = labels["modlogs:next"]
+            stop_label = labels["modlogs:stop"]
+            assert prev_label is not None and "Anterior" in prev_label
+            assert next_label is not None and "Siguiente" in next_label
+            assert stop_label is not None and "Detener" in stop_label
+        finally:
+            i18n_mod._locales.clear()
+            i18n_mod._locales.update(orig_locales)
+            i18n_mod._guild_languages.clear()
+            i18n_mod._guild_languages.update(orig_guild_langs)
 
+    def test_paginator_en_buttons(self, tmp_path: Path) -> None:
+        """English guild paginator buttons show English labels."""
+        from bot.core import i18n as i18n_mod
         from bot.utils.paginator import EmbedPaginator
 
-        page = discord.Embed(title="test")
-        view = EmbedPaginator([page, page], custom_id_prefix="modlogs:")
+        orig_locales = dict(i18n_mod._locales)
+        orig_guild_langs = dict(i18n_mod._guild_languages)
+        i18n_mod._locales.clear()
+        i18n_mod._guild_languages.clear()
+        load_locales(Path("bot/locales"))
+        set_guild_language(str(_GUILD_ID_EN), "en")
 
-        buttons = [c for c in view.children if isinstance(c, discord.ui.Button)]
-        labels = {b.custom_id: b.label for b in buttons}
+        try:
+            page = discord.Embed(title="test")
+            view = EmbedPaginator([page, page], guild_id=str(_GUILD_ID_EN), custom_id_prefix="modlogs:")
 
-        prev_label = labels["modlogs:prev"]
-        next_label = labels["modlogs:next"]
-        assert prev_label is not None and "◀ Previous" in prev_label
-        assert next_label is not None and "Next ▶" in next_label
+            buttons = [c for c in view.children if isinstance(c, discord.ui.Button)]
+            labels = {b.custom_id: b.label for b in buttons}
+
+            prev_label = labels["modlogs:prev"]
+            next_label = labels["modlogs:next"]
+            stop_label = labels["modlogs:stop"]
+            assert prev_label is not None and "Previous" in prev_label
+            assert next_label is not None and "Next" in next_label
+            assert stop_label is not None and "Stop" in stop_label
+        finally:
+            i18n_mod._locales.clear()
+            i18n_mod._locales.update(orig_locales)
+            i18n_mod._guild_languages.clear()
+            i18n_mod._guild_languages.update(orig_guild_langs)
