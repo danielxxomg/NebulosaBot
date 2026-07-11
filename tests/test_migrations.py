@@ -12,8 +12,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"
 
 
@@ -44,7 +42,7 @@ class TestMigration008:
         # Verify the migration comment documents idempotency.
         assert "idempotent" in sql.lower() or "safe to re-run" in sql.lower()
         # The SQL itself is a single ALTER TABLE — inherently idempotent.
-        code_lines = [l for l in sql.splitlines() if l.strip() and not l.strip().startswith("--")]
+        code_lines = [line for line in sql.splitlines() if line.strip() and not line.strip().startswith("--")]
         assert len(code_lines) == 1
         assert "ALTER TABLE" in code_lines[0]
 
@@ -75,22 +73,22 @@ class TestMigration009:
     def test_all_functions_use_security_definer(self) -> None:
         """All 4 functions MUST use SECURITY DEFINER."""
         sql = _read_migration("009_member_increment_rpc.sql")
-        code_lines = [l for l in sql.splitlines() if l.strip() and not l.strip().startswith("--")]
-        count = sum(1 for l in code_lines if "SECURITY DEFINER" in l)
+        code_lines = [line for line in sql.splitlines() if line.strip() and not line.strip().startswith("--")]
+        count = sum(1 for line in code_lines if "SECURITY DEFINER" in line)
         assert count == 4, f"Expected 4 SECURITY DEFINER, found {count}"
 
     def test_all_functions_set_search_path(self) -> None:
         """All 4 functions MUST set search_path = public."""
         sql = _read_migration("009_member_increment_rpc.sql")
-        code_lines = [l for l in sql.splitlines() if l.strip() and not l.strip().startswith("--")]
-        count = sum(1 for l in code_lines if "SET search_path = public" in l)
+        code_lines = [line for line in sql.splitlines() if line.strip() and not line.strip().startswith("--")]
+        count = sum(1 for line in code_lines if "SET search_path = public" in line)
         assert count == 4, f"Expected 4 SET search_path, found {count}"
 
     def test_is_idempotent_uses_create_or_replace(self) -> None:
         """All function definitions MUST use CREATE OR REPLACE for idempotency."""
         sql = _read_migration("009_member_increment_rpc.sql")
-        code_lines = [l for l in sql.splitlines() if l.strip() and not l.strip().startswith("--")]
-        count = sum(1 for l in code_lines if "CREATE OR REPLACE FUNCTION" in l)
+        code_lines = [line for line in sql.splitlines() if line.strip() and not line.strip().startswith("--")]
+        count = sum(1 for line in code_lines if "CREATE OR REPLACE FUNCTION" in line)
         assert count == 4, f"Expected 4 CREATE OR REPLACE FUNCTION, found {count}"
 
     def test_revokes_from_public(self) -> None:
@@ -109,8 +107,8 @@ class TestMigration009:
         """All functions MUST use ON CONFLICT for upsert safety."""
         sql = _read_migration("009_member_increment_rpc.sql")
         # Count only non-comment lines containing ON CONFLICT
-        code_lines = [l for l in sql.splitlines() if l.strip() and not l.strip().startswith("--")]
-        conflict_count = sum(1 for l in code_lines if "ON CONFLICT" in l)
+        code_lines = [line for line in sql.splitlines() if line.strip() and not line.strip().startswith("--")]
+        conflict_count = sum(1 for line in code_lines if "ON CONFLICT" in line)
         assert conflict_count == 4, f"Expected 4 ON CONFLICT clauses, found {conflict_count}"
 
     def test_quoted_camelcase_columns(self) -> None:

@@ -235,7 +235,9 @@
       "edit_category_mods_only_title": "Mods Only",
       "edit_category_mods_only_description": "Only moderators can edit ticket categories.",
       "edit_category_no_categories_title": "No Categories",
-      "edit_category_no_categories_description": "No ticket categories are available. Ask an admin to create one with `/create_category`."
+      "edit_category_no_categories_description": "No ticket categories are available. Ask an admin to create one with `/create_category`.",
+      "edit_category_audit_title": "Category Updated",
+      "edit_category_audit_description": "Category changed from **{old_category}** to **{new_category}** by {actor}."
     },
     "subticket": {
       "help_title": "Sub-tickets",
