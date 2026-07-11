@@ -1,26 +1,6 @@
-# Permission Model Specification
+# Delta for Permission Model
 
-## Purpose
-
-Define permission checks for moderators and administrators.
-
-## Requirements
-
-### Requirement: Administrator check
-
-The system MUST provide an `is_admin` check that returns true for guild administrators.
-
-#### Scenario: Admin user
-
-- GIVEN a user with the Administrator permission
-- WHEN `is_admin` is evaluated
-- THEN it returns true
-
-#### Scenario: Non-admin user
-
-- GIVEN a user without the Administrator permission
-- WHEN `is_admin` is evaluated
-- THEN it returns false
+## MODIFIED Requirements
 
 ### Requirement: Moderator check
 
@@ -29,6 +9,8 @@ The system MUST provide an `is_mod` check that gates BOTH the prefix (`commands.
 The prefix path MUST return true for users with the configured moderator role OR the Administrator permission. The prefix path MUST raise `NoPrivateMessage` when invoked in DMs. The prefix path MUST raise `MissingRole` when the mod role is configured but the user lacks it. The prefix path MUST raise `CheckFailure` when no mod role is configured and the user is not an administrator.
 
 The slash path behavior MUST remain equivalent to the current `is_mod_check` decision logic — no regression.
+
+(Previously: Only described role/admin evaluation logic; did not enforce dual-path registration. Implementation only gated slash path.)
 
 #### Scenario: Mod role via slash
 
@@ -82,6 +64,8 @@ The slash path behavior MUST remain equivalent to the current `is_mod_check` dec
 
 The system SHOULD fall back to administrator-only access when no moderator role is configured. This applies to BOTH prefix and slash invocation paths — deny-by-default for non-administrators.
 
+(Previously: Only described slash-path fallback; prefix path had no enforcement at all.)
+
 #### Scenario: Missing mod role via slash
 
 - GIVEN no moderator role is set
@@ -99,19 +83,3 @@ The system SHOULD fall back to administrator-only access when no moderator role 
 - GIVEN no moderator role is set
 - WHEN an administrator invokes a moderator-guarded command via prefix
 - THEN the command executes successfully
-
-### Requirement: Ban command requires administrator
-
-The `/ban` command MUST be restricted to administrators via the `@is_admin()` guard.
-
-#### Scenario: Admin invokes ban
-
-- GIVEN a user has the Administrator permission
-- WHEN they invoke `/ban`
-- THEN the command executes
-
-#### Scenario: Moderator invokes ban
-
-- GIVEN a user has the moderator role but not the Administrator permission
-- WHEN they invoke `/ban`
-- THEN access is denied
