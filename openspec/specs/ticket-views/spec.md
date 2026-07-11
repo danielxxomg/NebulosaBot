@@ -8,7 +8,9 @@ Define persistent Discord UI components for ticket panels and per-ticket actions
 
 ### Requirement: Ticket panel view
 
-The system MUST provide a persistent panel view with an open button. `TicketPanelView`, `TicketActionsView`, and `_CategorySelectView` MUST reside in `bot/views/tickets.py`. Panel design: the open button triggers an ephemeral category dropdown after click. Button labels MUST be resolved dynamically via `t()` at interaction time using `interaction.guild_id`, not only at construction time. On category selection, the system SHALL respond with a `TicketIntakeModal` that receives the selected category's `field_definitions` for dynamic TextInput construction.
+The system MUST provide a persistent panel view with an open button. `TicketPanelView`, `TicketActionsView`, and `_CategorySelectView` MUST reside in `bot/views/tickets.py`. Panel design: the open button triggers an ephemeral category dropdown after click. Button labels MUST be resolved dynamically via `t()` at interaction time using `interaction.guild_id`, not only at construction time. On category selection, the system SHALL respond with a `TicketIntakeModal` that receives the selected category's `field_definitions` for dynamic TextInput construction. Default panel title and description MUST be resolved via `t()` keys, not hardcoded English strings. The `/ticket_panel` command MUST default `title` and `description_text` to `None` (not English strings); when `None`, `deploy_ticket_panel` resolves the localized default via `t(guild_id, ...)`. Explicit admin-provided values override the localized defaults. The self-heal panel deploy flow MUST pass `guild_id` to resolve default strings via `t()`.
+
+(Previously: decorator defaults were hardcoded English; panel defaults used hardcoded English constants)
 
 #### Scenario: Panel render
 
@@ -40,11 +42,11 @@ The system MUST provide a persistent panel view with an open button. `TicketPane
 - WHEN the bot restarts and a user clicks the open button
 - THEN the button label is resolved via `t('tickets.panel.open_button', guild_id)` at interaction time
 
-#### Scenario: English fallback before first interaction
+#### Scenario: Spanish-first decorator defaults
 
 - GIVEN any guild with a deployed ticket panel
 - WHEN the bot restarts and the panel has not yet been interacted with
-- THEN the button shows the English decorator default until first interaction updates it
+- THEN the button shows the Spanish decorator default (not English)
 
 #### Scenario: Category select passes field_definitions to modal
 
@@ -57,6 +59,24 @@ The system MUST provide a persistent panel view with an open button. `TicketPane
 - GIVEN a category with `field_definitions = []`
 - WHEN a user selects that category
 - THEN `TicketIntakeModal` is constructed with `field_definitions=[]`
+
+#### Scenario: Self-heal panel deploy uses guild language
+
+- GIVEN a Spanish guild with a deployed panel
+- WHEN the self-heal flow re-deploys the panel
+- THEN the default title and description are resolved via `t()` using the guild's language
+
+#### Scenario: Admin /ticket_panel with no overrides uses localized defaults
+
+- GIVEN a Spanish guild
+- WHEN an admin runs `/ticket_panel` without providing title or description
+- THEN the command args are `None` (not English strings) and `deploy_ticket_panel` resolves the panel title and description via `t(guild_id, ...)`
+
+#### Scenario: Admin /ticket_panel with explicit overrides
+
+- GIVEN any guild
+- WHEN an admin runs `/ticket_panel title:"Mi Panel" description_text:"Abre un ticket"`
+- THEN those explicit values are passed through to `deploy_ticket_panel` as-is, overriding localized defaults
 
 ### Requirement: Ticket actions view
 

@@ -90,6 +90,28 @@ The `t()` function MUST perform a synchronous dict lookup with no database call 
 - WHEN `t()` is called 1000 times
 - THEN zero database queries are executed
 
+### Requirement: Slash metadata locale keys
+
+The system MUST provide locale keys under `slash.descriptions.*` and `slash.describes.*` namespaces in both `es.json` and `en.json` for all hybrid command descriptions and `@app_commands.describe(...)` parameter strings.
+
+#### Scenario: Description keys exist for all commands
+
+- GIVEN `es.json` and `en.json`
+- WHEN `slash.descriptions.ping`, `slash.descriptions.ban`, etc. are looked up
+- THEN non-empty strings are returned from both locales
+
+#### Scenario: Describe keys exist for all parameters
+
+- GIVEN `es.json` and `en.json`
+- WHEN `slash.describes.ban_reason`, `slash.describes.ban_user`, etc. are looked up
+- THEN non-empty strings are returned from both locales
+
+#### Scenario: Spanish is default message string
+
+- GIVEN the Translator resolves a key with no matching client locale
+- WHEN the fallback fires
+- THEN the Spanish (`es`) string is returned as the default message
+
 ### Requirement: Edit category audit i18n keys
 
 The system MUST provide `tickets.actions.edit_category_audit_title` and `tickets.actions.edit_category_audit_description` keys in both `en.json` and `es.json`. These keys MUST support `{old_category}`, `{new_category}`, and `{actor}` placeholder tokens.
