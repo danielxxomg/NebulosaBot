@@ -215,6 +215,8 @@ def _load_ticket_i18n(tmp_path: Path) -> Generator[None, None, None]:
                 "closed_channel_title": "CLOSED_CH_TITLE_ES",
                 "closed_channel_message": "CLOSED_CH_MSG_ES",
                 "closed_channel_transcript": "CLOSED_CH_TRANS_ES",
+                "edit_category_audit_title": "AUDIT_TITLE_ES",
+                "edit_category_audit_description": "AUDIT_DESC_{old_category}_{new_category}_{actor}_ES",
             },
             "subticket": {
                 "help_title": "SUB_HELP_ES",
@@ -423,6 +425,8 @@ def _load_ticket_i18n(tmp_path: Path) -> Generator[None, None, None]:
                 "closed_channel_title": "CLOSED_CH_TITLE_EN",
                 "closed_channel_message": "CLOSED_CH_MSG_EN",
                 "closed_channel_transcript": "CLOSED_CH_TRANS_EN",
+                "edit_category_audit_title": "AUDIT_TITLE_EN",
+                "edit_category_audit_description": "AUDIT_DESC_{old_category}_{new_category}_{actor}_EN",
             },
             "subticket": {
                 "help_title": "SUB_HELP_EN",
@@ -1479,3 +1483,100 @@ class TestEsJsonTranslations:
         assert "Transcript" not in value
         # Must use Spanish equivalent
         assert "Transcripción" in value or "transcripción" in value
+
+
+# ---------------------------------------------------------------------------
+# Edit category audit i18n keys
+# ---------------------------------------------------------------------------
+
+
+class TestEditCategoryAuditI18n:
+    """Test edit_category_audit_title/description keys in both locales."""
+
+    def test_edit_category_audit_keys_es(self) -> None:
+        """edit_category_audit_title and _description resolve for ES guild."""
+        from bot.core.i18n import t
+
+        title = t(_ES_GUILD_ID, "tickets.actions.edit_category_audit_title")
+        assert isinstance(title, str) and len(title) > 0
+
+        desc = t(_ES_GUILD_ID, "tickets.actions.edit_category_audit_description")
+        assert isinstance(desc, str) and len(desc) > 0
+
+    def test_edit_category_audit_keys_en(self) -> None:
+        """edit_category_audit_title and _description resolve for EN guild."""
+        from bot.core.i18n import t
+
+        title = t(_EN_GUILD_ID, "tickets.actions.edit_category_audit_title")
+        assert isinstance(title, str) and len(title) > 0
+
+        desc = t(_EN_GUILD_ID, "tickets.actions.edit_category_audit_description")
+        assert isinstance(desc, str) and len(desc) > 0
+
+    def test_edit_category_audit_placeholders_resolve(self) -> None:
+        """Audit description placeholders resolve with no leftover braces."""
+        from bot.core.i18n import t
+
+        result = t(
+            _ES_GUILD_ID,
+            "tickets.actions.edit_category_audit_description",
+            old_category="Support",
+            new_category="Billing",
+            actor="<@123>",
+        )
+        assert "Support" in result
+        assert "Billing" in result
+        assert "<@123>" in result
+        # No unresolved placeholders
+        assert "{" not in result
+
+
+# ---------------------------------------------------------------------------
+# Production locale file contract — audit keys must exist in real JSON files
+# ---------------------------------------------------------------------------
+
+
+class TestProductionLocaleAuditKeys:
+    """Test that bot/locales/en.json and es.json contain the audit keys with required placeholders."""
+
+    @staticmethod
+    def _load_locale(filename: str) -> dict:
+        """Load a production locale JSON file."""
+        path = Path("bot/locales") / filename
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def test_en_json_has_audit_title_key(self) -> None:
+        """en.json MUST contain tickets.actions.edit_category_audit_title."""
+        data = self._load_locale("en.json")
+        assert "edit_category_audit_title" in data["tickets"]["actions"]
+
+    def test_en_json_has_audit_description_key(self) -> None:
+        """en.json MUST contain tickets.actions.edit_category_audit_description."""
+        data = self._load_locale("en.json")
+        assert "edit_category_audit_description" in data["tickets"]["actions"]
+
+    def test_es_json_has_audit_title_key(self) -> None:
+        """es.json MUST contain tickets.actions.edit_category_audit_title."""
+        data = self._load_locale("es.json")
+        assert "edit_category_audit_title" in data["tickets"]["actions"]
+
+    def test_es_json_has_audit_description_key(self) -> None:
+        """es.json MUST contain tickets.actions.edit_category_audit_description."""
+        data = self._load_locale("es.json")
+        assert "edit_category_audit_description" in data["tickets"]["actions"]
+
+    def test_en_audit_description_has_all_placeholders(self) -> None:
+        """en.json audit description MUST contain {old_category}, {new_category}, {actor} placeholders."""
+        data = self._load_locale("en.json")
+        desc = data["tickets"]["actions"]["edit_category_audit_description"]
+        assert "{old_category}" in desc
+        assert "{new_category}" in desc
+        assert "{actor}" in desc
+
+    def test_es_audit_description_has_all_placeholders(self) -> None:
+        """es.json audit description MUST contain {old_category}, {new_category}, {actor} placeholders."""
+        data = self._load_locale("es.json")
+        desc = data["tickets"]["actions"]["edit_category_audit_description"]
+        assert "{old_category}" in desc
+        assert "{new_category}" in desc
+        assert "{actor}" in desc
