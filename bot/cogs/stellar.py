@@ -51,7 +51,7 @@ class StellarCog(commands.Cog, name="Stellar"):
     # /daily
     # ------------------------------------------------------------------
 
-    @commands.hybrid_command(name="daily", description="Claim your daily coin reward.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @commands.hybrid_command(name="daily", description=app_commands.locale_str("Reclamar tu recompensa diaria de monedas.", key="slash.descriptions.daily"))  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
     async def daily(self, ctx: commands.Context[Any]) -> None:
         """Claim the daily coin reward with streak tracking."""
         guild_id = str(ctx.guild.id) if ctx.guild else ""
@@ -92,8 +92,8 @@ class StellarCog(commands.Cog, name="Stellar"):
     # /coins
     # ------------------------------------------------------------------
 
-    @commands.hybrid_command(name="coins", description="Check your coin balance or someone else's.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
-    @app_commands.describe(member="The member to check (defaults to yourself)")
+    @commands.hybrid_command(name="coins", description=app_commands.locale_str("Consultar tu balance de monedas o el de otro.", key="slash.descriptions.coins"))  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @app_commands.describe(member=app_commands.locale_str("El miembro a consultar (por defecto: tú)", key="slash.describes.coins.member"))
     async def coins(
         self,
         ctx: commands.Context[Any],
@@ -131,9 +131,9 @@ class StellarCog(commands.Cog, name="Stellar"):
 
     @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
         name="leaderboard",
-        description="View the server leaderboard by XP or coins.",
+        description=app_commands.locale_str("Ver la tabla de líderes del servidor por XP o monedas.", key="slash.descriptions.leaderboard"),
     )
-    @app_commands.describe(lb_type="Leaderboard type: 'xp' or 'coins' (default: xp)")
+    @app_commands.describe(lb_type=app_commands.locale_str("Tipo de tabla de líderes: 'xp' o 'coins' (por defecto: xp)", key="slash.describes.leaderboard.lb_type"))
     async def leaderboard(
         self,
         ctx: commands.Context[Any],
@@ -193,9 +193,9 @@ class StellarCog(commands.Cog, name="Stellar"):
 
     @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
         name="rank",
-        description="View your rank card or someone else's.",
+        description=app_commands.locale_str("Ver tu tarjeta de rango o la de otro.", key="slash.descriptions.rank"),
     )
-    @app_commands.describe(member="The member to check (defaults to yourself)")
+    @app_commands.describe(member=app_commands.locale_str("El miembro a consultar (por defecto: tú)", key="slash.describes.rank.member"))
     async def rank(
         self,
         ctx: commands.Context[Any],

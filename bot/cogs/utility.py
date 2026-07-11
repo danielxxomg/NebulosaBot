@@ -41,9 +41,9 @@ class UtilityCog(commands.Cog, name="Utility"):
 
     @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
         name="avatar",
-        description="Show a member's avatar.",
+        description=app_commands.locale_str("Mostrar el avatar de un miembro.", key="slash.descriptions.avatar"),
     )
-    @app_commands.describe(member="Whose avatar to show (default: you)")
+    @app_commands.describe(member=app_commands.locale_str("De quién mostrar el avatar (por defecto: tú)", key="slash.describes.avatar.member"))
     async def avatar(
         self,
         ctx: commands.Context[Any],
@@ -64,7 +64,7 @@ class UtilityCog(commands.Cog, name="Utility"):
 
     @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
         name="serverinfo",
-        description="Show server information.",
+        description=app_commands.locale_str("Mostrar información del servidor.", key="slash.descriptions.serverinfo"),
     )
     async def serverinfo(self, ctx: commands.Context[Any]) -> None:
         """Reply with a guild summary embed or error if invoked in DMs."""
@@ -115,9 +115,9 @@ class UtilityCog(commands.Cog, name="Utility"):
 
     @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
         name="userinfo",
-        description="Show user information.",
+        description=app_commands.locale_str("Mostrar información de un usuario.", key="slash.descriptions.userinfo"),
     )
-    @app_commands.describe(member="Whose info to show (default: you)")
+    @app_commands.describe(member=app_commands.locale_str("De quién mostrar la info (por defecto: tú)", key="slash.describes.userinfo.member"))
     async def userinfo(
         self,
         ctx: commands.Context[Any],
