@@ -934,7 +934,10 @@ class TestSlashCommands:
             await tickets_cog.ticket_panel.callback(tickets_cog, ctx)
 
         mock_deploy.assert_awaited_once_with(
-            ctx.channel, "123456789", bot=ticket_bot, guild=ctx.guild,
+            ctx.channel,
+            "123456789",
+            bot=ticket_bot,
+            guild=ctx.guild,
             title="Support Tickets",
             description_text="Click the button below to open a support ticket. A staff member will assist you shortly.",
         )
@@ -2423,12 +2426,14 @@ class TestConfigureFieldsCommand:
         slash_ctx: MagicMock,
     ) -> None:
         """4+ fields → ephemeral error embed about max 3."""
-        four_fields = json.dumps([
-            {"key": "f1", "label": "F1"},
-            {"key": "f2", "label": "F2"},
-            {"key": "f3", "label": "F3"},
-            {"key": "f4", "label": "F4"},
-        ])
+        four_fields = json.dumps(
+            [
+                {"key": "f1", "label": "F1"},
+                {"key": "f2", "label": "F2"},
+                {"key": "f3", "label": "F3"},
+                {"key": "f4", "label": "F4"},
+            ]
+        )
         await tickets_cog.configure_fields_set.callback(
             tickets_cog, slash_ctx, category_id="cat-uuid-001", fields_json=four_fields
         )
@@ -2800,9 +2805,7 @@ class TestUnclaimCommand:
         claimed_row = _ticket_row(status="claimed")
         claimed_row["claimedBy"] = "111111111"
         mock_db.get_ticket_by_channel = AsyncMock(return_value=claimed_row)
-        ticket_bot.ticket_service.unclaim_ticket = AsyncMock(
-            side_effect=Exception("DB down")
-        )
+        ticket_bot.ticket_service.unclaim_ticket = AsyncMock(side_effect=Exception("DB down"))
 
         await tickets_cog.unclaim.callback(tickets_cog, slash_ctx)
 
@@ -2817,9 +2820,7 @@ class TestUnclaimCommand:
     ) -> None:
         """/unclaim MUST NOT be gated by @is_mod() — claimer can unclaim without mod role."""
         cmd = tickets_cog.unclaim
-        has_is_mod = bool(cmd.checks) or (
-            hasattr(cmd, "app_command") and bool(cmd.app_command.checks)
-        )
+        has_is_mod = bool(cmd.checks) or (hasattr(cmd, "app_command") and bool(cmd.app_command.checks))
         assert not has_is_mod, "/unclaim MUST NOT use @is_mod() — claimer can also unclaim"
 
 
@@ -2892,7 +2893,9 @@ class TestSubticketModRoleResolution:
         slash_ctx.guild.get_role = MagicMock(return_value=mod_role)
 
         self._wire_subticket_for_mod_role(
-            slash_ctx, ticket_bot, mock_db,
+            slash_ctx,
+            ticket_bot,
+            mock_db,
             mod_role_id="987654321",
             mock_ticket_channel=mock_ticket_channel,
         )
@@ -2913,7 +2916,9 @@ class TestSubticketModRoleResolution:
     ) -> None:
         """config.mod_role_id=None → mod_role=None passed to service."""
         self._wire_subticket_for_mod_role(
-            slash_ctx, ticket_bot, mock_db,
+            slash_ctx,
+            ticket_bot,
+            mock_db,
             mod_role_id=None,
             mock_ticket_channel=mock_ticket_channel,
         )
@@ -2934,7 +2939,9 @@ class TestSubticketModRoleResolution:
     ) -> None:
         """config.mod_role_id='not-a-number' → ValueError suppressed, mod_role=None."""
         self._wire_subticket_for_mod_role(
-            slash_ctx, ticket_bot, mock_db,
+            slash_ctx,
+            ticket_bot,
+            mock_db,
             mod_role_id="not-a-number",
             mock_ticket_channel=mock_ticket_channel,
         )
@@ -2957,7 +2964,9 @@ class TestSubticketModRoleResolution:
         slash_ctx.guild.get_role = MagicMock(return_value=None)
 
         self._wire_subticket_for_mod_role(
-            slash_ctx, ticket_bot, mock_db,
+            slash_ctx,
+            ticket_bot,
+            mock_db,
             mod_role_id="987654321",
             mock_ticket_channel=mock_ticket_channel,
         )
@@ -3030,7 +3039,9 @@ class TestSubticketCategoryNameResolution:
     ) -> None:
         """Parent has categoryId + DB returns category → category_name from DB row."""
         self._wire_subticket_for_category(
-            slash_ctx, ticket_bot, mock_db,
+            slash_ctx,
+            ticket_bot,
+            mock_db,
             parent_cat_id="cat-uuid-001",
             db_category_row={"name": "Soporte Técnico", "id": "cat-uuid-001"},
             mock_ticket_channel=mock_ticket_channel,
@@ -3052,7 +3063,9 @@ class TestSubticketCategoryNameResolution:
     ) -> None:
         """Parent has categoryId=None → category_name='ticket' (no DB call)."""
         self._wire_subticket_for_category(
-            slash_ctx, ticket_bot, mock_db,
+            slash_ctx,
+            ticket_bot,
+            mock_db,
             parent_cat_id=None,
             mock_ticket_channel=mock_ticket_channel,
         )
@@ -3075,7 +3088,9 @@ class TestSubticketCategoryNameResolution:
     ) -> None:
         """Parent has categoryId but DB returns None → category_name='ticket'."""
         self._wire_subticket_for_category(
-            slash_ctx, ticket_bot, mock_db,
+            slash_ctx,
+            ticket_bot,
+            mock_db,
             parent_cat_id="cat-uuid-001",
             db_category_row=None,
             mock_ticket_channel=mock_ticket_channel,
@@ -3097,7 +3112,9 @@ class TestSubticketCategoryNameResolution:
     ) -> None:
         """DB raises during category lookup → category_name='ticket' (logged, not fatal)."""
         self._wire_subticket_for_category(
-            slash_ctx, ticket_bot, mock_db,
+            slash_ctx,
+            ticket_bot,
+            mock_db,
             parent_cat_id="cat-uuid-001",
             db_raises=True,
             mock_ticket_channel=mock_ticket_channel,
@@ -3120,7 +3137,9 @@ class TestSubticketCategoryNameResolution:
     ) -> None:
         """DB category row has no 'name' key → category_name='ticket'."""
         self._wire_subticket_for_category(
-            slash_ctx, ticket_bot, mock_db,
+            slash_ctx,
+            ticket_bot,
+            mock_db,
             parent_cat_id="cat-uuid-001",
             db_category_row={"id": "cat-uuid-001"},  # missing 'name'
             mock_ticket_channel=mock_ticket_channel,

@@ -115,10 +115,14 @@ class TicketService:
         # or uncategorized tickets (category_id is None).
         if category_id is not None:
             count = await self._db.count_user_open_tickets_in_category(
-                guild_id, author_id, category_id,
+                guild_id,
+                author_id,
+                category_id,
             )
             check_one_ticket_per_user_per_category(
-                author_id, category_id, parent_id=None,
+                author_id,
+                category_id,
+                parent_id=None,
                 count_fn=lambda _u, _c: count,
             )
 
@@ -368,26 +372,34 @@ class TicketService:
 
         # Reject closed tickets.
         if status == "closed":
-            raise ValueError(
-                f"Cannot edit category of a closed ticket (status={status!r})"
-            )
+            raise ValueError(f"Cannot edit category of a closed ticket (status={status!r})")
 
         # Security boundary: re-validate mod/admin.
         try:
             check_can_edit_category(actor_id, pre, is_mod=is_mod)
         except ValueError as exc:
             await self._db.insert_audit_row(
-                guild_id, ticket_id, "edit_category", actor_id, "denied", str(exc),
+                guild_id,
+                ticket_id,
+                "edit_category",
+                actor_id,
+                "denied",
+                str(exc),
             )
             raise
 
         # Per-user-per-category limit against the NEW category, excluding
         # the ticket being edited.
         count = await self._db.count_user_open_tickets_in_category(
-            guild_id, author_id, new_category_id, exclude_ticket_id=ticket_id,
+            guild_id,
+            author_id,
+            new_category_id,
+            exclude_ticket_id=ticket_id,
         )
         check_one_ticket_per_user_per_category(
-            author_id, new_category_id, parent_id=None,
+            author_id,
+            new_category_id,
+            parent_id=None,
             count_fn=lambda _u, _c: count,
         )
 
@@ -402,7 +414,12 @@ class TicketService:
         # Audit success after DB update.
         try:
             await self._db.insert_audit_row(
-                guild_id, ticket_id, "edit_category", actor_id, "success", None,
+                guild_id,
+                ticket_id,
+                "edit_category",
+                actor_id,
+                "success",
+                None,
             )
         except Exception:
             logger.warning(
@@ -415,7 +432,9 @@ class TicketService:
         rename_succeeded = True
         try:
             category_name = await resolve_category_name(
-                self._db, new_category_id, fallback="ticket",
+                self._db,
+                new_category_id,
+                fallback="ticket",
             )
             # Resolve author display name for the channel name (mirrors
             # _build_reopen_channel so the channel name reflects the author).
@@ -428,7 +447,9 @@ class TicketService:
             except (TypeError, ValueError):
                 ticket_number = 0
             new_name = sanitize_channel_name(
-                category_name, display_name, ticket_number,
+                category_name,
+                display_name,
+                ticket_number,
             )
             await channel.edit(name=new_name)
         except discord.HTTPException:
@@ -663,7 +684,11 @@ class TicketService:
             raise TicketCategoryNotConfiguredError(err)
 
         new_channel = await self._build_reopen_channel(
-            guild, closed_row, guild_row, category_channel, ticket_id,
+            guild,
+            closed_row,
+            guild_row,
+            category_channel,
+            ticket_id,
         )
 
         await self._db.update_ticket(
@@ -738,7 +763,9 @@ class TicketService:
             ticket_number = 0
 
         category_name = await resolve_category_name(
-            self._db, closed_row.get("categoryId"), fallback="ticket",
+            self._db,
+            closed_row.get("categoryId"),
+            fallback="ticket",
         )
 
         display_name = author.display_name if author is not None else "user"
@@ -948,7 +975,9 @@ class TicketService:
         # Compute tentative channel name from DB max + 1.
         tentative_max = await self._db.get_max_ticket_number(guild_id)
         tentative_name = sanitize_channel_name(
-            category_name, author.display_name, tentative_max + 1,
+            category_name,
+            author.display_name,
+            tentative_max + 1,
         )
 
         overwrites = build_ticket_overwrites(guild, author, mod_role)
@@ -987,7 +1016,9 @@ class TicketService:
             raise
 
         actual_name = sanitize_channel_name(
-            category_name, author.display_name, ticket.ticket_number,
+            category_name,
+            author.display_name,
+            ticket.ticket_number,
         )
         if channel.name != actual_name:
             try:

@@ -212,6 +212,4 @@ class TestMigrationParity:
     def test_005_ticket_audit_absent(self) -> None:
         """Stale 005_ticket_audit.sql MUST NOT exist in migrations/."""
         path = MIGRATIONS_DIR / "005_ticket_audit.sql"
-        assert not path.exists(), (
-            f"Stale migration {path} should have been removed"
-        )
+        assert not path.exists(), f"Stale migration {path} should have been removed"
