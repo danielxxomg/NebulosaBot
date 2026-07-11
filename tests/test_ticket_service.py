@@ -3252,3 +3252,113 @@ class TestReopenTicketChannelConstruction:
 
         with pytest.raises(ValueError, match=r"Solo se pueden reabrir tickets cerrados\. Estado actual: open"):
             await service.reopen_ticket(ticket_id, guild=guild)
+
+
+# ===========================================================================
+# R3-001 — _countdown_and_delete: NotFound from msg.edit must attempt channel.delete
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_countdown_not_found_on_edit_triggers_channel_delete(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """R3-001: When msg.edit raises NotFound (message deleted but channel
+    alive), _countdown_and_delete MUST attempt channel.delete to clean up.
+
+    Before the fix, the broad except NotFound would swallow the error and
+    return, leaving an accessible closed-ticket channel.
+    """
+    import logging
+
+    channel = _mock_channel_for_close()
+    channel.send = AsyncMock()
+    countdown_msg = AsyncMock()
+    channel.send.return_value = countdown_msg
+
+    # msg.edit raises NotFound — message was deleted by a moderator, but
+    # the channel itself still exists.
+    countdown_msg.edit = AsyncMock(
+        side_effect=discord.NotFound(MagicMock(), "Unknown Message"),
+    )
+
+    with (
+        patch("bot.services.ticket_service.asyncio.sleep", new_callable=AsyncMock),
+        caplog.at_level(logging.INFO, logger="bot.services.ticket_service"),
+    ):
+        await TicketService._countdown_and_delete(channel, "999999999")
+
+    # Channel.delete MUST have been called — the channel is still alive.
+    channel.delete.assert_awaited_once()
+    delete_kwargs = channel.delete.call_args.kwargs
+    assert "Ticket closed by" in delete_kwargs["reason"]
+
+
+@pytest.mark.asyncio
+async def test_countdown_not_found_on_final_delete_is_tolerated(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """R3-001: When msg.edit raises NotFound AND the final channel.delete
+    also raises NotFound, _countdown_and_delete MUST log info and return
+    cleanly (no exception propagated).
+    """
+    import logging
+
+    channel = _mock_channel_for_close()
+    channel.send = AsyncMock()
+    countdown_msg = AsyncMock()
+    channel.send.return_value = countdown_msg
+
+    # msg.edit raises NotFound (message gone).
+    countdown_msg.edit = AsyncMock(
+        side_effect=discord.NotFound(MagicMock(), "Unknown Message"),
+    )
+    # The final channel.delete also raises NotFound (channel truly gone).
+    channel.delete = AsyncMock(
+        side_effect=discord.NotFound(MagicMock(), "Unknown Channel"),
+    )
+
+    with (
+        patch("bot.services.ticket_service.asyncio.sleep", new_callable=AsyncMock),
+        caplog.at_level(logging.INFO, logger="bot.services.ticket_service"),
+    ):
+        # Must NOT raise — NotFound from final delete is tolerated.
+        await TicketService._countdown_and_delete(channel, "999999999")
+
+    # Final channel.delete MUST have been attempted (even though it also 404s).
+    channel.delete.assert_awaited_once()
+    # Info logged about the channel being gone.
+    assert any("already deleted" in r.message.lower() for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_countdown_not_found_on_final_delete_http_error_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """R3-001: When msg.edit raises NotFound but channel.delete raises a
+    non-NotFound HTTPException, _countdown_and_delete MUST log the exception.
+    """
+    import logging
+
+    channel = _mock_channel_for_close()
+    channel.send = AsyncMock()
+    countdown_msg = AsyncMock()
+    channel.send.return_value = countdown_msg
+
+    # msg.edit raises NotFound (message gone).
+    countdown_msg.edit = AsyncMock(
+        side_effect=discord.NotFound(MagicMock(), "Unknown Message"),
+    )
+    # Final channel.delete raises a non-NotFound HTTP error.
+    channel.delete = AsyncMock(
+        side_effect=discord.HTTPException(MagicMock(), "Internal Server Error"),
+    )
+
+    with (
+        patch("bot.services.ticket_service.asyncio.sleep", new_callable=AsyncMock),
+        caplog.at_level(logging.ERROR, logger="bot.services.ticket_service"),
+    ):
+        await TicketService._countdown_and_delete(channel, "999999999")
+
+    # The non-NotFound HTTP error MUST be logged as exception.
+    assert any("failed to delete" in r.message.lower() for r in caplog.records)
