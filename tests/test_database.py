@@ -48,7 +48,7 @@ class FakeQueryBuilder:
         self._orders: list[tuple[str, bool]] = []  # (column, desc)
         self._limits: list[int] = []
         self._execute_count: int = 0
-        self._count: int | None = None  # for count="exact" support
+        self._count: str | None = None  # for count="exact" support
 
     # Chain methods — all return self
     def table(self, name: str) -> FakeQueryBuilder:
