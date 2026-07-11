@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 
 @dataclass
@@ -25,7 +26,7 @@ class TicketNote:
     created_at: datetime | None = None
 
     @classmethod
-    def from_db_row(cls, row: dict) -> TicketNote:
+    def from_db_row(cls, row: dict[str, Any]) -> TicketNote:
         """Build a TicketNote from a Supabase row (camelCase keys)."""
         return cls(
             id=row["id"],
@@ -35,7 +36,7 @@ class TicketNote:
             created_at=row.get("createdAt"),
         )
 
-    def to_db_dict(self) -> dict:
+    def to_db_dict(self) -> dict[str, Any]:
         """Convert to a dict with camelCase keys for Supabase."""
         return {
             "id": self.id,

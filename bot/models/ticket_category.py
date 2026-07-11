@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
 
 @dataclass
@@ -22,10 +23,10 @@ class TicketCategory:
     position: int = 0
     active: bool = True
     created_at: datetime | None = None
-    field_definitions: list[dict] = field(default_factory=list)
+    field_definitions: list[dict[str, Any]] = field(default_factory=list)
 
     @classmethod
-    def from_db_row(cls, row: dict) -> TicketCategory:
+    def from_db_row(cls, row: dict[str, Any]) -> TicketCategory:
         """Build a TicketCategory from a Supabase row (camelCase keys)."""
         return cls(
             id=row["id"],
@@ -39,7 +40,7 @@ class TicketCategory:
             field_definitions=row.get("fieldDefinitions") or [],
         )
 
-    def to_db_dict(self) -> dict:
+    def to_db_dict(self) -> dict[str, Any]:
         """Convert to a dict with camelCase keys for Supabase."""
         return {
             "id": self.id,
