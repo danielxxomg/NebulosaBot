@@ -51,6 +51,14 @@ class ConfirmCancelView(discord.ui.View):
         self._on_confirm = on_confirm
         self.message: discord.Message | None = None
 
+        # Override decorator defaults with localized labels.
+        for child in self.children:
+            if isinstance(child, discord.ui.Button):
+                if child.custom_id == "confirm:confirm":
+                    child.label = t(guild_id, "buttons.confirm")
+                elif child.custom_id == "confirm:cancel":
+                    child.label = t(guild_id, "buttons.cancel")
+
     def _disable_all(self) -> None:
         """Disable all button children."""
         for child in self.children:
@@ -75,7 +83,7 @@ class ConfirmCancelView(discord.ui.View):
         return False
 
     @discord.ui.button(
-        label="Confirm",
+        label="Confirmar",
         style=discord.ButtonStyle.danger,
         custom_id="confirm:confirm",
         emoji="✅",
@@ -92,7 +100,7 @@ class ConfirmCancelView(discord.ui.View):
         await self._on_confirm(interaction)
 
     @discord.ui.button(
-        label="Cancel",
+        label="Cancelar",
         style=discord.ButtonStyle.secondary,
         custom_id="confirm:cancel",
         emoji="❌",

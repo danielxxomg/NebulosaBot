@@ -1257,11 +1257,11 @@ class TestButtonLabelI18n:
         assert buttons[0].label == "OPEN_BTN_EN"
 
     def test_panel_view_no_guild_default(self) -> None:
-        """TicketPanelView without guild_id → default label preserved."""
+        """TicketPanelView without guild_id → Spanish default label preserved."""
         view = TicketPanelView()
         buttons = [c for c in view.children if isinstance(c, discord.ui.Button)]
         assert len(buttons) == 1
-        assert buttons[0].label == "Open Ticket"
+        assert buttons[0].label == "Abrir Ticket"
 
     def test_actions_view_buttons_es(self) -> None:
         """TicketActionsView with ES guild_id → claim/close labels localized."""
@@ -1278,11 +1278,11 @@ class TestButtonLabelI18n:
         assert buttons["ticket:close"].label == "CLOSE_BTN_EN"
 
     def test_actions_view_no_guild_default(self) -> None:
-        """TicketActionsView without guild_id → default labels preserved."""
+        """TicketActionsView without guild_id → Spanish default labels preserved."""
         view = TicketActionsView()
         buttons = {c.custom_id: c for c in view.children if isinstance(c, discord.ui.Button)}
-        assert buttons["ticket:claim"].label == "Claim"
-        assert buttons["ticket:close"].label == "Close"
+        assert buttons["ticket:claim"].label == "Reclamar"
+        assert buttons["ticket:close"].label == "Cerrar"
 
 
 # ---------------------------------------------------------------------------
@@ -1295,7 +1295,7 @@ class TestDynamicLabelResolution:
 
     async def test_panel_open_label_updates_at_interaction_es(self) -> None:
         """Panel open button label resolves to ES at callback time."""
-        view = TicketPanelView()  # No guild_id → default "Open Ticket"
+        view = TicketPanelView()  # No guild_id → Spanish default "Abrir Ticket"
 
         # Simulate interaction from ES guild.
         guild = MagicMock(spec=discord.Guild)
@@ -1320,7 +1320,7 @@ class TestDynamicLabelResolution:
 
     async def test_panel_open_label_updates_at_interaction_en(self) -> None:
         """Panel open button label resolves to EN at callback time."""
-        view = TicketPanelView()  # No guild_id → default "Open Ticket"
+        view = TicketPanelView()  # No guild_id → Spanish default "Abrir Ticket"
 
         guild = MagicMock(spec=discord.Guild)
         guild.id = int(_EN_GUILD_ID)
