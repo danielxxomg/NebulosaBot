@@ -196,8 +196,89 @@ class TestDeployTicketPanel:
 
 
 # ===========================================================================
-# build_ticket_embed — custom_fields rendering (task 2.5 RED)
+# deploy_ticket_panel — None defaults resolve via t() (task 2.6 RED)
 # ===========================================================================
+
+
+class TestDeployTicketPanelDefaults:
+    """Verify deploy_ticket_panel resolves None title/description via t()."""
+
+    @pytest.mark.asyncio
+    async def test_none_defaults_resolve_via_t_spanish(self) -> None:
+        """title=None + description_text=None MUST resolve to Spanish defaults via t()."""
+        from bot.core.i18n import load_locales, set_guild_language
+        from bot.views.tickets import deploy_ticket_panel
+
+        load_locales()
+        set_guild_language("500", "es")
+
+        channel = MagicMock()
+        channel.send = AsyncMock()
+        mock_message = MagicMock()
+        mock_message.id = 42
+        mock_message.channel = channel
+        channel.send.return_value = mock_message
+
+        mock_bot = MagicMock()
+        mock_bot.guild_service = MagicMock()
+        mock_bot.guild_service.update_guild_panel = AsyncMock()
+
+        await deploy_ticket_panel(channel, "500", bot=mock_bot)
+
+        embed = channel.send.call_args.kwargs["embed"]
+        assert embed.title == "Tickets de Soporte"
+        assert "ticket de soporte" in embed.description.lower()
+
+    @pytest.mark.asyncio
+    async def test_none_defaults_resolve_via_t_english(self) -> None:
+        """title=None + description_text=None MUST resolve to English defaults via t()."""
+        from bot.core.i18n import load_locales, set_guild_language
+        from bot.views.tickets import deploy_ticket_panel
+
+        load_locales()
+        set_guild_language("600", "en")
+
+        channel = MagicMock()
+        channel.send = AsyncMock()
+        mock_message = MagicMock()
+        mock_message.id = 42
+        mock_message.channel = channel
+        channel.send.return_value = mock_message
+
+        mock_bot = MagicMock()
+        mock_bot.guild_service = MagicMock()
+        mock_bot.guild_service.update_guild_panel = AsyncMock()
+
+        await deploy_ticket_panel(channel, "600", bot=mock_bot)
+
+        embed = channel.send.call_args.kwargs["embed"]
+        assert embed.title == "Support Tickets"
+        assert "support ticket" in embed.description.lower()
+
+    @pytest.mark.asyncio
+    async def test_explicit_values_override_defaults(self) -> None:
+        """Explicit title/description_text MUST override t() defaults."""
+        from bot.views.tickets import deploy_ticket_panel
+
+        channel = MagicMock()
+        channel.send = AsyncMock()
+        mock_message = MagicMock()
+        mock_message.id = 42
+        mock_message.channel = channel
+        channel.send.return_value = mock_message
+
+        mock_bot = MagicMock()
+        mock_bot.guild_service = MagicMock()
+        mock_bot.guild_service.update_guild_panel = AsyncMock()
+
+        await deploy_ticket_panel(
+            channel, "500", bot=mock_bot,
+            title="Mi Panel", description_text="Descripción custom",
+        )
+
+        embed = channel.send.call_args.kwargs["embed"]
+        assert embed.title == "Mi Panel"
+        assert embed.description == "Descripción custom"
 
 
 class TestBuildTicketEmbedCustomFields:
@@ -1896,3 +1977,56 @@ class TestEditCategorySelect:
 
         # channel.send was attempted (audit was attempted, just failed)
         interaction.channel.send.assert_awaited_once()
+
+
+# ===========================================================================
+# Decorator defaults — Spanish-first for persistent views
+# ===========================================================================
+
+
+class TestTicketViewDecoratorDefaults:
+    """Decorator label defaults on persistent ticket views MUST be Spanish.
+
+    Persistent views show decorator defaults before __init__ overrides them.
+    Since the bot defaults to Spanish, the decorator labels must match
+    the Spanish locale values.
+    """
+
+    def _get_button_by_id(self, view: discord.ui.View, custom_id: str) -> discord.ui.Button:
+        """Find a button by custom_id."""
+        return next(
+            c for c in view.children
+            if isinstance(c, discord.ui.Button) and c.custom_id == custom_id
+        )
+
+    def test_ticket_panel_open_button_default_is_spanish(self) -> None:
+        """TicketPanelView decorator default for Open Ticket MUST be 'Abrir Ticket'."""
+        from bot.views.tickets import TicketPanelView
+
+        view = TicketPanelView(guild_id="")
+        btn = self._get_button_by_id(view, "ticket:open")
+        assert btn.label == "Abrir Ticket"
+
+    def test_ticket_actions_claim_default_is_spanish(self) -> None:
+        """TicketActionsView decorator default for Claim MUST be 'Reclamar'."""
+        from bot.views.tickets import TicketActionsView
+
+        view = TicketActionsView(guild_id="")
+        btn = self._get_button_by_id(view, "ticket:claim")
+        assert btn.label == "Reclamar"
+
+    def test_ticket_actions_close_default_is_spanish(self) -> None:
+        """TicketActionsView decorator default for Close MUST be 'Cerrar'."""
+        from bot.views.tickets import TicketActionsView
+
+        view = TicketActionsView(guild_id="")
+        btn = self._get_button_by_id(view, "ticket:close")
+        assert btn.label == "Cerrar"
+
+    def test_ticket_actions_edit_category_default_is_spanish(self) -> None:
+        """TicketActionsView decorator default for Edit Category MUST be 'Editar Categoría'."""
+        from bot.views.tickets import TicketActionsView
+
+        view = TicketActionsView(guild_id="")
+        btn = self._get_button_by_id(view, "ticket:edit-category")
+        assert btn.label == "Editar Categoría"

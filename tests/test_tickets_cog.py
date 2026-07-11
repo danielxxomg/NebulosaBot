@@ -923,7 +923,7 @@ class TestSlashCommands:
         ticket_bot: MagicMock,
         mock_db,
     ) -> None:
-        """ticket_panel command delegates to deploy_ticket_panel helper."""
+        """ticket_panel command delegates to deploy_ticket_panel with None defaults."""
         ctx = MagicMock()
         ctx.guild = MagicMock()
         ctx.guild.id = 123456789
@@ -938,11 +938,38 @@ class TestSlashCommands:
             "123456789",
             bot=ticket_bot,
             guild=ctx.guild,
-            title="Support Tickets",
-            description_text="Click the button below to open a support ticket. A staff member will assist you shortly.",
+            title=None,
+            description_text=None,
         )
         # Success embed sent.
         ctx.send.assert_awaited()
+
+    async def test_ticket_panel_explicit_overrides_pass_through(
+        self,
+        tickets_cog: TicketsCog,
+        ticket_bot: MagicMock,
+    ) -> None:
+        """ticket_panel with explicit title/desc passes them through as-is."""
+        ctx = MagicMock()
+        ctx.guild = MagicMock()
+        ctx.guild.id = 123456789
+        ctx.send = AsyncMock()
+        ctx.channel = MagicMock()
+
+        with patch("bot.cogs.tickets.deploy_ticket_panel", new_callable=AsyncMock) as mock_deploy:
+            await tickets_cog.ticket_panel.callback(
+                tickets_cog, ctx,
+                title="Mi Panel", description_text="Abre un ticket",
+            )
+
+        mock_deploy.assert_awaited_once_with(
+            ctx.channel,
+            "123456789",
+            bot=ticket_bot,
+            guild=ctx.guild,
+            title="Mi Panel",
+            description_text="Abre un ticket",
+        )
 
     async def test_ticket_panel_no_guild(
         self,

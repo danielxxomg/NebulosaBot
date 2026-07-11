@@ -149,8 +149,11 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     # 5.2 — /warn + /unwarn
     # ==================================================================
 
-    @commands.hybrid_command(name="warn", description="Warn a member.")
-    @app_commands.describe(member="The member to warn", reason="Reason for the warning")
+    @commands.hybrid_command(name="warn", description=app_commands.locale_str("Advertir a un miembro.", key="slash.descriptions.warn"))
+    @app_commands.describe(
+        member=app_commands.locale_str("El miembro a advertir", key="slash.describes.warn.member"),
+        reason=app_commands.locale_str("Razón de la advertencia", key="slash.describes.warn.reason"),
+    )
     @app_commands.default_permissions(moderate_members=True)
     @is_mod()
     async def warn(self, ctx: commands.Context[Any], member: discord.Member, *, reason: str) -> None:
@@ -274,8 +277,8 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             )
         )
 
-    @commands.hybrid_command(name="unwarn", description="Remove the most recent warning from a member.")
-    @app_commands.describe(member="The member to unwarn")
+    @commands.hybrid_command(name="unwarn", description=app_commands.locale_str("Quitar la advertencia más reciente de un miembro.", key="slash.descriptions.unwarn"))
+    @app_commands.describe(member=app_commands.locale_str("El miembro a quitar advertencia", key="slash.describes.unwarn.member"))
     @app_commands.default_permissions(moderate_members=True)
     @is_mod()
     async def unwarn(self, ctx: commands.Context[Any], member: discord.Member) -> None:
@@ -328,11 +331,11 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     # 5.3 — /mute + /unmute
     # ==================================================================
 
-    @commands.hybrid_command(name="mute", description="Timeout a member.")
+    @commands.hybrid_command(name="mute", description=app_commands.locale_str("Silenciar (timeout) a un miembro.", key="slash.descriptions.mute"))
     @app_commands.describe(
-        member="The member to mute",
-        duration='Duration (e.g. "1h", "30m", "1h30m"). Default: 1h',
-        reason="Reason for the mute",
+        member=app_commands.locale_str("El miembro a silenciar", key="slash.describes.mute.member"),
+        duration=app_commands.locale_str('Duración (ej. "1h", "30m", "1h30m"). Por defecto: 1h', key="slash.describes.mute.duration"),
+        reason=app_commands.locale_str("Razón del silencio", key="slash.describes.mute.reason"),
     )
     @app_commands.default_permissions(moderate_members=True)
     @is_mod()
@@ -398,8 +401,8 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             )
         )
 
-    @commands.hybrid_command(name="unmute", description="Remove a member's timeout.")
-    @app_commands.describe(member="The member to unmute")
+    @commands.hybrid_command(name="unmute", description=app_commands.locale_str("Quitar el silencio de un miembro.", key="slash.descriptions.unmute"))
+    @app_commands.describe(member=app_commands.locale_str("El miembro a quitar silencio", key="slash.describes.unmute.member"))
     @app_commands.default_permissions(moderate_members=True)
     @is_mod()
     async def unmute(self, ctx: commands.Context[Any], member: discord.Member) -> None:
@@ -436,8 +439,11 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     # 5.4 — /kick + /ban
     # ==================================================================
 
-    @commands.hybrid_command(name="kick", description="Kick a member from the server.")
-    @app_commands.describe(member="The member to kick", reason="Reason for the kick")
+    @commands.hybrid_command(name="kick", description=app_commands.locale_str("Expulsar a un miembro del servidor.", key="slash.descriptions.kick"))
+    @app_commands.describe(
+        member=app_commands.locale_str("El miembro a expulsar", key="slash.describes.kick.member"),
+        reason=app_commands.locale_str("Razón de la expulsión", key="slash.describes.kick.reason"),
+    )
     @app_commands.default_permissions(moderate_members=True)
     @is_mod()
     async def kick(self, ctx: commands.Context[Any], member: discord.Member, *, reason: str) -> None:
@@ -502,11 +508,11 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         )
         view.message = msg
 
-    @commands.hybrid_command(name="ban", description="Ban a member from the server.")
+    @commands.hybrid_command(name="ban", description=app_commands.locale_str("Prohibir a un miembro del servidor.", key="slash.descriptions.ban"))
     @app_commands.describe(
-        member="The member to ban",
-        reason="Reason for the ban",
-        delete_days="Days of messages to delete (0-7, default: 0)",
+        member=app_commands.locale_str("El miembro a prohibir", key="slash.describes.ban.member"),
+        reason=app_commands.locale_str("Razón de la prohibición", key="slash.describes.ban.reason"),
+        delete_days=app_commands.locale_str("Días de mensajes a eliminar (0-7, por defecto: 0)", key="slash.describes.ban.delete_days"),
     )
     @app_commands.default_permissions(ban_members=True)
     @is_admin()
@@ -594,9 +600,9 @@ class SentinelCog(commands.Cog, name="Sentinel"):
 
     @commands.hybrid_command(
         name="lock",
-        description="Lock a channel (deny send_messages for @everyone).",
+        description=app_commands.locale_str("Bloquear un canal (denegar send_messages para @everyone).", key="slash.descriptions.lock"),
     )
-    @app_commands.describe(channel="The channel to lock (default: current channel)")
+    @app_commands.describe(channel=app_commands.locale_str("El canal a bloquear (por defecto: canal actual)", key="slash.describes.lock.channel"))
     @app_commands.default_permissions(moderate_members=True)
     @is_mod()
     async def lock(
@@ -657,9 +663,9 @@ class SentinelCog(commands.Cog, name="Sentinel"):
 
     @commands.hybrid_command(
         name="unlock",
-        description="Unlock a channel (allow send_messages for @everyone).",
+        description=app_commands.locale_str("Desbloquear un canal (permitir send_messages para @everyone).", key="slash.descriptions.unlock"),
     )
-    @app_commands.describe(channel="The channel to unlock (default: current channel)")
+    @app_commands.describe(channel=app_commands.locale_str("El canal a desbloquear (por defecto: canal actual)", key="slash.describes.unlock.channel"))
     @app_commands.default_permissions(moderate_members=True)
     @is_mod()
     async def unlock(
@@ -722,11 +728,11 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     # 5.6 — /modlogs
     # ==================================================================
 
-    @commands.hybrid_command(name="modlogs", description="View moderation history for a member.")
+    @commands.hybrid_command(name="modlogs", description=app_commands.locale_str("Ver historial de moderación de un miembro.", key="slash.descriptions.modlogs"))
     @app_commands.describe(
-        member="The member whose modlogs to view",
-        type="Filter by infraction type (WARN, MUTE, KICK, BAN)",
-        after="Show only infractions after this date (ISO, e.g. 2026-01-01)",
+        member=app_commands.locale_str("El miembro cuyo historial ver", key="slash.describes.modlogs.member"),
+        type=app_commands.locale_str("Filtrar por tipo de infracción (WARN, MUTE, KICK, BAN)", key="slash.describes.modlogs.type"),
+        after=app_commands.locale_str("Mostrar solo infracciones después de esta fecha (ISO, ej. 2026-01-01)", key="slash.describes.modlogs.after"),
     )
     @app_commands.default_permissions(moderate_members=True)
     @is_mod()
@@ -781,7 +787,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         if len(pages) == 1:
             await ctx.send(embed=pages[0], ephemeral=True)
         else:
-            view = EmbedPaginator(pages, custom_id_prefix="modlogs:")
+            view = EmbedPaginator(pages, guild_id=guild_id, custom_id_prefix="modlogs:")
             await ctx.send(embed=pages[0], view=view, ephemeral=True)
 
 
