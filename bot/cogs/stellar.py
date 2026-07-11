@@ -51,7 +51,13 @@ class StellarCog(commands.Cog, name="Stellar"):
     # /daily
     # ------------------------------------------------------------------
 
-    @commands.hybrid_command(name="daily", description=app_commands.locale_str("Reclamar tu recompensa diaria de monedas.", key="slash.descriptions.daily"))  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @commands.hybrid_command(
+        name="daily",
+        description=app_commands.locale_str(
+            "Reclamar tu recompensa diaria de monedas.",
+            key="slash.descriptions.daily",
+        ),
+    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
     async def daily(self, ctx: commands.Context[Any]) -> None:
         """Claim the daily coin reward with streak tracking."""
         guild_id = str(ctx.guild.id) if ctx.guild else ""
@@ -59,8 +65,8 @@ class StellarCog(commands.Cog, name="Stellar"):
 
         try:
             assert self.bot.economy_service is not None, "EconomyService initialised in setup_hook"
-            success, coins_awarded, streak, remaining_seconds = (
-                await self.bot.economy_service.claim_daily(guild_id, user_id)
+            success, coins_awarded, streak, remaining_seconds = await self.bot.economy_service.claim_daily(
+                guild_id, user_id
             )
         except Exception:
             logger.exception("Daily claim failed for user %s", user_id)
@@ -92,8 +98,19 @@ class StellarCog(commands.Cog, name="Stellar"):
     # /coins
     # ------------------------------------------------------------------
 
-    @commands.hybrid_command(name="coins", description=app_commands.locale_str("Consultar tu balance de monedas o el de otro.", key="slash.descriptions.coins"))  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
-    @app_commands.describe(member=app_commands.locale_str("El miembro a consultar (por defecto: tú)", key="slash.describes.coins.member"))
+    @commands.hybrid_command(
+        name="coins",
+        description=app_commands.locale_str(
+            "Consultar tu balance de monedas o el de otro.",
+            key="slash.descriptions.coins",
+        ),
+    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @app_commands.describe(
+        member=app_commands.locale_str(
+            "El miembro a consultar (por defecto: tú)",
+            key="slash.describes.coins.member",
+        )
+    )
     async def coins(
         self,
         ctx: commands.Context[Any],
@@ -131,9 +148,17 @@ class StellarCog(commands.Cog, name="Stellar"):
 
     @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
         name="leaderboard",
-        description=app_commands.locale_str("Ver la tabla de líderes del servidor por XP o monedas.", key="slash.descriptions.leaderboard"),
+        description=app_commands.locale_str(
+            "Ver la tabla de líderes del servidor por XP o monedas.",
+            key="slash.descriptions.leaderboard",
+        ),
     )
-    @app_commands.describe(lb_type=app_commands.locale_str("Tipo de tabla de líderes: 'xp' o 'coins' (por defecto: xp)", key="slash.describes.leaderboard.lb_type"))
+    @app_commands.describe(
+        lb_type=app_commands.locale_str(
+            "Tipo de tabla de líderes: 'xp' o 'coins' (por defecto: xp)",
+            key="slash.describes.leaderboard.lb_type",
+        )
+    )
     async def leaderboard(
         self,
         ctx: commands.Context[Any],
@@ -195,7 +220,12 @@ class StellarCog(commands.Cog, name="Stellar"):
         name="rank",
         description=app_commands.locale_str("Ver tu tarjeta de rango o la de otro.", key="slash.descriptions.rank"),
     )
-    @app_commands.describe(member=app_commands.locale_str("El miembro a consultar (por defecto: tú)", key="slash.describes.rank.member"))
+    @app_commands.describe(
+        member=app_commands.locale_str(
+            "El miembro a consultar (por defecto: tú)",
+            key="slash.describes.rank.member",
+        )
+    )
     async def rank(
         self,
         ctx: commands.Context[Any],

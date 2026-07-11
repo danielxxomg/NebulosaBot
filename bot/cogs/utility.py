@@ -43,7 +43,12 @@ class UtilityCog(commands.Cog, name="Utility"):
         name="avatar",
         description=app_commands.locale_str("Mostrar el avatar de un miembro.", key="slash.descriptions.avatar"),
     )
-    @app_commands.describe(member=app_commands.locale_str("De quién mostrar el avatar (por defecto: tú)", key="slash.describes.avatar.member"))
+    @app_commands.describe(
+        member=app_commands.locale_str(
+            "De quién mostrar el avatar (por defecto: tú)",
+            key="slash.describes.avatar.member",
+        )
+    )
     async def avatar(
         self,
         ctx: commands.Context[Any],
@@ -117,7 +122,12 @@ class UtilityCog(commands.Cog, name="Utility"):
         name="userinfo",
         description=app_commands.locale_str("Mostrar información de un usuario.", key="slash.descriptions.userinfo"),
     )
-    @app_commands.describe(member=app_commands.locale_str("De quién mostrar la info (por defecto: tú)", key="slash.describes.userinfo.member"))
+    @app_commands.describe(
+        member=app_commands.locale_str(
+            "De quién mostrar la info (por defecto: tú)",
+            key="slash.describes.userinfo.member",
+        )
+    )
     async def userinfo(
         self,
         ctx: commands.Context[Any],
