@@ -795,6 +795,4 @@ def test_warn_is_mod_dual_path_gated(sentinel_cog: SentinelCog) -> None:
     """warn MUST register BOTH prefix (cmd.checks) and slash (app_command.checks) gates."""
     cmd = sentinel_cog.warn
     assert len(cmd.checks) > 0, "warn must have prefix checks from @is_mod()"
-    assert hasattr(cmd, "app_command") and len(cmd.app_command.checks) > 0, (
-        "warn must have slash checks from @is_mod()"
-    )
+    assert hasattr(cmd, "app_command") and len(cmd.app_command.checks) > 0, "warn must have slash checks from @is_mod()"
