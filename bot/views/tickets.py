@@ -50,9 +50,7 @@ async def deploy_ticket_panel(
     """
     resolved_title = title if title is not None else t(guild_id, "tickets.panel.default_title")
     resolved_description = (
-        description_text
-        if description_text is not None
-        else t(guild_id, "tickets.panel.default_description")
+        description_text if description_text is not None else t(guild_id, "tickets.panel.default_description")
     )
 
     embed = discord.Embed(
@@ -66,9 +64,7 @@ async def deploy_ticket_panel(
     msg = await channel.send(embed=embed, view=TicketPanelView(guild_id=guild_id))
 
     if bot.guild_service is not None:
-        await bot.guild_service.update_guild_panel(
-            guild_id, str(msg.id), str(msg.channel.id)
-        )
+        await bot.guild_service.update_guild_panel(guild_id, str(msg.id), str(msg.channel.id))
 
     logger.info("Ticket panel deployed in guild %s (msg=%s)", guild_id, msg.id)
     return msg
@@ -102,7 +98,9 @@ async def _create_ticket_after_modal(
             embed=error_embed(
                 t(guild_id, "tickets.open.config_error_title"),
                 t(guild_id, "tickets.open.config_error_description"),
-                guild_id=guild_id, bot=bot, guild=guild,
+                guild_id=guild_id,
+                bot=bot,
+                guild=guild,
             ),
             ephemeral=True,
         )
@@ -113,7 +111,9 @@ async def _create_ticket_after_modal(
             embed=error_embed(
                 t(guild_id, "tickets.config_missing.title"),
                 t(guild_id, "tickets.config_missing.description"),
-                guild_id=guild_id, bot=bot, guild=guild,
+                guild_id=guild_id,
+                bot=bot,
+                guild=guild,
             ),
             ephemeral=True,
         )
@@ -125,7 +125,9 @@ async def _create_ticket_after_modal(
             embed=error_embed(
                 t(guild_id, "tickets.open.invalid_category_title"),
                 t(guild_id, "tickets.open.invalid_category_description"),
-                guild_id=guild_id, bot=bot, guild=guild,
+                guild_id=guild_id,
+                bot=bot,
+                guild=guild,
             ),
             ephemeral=True,
         )
@@ -154,7 +156,9 @@ async def _create_ticket_after_modal(
             embed=error_embed(
                 t(guild_id, "tickets.open.permission_denied_title"),
                 t(guild_id, "tickets.open.permission_denied_description"),
-                guild_id=guild_id, bot=bot, guild=guild,
+                guild_id=guild_id,
+                bot=bot,
+                guild=guild,
             ),
             ephemeral=True,
         )
@@ -165,7 +169,9 @@ async def _create_ticket_after_modal(
             embed=error_embed(
                 t(guild_id, "tickets.open.channel_failed_title"),
                 t(guild_id, "tickets.open.channel_failed_description"),
-                guild_id=guild_id, bot=bot, guild=guild,
+                guild_id=guild_id,
+                bot=bot,
+                guild=guild,
             ),
             ephemeral=True,
         )
@@ -182,7 +188,9 @@ async def _create_ticket_after_modal(
                         "tickets.open.limit_description",
                         category=category_name,
                     ),
-                    guild_id=guild_id, bot=bot, guild=guild,
+                    guild_id=guild_id,
+                    bot=bot,
+                    guild=guild,
                 ),
                 ephemeral=True,
             )
@@ -192,7 +200,9 @@ async def _create_ticket_after_modal(
             embed=error_embed(
                 t(guild_id, "tickets.open.creation_failed_title"),
                 t(guild_id, "tickets.open.creation_failed_description"),
-                guild_id=guild_id, bot=bot, guild=guild,
+                guild_id=guild_id,
+                bot=bot,
+                guild=guild,
             ),
             ephemeral=True,
         )
@@ -203,7 +213,9 @@ async def _create_ticket_after_modal(
             embed=error_embed(
                 t(guild_id, "tickets.open.creation_failed_title"),
                 t(guild_id, "tickets.open.creation_failed_description"),
-                guild_id=guild_id, bot=bot, guild=guild,
+                guild_id=guild_id,
+                bot=bot,
+                guild=guild,
             ),
             ephemeral=True,
         )
@@ -225,7 +237,9 @@ async def _create_ticket_after_modal(
         embed=success_embed(
             t(guild_id, "tickets.open.success_title"),
             t(guild_id, "tickets.open.success_description", channel=channel.mention),
-            guild_id=guild_id, bot=bot, guild=guild,
+            guild_id=guild_id,
+            bot=bot,
+            guild=guild,
         ),
         ephemeral=True,
     )
@@ -338,9 +352,7 @@ class TicketIntakeModal(discord.ui.Modal):
             field_definitions=self._field_definitions,
         )
 
-    async def on_error(
-        self, interaction: discord.Interaction, error: Exception, *args: Any
-    ) -> None:
+    async def on_error(self, interaction: discord.Interaction, error: Exception, *args: Any) -> None:
         logger.exception("TicketIntakeModal error (guild=%s)", self._guild.id, exc_info=error)
         if not interaction.response.is_done():
             guild_id = str(self._guild.id)
@@ -450,7 +462,9 @@ class TicketActionsView(discord.ui.View):
                 embed=error_embed(
                     t(guild_id, "tickets.actions.claim_mods_only_title"),
                     t(guild_id, "tickets.actions.claim_mods_only_description"),
-                    guild_id=guild_id, bot=bot, guild=guild,
+                    guild_id=guild_id,
+                    bot=bot,
+                    guild=guild,
                 ),
                 ephemeral=True,
             )
@@ -461,7 +475,9 @@ class TicketActionsView(discord.ui.View):
                 embed=error_embed(
                     t(guild_id, "tickets.actions.claim_failed_title"),
                     error,
-                    guild_id=guild_id, bot=bot, guild=guild,
+                    guild_id=guild_id,
+                    bot=bot,
+                    guild=guild,
                 ),
                 ephemeral=True,
             )
@@ -492,7 +508,9 @@ class TicketActionsView(discord.ui.View):
                         embed=error_embed(
                             t(guild_id, "tickets.transfer.failed_title"),
                             t(guild_id, "tickets.transfer.failed_description"),
-                            guild_id=guild_id, bot=bot, guild=guild,
+                            guild_id=guild_id,
+                            bot=bot,
+                            guild=guild,
                         ),
                         view=None,
                     )
@@ -548,7 +566,9 @@ class TicketActionsView(discord.ui.View):
                 embed=error_embed(
                     t(guild_id, "tickets.actions.claim_failed_title"),
                     t(guild_id, "tickets.actions.claim_generic_error_description"),
-                    guild_id=guild_id, bot=bot, guild=guild,
+                    guild_id=guild_id,
+                    bot=bot,
+                    guild=guild,
                 ),
                 ephemeral=True,
             )
@@ -575,7 +595,9 @@ class TicketActionsView(discord.ui.View):
                 embed=error_embed(
                     t(guild_id, "tickets.actions.close_failed_title"),
                     error,
-                    guild_id=guild_id, bot=bot, guild=guild,
+                    guild_id=guild_id,
+                    bot=bot,
+                    guild=guild,
                 ),
                 ephemeral=True,
             )
@@ -588,7 +610,9 @@ class TicketActionsView(discord.ui.View):
                 embed=error_embed(
                     t(guild_id, "tickets.actions.close_author_or_mod_title"),
                     t(guild_id, "tickets.actions.close_author_or_mod_description"),
-                    guild_id=guild_id, bot=bot, guild=guild,
+                    guild_id=guild_id,
+                    bot=bot,
+                    guild=guild,
                 ),
                 ephemeral=True,
             )
@@ -616,16 +640,16 @@ class TicketActionsView(discord.ui.View):
                 view=None,
             )
             try:
-                await bot.ticket_service.close_ticket_full(
-                    channel, ticket, closer_id, bot=bot, manual=True
-                )
+                await bot.ticket_service.close_ticket_full(channel, ticket, closer_id, bot=bot, manual=True)
             except Exception:
                 logger.exception("Failed to close ticket %s", ticket_id)
                 await confirm_interaction.followup.send(
                     embed=error_embed(
                         t(guild_id, "tickets.actions.close_db_error_title"),
                         t(guild_id, "tickets.actions.close_db_error_description"),
-                        guild_id=guild_id, bot=bot, guild=guild,
+                        guild_id=guild_id,
+                        bot=bot,
+                        guild=guild,
                     ),
                     ephemeral=True,
                 )
@@ -650,11 +674,15 @@ class TicketActionsView(discord.ui.View):
         confirm_view.message = await interaction.original_response()
 
     @discord.ui.button(
-        label="Editar Categoría", style=discord.ButtonStyle.secondary,
-        custom_id="ticket:edit-category", emoji="✏️",
+        label="Editar Categoría",
+        style=discord.ButtonStyle.secondary,
+        custom_id="ticket:edit-category",
+        emoji="✏️",
     )
     async def edit_category_button(
-        self, interaction: discord.Interaction, button: discord.ui.Button[discord.ui.View],
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button[discord.ui.View],
     ) -> None:
         """Persistent staff-gated Edit Category button.
 
@@ -675,7 +703,9 @@ class TicketActionsView(discord.ui.View):
                 embed=error_embed(
                     t(guild_id, "tickets.actions.edit_category_mods_only_title"),
                     t(guild_id, "tickets.actions.edit_category_mods_only_description"),
-                    guild_id=guild_id, bot=bot, guild=guild,
+                    guild_id=guild_id,
+                    bot=bot,
+                    guild=guild,
                 ),
                 ephemeral=True,
             )
@@ -688,7 +718,9 @@ class TicketActionsView(discord.ui.View):
                 embed=error_embed(
                     t(guild_id, "tickets.actions.edit_category_mods_only_title"),
                     t(guild_id, "tickets.actions.claim_not_ticket_description"),
-                    guild_id=guild_id, bot=bot, guild=guild,
+                    guild_id=guild_id,
+                    bot=bot,
+                    guild=guild,
                 ),
                 ephemeral=True,
             )
@@ -701,7 +733,9 @@ class TicketActionsView(discord.ui.View):
                 embed=error_embed(
                     t(guild_id, "tickets.actions.edit_category_no_categories_title"),
                     t(guild_id, "tickets.actions.edit_category_no_categories_description"),
-                    guild_id=guild_id, bot=bot, guild=guild,
+                    guild_id=guild_id,
+                    bot=bot,
+                    guild=guild,
                 ),
                 ephemeral=True,
             )
@@ -814,7 +848,9 @@ class _EditCategorySelect(discord.ui.Select[discord.ui.View]):
         guild_id = str(guild.id)
         super().__init__(
             placeholder=t(guild_id, "tickets.open.select_category"),
-            min_values=1, max_values=1, options=options,
+            min_values=1,
+            max_values=1,
+            options=options,
         )
         self._guild = guild
         self._categories = categories
@@ -832,7 +868,9 @@ class _EditCategorySelect(discord.ui.Select[discord.ui.View]):
                 embed=error_embed(
                     t(guild_id, "tickets.actions.edit_category_mods_only_title"),
                     t(guild_id, "tickets.actions.edit_category_mods_only_description"),
-                    guild_id=guild_id, bot=bot, guild=guild,
+                    guild_id=guild_id,
+                    bot=bot,
+                    guild=guild,
                 ),
                 ephemeral=True,
             )
@@ -852,7 +890,9 @@ class _EditCategorySelect(discord.ui.Select[discord.ui.View]):
                 embed=error_embed(
                     t(guild_id, "tickets.actions.edit_category_closed_title"),
                     t(guild_id, "tickets.actions.edit_category_closed_description"),
-                    guild_id=guild_id, bot=bot, guild=guild,
+                    guild_id=guild_id,
+                    bot=bot,
+                    guild=guild,
                 ),
                 ephemeral=True,
             )
@@ -862,7 +902,9 @@ class _EditCategorySelect(discord.ui.Select[discord.ui.View]):
                 embed=error_embed(
                     t(guild_id, "tickets.actions.edit_category_closed_title"),
                     t(guild_id, "tickets.actions.edit_category_closed_description"),
-                    guild_id=guild_id, bot=bot, guild=guild,
+                    guild_id=guild_id,
+                    bot=bot,
+                    guild=guild,
                 ),
                 ephemeral=True,
             )
@@ -880,8 +922,11 @@ class _EditCategorySelect(discord.ui.Select[discord.ui.View]):
 
         try:
             _ticket, rename_succeeded = await bot.ticket_service.edit_ticket_category(
-                ticket_id, new_category_id,
-                channel=channel, actor_id=actor_id, is_mod=True,
+                ticket_id,
+                new_category_id,
+                channel=channel,
+                actor_id=actor_id,
+                is_mod=True,
             )
         except ValueError as exc:
             # The service raises descriptive ValueError messages; map them to
@@ -890,12 +935,14 @@ class _EditCategorySelect(discord.ui.Select[discord.ui.View]):
             if "closed" in msg:
                 title = t(guild_id, "tickets.actions.edit_category_closed_title")
                 description = t(
-                    guild_id, "tickets.actions.edit_category_closed_description",
+                    guild_id,
+                    "tickets.actions.edit_category_closed_description",
                 )
             elif "already has an open" in msg:
                 title = t(guild_id, "tickets.actions.edit_category_limit_title")
                 description = t(
-                    guild_id, "tickets.actions.edit_category_limit_description",
+                    guild_id,
+                    "tickets.actions.edit_category_limit_description",
                 )
             else:
                 # Generic error — NOT the limit keys, which would mislead users.
@@ -903,8 +950,11 @@ class _EditCategorySelect(discord.ui.Select[discord.ui.View]):
                 description = str(exc)
             await interaction.response.send_message(
                 embed=error_embed(
-                    title, description,
-                    guild_id=guild_id, bot=bot, guild=guild,
+                    title,
+                    description,
+                    guild_id=guild_id,
+                    bot=bot,
+                    guild=guild,
                 ),
                 ephemeral=True,
             )
@@ -912,7 +962,8 @@ class _EditCategorySelect(discord.ui.Select[discord.ui.View]):
 
         # Build success description, appending rename warning if needed.
         description = t(
-            guild_id, "tickets.actions.edit_category_success_description",
+            guild_id,
+            "tickets.actions.edit_category_success_description",
             category=category_name,
         )
         if not rename_succeeded:
@@ -922,7 +973,9 @@ class _EditCategorySelect(discord.ui.Select[discord.ui.View]):
             embed=success_embed(
                 t(guild_id, "tickets.actions.edit_category_success"),
                 description,
-                guild_id=guild_id, bot=bot, guild=guild,
+                guild_id=guild_id,
+                bot=bot,
+                guild=guild,
             ),
             ephemeral=True,
         )
@@ -952,6 +1005,7 @@ class _EditCategorySelect(discord.ui.Select[discord.ui.View]):
             await channel.send(embed=audit_embed)
         except discord.HTTPException:
             logger.warning(
-                "Failed to send audit embed in channel %s", channel.id,
+                "Failed to send audit embed in channel %s",
+                channel.id,
                 exc_info=True,
             )

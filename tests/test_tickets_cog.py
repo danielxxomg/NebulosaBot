@@ -958,8 +958,10 @@ class TestSlashCommands:
 
         with patch("bot.cogs.tickets.deploy_ticket_panel", new_callable=AsyncMock) as mock_deploy:
             await tickets_cog.ticket_panel.callback(
-                tickets_cog, ctx,
-                title="Mi Panel", description_text="Abre un ticket",
+                tickets_cog,
+                ctx,
+                title="Mi Panel",
+                description_text="Abre un ticket",
             )
 
         mock_deploy.assert_awaited_once_with(
