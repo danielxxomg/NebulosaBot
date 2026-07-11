@@ -10,7 +10,6 @@ using ``freezegun`` to eliminate date-time flake risk under ``pytest-randomly``.
 from __future__ import annotations
 
 import asyncio
-import gc
 import selectors
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
@@ -20,7 +19,6 @@ import pytest
 from freezegun import freeze_time
 
 from bot.core.cache import TTLCache
-from bot.core.database import Database
 from bot.core.i18n import load_locales
 from bot.models.guild import GuildConfig
 

@@ -348,8 +348,7 @@ class TestKickCommand:
 
         # Simulate the confirm callback.
         confirm_button = next(
-            c for c in view.children
-            if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
+            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
         )
         interaction = MagicMock(spec=discord.Interaction)
         interaction.user = MagicMock(spec=discord.Member)
@@ -466,8 +465,11 @@ class TestBanCommand:
 
         with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
             await sentinel_cog.ban.callback(
-                sentinel_cog, sentinel_ctx, target_member,
-                reason="severe violation", delete_days=3,
+                sentinel_cog,
+                sentinel_ctx,
+                target_member,
+                reason="severe violation",
+                delete_days=3,
             )
 
         # Get the ConfirmCancelView from the ephemeral send.
@@ -476,8 +478,7 @@ class TestBanCommand:
 
         # Simulate the confirm callback.
         confirm_button = next(
-            c for c in view.children
-            if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
+            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
         )
         interaction = MagicMock(spec=discord.Interaction)
         interaction.user = MagicMock(spec=discord.Member)

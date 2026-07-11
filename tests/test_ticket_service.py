@@ -301,7 +301,9 @@ async def test_create_ticket_allowed_in_different_category(
     assert isinstance(ticket, Ticket)
     mock_db.insert_ticket.assert_awaited_once()
     mock_db.count_user_open_tickets_in_category.assert_awaited_once_with(
-        "123456789", "111111111", "cat-uuid-002",
+        "123456789",
+        "111111111",
+        "cat-uuid-002",
     )
 
 
@@ -1751,7 +1753,11 @@ async def test_create_ticket_channel_creates_channel_and_inserts(
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1}
 
     channel, ticket = await service.create_ticket_channel(
-        guild, category, author, guild_id="123456789", category_name="Support",
+        guild,
+        category,
+        author,
+        guild_id="123456789",
+        category_name="Support",
     )
 
     # Channel created with correct overwrites.
@@ -1789,7 +1795,11 @@ async def test_create_ticket_channel_renames_if_number_differs(
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 42}
 
     channel, ticket = await service.create_ticket_channel(
-        guild, category, author, guild_id="123456789", category_name="Support",
+        guild,
+        category,
+        author,
+        guild_id="123456789",
+        category_name="Support",
     )
 
     # Channel renamed to match actual ticket number.
@@ -1812,7 +1822,11 @@ async def test_create_ticket_channel_no_rename_if_name_matches(
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1}
 
     channel, ticket = await service.create_ticket_channel(
-        guild, category, author, guild_id="123456789", category_name="Support",
+        guild,
+        category,
+        author,
+        guild_id="123456789",
+        category_name="Support",
     )
 
     # No rename needed.
@@ -1835,7 +1849,12 @@ async def test_create_ticket_channel_passes_category_id(
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1, "categoryId": "cat-uuid-001"}
 
     _channel, _ticket = await service.create_ticket_channel(
-        guild, category, author, guild_id="123456789", category_name="Support", category_id="cat-uuid-001",
+        guild,
+        category,
+        author,
+        guild_id="123456789",
+        category_name="Support",
+        category_id="cat-uuid-001",
     )
 
     insert_kwargs = mock_db.insert_ticket.call_args.kwargs
@@ -1996,7 +2015,11 @@ async def test_create_ticket_channel_uses_sanitized_name(
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1}
 
     _, __ = await service.create_ticket_channel(
-        guild, category, author, guild_id="123456789", category_name="Soporte",
+        guild,
+        category,
+        author,
+        guild_id="123456789",
+        category_name="Soporte",
     )
 
     # Channel created with sanitized name.
@@ -2019,7 +2042,11 @@ async def test_create_ticket_channel_renames_with_sanitized_actual(
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 42}
 
     channel, ticket = await service.create_ticket_channel(
-        guild, category, author, guild_id="123456789", category_name="Soporte",
+        guild,
+        category,
+        author,
+        guild_id="123456789",
+        category_name="Soporte",
     )
 
     # Channel renamed to sanitized actual name.
@@ -2311,7 +2338,7 @@ async def test_close_ticket_full_manual_countdown(
     }
     closed_row = {**open_row, "status": "closed", "closedAt": "2026-06-16T18:00:00"}
     mock_db.get_ticket.side_effect = [
-        open_row,    # close_ticket pre-read (invariant check)
+        open_row,  # close_ticket pre-read (invariant check)
         closed_row,  # close_ticket re-read
     ]
 
@@ -2329,8 +2356,7 @@ async def test_close_ticket_full_manual_countdown(
     # Message edited 4 times: "4", "3", "2", "1".
     assert countdown_msg.edit.await_count == 4
     edit_contents = [
-        call.args[0] if call.args else call.kwargs.get("content")
-        for call in countdown_msg.edit.call_args_list
+        call.args[0] if call.args else call.kwargs.get("content") for call in countdown_msg.edit.call_args_list
     ]
     assert edit_contents == ["4", "3", "2", "1"]
 
@@ -2365,7 +2391,7 @@ async def test_close_ticket_full_auto_silent(
     }
     closed_row = {**open_row, "status": "closed", "closedAt": "2026-06-16T18:00:00"}
     mock_db.get_ticket.side_effect = [
-        open_row,    # close_ticket pre-read (invariant check)
+        open_row,  # close_ticket pre-read (invariant check)
         closed_row,  # close_ticket re-read
     ]
 
@@ -2414,7 +2440,7 @@ async def test_close_ticket_full_countdown_cancelled_error_logs_and_reraises(
     }
     closed_row = {**open_row, "status": "closed", "closedAt": "2026-06-16T18:00:00"}
     mock_db.get_ticket.side_effect = [
-        open_row,    # close_ticket pre-read
+        open_row,  # close_ticket pre-read
         closed_row,  # close_ticket re-read
     ]
 
@@ -2468,7 +2494,7 @@ async def test_close_ticket_full_countdown_failure_fallback(
     }
     closed_row = {**open_row, "status": "closed", "closedAt": "2026-06-16T18:00:00"}
     mock_db.get_ticket.side_effect = [
-        open_row,    # close_ticket pre-read (invariant check)
+        open_row,  # close_ticket pre-read (invariant check)
         closed_row,  # close_ticket re-read
     ]
 
@@ -2906,7 +2932,10 @@ async def test_edit_ticket_category_excludes_edited_ticket_from_count(
 
     # Count called with exclude_ticket_id.
     mock_db.count_user_open_tickets_in_category.assert_awaited_once_with(
-        "123456789", "111111111", "cat-uuid-support", exclude_ticket_id=ticket_id,
+        "123456789",
+        "111111111",
+        "cat-uuid-support",
+        exclude_ticket_id=ticket_id,
     )
 
 
@@ -2993,8 +3022,12 @@ class TestCreateTicketChannelOverwrites:
         mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1}
 
         await service.create_ticket_channel(
-            guild, category, author,
-            guild_id="123456789", category_name="Support", mod_role=mod_role,
+            guild,
+            category,
+            author,
+            guild_id="123456789",
+            category_name="Support",
+            mod_role=mod_role,
         )
 
         create_kwargs = guild.create_text_channel.call_args.kwargs
@@ -3032,8 +3065,11 @@ class TestCreateTicketChannelOverwrites:
         mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1}
 
         await service.create_ticket_channel(
-            guild, category, author,
-            guild_id="123456789", category_name="Support",
+            guild,
+            category,
+            author,
+            guild_id="123456789",
+            category_name="Support",
         )
 
         create_kwargs = guild.create_text_channel.call_args.kwargs
