@@ -6,6 +6,7 @@ Covers:
     - Stop button disables all buttons
     - Timeout disables all buttons
     - Persistent custom_id preserved
+    - Localized button labels via guild_id + t()
 """
 
 from __future__ import annotations
@@ -15,7 +16,11 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
+from bot.core.i18n import load_locales, set_guild_language
 from bot.utils.paginator import EmbedPaginator
+
+# Ensure real locales are loaded.
+load_locales()
 
 
 def _make_pages(n: int = 3) -> list[discord.Embed]:
@@ -189,3 +194,72 @@ class TestEmbedPaginatorPersistence:
         assert "paginator:prev" in ids
         assert "paginator:next" in ids
         assert "paginator:stop" in ids
+
+
+# ===========================================================================
+# Localized button labels (task 2.3 RED)
+# ===========================================================================
+
+
+class TestEmbedPaginatorLocalizedLabels:
+    """Tests for localized Previous/Next/Stop labels via guild_id + t()."""
+
+    def _get_buttons(self, view: EmbedPaginator) -> list[discord.ui.Button]:
+        """Return all button children in order."""
+        return [c for c in view.children if isinstance(c, discord.ui.Button)]
+
+    def test_spanish_guild_shows_spanish_previous(self) -> None:
+        """Spanish guild MUST show Spanish Previous button label."""
+        set_guild_language("300", "es")
+        view = EmbedPaginator(_make_pages(), guild_id="300")
+        buttons = self._get_buttons(view)
+        assert buttons[0].label == "◀ Anterior"
+
+    def test_spanish_guild_shows_spanish_next(self) -> None:
+        """Spanish guild MUST show Spanish Next button label."""
+        set_guild_language("300", "es")
+        view = EmbedPaginator(_make_pages(), guild_id="300")
+        buttons = self._get_buttons(view)
+        assert buttons[1].label == "Siguiente ▶"
+
+    def test_spanish_guild_shows_spanish_stop(self) -> None:
+        """Spanish guild MUST show Spanish Stop button label."""
+        set_guild_language("300", "es")
+        view = EmbedPaginator(_make_pages(), guild_id="300")
+        buttons = self._get_buttons(view)
+        assert buttons[2].label == "⏹ Detener"
+
+    def test_english_guild_shows_english_previous(self) -> None:
+        """English guild MUST show English Previous button label."""
+        set_guild_language("400", "en")
+        view = EmbedPaginator(_make_pages(), guild_id="400")
+        buttons = self._get_buttons(view)
+        assert buttons[0].label == "◀ Previous"
+
+    def test_english_guild_shows_english_next(self) -> None:
+        """English guild MUST show English Next button label."""
+        set_guild_language("400", "en")
+        view = EmbedPaginator(_make_pages(), guild_id="400")
+        buttons = self._get_buttons(view)
+        assert buttons[1].label == "Next ▶"
+
+    def test_english_guild_shows_english_stop(self) -> None:
+        """English guild MUST show English Stop button label."""
+        set_guild_language("400", "en")
+        view = EmbedPaginator(_make_pages(), guild_id="400")
+        buttons = self._get_buttons(view)
+        assert buttons[2].label == "⏹ Stop"
+
+    def test_no_guild_id_shows_default_labels(self) -> None:
+        """Without guild_id, buttons MUST use default Spanish (es) labels."""
+        view = EmbedPaginator(_make_pages())
+        buttons = self._get_buttons(view)
+        assert buttons[0].label == "◀ Anterior"
+        assert buttons[1].label == "Siguiente ▶"
+        assert buttons[2].label == "⏹ Detener"
+
+    def test_guild_id_preserves_timeout(self) -> None:
+        """Passing guild_id MUST preserve timeout behavior."""
+        set_guild_language("300", "es")
+        view = EmbedPaginator(_make_pages(), guild_id="300", timeout=60)
+        assert view.timeout == 60

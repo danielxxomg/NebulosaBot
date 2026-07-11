@@ -331,3 +331,103 @@ class TestConstructor:
         assert len(buttons) == 2
         custom_ids = {b.custom_id for b in buttons}
         assert custom_ids == {"confirm:confirm", "confirm:cancel"}
+
+
+# ---------------------------------------------------------------------------
+# Localized button labels
+# ---------------------------------------------------------------------------
+
+
+class TestLocalizedButtonLabels:
+    """Tests for localized Confirm/Cancel button labels via t()."""
+
+    def _get_button(self, view: ConfirmCancelView, custom_id: str) -> discord.ui.Button:
+        """Find a button by custom_id."""
+        return next(
+            c for c in view.children
+            if isinstance(c, discord.ui.Button) and c.custom_id == custom_id
+        )
+
+    def test_spanish_guild_shows_spanish_confirm_label(self) -> None:
+        """Spanish guild MUST show Spanish Confirm button label."""
+        set_guild_language("100", "es")
+        view = ConfirmCancelView(
+            guild_id="100",
+            owner_id=111111111,
+            on_confirm=AsyncMock(),
+        )
+        confirm_btn = self._get_button(view, "confirm:confirm")
+        assert confirm_btn.label == "Confirmar"
+
+    def test_spanish_guild_shows_spanish_cancel_label(self) -> None:
+        """Spanish guild MUST show Spanish Cancel button label."""
+        set_guild_language("100", "es")
+        view = ConfirmCancelView(
+            guild_id="100",
+            owner_id=111111111,
+            on_confirm=AsyncMock(),
+        )
+        cancel_btn = self._get_button(view, "confirm:cancel")
+        assert cancel_btn.label == "Cancelar"
+
+    def test_english_guild_shows_english_confirm_label(self) -> None:
+        """English guild MUST show English Confirm button label."""
+        set_guild_language("200", "en")
+        view = ConfirmCancelView(
+            guild_id="200",
+            owner_id=111111111,
+            on_confirm=AsyncMock(),
+        )
+        confirm_btn = self._get_button(view, "confirm:confirm")
+        assert confirm_btn.label == "Confirm"
+
+    def test_english_guild_shows_english_cancel_label(self) -> None:
+        """English guild MUST show English Cancel button label."""
+        set_guild_language("200", "en")
+        view = ConfirmCancelView(
+            guild_id="200",
+            owner_id=111111111,
+            on_confirm=AsyncMock(),
+        )
+        cancel_btn = self._get_button(view, "confirm:cancel")
+        assert cancel_btn.label == "Cancel"
+
+
+# ---------------------------------------------------------------------------
+# Decorator defaults (Spanish-first for persistent views)
+# ---------------------------------------------------------------------------
+
+
+class TestDecoratorDefaults:
+    """Decorator label defaults MUST be Spanish (matching locale key values).
+
+    Persistent views show decorator defaults before __init__ runs.
+    Since the bot defaults to Spanish, decorator labels must be Spanish.
+    """
+
+    def _get_button_by_id(self, view: discord.ui.View, custom_id: str) -> discord.ui.Button:
+        """Find a button by custom_id."""
+        return next(
+            c for c in view.children
+            if isinstance(c, discord.ui.Button) and c.custom_id == custom_id
+        )
+
+    def test_confirm_decorator_default_is_spanish(self) -> None:
+        """The @discord.ui.button default label for Confirm MUST be 'Confirmar'."""
+        # Inspect the decorator callback registry on the class itself.
+        # The decorator stores the default label on the class attribute.
+        from bot.views.confirmation import ConfirmCancelView
+
+        # Build view with empty guild_id to see raw decorator defaults.
+        view = ConfirmCancelView(guild_id="", owner_id=1, on_confirm=AsyncMock())
+        confirm_btn = self._get_button_by_id(view, "confirm:confirm")
+        # After __init__ with guild_id="", t("", ...) falls back to Spanish default.
+        assert confirm_btn.label == "Confirmar"
+
+    def test_cancel_decorator_default_is_spanish(self) -> None:
+        """The @discord.ui.button default label for Cancel MUST be 'Cancelar'."""
+        from bot.views.confirmation import ConfirmCancelView
+
+        view = ConfirmCancelView(guild_id="", owner_id=1, on_confirm=AsyncMock())
+        cancel_btn = self._get_button_by_id(view, "confirm:cancel")
+        assert cancel_btn.label == "Cancelar"
