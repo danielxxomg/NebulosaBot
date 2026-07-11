@@ -16,7 +16,7 @@ class EconomyDBMixin:
     Uses ``self._client`` from :class:`DatabaseBase`.
     """
 
-    async def get_economy_config(self: Any, guild_id: str) -> dict | None:
+    async def get_economy_config(self: Any, guild_id: str) -> dict[str, Any] | None:
         """Fetch an economy_config row by guild ID.
 
         Returns the raw camelCase row dict, or ``None`` if the guild has
@@ -49,7 +49,7 @@ class EconomyDBMixin:
         user_id: str,
         xp_delta: int,
         new_level: int | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Increment a member's XP atomically via RPC.
 
         Calls the ``increment_member_xp`` Postgres function which handles
@@ -86,7 +86,7 @@ class EconomyDBMixin:
             result["level"] = new_level
         return result
 
-    async def update_member_coins(self: Any, guild_id: str, user_id: str, coin_delta: int) -> dict:
+    async def update_member_coins(self: Any, guild_id: str, user_id: str, coin_delta: int) -> dict[str, Any]:
         """Increment a member's coins atomically via RPC.
 
         Calls the ``increment_member_coins`` Postgres function which handles
@@ -122,7 +122,7 @@ class EconomyDBMixin:
         streak: int,
         last_daily_reset: str | None,
         last_daily: str | None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Apply a daily claim atomically via RPC.
 
         Calls the ``set_member_daily`` Postgres function which handles
@@ -161,7 +161,7 @@ class EconomyDBMixin:
         sort_by: str = "xp",
         limit: int = 10,
         offset: int = 0,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Return leaderboard rows for a guild, sorted by *sort_by* descending.
 
         Args:

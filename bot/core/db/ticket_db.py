@@ -30,7 +30,7 @@ class TicketDBMixin:
         subject: str | None = None,
         description: str | None = None,
         custom_fields: dict[str, str] | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Insert a new ticket row and return the persisted row.
 
         Generates a v4 UUID for the primary key. The ``created_at`` and
@@ -64,7 +64,7 @@ class TicketDBMixin:
             await self._on_write("ticket", ticket_id)
         return rows[0] if rows else {}
 
-    async def get_tickets_by_parent(self: Any, parent_id: str) -> list[dict]:
+    async def get_tickets_by_parent(self: Any, parent_id: str) -> list[dict[str, Any]]:
         """Return all tickets whose ``parentId`` equals *parent_id*.
 
         Used to render a parent's sub-ticket children. Results are ordered
@@ -80,7 +80,7 @@ class TicketDBMixin:
         )
         return _unwrap(response)
 
-    async def get_ticket(self: Any, ticket_id: str) -> dict | None:
+    async def get_ticket(self: Any, ticket_id: str) -> dict[str, Any] | None:
         """Fetch a ticket by its UUID primary key."""
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
@@ -90,7 +90,7 @@ class TicketDBMixin:
         rows = _unwrap(response)
         return rows[0] if rows else None
 
-    async def get_ticket_by_channel(self: Any, channel_id: str) -> dict | None:
+    async def get_ticket_by_channel(self: Any, channel_id: str) -> dict[str, Any] | None:
         """Fetch a ticket by its Discord channel snowflake."""
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
@@ -100,7 +100,7 @@ class TicketDBMixin:
         rows = _unwrap(response)
         return rows[0] if rows else None
 
-    async def get_ticket_by_number(self: Any, guild_id: str, ticket_number: int) -> dict | None:
+    async def get_ticket_by_number(self: Any, guild_id: str, ticket_number: int) -> dict[str, Any] | None:
         """Fetch a ticket by guild snowflake and sequential *ticket_number*.
 
         Used by ``/reopen ticket:#0003`` to resolve a closed ticket from any
@@ -129,7 +129,7 @@ class TicketDBMixin:
         logger.debug("DB update_ticket(%s) %s", ticket_id, kwargs)
         await self._client.table("ticket").update(kwargs).eq("id", ticket_id).execute()
 
-    async def get_stale_tickets(self: Any, guild_id: str, hours: int = 48) -> list[dict]:
+    async def get_stale_tickets(self: Any, guild_id: str, hours: int = 48) -> list[dict[str, Any]]:
         """Return open/claimed tickets with ``lastActivity`` older than *hours*.
 
         Used by the auto-close task to identify inactive tickets.

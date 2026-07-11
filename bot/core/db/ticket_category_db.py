@@ -24,7 +24,7 @@ class TicketCategoryDBMixin:
         emoji: str | None = None,
         description: str | None = None,
         position: int = 0,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Insert a ticket category and return the persisted row.
 
         Generates a v4 UUID for the primary key. The ``created_at`` timestamp
@@ -48,7 +48,7 @@ class TicketCategoryDBMixin:
         rows = _unwrap(response)
         return rows[0] if rows else {}
 
-    async def get_ticket_categories(self: Any, guild_id: str) -> list[dict]:
+    async def get_ticket_categories(self: Any, guild_id: str) -> list[dict[str, Any]]:
         """Return all active ticket categories for a guild, ordered by position."""
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
@@ -64,7 +64,7 @@ class TicketCategoryDBMixin:
         )
         return _unwrap(response)
 
-    async def get_ticket_category(self: Any, category_id: str) -> dict | None:
+    async def get_ticket_category(self: Any, category_id: str) -> dict[str, Any] | None:
         """Fetch a ticket category by its UUID primary key."""
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
@@ -107,7 +107,7 @@ class TicketCategoryDBMixin:
         self: Any,
         guild_id: str,
         category_id: str,
-        field_definitions: list[dict],
+        field_definitions: list[dict[str, Any]],
     ) -> None:
         """Update ``fieldDefinitions`` for a ticket category, scoped by guildId and id.
 

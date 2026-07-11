@@ -25,7 +25,7 @@ class InfractionDBMixin:
         type: str,
         reason: str,
         expires_at: str | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Insert a moderation infraction and return the persisted row.
 
         Generates a v4 UUID for the primary key.  The ``created_at``
@@ -58,7 +58,7 @@ class InfractionDBMixin:
         target_id: str,
         type: str | None = None,
         after: str | None = None,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Return infraction rows for a guild member, with optional filters.
 
         Args:
@@ -90,7 +90,7 @@ class InfractionDBMixin:
         response = await query.execute()
         return _unwrap(response)
 
-    async def get_active_warnings(self: Any, guild_id: str, target_id: str) -> list[dict]:
+    async def get_active_warnings(self: Any, guild_id: str, target_id: str) -> list[dict[str, Any]]:
         """Return all active WARN infractions for a guild member.
 
         Convenience wrapper around ``get_infractions`` with ``type="WARN"``

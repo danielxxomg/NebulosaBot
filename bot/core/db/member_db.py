@@ -16,7 +16,7 @@ class MemberDBMixin:
     Uses ``self._client`` from :class:`DatabaseBase`.
     """
 
-    async def get_member(self: Any, guild_id: str, user_id: str) -> dict | None:
+    async def get_member(self: Any, guild_id: str, user_id: str) -> dict[str, Any] | None:
         """Fetch a member row by guild and user snowflake.
 
         Returns the camelCase row dict, or ``None`` if the member has no

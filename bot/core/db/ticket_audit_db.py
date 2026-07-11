@@ -25,7 +25,7 @@ class TicketAuditDBMixin:
         actor_id: str | None,
         outcome: str,
         reason: str | None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Insert a ``ticket_audit`` row and return the persisted row.
 
         Generates a v4 UUID for the primary key (matches the project's
@@ -53,7 +53,7 @@ class TicketAuditDBMixin:
         rows = _unwrap(response)
         return rows[0] if rows else {}
 
-    async def get_audit_rows(self: Any, guild_id: str, limit: int = 50, offset: int = 0) -> list[dict]:
+    async def get_audit_rows(self: Any, guild_id: str, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         """Return ``ticket_audit`` rows for a guild, newest-first, paginated.
 
         Guild-scoped by an ``eq("guildId")`` filter so rows from other guilds
