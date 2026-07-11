@@ -19,7 +19,7 @@ NebulosaBot es un bot de Discord con **8 módulos** y **47 comandos** (slash + p
 | Ocio | Comandos casuales: dados, banana | Todos |
 | Setup | Configuración del servidor (categoría de tickets, rol de mod, canal de logs, idioma) | Admin |
 
-**Formato de comandos**: todos son híbridos — funcionan como slash (`/comando`) y como prefijo (configurable por servidor). El bot soporta español e inglés para las respuestas en tiempo real; los nombres de comandos y sus descripciones en Discord permanecen en inglés.
+**Formato de comandos**: todos son híbridos — funcionan como slash (`/comando`) y como prefijo (configurable por servidor). El bot soporta español e inglés para las respuestas en tiempo real; los nombres de comandos permanecen en inglés, pero sus descripciones se localizan automáticamente según el idioma del cliente de Discord de cada usuario (español por defecto, inglés para clientes en inglés).
 
 **Identidad visual**: los embeds del bot usan una paleta púrpura/violeta como color principal. El avatar del bot aparece como ícono en el pie de los embeds cuando está disponible; si el servidor tiene ícono propio, los embeds de contexto (logs, tickets) usan el ícono del servidor con fallback al del bot.
 
@@ -39,7 +39,7 @@ NebulosaBot es un bot de Discord con **8 módulos** y **47 comandos** (slash + p
    | `ticket_category` | Sí | Categoría de Discord donde se crearán los canales de ticket |
    | `mod_role` | No | Rol de moderador (para comandos de moderación) |
    | `log_channel` | No | Canal donde se registran las acciones de moderación |
-   | `language` | No | Idioma del bot: `es` o `en` (por defecto: `en`) |
+   | `language` | No | Idioma del bot: `es` o `en` (por defecto: `es`) |
 
 3. **Sincroniza comandos** con `/sync` (solo admin) para que Discord registre los comandos slash actualizados.
 4. **Despliega el panel de tickets** con `/ticket_panel` en el canal donde quieras que los usuarios abran tickets.
@@ -83,9 +83,9 @@ El bot usa **dos capas de permisos**:
 
 ### Idioma
 
-- `language: es` — respuestas en español neutro.
-- `language: en` — respuestas en inglés (por defecto si no se configura).
-- Los nombres de comandos y descripciones slash siempre están en inglés (diseño deliberado de Discord).
+- `language: es` — respuestas en español neutro (por defecto si no se configura).
+- `language: en` — respuestas en inglés.
+- Las descripciones de comandos slash se localizan automáticamente según el idioma del cliente de Discord de cada usuario (no del servidor). Los nombres de comandos permanecen en inglés.
 
 ---
 
@@ -444,7 +444,7 @@ Cuando el usuario o la categoría no pueden resolverse (por ejemplo, al reabrir 
 | Tema | Descripción |
 |------|-------------|
 | **Manual potencialmente desactualizado** | Este manual refleja el código al momento de su creación. Los comandos registrados pueden cambiar con actualizaciones. Usar `/help` como fuente de verdad. |
-| **Sin localización de descripciones slash** | Las descripciones de comandos en Discord están en inglés por diseño. Solo las respuestas del bot se localizan (es/en). |
+| **Descripciones slash localizadas** | Las descripciones de comandos slash se localizan automáticamente según el idioma del cliente Discord del usuario (español por defecto, inglés para clientes en inglés). Los nombres de comandos permanecen en inglés. |
 | **Sin README ni PRODUCT.md** | El repositorio no tiene documentación de alto nivel para desarrolladores fuera de `AGENTS.md` (reglas de code review). |
 | **Supabase sin FK en runtime** | Transaction Mode de Supabase no aplica foreign keys. La integridad referencial se valida en la aplicación. |
 | **Escalada automática con umbrales fijos** | Los umbrales de escalada (warn → mute → kick) requieren configuración en base de datos; no hay comando de Discord para ajustarlos. |

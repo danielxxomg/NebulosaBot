@@ -36,13 +36,13 @@ class SetupCog(commands.Cog, name="Setup"):
 
     @commands.hybrid_command(
         name="setup",
-        description="Configure guild settings (ticket category, mod role, log channel, language).",
+        description=app_commands.locale_str("Configurar ajustes del servidor (categoría de tickets, rol de mod, canal de logs, idioma).", key="slash.descriptions.setup"),
     )
     @app_commands.describe(
-        ticket_category="Category for ticket channels",
-        mod_role="Optional moderator role",
-        log_channel="Optional moderation log channel",
-        language="Optional server language",
+        ticket_category=app_commands.locale_str("Categoría para canales de tickets", key="slash.describes.setup.ticket_category"),
+        mod_role=app_commands.locale_str("Rol de moderador opcional", key="slash.describes.setup.mod_role"),
+        log_channel=app_commands.locale_str("Canal de registro de moderación opcional", key="slash.describes.setup.log_channel"),
+        language=app_commands.locale_str("Idioma del servidor opcional", key="slash.describes.setup.language"),
     )
     @is_admin()
     async def setup_command(
