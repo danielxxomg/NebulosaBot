@@ -448,8 +448,7 @@ class NebulosaBot(commands.Bot):
         # startup (on_guild_join only fires for joins during the session).
         if self.guild_service is not None:
             tasks: list[Coroutine[Any, Any, None]] = [
-                self.guild_service.ensure_guild_exists(str(guild.id))
-                for guild in self.guilds
+                self.guild_service.ensure_guild_exists(str(guild.id)) for guild in self.guilds
             ]
             if len(tasks) > BACKFILL_CONCURRENCY_LIMIT:
                 semaphore = asyncio.Semaphore(BACKFILL_CONCURRENCY_LIMIT)

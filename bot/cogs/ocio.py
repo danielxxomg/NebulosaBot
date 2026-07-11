@@ -42,8 +42,14 @@ class OcioCog(commands.Cog, name="Ocio"):
     # Commands
     # ==================================================================
 
-    @commands.hybrid_command(name="dados", description="Roll a dice.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
-    @app_commands.describe(sides="Number of sides (2-100)")
+    @commands.hybrid_command(
+        name="dados",
+        description=app_commands.locale_str(
+            "Tirar un dado.",
+            key="slash.descriptions.dados",
+        ),
+    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @app_commands.describe(sides=app_commands.locale_str("Número de caras (2-100)", key="slash.describes.dados.sides"))
     async def dados(
         self,
         ctx: commands.Context[Any],
@@ -59,7 +65,13 @@ class OcioCog(commands.Cog, name="Ocio"):
         )
         await ctx.send(embed=embed)
 
-    @commands.hybrid_command(name="banana", description="Measure something in bananas.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @commands.hybrid_command(
+        name="banana",
+        description=app_commands.locale_str(
+            "Medir algo en bananas.",
+            key="slash.descriptions.banana",
+        ),
+    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
     async def banana(self, ctx: commands.Context[Any]) -> None:
         """Reply with a banana image and a random measurement (2-30 cm)."""
         guild_id = ctx.guild.id if ctx.guild else None
