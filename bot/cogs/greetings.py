@@ -90,7 +90,10 @@ class GreetingsCog(commands.Cog, name="Greetings"):
 
     @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
         name="welcome_test",
-        description="Send a test welcome card in this channel (admin only).",
+        description=app_commands.locale_str(
+            "Enviar una tarjeta de bienvenida de prueba en este canal (solo admin).",
+            key="slash.descriptions.welcome_test",
+        ),
     )
     @app_commands.default_permissions(administrator=True)
     async def welcome_test(self, ctx: commands.Context[Any]) -> None:
@@ -140,7 +143,10 @@ class GreetingsCog(commands.Cog, name="Greetings"):
 
     @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
         name="goodbye_test",
-        description="Send a test goodbye card in this channel (admin only).",
+        description=app_commands.locale_str(
+            "Enviar una tarjeta de despedida de prueba en este canal (solo admin).",
+            key="slash.descriptions.goodbye_test",
+        ),
     )
     @app_commands.default_permissions(administrator=True)
     async def goodbye_test(self, ctx: commands.Context[Any]) -> None:
@@ -244,7 +250,13 @@ class GreetingsCog(commands.Cog, name="Greetings"):
     # /welcome — hybrid group (fallback = config)
     # ------------------------------------------------------------------
 
-    @commands.hybrid_group(fallback="config", description="Configure welcome card settings.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @commands.hybrid_group(
+        fallback="config",
+        description=app_commands.locale_str(
+            "Configurar ajustes de tarjetas de bienvenida.",
+            key="slash.descriptions.welcome._",
+        ),
+    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
     @app_commands.default_permissions(administrator=True)
     async def welcome(self, ctx: commands.Context[Any]) -> None:
         """Show the current welcome configuration."""
@@ -258,8 +270,19 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             ephemeral=True,
         )
 
-    @welcome.command(name="channel", description="Set the channel for welcome messages.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
-    @app_commands.describe(channel="The channel for welcome messages")
+    @welcome.command(
+        name="channel",
+        description=app_commands.locale_str(
+            "Definir el canal para mensajes de bienvenida.",
+            key="slash.descriptions.welcome.channel",
+        ),
+    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @app_commands.describe(
+        channel=app_commands.locale_str(
+            "El canal para mensajes de bienvenida",
+            key="slash.describes.welcome.channel.channel",
+        )
+    )
     @app_commands.default_permissions(administrator=True)
     async def welcome_channel(
         self,
@@ -283,7 +306,13 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             ephemeral=True,
         )
 
-    @welcome.command(name="toggle", description="Toggle welcome messages on or off.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @welcome.command(
+        name="toggle",
+        description=app_commands.locale_str(
+            "Activar o desactivar mensajes de bienvenida.",
+            key="slash.descriptions.welcome.toggle",
+        ),
+    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
     @app_commands.default_permissions(administrator=True)
     async def welcome_toggle(self, ctx: commands.Context[Any]) -> None:
         """Toggle welcome messages on/off."""
@@ -308,8 +337,19 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             ephemeral=True,
         )
 
-    @welcome.command(name="message", description="Set the welcome message template.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
-    @app_commands.describe(template="Message template (placeholders: {user}, {server}, {mention})")
+    @welcome.command(
+        name="message",
+        description=app_commands.locale_str(
+            "Definir la plantilla del mensaje de bienvenida.",
+            key="slash.descriptions.welcome.message",
+        ),
+    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @app_commands.describe(
+        template=app_commands.locale_str(
+            "Plantilla de mensaje (marcadores: {user}, {server}, {mention})",
+            key="slash.describes.welcome.message.template",
+        )
+    )
     @app_commands.default_permissions(administrator=True)
     async def welcome_message(
         self,
@@ -338,7 +378,13 @@ class GreetingsCog(commands.Cog, name="Greetings"):
     # /goodbye — hybrid group (fallback = config)
     # ------------------------------------------------------------------
 
-    @commands.hybrid_group(fallback="config", description="Configure goodbye card settings.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @commands.hybrid_group(
+        fallback="config",
+        description=app_commands.locale_str(
+            "Configurar ajustes de tarjetas de despedida.",
+            key="slash.descriptions.goodbye._",
+        ),
+    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
     @app_commands.default_permissions(administrator=True)
     async def goodbye(self, ctx: commands.Context[Any]) -> None:
         """Show the current goodbye configuration."""
@@ -352,8 +398,19 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             ephemeral=True,
         )
 
-    @goodbye.command(name="channel", description="Set the channel for goodbye messages.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
-    @app_commands.describe(channel="The channel for goodbye messages")
+    @goodbye.command(
+        name="channel",
+        description=app_commands.locale_str(
+            "Definir el canal para mensajes de despedida.",
+            key="slash.descriptions.goodbye.channel",
+        ),
+    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @app_commands.describe(
+        channel=app_commands.locale_str(
+            "El canal para mensajes de despedida",
+            key="slash.describes.goodbye.channel.channel",
+        )
+    )
     @app_commands.default_permissions(administrator=True)
     async def goodbye_channel(
         self,
@@ -377,7 +434,13 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             ephemeral=True,
         )
 
-    @goodbye.command(name="toggle", description="Toggle goodbye messages on or off.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @goodbye.command(
+        name="toggle",
+        description=app_commands.locale_str(
+            "Activar o desactivar mensajes de despedida.",
+            key="slash.descriptions.goodbye.toggle",
+        ),
+    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
     @app_commands.default_permissions(administrator=True)
     async def goodbye_toggle(self, ctx: commands.Context[Any]) -> None:
         """Toggle goodbye messages on/off."""
@@ -402,8 +465,19 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             ephemeral=True,
         )
 
-    @goodbye.command(name="message", description="Set the goodbye message template.")  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
-    @app_commands.describe(template="Message template (placeholders: {user}, {server}, {mention})")
+    @goodbye.command(
+        name="message",
+        description=app_commands.locale_str(
+            "Definir la plantilla del mensaje de despedida.",
+            key="slash.descriptions.goodbye.message",
+        ),
+    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @app_commands.describe(
+        template=app_commands.locale_str(
+            "Plantilla de mensaje (marcadores: {user}, {server}, {mention})",
+            key="slash.describes.goodbye.message.template",
+        )
+    )
     @app_commands.default_permissions(administrator=True)
     async def goodbye_message(
         self,

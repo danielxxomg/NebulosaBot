@@ -185,16 +185,43 @@ def _resolve_key(lang: str, key: str) -> str | None:
 
 # Discord locale variants that map to our supported languages.
 # Discord uses hyphenated locale codes (e.g., "es-ES", "en-US").
-_SPANISH_LOCALES: frozenset[str] = frozenset({
-    "es-ES", "es-419", "es-MX", "es-AR", "es-CL", "es-CO",
-    "es-CR", "es-DO", "es-EC", "es-GT", "es-HN", "es-NI", "es-PA",
-    "es-PE", "es-PR", "es-PY", "es-SV", "es-UY", "es-VE",
-})
+_SPANISH_LOCALES: frozenset[str] = frozenset(
+    {
+        "es-ES",
+        "es-419",
+        "es-MX",
+        "es-AR",
+        "es-CL",
+        "es-CO",
+        "es-CR",
+        "es-DO",
+        "es-EC",
+        "es-GT",
+        "es-HN",
+        "es-NI",
+        "es-PA",
+        "es-PE",
+        "es-PR",
+        "es-PY",
+        "es-SV",
+        "es-UY",
+        "es-VE",
+    }
+)
 
-_ENGLISH_LOCALES: frozenset[str] = frozenset({
-    "en-US", "en-GB", "en-AU", "en-CA", "en-IN", "en-NZ",
-    "en-PH", "en-SG", "en-ZA",
-})
+_ENGLISH_LOCALES: frozenset[str] = frozenset(
+    {
+        "en-US",
+        "en-GB",
+        "en-AU",
+        "en-CA",
+        "en-IN",
+        "en-NZ",
+        "en-PH",
+        "en-SG",
+        "en-ZA",
+    }
+)
 
 # Reverse map: Discord locale value → our language code.
 _LOCALE_MAP: dict[str, str] = {loc: "es" for loc in _SPANISH_LOCALES}
@@ -286,8 +313,7 @@ def _check_localizations(cmd: app_commands.Command | app_commands.Group) -> None
         return
 
     logger.warning(
-        "Command '%s' is missing description localization — "
-        "slash metadata will not localize for non-default locales",
+        "Command '%s' is missing description localization — slash metadata will not localize for non-default locales",
         cmd.qualified_name,
     )
 
