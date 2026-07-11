@@ -1739,6 +1739,43 @@ def _mock_author() -> MagicMock:
 
 
 @pytest.mark.asyncio
+async def test_create_ticket_channel_rejects_before_creating_channel_when_limit_hit(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """When user already has an open ticket in the category, do NOT create a channel.
+
+    Production logs showed channel create → ValueError → cleanup delete thrashing.
+    The invariant must fail fast before guild.create_text_channel.
+    """
+    guild = _mock_guild_for_channel(channel_name="support-testuser-0001")
+    category = MagicMock(spec=discord.CategoryChannel)
+    author = _mock_author()
+
+    mock_db.count_user_open_tickets_in_category.return_value = 1
+    mock_db.get_max_ticket_number.return_value = 0
+
+    with pytest.raises(ValueError, match=r"already has an open ticket"):
+        await service.create_ticket_channel(
+            guild,
+            category,
+            author,
+            guild_id="123456789",
+            category_name="Support",
+            category_id="cat-uuid-001",
+        )
+
+    guild.create_text_channel.assert_not_awaited()
+    mock_db.insert_ticket.assert_not_awaited()
+    mock_db.count_user_open_tickets_in_category.assert_awaited_once_with(
+        "123456789",
+        "111111111",
+        "cat-uuid-001",
+    )
+
+
+@pytest.mark.asyncio
 async def test_create_ticket_channel_creates_channel_and_inserts(
     service: TicketService,
     mock_db: AsyncMock,

@@ -971,7 +971,25 @@ class TicketService:
         When *parent_id* is set, uses :meth:`create_subticket` to enforce
         parentId invariants.  On row-insert failure the channel is deleted
         before re-raising.
+
+        The one-open-ticket-per-category invariant is checked **before** creating
+        the Discord channel so failed opens do not thrash channel create/delete.
         """
+        # Fail fast: do not create a Discord channel if the user already has an
+        # open ticket in this category (subtickets are exempt via parent_id).
+        if parent_id is None and category_id is not None:
+            count = await self._db.count_user_open_tickets_in_category(
+                guild_id,
+                str(author.id),
+                category_id,
+            )
+            check_one_ticket_per_user_per_category(
+                str(author.id),
+                category_id,
+                parent_id=None,
+                count_fn=lambda _u, _c: count,
+            )
+
         # Compute tentative channel name from DB max + 1.
         tentative_max = await self._db.get_max_ticket_number(guild_id)
         tentative_name = sanitize_channel_name(
@@ -1082,6 +1100,8 @@ class TicketService:
             await asyncio.sleep(CHANNEL_DELETE_DELAY)
             try:
                 await channel.delete(reason=f"Ticket closed by {closed_by}")
+            except discord.NotFound:
+                logger.info("Ticket channel %s already deleted on silent close", channel.id)
             except discord.HTTPException:
                 logger.exception("Failed to delete ticket channel %s", channel.id)
 
@@ -1111,6 +1131,9 @@ class TicketService:
                 channel.id,
             )
             raise
+        except discord.NotFound:
+            # Channel already gone (double-close, manual delete, or race).
+            logger.info("Ticket channel %s already deleted during countdown", channel.id)
         except discord.HTTPException:
             logger.warning(
                 "Countdown failed for channel %s — falling back to silent delete",
@@ -1119,5 +1142,7 @@ class TicketService:
             )
             try:
                 await channel.delete(reason=f"Ticket closed by {closed_by} (countdown fallback)")
+            except discord.NotFound:
+                logger.info("Ticket channel %s already deleted during countdown fallback", channel.id)
             except discord.HTTPException:
                 logger.exception("Failed to delete ticket channel %s after countdown failure", channel.id)
