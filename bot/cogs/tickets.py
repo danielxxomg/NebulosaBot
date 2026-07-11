@@ -671,13 +671,13 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
         await ctx.send(embed=_ok(gid, "tickets.transfer.success", member=member.mention))
 
-    @commands.hybrid_command(
+    @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
         name="unclaim",
         description=app_commands.locale_str(
             "Liberar un ticket reclamado de vuelta a estado abierto.",
             key="slash.descriptions.unclaim",
         ),
-    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    )
     async def unclaim(self, ctx: commands.Context[Any]) -> None:
         """Unclaim a ticket — available to the claimer or moderators."""
         if ctx.guild is None:
