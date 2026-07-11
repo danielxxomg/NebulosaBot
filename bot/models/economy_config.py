@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -24,7 +25,7 @@ class EconomyConfig:
     level_up_channel_id: str | None = None
 
     @classmethod
-    def from_db_row(cls, row: dict) -> EconomyConfig:
+    def from_db_row(cls, row: dict[str, Any]) -> EconomyConfig:
         """Build an EconomyConfig from a Supabase row (camelCase keys)."""
         return cls(
             guild_id=row["guildId"],
@@ -38,7 +39,7 @@ class EconomyConfig:
             level_up_channel_id=row.get("levelUpChannelId"),
         )
 
-    def to_db_dict(self) -> dict:
+    def to_db_dict(self) -> dict[str, Any]:
         """Convert to a dict with camelCase keys for Supabase."""
         return {
             "guildId": self.guild_id,

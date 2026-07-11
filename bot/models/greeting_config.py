@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -24,7 +25,7 @@ class GreetingConfig:
     goodbye_card_enabled: bool = True
 
     @classmethod
-    def from_db_row(cls, row: dict) -> GreetingConfig:
+    def from_db_row(cls, row: dict[str, Any]) -> GreetingConfig:
         """Build a GreetingConfig from a Supabase row (camelCase keys)."""
         return cls(
             guild_id=row["guildId"],
@@ -38,7 +39,7 @@ class GreetingConfig:
             goodbye_card_enabled=row.get("goodbyeCardEnabled", True),
         )
 
-    def to_db_dict(self) -> dict:
+    def to_db_dict(self) -> dict[str, Any]:
         """Convert to a dict with camelCase keys for Supabase."""
         return {
             "guildId": self.guild_id,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from bot.constants import FALLBACK_PREFIX
 
@@ -43,7 +44,7 @@ class GuildConfig:
     )
 
     @classmethod
-    def from_db_row(cls, row: dict) -> GuildConfig:
+    def from_db_row(cls, row: dict[str, Any]) -> GuildConfig:
         """Build a GuildConfig from a Supabase row (camelCase keys)."""
         return cls(
             id=row["id"],
@@ -59,7 +60,7 @@ class GuildConfig:
             active=row.get("active", True),
         )
 
-    def to_db_dict(self) -> dict:
+    def to_db_dict(self) -> dict[str, Any]:
         """Convert to a dict with camelCase keys for Supabase."""
         return {
             "id": self.id,

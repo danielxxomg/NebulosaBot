@@ -146,10 +146,6 @@ module = "bot.listeners.*"
 disable_error_code = ["assignment", "arg-type"]
 
 [[tool.mypy.overrides]]
-module = "bot.models.*"
-disable_error_code = ["type-arg"]
-
-[[tool.mypy.overrides]]
 module = "tests.*"
 disable_error_code = ["attr-defined", "no-any-return", "no-untyped-def", "assignment", "arg-type", "type-arg", "untyped-decorator", "no-untyped-call", "unused-ignore"]
 
