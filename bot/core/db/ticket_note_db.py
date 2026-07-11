@@ -23,7 +23,7 @@ class TicketNoteDBMixin:
         ticket_id: str,
         author_id: str,
         content: str,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Insert a staff note on a ticket and return the persisted row.
 
         Generates a v4 UUID for the primary key. The ``createdAt`` timestamp
@@ -47,7 +47,7 @@ class TicketNoteDBMixin:
             await self._on_write("ticket_note", note_id)
         return rows[0] if rows else {}
 
-    async def get_ticket_notes(self: Any, ticket_id: str, limit: int = 50) -> list[dict]:
+    async def get_ticket_notes(self: Any, ticket_id: str, limit: int = 50) -> list[dict[str, Any]]:
         """Return notes for a ticket, newest-first, capped by *limit*.
 
         The caller controls the cap (default 50, the v1 per-ticket note limit
@@ -82,7 +82,7 @@ class TicketNoteDBMixin:
 
     async def get_recent_notes_for_dedup(
         self: Any, ticket_id: str, author_id: str, window_seconds: int = 2
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Return notes by *author_id* on *ticket_id* created in the dedup window.
 
         Computes a cutoff of ``now() - window_seconds`` client-side and pushes

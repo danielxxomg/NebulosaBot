@@ -130,20 +130,8 @@ python_version = "3.11"
 # Per-file overrides — narrowed in tooling-rigor PR3 (Phase 4-6).
 # Only genuinely justified overrides remain (discord.py stub limitations).
 [[tool.mypy.overrides]]
-module = "bot.bot"
-disable_error_code = ["attr-defined"]
-
-[[tool.mypy.overrides]]
 module = "bot.cogs.*"
 disable_error_code = ["untyped-decorator"]
-
-[[tool.mypy.overrides]]
-module = "bot.core.*"
-disable_error_code = ["no-any-return", "type-arg"]
-
-[[tool.mypy.overrides]]
-module = "bot.listeners.*"
-disable_error_code = ["assignment", "arg-type"]
 
 [[tool.mypy.overrides]]
 module = "tests.*"

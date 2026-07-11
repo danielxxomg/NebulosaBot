@@ -16,7 +16,7 @@ class GreetingDBMixin:
     Uses ``self._client`` from :class:`DatabaseBase`.
     """
 
-    async def get_greeting_config(self: Any, guild_id: str) -> dict | None:
+    async def get_greeting_config(self: Any, guild_id: str) -> dict[str, Any] | None:
         """Fetch a greeting_config row by guild ID.
 
         Returns the raw camelCase row dict, or ``None`` if the guild has

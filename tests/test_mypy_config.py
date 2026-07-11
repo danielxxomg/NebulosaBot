@@ -3,7 +3,8 @@
 Covers the pyproject-toml-qa-config spec scenarios:
     - strict = true enabled
     - No global disable_error_code
-    - Per-file overrides exist for known debt modules (bot.bot)
+    - Only tech-debt overrides remain (bot.cogs.*, tests.*)
+    - No override for bot.core.*, bot.listeners.*, or bot.bot
     - No wildcard override for bot.services.* (type-strict-services)
 """
 
@@ -66,42 +67,34 @@ class TestMypyNoGlobalDisable:
 
 
 class TestMypyOverrides:
-    """Per-file overrides MUST exist for known debt modules."""
+    """Per-file overrides MUST exist only for known tech-debt modules."""
 
-    def test_bot_bot_override_exists(self, mypy_overrides: list[dict]) -> None:
-        """An override for bot.bot MUST exist."""
+    def test_no_bot_bot_override(self, mypy_overrides: list[dict]) -> None:
+        """bot.bot override MUST NOT exist — attr-defined resolved via isinstance narrowing."""
         bot_bot_overrides = [o for o in mypy_overrides if o.get("module") == "bot.bot"]
-        assert len(bot_bot_overrides) >= 1, (
-            f"No override found for 'bot.bot'. Existing overrides: {[o.get('module') for o in mypy_overrides]}"
+        assert len(bot_bot_overrides) == 0, (
+            f"bot.bot override still present — remove it: {bot_bot_overrides}"
         )
 
-    def test_bot_bot_override_disables_attr_defined(self, mypy_overrides: list[dict]) -> None:
-        """bot.bot override MUST disable attr-defined error code."""
-        bot_bot_overrides = [o for o in mypy_overrides if o.get("module") == "bot.bot"]
-        assert len(bot_bot_overrides) >= 1, "No override for bot.bot"
-        override = bot_bot_overrides[0]
-        disabled = override.get("disable_error_code", [])
-        assert "attr-defined" in disabled, f"bot.bot override must disable 'attr-defined', got: {disabled}"
+    def test_no_bot_core_override(self, mypy_overrides: list[dict]) -> None:
+        """bot.core.* override MUST NOT exist — modules pass strict without suppression."""
+        core_overrides = [o for o in mypy_overrides if o.get("module") == "bot.core.*"]
+        assert len(core_overrides) == 0, (
+            f"bot.core.* override still present — remove it: {core_overrides}"
+        )
 
-    def test_attr_defined_not_suppressed_in_other_bot_modules(
-        self, mypy_overrides: list[dict],
-    ) -> None:
-        """Production bot modules other than bot.bot MUST still report attr-defined.
+    def test_no_bot_listeners_override(self, mypy_overrides: list[dict]) -> None:
+        """bot.listeners.* override MUST NOT exist — modules pass strict without suppression."""
+        listeners_overrides = [o for o in mypy_overrides if o.get("module") == "bot.listeners.*"]
+        assert len(listeners_overrides) == 0, (
+            f"bot.listeners.* override still present — remove it: {listeners_overrides}"
+        )
 
-        tests.* may suppress attr-defined as separate tech debt; production
-        bot.* packages must not hide it except the known bot.bot debt.
-        """
-        offenders: list[str] = []
-        for override in mypy_overrides:
-            module = str(override.get("module", ""))
-            if not module.startswith("bot.") or module == "bot.bot":
-                continue
-            disabled = override.get("disable_error_code", [])
-            if "attr-defined" in disabled:
-                offenders.append(module)
-        assert offenders == [], (
-            "attr-defined must not be suppressed outside bot.bot; "
-            f"found in: {offenders}"
+    def test_only_tech_debt_overrides_remain(self, mypy_overrides: list[dict]) -> None:
+        """Only bot.cogs.* and tests.* overrides MUST remain after type-strict cleanup."""
+        modules = sorted(str(o.get("module", "")) for o in mypy_overrides)
+        assert modules == ["bot.cogs.*", "tests.*"], (
+            f"Unexpected mypy override set: {modules}"
         )
 
 

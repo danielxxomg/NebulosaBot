@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # ------------------------------------------------------------------
 
 
-def _unwrap(response: Any) -> list[dict]:
+def _unwrap(response: Any) -> list[dict[str, Any]]:
     """Extract ``.data`` from a Postgrest response.
 
     Supabase-py returns objects with ``.data`` (list[dict]).
