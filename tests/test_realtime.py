@@ -918,6 +918,25 @@ class TestMigrationWatchdog:
                 await sub._watchdog_check_once()
 
         assert any("supabase_realtime publication" in r.message for r in caplog.records)
+        assert sub._watchdog_warned is True
+
+    @pytest.mark.asyncio
+    async def test_warns_only_once_when_no_events(self, cache: TTLCache, caplog) -> None:
+        """Watchdog MUST not spam every 30s after the first publication warning."""
+        client = _make_client_mock()
+        sub = _make_subscriber(cache, client)
+        sub._status = "SUBSCRIBED"
+        import logging
+
+        with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
+            sub._subscribed_at = 965.0
+            sub._received_count = 0
+            with caplog.at_level(logging.WARNING, logger="bot.core.realtime"):
+                await sub._watchdog_check_once()
+                await sub._watchdog_check_once()
+
+        messages = [r.message for r in caplog.records if "supabase_realtime publication" in r.message]
+        assert len(messages) == 1
 
     @pytest.mark.asyncio
     async def test_silent_when_events_received(self, cache: TTLCache, caplog) -> None:

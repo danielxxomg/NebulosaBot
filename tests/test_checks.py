@@ -7,6 +7,7 @@ Covers the permission-model spec scenarios:
     - Regular user without permissions → denied
     - Unconfigured mod role → only admins pass
     - DM invocation → NoPrivateMessage
+    - Prefix-path enforcement (harden-command-permissions)
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 from discord import app_commands
+from discord.ext import commands
 
 from bot.utils.checks import is_admin, is_mod, is_mod_check
 
@@ -343,3 +345,186 @@ async def test_is_mod_predicate_delegates_to_is_mod_check(
 
     assert result is True
     spy.assert_awaited_once_with(mock_interaction)
+
+
+# ---------------------------------------------------------------------------
+# is_mod() — prefix path (harden-command-permissions)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_is_mod_prefix_predicate_exists() -> None:
+    """is_mod() MUST expose a prefix_predicate attribute (like is_admin())."""
+    decorator = is_mod()
+    assert hasattr(decorator, "prefix_predicate"), "is_mod() must expose .prefix_predicate"
+    assert callable(decorator.prefix_predicate), "prefix_predicate must be callable"
+
+
+@pytest.mark.asyncio
+async def test_is_mod_prefix_admin_passes(mock_guild: MagicMock, mock_admin_member: MagicMock) -> None:
+    """An administrator MUST pass the prefix predicate even with no mod role configured."""
+    prefix_predicate = is_mod().prefix_predicate
+
+    ctx = MagicMock(spec=commands.Context)
+    ctx.guild = mock_guild
+    ctx.author = mock_admin_member
+    ctx.bot = MagicMock()
+    ctx.bot._guild_mod_role_cache = {}
+
+    result = await prefix_predicate(ctx)
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_is_mod_prefix_admin_passes_with_configured_role(
+    mock_guild: MagicMock, mock_admin_member: MagicMock
+) -> None:
+    """An administrator MUST pass the prefix predicate when a mod role IS configured."""
+    prefix_predicate = is_mod().prefix_predicate
+
+    ctx = MagicMock(spec=commands.Context)
+    ctx.guild = mock_guild
+    ctx.author = mock_admin_member
+    ctx.bot = MagicMock()
+    ctx.bot._guild_mod_role_cache = {mock_guild.id: "987654321"}
+
+    result = await prefix_predicate(ctx)
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_is_mod_prefix_non_member_raises_check_failure(mock_guild: MagicMock) -> None:
+    """A non-Member author (e.g. User) MUST raise commands.CheckFailure on prefix path."""
+    prefix_predicate = is_mod().prefix_predicate
+
+    non_member = MagicMock()
+    non_member.__class__ = discord.User
+    non_member.guild_permissions.administrator = False
+
+    ctx = MagicMock(spec=commands.Context)
+    ctx.guild = mock_guild
+    ctx.author = non_member
+    ctx.bot = MagicMock()
+    ctx.bot._guild_mod_role_cache = {mock_guild.id: "987654321"}
+
+    with pytest.raises(commands.CheckFailure) as exc:
+        await prefix_predicate(ctx)
+    assert "guild members" in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_is_mod_prefix_malformed_cache_denies(
+    mock_guild: MagicMock, mock_member: MagicMock
+) -> None:
+    """Malformed mod role cache values MUST deny-by-default (CheckFailure)."""
+    prefix_predicate = is_mod().prefix_predicate
+
+    ctx = MagicMock(spec=commands.Context)
+    ctx.guild = mock_guild
+    ctx.author = mock_member
+    ctx.bot = MagicMock()
+    ctx.bot._guild_mod_role_cache = {mock_guild.id: "not-a-number"}
+
+    with pytest.raises(commands.CheckFailure):
+        await prefix_predicate(ctx)
+
+
+def test_user_has_role_returns_false_for_user() -> None:
+    """_user_has_role MUST return False for a discord.User (no roles)."""
+    from bot.utils.checks import _user_has_role
+
+    user = MagicMock()
+    user.__class__ = discord.User
+    assert _user_has_role(user, 123) is False
+
+
+@pytest.mark.asyncio
+async def test_is_mod_prefix_mod_role_passes(mock_guild: MagicMock, mock_mod_member: MagicMock) -> None:
+    """A user with the configured mod role MUST pass the prefix predicate."""
+    prefix_predicate = is_mod().prefix_predicate
+
+    mod_role_id = 987654321
+    guild_id = mock_guild.id
+
+    ctx = MagicMock(spec=commands.Context)
+    ctx.guild = mock_guild
+    ctx.author = mock_mod_member
+    ctx.bot = MagicMock()
+    ctx.bot._guild_mod_role_cache = {guild_id: str(mod_role_id)}
+
+    result = await prefix_predicate(ctx)
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_is_mod_prefix_regular_user_raises_missing_role(
+    mock_guild: MagicMock, mock_member: MagicMock
+) -> None:
+    """A user without the mod role MUST raise commands.MissingRole when mod role is configured."""
+    prefix_predicate = is_mod().prefix_predicate
+
+    mod_role_id = 987654321
+    guild_id = mock_guild.id
+
+    ctx = MagicMock(spec=commands.Context)
+    ctx.guild = mock_guild
+    ctx.author = mock_member
+    ctx.bot = MagicMock()
+    ctx.bot._guild_mod_role_cache = {guild_id: str(mod_role_id)}
+
+    with pytest.raises(commands.MissingRole):
+        await prefix_predicate(ctx)
+
+
+@pytest.mark.asyncio
+async def test_is_mod_prefix_dm_raises_no_private_message() -> None:
+    """In a DM (no guild), the prefix predicate MUST raise commands.NoPrivateMessage."""
+    prefix_predicate = is_mod().prefix_predicate
+
+    ctx = MagicMock(spec=commands.Context)
+    ctx.guild = None
+
+    with pytest.raises(commands.NoPrivateMessage):
+        await prefix_predicate(ctx)
+
+
+@pytest.mark.asyncio
+async def test_is_mod_prefix_unconfigured_raises_check_failure(
+    mock_guild: MagicMock, mock_member: MagicMock
+) -> None:
+    """When no mod role is configured and user is not admin, MUST raise commands.CheckFailure."""
+    prefix_predicate = is_mod().prefix_predicate
+
+    ctx = MagicMock(spec=commands.Context)
+    ctx.guild = mock_guild
+    ctx.author = mock_member
+    ctx.bot = MagicMock()
+    ctx.bot._guild_mod_role_cache = {}
+
+    with pytest.raises(commands.CheckFailure) as exc:
+        await prefix_predicate(ctx)
+    assert "No moderator role is configured" in str(exc.value)
+
+
+# ---------------------------------------------------------------------------
+# is_mod() — dual registration integration (JD-B-004)
+# ---------------------------------------------------------------------------
+
+
+def test_is_mod_dual_registration() -> None:
+    """A hybrid command decorated with @is_mod() MUST have BOTH prefix and slash checks.
+
+    Integration wiring test: instantiate a real hybrid command, apply @is_mod(),
+    and assert cmd.checks (prefix) is non-empty AND app_command.checks (slash)
+    is non-empty.
+    """
+
+    @is_mod()
+    @commands.hybrid_command(name="test_dual")
+    async def test_cmd(self, ctx):  # pragma: no cover
+        pass
+
+    # Prefix path checks (commands.check)
+    assert len(test_cmd.checks) > 0, "prefix checks must be non-empty"
+    # Slash path checks (app_commands.check)
+    assert len(test_cmd.app_command.checks) > 0, "slash checks must be non-empty"

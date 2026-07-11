@@ -97,6 +97,10 @@ def is_mod() -> Any:
     translates ``is_mod_check``'s ``False`` into the appropriate discord.py
     exception (``NoPrivateMessage`` / ``CheckFailure`` / ``MissingRole``).
 
+    Registers checks on BOTH the slash path (``app_commands.check``) and the
+    prefix path (``commands.check``) so hybrid commands are fully gated without
+    needing a separate ``@commands.has_roles(...)``.
+
     Check order (mirrors :func:`is_mod_check`):
         1. DM → ``NoPrivateMessage``
         2. Administrator → pass (via is_mod_check)
@@ -109,8 +113,10 @@ def is_mod() -> Any:
         @is_mod()
         async def warn(self, ctx, member: discord.Member): ...
     """
+    import discord as _discord
+    from discord.ext import commands as _commands
 
-    async def predicate(interaction: discord.Interaction) -> bool:
+    async def predicate(interaction: _discord.Interaction) -> bool:
         # DM guard surfaces the specific NoPrivateMessage exception —
         # is_mod_check only returns False for DMs (never raises).
         if not interaction.guild:
@@ -131,7 +137,38 @@ def is_mod() -> Any:
 
         raise app_commands.MissingRole(mod_role_id)
 
-    return app_commands.check(predicate)
+    async def _prefix_predicate(ctx: _commands.Context) -> bool:  # type: ignore[type-arg]
+        if not ctx.guild:
+            raise _commands.NoPrivateMessage("This command can only be used in a server.")
+
+        if not isinstance(ctx.author, _discord.Member):
+            raise _commands.CheckFailure(
+                "This command can only be used by guild members."
+            )
+
+        # Admin always passes.
+        if ctx.author.guild_permissions.administrator:
+            return True
+
+        mod_role_id = _resolve_mod_role_id_from_bot(ctx.bot, ctx.guild.id)
+
+        if mod_role_id is None:
+            raise _commands.CheckFailure(
+                "No moderator role is configured for this server. Only administrators can use this command."
+            )
+
+        if _user_has_role(ctx.author, mod_role_id):
+            return True
+
+        raise _commands.MissingRole(mod_role_id)
+
+    def decorator(func: Any) -> Any:
+        return _commands.check(_prefix_predicate)(app_commands.check(predicate)(func))
+
+    # Expose predicates for testing, matching is_admin().
+    decorator.predicate = predicate  # type: ignore[attr-defined]
+    decorator.prefix_predicate = _prefix_predicate  # type: ignore[attr-defined]
+    return decorator
 
 
 def _resolve_mod_role_id(interaction: discord.Interaction) -> int | None:
@@ -144,9 +181,16 @@ def _resolve_mod_role_id(interaction: discord.Interaction) -> int | None:
     unnecessary). Tries the bot's ``_guild_mod_role_cache`` dict and returns
     ``None`` when unconfigured (Phase 1-2 safe).
     """
-    bot: Any = interaction.client
-    guild_id = interaction.guild_id
+    return _resolve_mod_role_id_from_bot(interaction.client, interaction.guild_id)
 
+
+def _resolve_mod_role_id_from_bot(bot: Any, guild_id: int | None) -> int | None:
+    """Shared resolver: look up the configured moderator role ID from cache.
+
+    Used by both the interaction-based path (``_resolve_mod_role_id``) and the
+    context-based prefix path. Reads ``bot._guild_mod_role_cache`` and returns
+    ``None`` when unconfigured or the cached value is malformed.
+    """
     # Phase 3+: GuildService populates this cache.
     cache: dict[int, str] | None = getattr(bot, "_guild_mod_role_cache", None)
     if cache is not None and guild_id in cache:
