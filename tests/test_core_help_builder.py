@@ -9,10 +9,15 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 
 from bot.cogs.core import _build_cog_help_embed, _build_help_pages, _resolve_prefix
 from bot.constants import FALLBACK_PREFIX
+from bot.core.i18n import load_locales, set_guild_language
+
+# Ensure real locales are loaded for i18n-aware tests.
+load_locales()
 
 
 def _make_command(name: str, description: str = "", hidden: bool = False, hybrid: bool = False) -> commands.Command:
@@ -179,3 +184,110 @@ class TestBuildHelpPages:
         pages = _build_help_pages(bot, ctx)
 
         assert pages == []
+
+
+# ---------------------------------------------------------------------------
+# Localized command descriptions in help embed
+# ---------------------------------------------------------------------------
+
+
+def _make_locale_str_command(
+    name: str,
+    *,
+    es_description: str,
+    key: str,
+    hybrid: bool = True,
+) -> commands.Command:
+    """Create a mock command whose description is a locale_str (Spanish default).
+
+    Mirrors how production decorators attach ``locale_str(message, key=...)``.
+    The ``cmd.description`` attribute is the Spanish message string.
+    """
+    if hybrid:
+        cmd = MagicMock(spec=commands.HybridCommand)
+        cmd.__class__ = commands.HybridCommand
+    else:
+        cmd = MagicMock(spec=commands.Command)
+        cmd.__class__ = commands.Command
+    cmd.name = name
+    cmd.description = es_description  # locale_str.message = Spanish string
+    cmd.hidden = False
+    return cmd
+
+
+class TestHelpDescriptionsLocalized:
+    """_build_cog_help_embed MUST resolve descriptions via SLASH_DESCRIPTIONS + t().
+
+    Defect JD-B-FULL-001: cmd.description is the Spanish locale_str.message;
+    English guilds must see the English translation from locale files.
+    """
+
+    def test_english_guild_sees_english_description(self) -> None:
+        """English guild MUST see the English description, not the Spanish default."""
+        set_guild_language("eng_guild", "en")
+        cmd = _make_locale_str_command(
+            "ping",
+            es_description="Muestra la latencia WebSocket del bot.",
+            key="slash.descriptions.ping",
+        )
+        cog = _make_cog([cmd])
+        bot = _make_bot({"Core": cog})
+
+        embed = _build_cog_help_embed(bot, "Core", "nb!", guild_id="eng_guild")
+
+        assert embed is not None
+        field_value = embed.fields[0].value
+        # English description from en.json for slash.descriptions.ping
+        assert "WebSocket latency" in field_value
+        # Must NOT contain the Spanish text
+        assert "Muestra la latencia" not in field_value
+
+    def test_spanish_guild_sees_spanish_description(self) -> None:
+        """Spanish guild MUST see the Spanish description."""
+        set_guild_language("spa_guild", "es")
+        cmd = _make_locale_str_command(
+            "ping",
+            es_description="Muestra la latencia WebSocket del bot.",
+            key="slash.descriptions.ping",
+        )
+        cog = _make_cog([cmd])
+        bot = _make_bot({"Core": cog})
+
+        embed = _build_cog_help_embed(bot, "Core", "nb!", guild_id="spa_guild")
+
+        assert embed is not None
+        field_value = embed.fields[0].value
+        # Spanish description from es.json for slash.descriptions.ping
+        assert "latencia WebSocket" in field_value
+
+    def test_unknown_command_uses_raw_description_fallback(self) -> None:
+        """Command NOT in SLASH_DESCRIPTIONS falls back to raw cmd.description."""
+        set_guild_language("eng_guild2", "en")
+        cmd = _make_locale_str_command(
+            "custom_cmd",
+            es_description="Some raw description",
+            key="slash.descriptions.custom_cmd",  # not in registry
+        )
+        cmd.name = "custom_cmd"
+        cog = _make_cog([cmd])
+        bot = _make_bot({"Core": cog})
+
+        embed = _build_cog_help_embed(bot, "Core", "nb!", guild_id="eng_guild2")
+
+        assert embed is not None
+        assert "Some raw description" in embed.fields[0].value
+
+    def test_none_guild_id_uses_default_locale(self) -> None:
+        """guild_id=None MUST use the default locale (Spanish)."""
+        cmd = _make_locale_str_command(
+            "ping",
+            es_description="Muestra la latencia WebSocket del bot.",
+            key="slash.descriptions.ping",
+        )
+        cog = _make_cog([cmd])
+        bot = _make_bot({"Core": cog})
+
+        embed = _build_cog_help_embed(bot, "Core", "nb!", guild_id=None)
+
+        assert embed is not None
+        assert "latencia WebSocket" in embed.fields[0].value
