@@ -1,6 +1,10 @@
 # Local AI runtime state
 .atl/
 
+# Local OpenCode and CodeGraph state
+opencode.json
+.codegraph/
+
 # Environment
 .env
 .env*.local
