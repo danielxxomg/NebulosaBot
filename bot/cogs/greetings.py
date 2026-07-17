@@ -113,14 +113,23 @@ class GreetingsCog(commands.Cog, name="Greetings"):
 
         try:
             avatar_url = _resolve_avatar_url(ctx.author)
+            guild_id = str(ctx.guild.id) if ctx.guild else ""
+            member_count = (ctx.guild.member_count or 0) if ctx.guild else 0
             assert self.bot.image_service is not None, "ImageService initialised in setup_hook"
             buffer: io.BytesIO = await asyncio.to_thread(
                 self.bot.image_service.generate_greeting_card,
                 username=ctx.author.display_name,
                 avatar_url=avatar_url,
                 guild_name=ctx.guild.name if ctx.guild else "Unknown",
-                member_count=(ctx.guild.member_count or 0) if ctx.guild else 0,
+                member_count=member_count,
                 card_type="welcome",
+                greeting_title=t(guild_id, "greetings.card.welcome_title"),
+                member_count_text=t(
+                    guild_id,
+                    "greetings.card.member_count",
+                    count=member_count,
+                ),
+                guild_icon_url=_resolve_guild_icon_url(ctx.guild),
             )
         except Exception:
             logger.exception("Failed to generate welcome test card")
@@ -166,14 +175,23 @@ class GreetingsCog(commands.Cog, name="Greetings"):
 
         try:
             avatar_url = _resolve_avatar_url(ctx.author)
+            guild_id = str(ctx.guild.id) if ctx.guild else ""
+            member_count = (ctx.guild.member_count or 0) if ctx.guild else 0
             assert self.bot.image_service is not None, "ImageService initialised in setup_hook"
             buffer: io.BytesIO = await asyncio.to_thread(
                 self.bot.image_service.generate_greeting_card,
                 username=ctx.author.display_name,
                 avatar_url=avatar_url,
                 guild_name=ctx.guild.name if ctx.guild else "Unknown",
-                member_count=(ctx.guild.member_count or 0) if ctx.guild else 0,
+                member_count=member_count,
                 card_type="goodbye",
+                greeting_title=t(guild_id, "greetings.card.goodbye_title"),
+                member_count_text=t(
+                    guild_id,
+                    "greetings.card.member_count",
+                    count=member_count,
+                ),
+                guild_icon_url=_resolve_guild_icon_url(ctx.guild),
             )
         except Exception:
             logger.exception("Failed to generate goodbye test card")
@@ -234,15 +252,24 @@ class GreetingsCog(commands.Cog, name="Greetings"):
         enabled_display = "✅" if enabled else "❌"
         message_display = message or _NOT_CONFIGURED
 
+        description = t(
+            guild_id,
+            f"greetings.{kind}.config_description",
+            channel=channel_display,
+            enabled=enabled_display,
+            message=message_display,
+        )
+        if kind == "welcome":
+            onboarding_display = (
+                f"<#{config.onboarding_channel_id}>"
+                if config.onboarding_channel_id
+                else _NOT_CONFIGURED
+            )
+            description += f"\n**Onboarding:** {onboarding_display}"
+
         return info_embed(
             t(guild_id, f"greetings.{kind}.config_title"),
-            t(
-                guild_id,
-                f"greetings.{kind}.config_description",
-                channel=channel_display,
-                enabled=enabled_display,
-                message=message_display,
-            ),
+            description,
             guild_id=guild_id,
         )
 
@@ -506,3 +533,15 @@ class GreetingsCog(commands.Cog, name="Greetings"):
 async def setup(bot: NebulosaBot) -> None:
     """Load the GreetingsCog into the bot."""
     await bot.add_cog(GreetingsCog(bot))
+
+
+def _resolve_guild_icon_url(guild: discord.Guild | None) -> str | None:
+    """Return a guild icon URL when Discord exposes one in the local cache."""
+    if guild is None:
+        return None
+    try:
+        icon = guild.icon
+        return str(icon.url) if icon is not None else None
+    except Exception:
+        logger.debug("Could not resolve guild icon URL", exc_info=True)
+        return None

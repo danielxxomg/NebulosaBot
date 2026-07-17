@@ -291,7 +291,7 @@ def validate_slash_localizations(
         _check_localizations(cmd)
 
 
-def _check_localizations(cmd: app_commands.Command | app_commands.Group) -> None:
+def _check_localizations(cmd: app_commands.Command[Any, Any, Any] | app_commands.Group) -> None:
     """Check and log if a command is missing description localizations.
 
     Safe for ``HybridAppCommand`` instances which do not expose a

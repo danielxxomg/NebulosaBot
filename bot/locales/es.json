@@ -338,7 +338,11 @@
       "server_only_description": "Los tickets solo pueden abrirse en un servidor.",
       "no_categories_title": "Sin Categorías",
       "no_categories_description": "No hay categorías de tickets configuradas. Pide a un admin que las configure con `/create_category`.",
-      "select_category": "Selecciona una categoría de ticket:",
+      "select_category": "Seleccione una categoría de ticket:",
+      "pagination_previous": "Anterior",
+      "pagination_next": "Siguiente",
+      "pagination_owner_title": "Selector no disponible",
+      "pagination_owner_description": "Solo la persona que abrió este selector de categorías puede usarlo.",
       "config_error_title": "Error de Configuración",
       "config_error_description": "No se pudo cargar la configuración del servidor.",
       "invalid_category_title": "Categoría Inválida",
@@ -350,7 +354,7 @@
       "creation_failed_title": "Error al Crear Ticket",
       "creation_failed_description": "No se pudo crear el ticket. Intenta de nuevo.",
       "limit_title": "Límite de Tickets",
-      "limit_description": "Ya tenés un ticket abierto en **{category}**. Cerralo antes de abrir otro en esta categoría.",
+      "limit_description": "Ya tiene un ticket abierto en **{category}**. Ciérrelo antes de abrir otro en esta categoría.",
       "success_title": "✅ Ticket Creado",
       "success_description": "Tu ticket ha sido creado: {channel}",
       "welcome_title": "🎫 Ticket #{number}",
@@ -361,6 +365,11 @@
       "welcome_claimed_by": "\n**Reclamado por:** {user}",
       "author_field": "Autor",
       "details_field": "Detalles",
+      "status_field": "Estado",
+      "status_open": "Abierto",
+      "status_claimed": "Reclamado",
+      "status_closed": "Cerrado",
+      "category_field": "Categoría",
       "footer": "NebulosaBot • Tickets"
     },
     "actions": {
@@ -478,6 +487,24 @@
       "failed_description": "No se pudo transferir el ticket. Intenta de nuevo.",
       "success_title": "✅ Ticket Transferido",
       "success_description": "El ticket ha sido transferido a {member}."
+    },
+    "close": {
+      "summary_title": "🔒 Ticket #{number} Cerrado",
+      "summary_description": "Este ticket ha sido cerrado.",
+      "closed_by_field": "Cerrado por",
+      "reason_field": "Razón de cierre",
+      "transcript_field": "Transcripción",
+      "transcript_link": "Ver Transcripción",
+      "dm_title": "Ticket #{number} Cerrado",
+      "dm_description": "Tu ticket de soporte ha sido cerrado. ¡Gracias por contactarnos!"
+    },
+    "close_modal": {
+      "title": "Cerrar Ticket",
+      "reason_label": "Razón de Cierre",
+      "reason_placeholder": "¿Por qué estás cerrando este ticket?",
+      "reason_empty_title": "Razón Requerida",
+      "reason_empty_description": "Por favor proporciona una razón para cerrar este ticket (1–500 caracteres).",
+      "already_closed_description": "Este ticket ya ha sido cerrado por otro usuario o por el sistema."
     },
     "note": {
       "help_title": "Notas de Staff",
@@ -658,6 +685,14 @@
     }
   },
   "greetings": {
+    "card": {
+      "welcome_title": "¡Bienvenido al servidor!",
+      "goodbye_title": "¡Hasta luego y buena suerte!",
+      "member_count": "Eres el miembro número {count}"
+    },
+    "cta": {
+      "welcome_onboarding": "Empieza por aquí: {channel}"
+    },
     "permission_denied_title": "Permiso Denegado",
     "permission_denied_description": "Necesitas permiso de Administrador para usar este comando.",
     "welcome_test": {
