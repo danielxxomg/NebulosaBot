@@ -243,6 +243,124 @@ class TestTFunction:
 
 
 # ---------------------------------------------------------------------------
+# Greeting locale keys — welcome-localization-ux / Phase 2
+# ---------------------------------------------------------------------------
+
+
+class TestGreetingLocaleKeys:
+    """Greeting card and CTA keys use an isolated, interpolated namespace."""
+
+    @pytest.fixture(autouse=True)
+    def _load_greeting_locales(self, tmp_path: Path) -> None:
+        """Load minimal greeting locales so missing production keys fail RED."""
+        from bot.core.i18n import load_locales, set_guild_language
+
+        _write_locale(
+            tmp_path,
+            "es",
+            {
+                "greetings": {
+                    "card": {
+                        "welcome_title": "¡Bienvenido!",
+                        "goodbye_title": "¡Hasta luego!",
+                        "member_count": "Miembro número {count}",
+                    },
+                    "cta": {"welcome_onboarding": "Empezá por acá: {channel}"},
+                }
+            },
+        )
+        _write_locale(
+            tmp_path,
+            "en",
+            {
+                "greetings": {
+                    "card": {
+                        "welcome_title": "Welcome!",
+                        "goodbye_title": "Goodbye!",
+                        "member_count": "Member #{count}",
+                    },
+                    "cta": {"welcome_onboarding": "Start here: {channel}"},
+                }
+            },
+        )
+        load_locales(tmp_path / "locales")
+        set_guild_language("111", "es")
+        set_guild_language("222", "en")
+
+    @pytest.mark.parametrize(
+        ("guild_id", "welcome", "goodbye", "member_count", "cta"),
+        [
+            ("111", "¡Bienvenido!", "¡Hasta luego!", "Miembro número 7", "Empezá por acá: <#123>"),
+            ("222", "Welcome!", "Goodbye!", "Member #7", "Start here: <#123>"),
+        ],
+    )
+    def test_greeting_keys_interpolate_without_unresolved_tokens(
+        self,
+        guild_id: str,
+        welcome: str,
+        goodbye: str,
+        member_count: str,
+        cta: str,
+    ) -> None:
+        """ES and EN greeting keys resolve and consume their own placeholders."""
+        from bot.core.i18n import t
+
+        values = (
+            t(guild_id, "greetings.card.welcome_title"),
+            t(guild_id, "greetings.card.goodbye_title"),
+            t(guild_id, "greetings.card.member_count", count=7),
+            t(guild_id, "greetings.cta.welcome_onboarding", channel="<#123>"),
+        )
+
+        assert values == (welcome, goodbye, member_count, cta)
+        assert all("{" not in value and "}" not in value for value in values)
+
+    def test_greeting_fallback_precedes_raw_key_and_preserves_template_namespace(self) -> None:
+        """Missing EN greeting keys use ES, while message placeholders stay separate."""
+        from bot.core import i18n
+        from bot.core.i18n import t
+
+        del i18n._locales["en"]["greetings"]["card"]["welcome_title"]
+
+        assert t("222", "greetings.card.welcome_title") == "¡Bienvenido!"
+        assert t(
+            "222",
+            "greetings.card.member_count",
+            count=7,
+            mention="{mention}",
+            user="{user}",
+            server="{server}",
+        ) == "Member #7"
+
+        from bot.services.greeting_service import _format_template
+
+        member = MagicMock()
+        member.mention = "<@222>"
+        member.guild.name = "Example Server"
+        assert _format_template("Welcome {mention} to {server}", member) == (
+            "Welcome <@222> to Example Server"
+        )
+
+    def test_real_locale_files_define_greeting_namespace(self) -> None:
+        """The shipped ES/EN locale files expose every Phase 2 greeting key."""
+        from bot.core import i18n
+        from bot.core.i18n import load_locales
+
+        load_locales()
+
+        required_keys = (
+            "greetings.card.welcome_title",
+            "greetings.card.goodbye_title",
+            "greetings.card.member_count",
+            "greetings.cta.welcome_onboarding",
+        )
+        for locale in ("es", "en"):
+            for key in required_keys:
+                value = i18n._resolve_key(locale, key)
+                assert value is not None and value != "", f"Missing {locale}: {key}"
+
+
+# ---------------------------------------------------------------------------
 # LocaleTranslator — Discord client locale → language mapping
 # ---------------------------------------------------------------------------
 

@@ -401,6 +401,25 @@ class TestCdcDispatch:
         assert cache.get(f"{expected}:config") is None  # invalidated
 
     @pytest.mark.asyncio
+    async def test_greeting_config_onboarding_update_invalidates_cached_config(
+        self, cache: TTLCache
+    ) -> None:
+        """Changing onboardingChannelId must invalidate the greeting cache."""
+        client = _make_client_mock()
+        sub = _make_subscriber(cache, client)
+        cache.set("G-onboarding:config", {"onboardingChannelId": "old-channel"})
+
+        await sub._handle_cdc(
+            _cdc_payload(
+                table="greeting_config",
+                record={"guildId": "G-onboarding", "onboardingChannelId": "new-channel"},
+                event_type="UPDATE",
+            )
+        )
+
+        assert cache.get("G-onboarding:config") is None
+
+    @pytest.mark.asyncio
     async def test_delete_event_uses_old_record(self, cache: TTLCache) -> None:
         """Spec: DELETE with empty record MUST use old_record identifiers."""
         client = _make_client_mock()

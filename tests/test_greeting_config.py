@@ -24,6 +24,7 @@ class TestGreetingConfigDefaults:
         assert config.goodbye_enabled is False
         assert config.welcome_channel_id is None
         assert config.goodbye_channel_id is None
+        assert config.onboarding_channel_id is None
         assert config.welcome_message is None
         assert config.goodbye_message is None
         assert config.welcome_card_enabled is True
@@ -49,13 +50,14 @@ class TestFromDbRow:
     """from_db_row() must correctly map camelCase DB columns to snake_case fields."""
 
     def test_full_row_maps_all_fields(self) -> None:
-        """All 9 columns should be mapped from a complete DB row."""
+        """All 10 columns should be mapped from a complete DB row."""
         row = {
             "guildId": "123456789",
             "welcomeEnabled": True,
             "goodbyeEnabled": True,
             "welcomeChannelId": "111111111",
             "goodbyeChannelId": "222222222",
+            "onboardingChannelId": "333333333",
             "welcomeMessage": "Welcome {mention}!",
             "goodbyeMessage": "Goodbye {mention}!",
             "welcomeCardEnabled": True,
@@ -67,6 +69,7 @@ class TestFromDbRow:
         assert config.goodbye_enabled is True
         assert config.welcome_channel_id == "111111111"
         assert config.goodbye_channel_id == "222222222"
+        assert config.onboarding_channel_id == "333333333"
         assert config.welcome_message == "Welcome {mention}!"
         assert config.goodbye_message == "Goodbye {mention}!"
         assert config.welcome_card_enabled is True
@@ -100,6 +103,7 @@ class TestFromDbRow:
         # Missing fields should use defaults.
         assert config.goodbye_enabled is False
         assert config.goodbye_channel_id is None
+        assert config.onboarding_channel_id is None
         assert config.goodbye_message is None
 
 
@@ -119,6 +123,7 @@ class TestToDbDict:
             goodbye_enabled=False,
             welcome_channel_id="111111111",
             goodbye_channel_id=None,
+            onboarding_channel_id="333333333",
             welcome_message="Welcome {mention}!",
             goodbye_message=None,
             welcome_card_enabled=True,
@@ -131,6 +136,7 @@ class TestToDbDict:
             "goodbyeEnabled",
             "welcomeChannelId",
             "goodbyeChannelId",
+            "onboardingChannelId",
             "welcomeMessage",
             "goodbyeMessage",
             "welcomeCardEnabled",
@@ -142,6 +148,7 @@ class TestToDbDict:
         assert result["goodbyeEnabled"] is False
         assert result["welcomeChannelId"] == "111111111"
         assert result["goodbyeChannelId"] is None
+        assert result["onboardingChannelId"] == "333333333"
         assert result["welcomeMessage"] == "Welcome {mention}!"
         assert result["goodbyeMessage"] is None
         assert result["welcomeCardEnabled"] is True
@@ -179,6 +186,7 @@ class TestRoundtrip:
             goodbye_enabled=True,
             welcome_channel_id="111",
             goodbye_channel_id="222",
+            onboarding_channel_id="333",
             welcome_message="Hello {mention}!",
             goodbye_message="Bye {mention}!",
             welcome_card_enabled=False,

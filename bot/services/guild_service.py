@@ -22,6 +22,8 @@ from bot.models.guild import GuildConfig
 if TYPE_CHECKING:
     from bot.core.cache import TTLCache
     from bot.core.database import Database
+    from bot.models.greeting_config import GreetingConfig
+    from bot.services.greeting_service import GreetingService
 
 logger = logging.getLogger(__name__)
 
@@ -40,17 +42,19 @@ class GuildService:
             keeps it in sync with the database.
     """
 
-    __slots__ = ("_cache", "_db", "_mod_role_cache")
+    __slots__ = ("_cache", "_db", "_greeting_service", "_mod_role_cache")
 
     def __init__(
         self,
         db: Database,
         cache: TTLCache,
         mod_role_cache: dict[int, str],
+        greeting_service: GreetingService | None = None,
     ) -> None:
         self._db = db
         self._cache = cache
         self._mod_role_cache = mod_role_cache
+        self._greeting_service = greeting_service
 
     # ----------------------------------------------------------------
     # Public API
@@ -108,6 +112,18 @@ class GuildService:
 
         # Re-read through cache-first path to ensure consistency.
         await self.get_config(config.id)
+
+    async def get_greeting_config(self, guild_id: str) -> GreetingConfig:
+        """Delegate greeting configuration reads to the owning service."""
+        if self._greeting_service is None:
+            raise RuntimeError("GreetingService must be configured for greeting CRUD")
+        return await self._greeting_service.get_config(guild_id)
+
+    async def save_greeting_config(self, config: GreetingConfig) -> None:
+        """Delegate greeting configuration writes without duplicating fields."""
+        if self._greeting_service is None:
+            raise RuntimeError("GreetingService must be configured for greeting CRUD")
+        await self._greeting_service.save_config(config)
 
     async def deactivate_guild(self, guild_id: str) -> None:
         """Soft-delete a guild by setting its ``active`` flag to ``False``.

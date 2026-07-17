@@ -15,7 +15,7 @@ Strict TDD: RED phase — tests written BEFORE the implementation exists.
 from __future__ import annotations
 
 import io
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
@@ -253,6 +253,32 @@ class TestWelcomeTestCommand:
         embed = call_kwargs["embed"]
         assert embed.color.value == ERROR
 
+    @pytest.mark.asyncio
+    async def test_welcome_test_passes_localized_copy_and_guild_icon(
+        self,
+        cog: GreetingsCog,
+        mock_bot: MagicMock,
+    ) -> None:
+        """Spanish test cards must receive the same localized inputs as live cards."""
+        ctx = _make_context(admin=True)
+        ctx.guild.name = "Servidor"
+        ctx.guild.icon = MagicMock()
+        ctx.guild.icon.url = "https://cdn.discordapp.com/icons/guild/icon.png"
+
+        def localized(_guild_id: str, key: str, **_kwargs: object) -> str:
+            return {
+                "greetings.card.welcome_title": "¡Bienvenido!",
+                "greetings.card.member_count": "Miembro #150",
+            }.get(key, key)
+
+        with patch("bot.cogs.greetings.t", side_effect=localized):
+            await cog.welcome_test.callback(cog, ctx)
+
+        kwargs = mock_bot.image_service.generate_greeting_card.call_args.kwargs
+        assert kwargs["greeting_title"] == "¡Bienvenido!"
+        assert kwargs["member_count_text"] == "Miembro #150"
+        assert kwargs["guild_icon_url"] == "https://cdn.discordapp.com/icons/guild/icon.png"
+
 
 # ---------------------------------------------------------------------------
 # /goodbye_test
@@ -366,6 +392,22 @@ class TestWelcomeConfigCommand:
         desc = embed.description or ""
         # Should indicate no channel configured (key from locale or raw).
         assert "not" in desc.lower() or "no" in desc.lower() or "config" in desc.lower()
+
+    @pytest.mark.asyncio
+    async def test_config_exposes_onboarding_channel_status(
+        self,
+        cog: GreetingsCog,
+        mock_bot: MagicMock,
+    ) -> None:
+        """Welcome config must show the configured onboarding channel."""
+        config = GreetingConfig(guild_id="123456789", onboarding_channel_id="444555666")
+        mock_bot.greeting_service.get_config = AsyncMock(return_value=config)
+
+        ctx = _make_context(admin=True)
+        await cog.welcome.callback(cog, ctx)
+
+        embed = ctx.send.call_args[1]["embed"]
+        assert "444555666" in (embed.description or "")
 
     @pytest.mark.asyncio
     async def test_non_admin_blocked_from_welcome_config(

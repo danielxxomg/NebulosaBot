@@ -69,6 +69,7 @@ export async function updateGreetingConfig(
   const goodbyeEnabled = formData.get("goodbyeEnabled") === "on";
   const welcomeChannelId = (formData.get("welcomeChannelId") as string)?.trim() || null;
   const goodbyeChannelId = (formData.get("goodbyeChannelId") as string)?.trim() || null;
+  const onboardingChannelId = (formData.get("onboardingChannelId") as string)?.trim() || null;
   const welcomeMessage = (formData.get("welcomeMessage") as string)?.trim() || null;
   const goodbyeMessage = (formData.get("goodbyeMessage") as string)?.trim() || null;
   const welcomeCardEnabled = formData.get("welcomeCardEnabled") === "on";
@@ -80,6 +81,9 @@ export async function updateGreetingConfig(
   }
   if (welcomeChannelId && !/^\d{17,20}$/.test(welcomeChannelId)) {
     return { success: false, error: "Welcome channel ID must be a valid Discord snowflake.", field: "welcomeChannelId" };
+  }
+  if (onboardingChannelId && !/^\d{17,20}$/.test(onboardingChannelId)) {
+    return { success: false, error: "Onboarding channel ID must be a valid Discord snowflake.", field: "onboardingChannelId" };
   }
 
   if (goodbyeEnabled && !goodbyeChannelId) {
@@ -106,6 +110,7 @@ export async function updateGreetingConfig(
       goodbyeEnabled,
       welcomeChannelId,
       goodbyeChannelId,
+      onboardingChannelId,
       welcomeMessage,
       goodbyeMessage,
       welcomeCardEnabled,

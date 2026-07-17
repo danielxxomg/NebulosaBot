@@ -339,6 +339,10 @@
       "no_categories_title": "No Categories",
       "no_categories_description": "No ticket categories are configured. Ask an admin to set them up with `/create_category`.",
       "select_category": "Select a ticket category:",
+      "pagination_previous": "Previous",
+      "pagination_next": "Next",
+      "pagination_owner_title": "Not Your Selection",
+      "pagination_owner_description": "Only the person who opened this category selector can use it.",
       "config_error_title": "Config Error",
       "config_error_description": "Could not load guild configuration.",
       "invalid_category_title": "Invalid Category",
@@ -361,6 +365,11 @@
       "welcome_claimed_by": "\n**Claimed by:** {user}",
       "author_field": "Author",
       "details_field": "Details",
+      "status_field": "Status",
+      "status_open": "Open",
+      "status_claimed": "Claimed",
+      "status_closed": "Closed",
+      "category_field": "Category",
       "footer": "NebulosaBot • Tickets"
     },
     "actions": {
@@ -478,6 +487,24 @@
       "failed_description": "Could not transfer the ticket. Please try again.",
       "success_title": "✅ Ticket Transferred",
       "success_description": "The ticket has been transferred to {member}."
+    },
+    "close": {
+      "summary_title": "🔒 Ticket #{number} Closed",
+      "summary_description": "This ticket has been closed.",
+      "closed_by_field": "Closed by",
+      "reason_field": "Close Reason",
+      "transcript_field": "Transcript",
+      "transcript_link": "View Transcript",
+      "dm_title": "Ticket #{number} Closed",
+      "dm_description": "Your support ticket has been closed. Thank you for reaching out!"
+    },
+    "close_modal": {
+      "title": "Close Ticket",
+      "reason_label": "Close Reason",
+      "reason_placeholder": "Why are you closing this ticket?",
+      "reason_empty_title": "Reason Required",
+      "reason_empty_description": "Please provide a reason for closing this ticket (1–500 characters).",
+      "already_closed_description": "This ticket has already been closed by another user or system process."
     },
     "note": {
       "help_title": "Staff Notes",
@@ -658,6 +685,14 @@
     }
   },
   "greetings": {
+    "card": {
+      "welcome_title": "Welcome to the server!",
+      "goodbye_title": "Goodbye and good luck!",
+      "member_count": "You are member #{count}"
+    },
+    "cta": {
+      "welcome_onboarding": "Start here: {channel}"
+    },
     "permission_denied_title": "Permission Denied",
     "permission_denied_description": "You need Administrator permission to use this command.",
     "welcome_test": {

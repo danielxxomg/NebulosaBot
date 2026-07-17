@@ -19,6 +19,7 @@ class GreetingConfig:
     goodbye_enabled: bool = False
     welcome_channel_id: str | None = None
     goodbye_channel_id: str | None = None
+    onboarding_channel_id: str | None = None
     welcome_message: str | None = None
     goodbye_message: str | None = None
     welcome_card_enabled: bool = True
@@ -33,6 +34,7 @@ class GreetingConfig:
             goodbye_enabled=row.get("goodbyeEnabled", False),
             welcome_channel_id=row.get("welcomeChannelId"),
             goodbye_channel_id=row.get("goodbyeChannelId"),
+            onboarding_channel_id=row.get("onboardingChannelId"),
             welcome_message=row.get("welcomeMessage"),
             goodbye_message=row.get("goodbyeMessage"),
             welcome_card_enabled=row.get("welcomeCardEnabled", True),
@@ -47,6 +49,7 @@ class GreetingConfig:
             "goodbyeEnabled": self.goodbye_enabled,
             "welcomeChannelId": self.welcome_channel_id,
             "goodbyeChannelId": self.goodbye_channel_id,
+            "onboardingChannelId": self.onboarding_channel_id,
             "welcomeMessage": self.welcome_message,
             "goodbyeMessage": self.goodbye_message,
             "welcomeCardEnabled": self.welcome_card_enabled,

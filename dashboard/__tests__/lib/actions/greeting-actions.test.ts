@@ -263,4 +263,49 @@ describe("updateGreetingConfig — successful update", () => {
     const result = await updateGreetingConfig(GUILD_ID, fd);
     assertSuccess(result);
   });
+
+  it("persists a valid onboarding channel without a bot webhook", async () => {
+    setupAuth();
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const fd = buildFormData({ onboardingChannelId: "123456789012345678" });
+
+    const result = await updateGreetingConfig(GUILD_ID, fd);
+
+    assertSuccess(result);
+    const service = await vi.mocked(createServiceClient).mock.results.at(-1)?.value;
+    const greetingUpsert = (service as unknown as {
+      greeting: { upsert: ReturnType<typeof vi.fn> };
+    }).greeting.upsert;
+    expect(greetingUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({ onboardingChannelId: "123456789012345678" })
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it("round-trips an empty onboarding channel as null", async () => {
+    setupAuth();
+    const fd = buildFormData({ onboardingChannelId: "" });
+
+    const result = await updateGreetingConfig(GUILD_ID, fd);
+
+    assertSuccess(result);
+    const service = await vi.mocked(createServiceClient).mock.results.at(-1)?.value;
+    const greetingUpsert = (service as unknown as {
+      greeting: { upsert: ReturnType<typeof vi.fn> };
+    }).greeting.upsert;
+    expect(greetingUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({ onboardingChannelId: null })
+    );
+  });
+
+  it("rejects an invalid onboarding channel ID", async () => {
+    setupAuth();
+    const result = await updateGreetingConfig(
+      GUILD_ID,
+      buildFormData({ onboardingChannelId: "not-a-snowflake" })
+    );
+
+    assertFieldError(result, "onboardingChannelId");
+  });
 });

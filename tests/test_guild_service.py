@@ -10,7 +10,7 @@ Covers the guild-config spec scenarios:
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -40,6 +40,46 @@ async def test_get_config_cache_hit(
 
     assert result is sample_config
     mock_db.get_guild.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_greeting_config_delegates_to_greeting_service(
+    cache: TTLCache,
+    mock_db: AsyncMock,
+    mod_role_cache: dict[int, str],
+) -> None:
+    """GuildService MUST delegate greeting ownership instead of duplicating fields."""
+    greeting_service = MagicMock()
+    greeting_service.get_config = AsyncMock(return_value="greeting-config")
+    greeting_service.save_config = AsyncMock()
+    service = GuildService(
+        db=mock_db,
+        cache=cache,
+        mod_role_cache=mod_role_cache,
+        greeting_service=greeting_service,
+    )
+
+    result = await service.get_greeting_config("123456789")
+    await service.save_greeting_config("greeting-config")
+
+    assert result == "greeting-config"
+    greeting_service.get_config.assert_awaited_once_with("123456789")
+    greeting_service.save_config.assert_awaited_once_with("greeting-config")
+    mock_db.get_greeting_config.assert_not_called()
+    mock_db.upsert_greeting_config.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_greeting_config_requires_delegated_service(
+    cache: TTLCache,
+    mock_db: AsyncMock,
+    mod_role_cache: dict[int, str],
+) -> None:
+    """GuildService must not create a second greeting persistence owner."""
+    service = GuildService(db=mock_db, cache=cache, mod_role_cache=mod_role_cache)
+
+    with pytest.raises(RuntimeError, match="GreetingService must be configured"):
+        await service.get_greeting_config("123456789")
 
 
 # ---------------------------------------------------------------------------

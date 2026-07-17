@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from bot.core.database import Database
+from bot.models.greeting_config import GreetingConfig
 from tests.test_database import FakeSupabaseClient
 
 
@@ -60,6 +61,28 @@ class TestUpsertGreetingConfig:
         assert upsert_calls[0][1]["welcomeMessage"] == "Welcome!"
 
     @pytest.mark.asyncio
+    async def test_persists_onboarding_channel(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """upsert_greeting_config() MUST include the optional channel field."""
+        config = GreetingConfig(guild_id="g1", onboarding_channel_id="onboarding-1")
+
+        await db.upsert_greeting_config("g1", config)
+
+        upsert_calls = fake_client.get_table_calls("greeting_config")
+        assert upsert_calls[0][1]["onboardingChannelId"] == "onboarding-1"
+
+    @pytest.mark.asyncio
+    async def test_clears_onboarding_channel_to_null(
+        self, db: Database, fake_client: FakeSupabaseClient
+    ) -> None:
+        """upsert_greeting_config() MUST persist clearing the channel as NULL."""
+        config = GreetingConfig(guild_id="g1", onboarding_channel_id=None)
+
+        await db.upsert_greeting_config("g1", config)
+
+        upsert_calls = fake_client.get_table_calls("greeting_config")
+        assert upsert_calls[0][1]["onboardingChannelId"] is None
+
+    @pytest.mark.asyncio
     async def test_calls_on_write_hook(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """Fires _on_write('greeting_config', guild_id) after successful upsert."""
         on_write = AsyncMock()
@@ -85,3 +108,29 @@ class TestUpsertGreetingConfig:
         config = _mock_greeting_config("g1")
         with pytest.raises(RuntimeError, match="connect"):
             await disconnected_db.upsert_greeting_config("g1", config)
+
+
+class TestGetGreetingConfig:
+    """get_greeting_config() returns the nullable channel field unchanged."""
+
+    @pytest.mark.asyncio
+    async def test_returns_onboarding_channel(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_greeting_config() MUST return a configured onboarding channel."""
+        row = {"guildId": "g1", "onboardingChannelId": "onboarding-1"}
+        fake_client.set_table_data("greeting_config", [row])
+
+        result = await db.get_greeting_config("g1")
+
+        assert result == row
+        assert result["onboardingChannelId"] == "onboarding-1"
+
+    @pytest.mark.asyncio
+    async def test_returns_null_onboarding_channel(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """get_greeting_config() MUST preserve a cleared NULL channel."""
+        row = {"guildId": "g1", "onboardingChannelId": None}
+        fake_client.set_table_data("greeting_config", [row])
+
+        result = await db.get_greeting_config("g1")
+
+        assert result == row
+        assert result["onboardingChannelId"] is None
