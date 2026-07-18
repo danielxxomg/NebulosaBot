@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from bot.models.ticket import Ticket
+from bot.models.ticket import IntegrityEvidence, RepairResult, Ticket
 
 # ---------------------------------------------------------------------------
 # Shared row builder — a valid camelCase Supabase ticket row
@@ -566,3 +566,85 @@ def test_ticket_note_round_trip() -> None:
     rebuilt = TicketNote.from_db_row(original.to_db_dict())
 
     assert rebuilt == original
+
+
+# ==========================================================================
+# IntegrityEvidence and RepairResult contracts
+# ==========================================================================
+
+
+def test_integrity_evidence_derives_corrobated_zombie_from_active_missing_channel() -> None:
+    """Active tickets with a completed missing-channel check are corroborated."""
+    evidence = IntegrityEvidence.from_db_row(
+        {
+            "ticketId": "t1",
+            "guildId": "g1",
+            "channelId": "c1",
+            "status": "open",
+        },
+        channel_exists=False,
+    )
+
+    assert evidence == IntegrityEvidence(
+        ticket_id="t1",
+        guild_id="g1",
+        channel_id="c1",
+        status="open",
+        channel_exists=False,
+        corroborated=True,
+    )
+
+
+def test_integrity_evidence_does_not_corrobate_live_or_closed_ticket() -> None:
+    """A live channel and a closed ticket are both safe no-op evidence."""
+    live = IntegrityEvidence.from_db_row(
+        {"ticketId": "t2", "guildId": "g1", "channelId": "c2", "status": "open"},
+        channel_exists=True,
+    )
+    closed = IntegrityEvidence.from_db_row(
+        {"ticketId": "t3", "guildId": "g1", "channelId": "c3", "status": "closed"},
+        channel_exists=False,
+    )
+
+    assert live.corroborated is False
+    assert closed.corroborated is False
+
+
+def test_integrity_evidence_serializes_camelcase_without_mutating_input() -> None:
+    """Evidence serialization preserves identifiers and does not alter the row."""
+    row = {"ticketId": "t4", "guildId": "g2", "channelId": None, "status": "claimed"}
+    original = row.copy()
+
+    evidence = IntegrityEvidence.from_db_row(row, channel_exists=False)
+
+    assert evidence.to_db_dict() == {
+        "ticketId": "t4",
+        "guildId": "g2",
+        "channelId": None,
+        "status": "claimed",
+        "channelExists": False,
+        "corroborated": True,
+    }
+    assert row == original
+
+
+def test_repair_result_accepts_each_deterministic_contract_outcome() -> None:
+    """Repair results expose only the documented action/outcome combinations."""
+    timestamp = datetime(2026, 7, 17, 12, 0, tzinfo=UTC)
+    results = (
+        RepairResult("t1", "g1", "close", "repaired", None, "e1", timestamp),
+        RepairResult("t1", "g1", "no_op", "already_closed", None, None, timestamp),
+        RepairResult("t2", "g1", "no_op", "skipped", "channel_exists", None, timestamp),
+        RepairResult("t3", "g1", "no_op", "error", "HTTPException", None, timestamp),
+    )
+
+    assert [result.outcome for result in results] == ["repaired", "already_closed", "skipped", "error"]
+    assert results[0].evidence_id == "e1"
+    assert results[1].action == "no_op"
+
+
+def test_repair_result_round_trips_camelcase_fields() -> None:
+    """Repair results serialize and deserialize without losing audit data."""
+    result = RepairResult("t1", "g1", "close", "repaired", "done", "e1", datetime(2026, 7, 17, tzinfo=UTC))
+
+    assert RepairResult.from_db_row(result.to_db_dict()) == result
