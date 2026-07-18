@@ -10,17 +10,15 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import discord
 
-from bot.models.ticket import Ticket
+from bot.models.ticket import IntegrityEvidence, RepairResult, Ticket
 from bot.models.ticket_note import TicketNote
 from bot.services.ticket_invariants import (
     check_can_add_note,
     check_can_claim,
-    check_can_close,
     check_can_delete_note,
     check_can_edit_category,
     check_can_reopen,
@@ -176,48 +174,39 @@ class TicketService:
         ticket_id: str,
         closed_by: str | None = None,
         *,
+        close_reason: str | None = None,
         transcript_url: str | None = None,
     ) -> Ticket:
         """Close a ticket and optionally attach a transcript URL.
 
-        Sets ``status='closed'`` and ``closedAt`` to the current UTC time.
+        Uses :meth:`~bot.core.db.ticket_db.TicketDBMixin.transition_ticket_to_closed`
+        for an atomic conditional close: the DB updates only when the ticket
+        is still open or claimed. When the ticket is already closed, raises
+        ``ValueError`` without performing any mutation.
 
         Args:
             ticket_id: UUID of the ticket to close.
             closed_by: Discord user snowflake of the closer (logged only).
+            close_reason: Optional close reason (e.g. ``"zombie:channel_deleted"``).
+                When ``None``, the column is not overwritten.
             transcript_url: Optional URL pointing to the uploaded transcript.
 
         Returns:
             The updated :class:`Ticket`.
 
         Raises:
-            ValueError: If the ticket does not exist after the update.
+            ValueError: If the ticket is already closed or not found.
         """
-        now = datetime.now(UTC).isoformat()
-        pre = await self._db.get_ticket(ticket_id)
-        if pre is None:
-            raise ValueError(f"Ticket {ticket_id} not found")
-        guild_id = pre.get("guildId", "")
-
-        try:
-            check_can_close(pre.get("status", ""))
-        except ValueError as exc:
-            await self._db.insert_audit_row(guild_id, ticket_id, "close", closed_by, "denied", str(exc))
-            raise
-
-        update_kwargs: dict[str, str | None] = {
-            "status": "closed",
-            "closedAt": now,
-        }
-        if transcript_url is not None:
-            update_kwargs["transcriptUrl"] = transcript_url
-
-        await self._db.update_ticket(ticket_id, **update_kwargs)
-
-        row = await self._db.get_ticket(ticket_id)
+        row = await self._db.transition_ticket_to_closed(
+            ticket_id,
+            close_reason=close_reason,
+            transcript_url=transcript_url,
+        )
         if row is None:
-            raise ValueError(f"Ticket {ticket_id} not found after close")
+            raise ValueError(f"Ticket {ticket_id} is already closed or not found")
+
         ticket = Ticket.from_db_row(row)
+        guild_id = ticket.guild_id
 
         # Remove channel from cache so the on_message listener skips it.
         self._ticket_channel_cache.discard(int(ticket.channel_id))
@@ -227,9 +216,10 @@ class TicketService:
         except Exception:
             logger.warning("Failed to write close audit row for ticket %s", ticket_id, exc_info=True)
         logger.info(
-            "Ticket %s closed by %s%s",
+            "Ticket %s closed by %s%s%s",
             ticket_id,
             closed_by or "unknown",
+            f" (reason: {close_reason})" if close_reason else "",
             f" (transcript: {transcript_url})" if transcript_url else "",
         )
         return ticket
@@ -946,6 +936,102 @@ class TicketService:
         await self._db.delete_ticket_note(note_id)
         await self._db.insert_audit_row(guild_id, ticket_id, "note_delete", author_id, "success", None)
         logger.info("Note %s deleted by %s", note_id, author_id)
+
+    # ----------------------------------------------------------------
+    # Repair service (PR2a — G.2-gated)
+    # ----------------------------------------------------------------
+
+    async def repair_ticket_from_evidence(
+        self,
+        evidence: IntegrityEvidence,
+        *,
+        gate_status: str,
+        close_reason: str = "zombie:channel_deleted",
+    ) -> RepairResult:
+        """Repair a zombie ticket from corroborated integrity evidence.
+
+        G.2-gated: only performs the close mutation when ``gate_status``
+        is ``"resolved"``. Returns deterministic :class:`RepairResult`
+        outcomes for every code path.
+
+        Args:
+            evidence: Corroborated integrity evidence for the ticket.
+            gate_status: The G.2 preflight gate status (``"resolved"``
+                permits mutation; anything else is a dry-run skip).
+            close_reason: The close reason to persist on the ticket row.
+
+        Returns:
+            A :class:`RepairResult` with deterministic action/outcome.
+        """
+        from datetime import UTC, datetime
+
+        # Gate check: unresolved gate → skip, no mutation.
+        if gate_status != "resolved":
+            return RepairResult(
+                ticket_id=evidence.ticket_id,
+                guild_id=evidence.guild_id,
+                action="no_op",
+                outcome="skipped",
+                reason=f"Gate {gate_status} — repair skipped",
+                evidence_id=None,
+                timestamp=datetime.now(UTC),
+            )
+
+        # Corroboration check: not corroborated → skip, no mutation.
+        if not evidence.corroborated:
+            return RepairResult(
+                ticket_id=evidence.ticket_id,
+                guild_id=evidence.guild_id,
+                action="no_op",
+                outcome="skipped",
+                reason="Evidence not corroborated — channel may still exist",
+                evidence_id=None,
+                timestamp=datetime.now(UTC),
+            )
+
+        # Attempt conditional close.
+        try:
+            row = await self._db.transition_ticket_to_closed(
+                evidence.ticket_id,
+                close_reason=close_reason,
+            )
+        except Exception as exc:
+            # Transient or unexpected error → error outcome, no mutation.
+            return RepairResult(
+                ticket_id=evidence.ticket_id,
+                guild_id=evidence.guild_id,
+                action="no_op",
+                outcome="error",
+                reason=type(exc).__name__,
+                evidence_id=None,
+                timestamp=datetime.now(UTC),
+            )
+
+        if row is None:
+            # Already closed (race or idempotent re-run).
+            return RepairResult(
+                ticket_id=evidence.ticket_id,
+                guild_id=evidence.guild_id,
+                action="no_op",
+                outcome="already_closed",
+                reason=None,
+                evidence_id=None,
+                timestamp=datetime.now(UTC),
+            )
+
+        # Successful repair.
+        ticket = Ticket.from_db_row(row)
+        self._ticket_channel_cache.discard(int(ticket.channel_id))
+
+        return RepairResult(
+            ticket_id=evidence.ticket_id,
+            guild_id=evidence.guild_id,
+            action="close",
+            outcome="repaired",
+            reason=None,
+            evidence_id=evidence.ticket_id,
+            timestamp=datetime.now(UTC),
+        )
 
     # ----------------------------------------------------------------
     # Orchestration helpers (PR4 extraction)

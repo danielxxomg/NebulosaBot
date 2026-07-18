@@ -227,6 +227,106 @@ class TicketDBMixin:
         response = await query.execute()
         return response.count or 0
 
+    async def get_active_ticket_by_channel(
+        self: Any,
+        guild_id: str,
+        channel_id: str,
+    ) -> dict[str, Any] | None:
+        """Fetch an active (open/claimed) ticket by guild + channel.
+
+        Used by channel-delete repair to find the ticket that maps to a
+        deleted Discord channel. Returns ``None`` when no active ticket
+        matches.
+        """
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        logger.debug("DB get_active_ticket_by_channel(guild=%s, ch=%s)", guild_id, channel_id)
+        response = await (
+            self._client.table("ticket")
+            .select("*")
+            .eq("guildId", guild_id)
+            .eq("channelId", channel_id)
+            .in_("status", ["open", "claimed"])
+            .execute()
+        )
+        rows = _unwrap(response)
+        return rows[0] if rows else None
+
+    async def transition_ticket_to_closed(
+        self: Any,
+        ticket_id: str,
+        *,
+        expected_statuses: tuple[str, ...] = ("open", "claimed"),
+        close_reason: str | None = None,
+        transcript_url: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Conditionally close a ticket only if its status matches *expected_statuses*.
+
+        Eliminates read-then-write races by applying the status predicate to
+        both the SELECT and the UPDATE. When the ticket is already outside
+        the expected statuses (e.g. already closed), returns ``None`` and
+        performs no mutation.
+
+        Args:
+            ticket_id: UUID of the ticket to close.
+            expected_statuses: Statuses eligible for this transition.
+            close_reason: Optional close reason to persist. When ``None``,
+                the column is NOT included in the update (non-overwriting).
+            transcript_url: Optional transcript URL to persist. When
+                ``None``, the column is NOT included in the update.
+
+        Returns:
+            The closed row dict on success, or ``None`` when the ticket
+            was not in an expected status.
+        """
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        logger.debug("DB transition_ticket_to_closed(%s) expected=%s", ticket_id, expected_statuses)
+
+        # SELECT with status predicate — the DB filters to eligible rows.
+        select_response = await (
+            self._client.table("ticket")
+            .select("*")
+            .eq("id", ticket_id)
+            .in_("status", list(expected_statuses))
+            .execute()
+        )
+        rows = _unwrap(select_response)
+        if not rows:
+            return None
+
+        # Build the update payload — only include fields that were provided.
+        now = datetime.now(UTC).isoformat()
+        update_payload: dict[str, Any] = {
+            "status": "closed",
+            "closedAt": now,
+        }
+        if close_reason is not None:
+            update_payload["closeReason"] = close_reason
+        if transcript_url is not None:
+            update_payload["transcriptUrl"] = transcript_url
+
+        # UPDATE with the same status predicate — zero-row guard.
+        update_response = await (
+            self._client.table("ticket")
+            .update(update_payload)
+            .eq("id", ticket_id)
+            .in_("status", list(expected_statuses))
+            .select("*")
+            .execute()
+        )
+        updated_rows = _unwrap(update_response)
+        if not updated_rows:
+            # Race: status changed between SELECT and UPDATE. No mutation.
+            return None
+
+        if self._on_write is not None:
+            await self._on_write("ticket", ticket_id)
+
+        return updated_rows[0]
+
     async def update_ticket_last_activity(self: Any, guild_id: str, channel_id: str, timestamp: str) -> None:
         """Set ``lastActivity`` for the ticket with the given channel ID in a guild.
 

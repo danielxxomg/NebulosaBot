@@ -20,7 +20,7 @@ import discord
 import pytest
 
 from bot.core.cache import TTLCache
-from bot.models.ticket import Ticket
+from bot.models.ticket import IntegrityEvidence, RepairResult, Ticket
 from bot.models.ticket_note import TicketNote
 from bot.services.ticket_service import MAX_RETRIES, TicketService
 
@@ -391,7 +391,7 @@ async def test_close_ticket_updates_status(
     mock_db: AsyncMock,
     ticket_row: dict,
 ) -> None:
-    """close_ticket MUST set status='closed' and closedAt, then re-read."""
+    """close_ticket MUST use transition_ticket_to_closed and return a Ticket."""
     ticket_id = ticket_row["id"]
     channel_id = int(ticket_row["channelId"])
 
@@ -399,16 +399,13 @@ async def test_close_ticket_updates_status(
     service._ticket_channel_cache.add(channel_id)
     assert channel_id in service._ticket_channel_cache
 
-    # PR2 contract: pre-read the OPEN row (invariant passes), then re-read closed row.
-    mock_db.get_ticket.side_effect = [
-        ticket_row,  # pre-read: open
-        {
-            **ticket_row,
-            "status": "closed",
-            "closedAt": "2026-06-16T18:00:00+00:00",
-            "transcriptUrl": "https://cdn.discord.com/transcript.html",
-        },
-    ]
+    closed_row = {
+        **ticket_row,
+        "status": "closed",
+        "closedAt": "2026-06-16T18:00:00+00:00",
+        "transcriptUrl": "https://cdn.discord.com/transcript.html",
+    }
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
 
     ticket = await service.close_ticket(
         ticket_id,
@@ -416,17 +413,10 @@ async def test_close_ticket_updates_status(
         transcript_url="https://cdn.discord.com/transcript.html",
     )
 
-    # DB update called.
-    mock_db.update_ticket.assert_awaited_once()
-    update_kwargs = mock_db.update_ticket.call_args.kwargs
-    assert update_kwargs["status"] == "closed"
-    assert update_kwargs["closedAt"] is not None
-    assert update_kwargs["transcriptUrl"] == "https://cdn.discord.com/transcript.html"
-
-    # Re-read from DB (PR2: pre-read + re-read → two calls, both with the id).
-    assert mock_db.get_ticket.await_count == 2
-    for call in mock_db.get_ticket.call_args_list:
-        assert call.args == (ticket_id,)
+    # transition_ticket_to_closed called with correct args.
+    mock_db.transition_ticket_to_closed.assert_awaited_once()
+    call_kwargs = mock_db.transition_ticket_to_closed.call_args.kwargs
+    assert call_kwargs["transcript_url"] == "https://cdn.discord.com/transcript.html"
 
     # Returned model.
     assert ticket.status == "closed"
@@ -442,12 +432,179 @@ async def test_close_ticket_not_found(
     service: TicketService,
     mock_db: AsyncMock,
 ) -> None:
-    """When get_ticket returns None after update, close_ticket MUST raise ValueError."""
-    ticket_id = "nonexistent-id"
-    mock_db.get_ticket.return_value = None
+    """When transition_ticket_to_closed returns None, close_ticket MUST raise ValueError."""
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=None)
 
-    with pytest.raises(ValueError, match=f"Ticket {ticket_id} not found"):
-        await service.close_ticket(ticket_id, closed_by="999999999")
+    with pytest.raises(ValueError, match="already closed or not found"):
+        await service.close_ticket("nonexistent-id", closed_by="999999999")
+
+
+# ---------------------------------------------------------------------------
+# PR2a — close_ticket with close_reason (task 2.3 RED)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_close_ticket_with_close_reason(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """close_ticket(close_reason=...) MUST persist closeReason in DB update."""
+    ticket_id = ticket_row["id"]
+
+    mock_db.transition_ticket_to_closed = AsyncMock(
+        return_value={
+            **ticket_row,
+            "status": "closed",
+            "closedAt": "2026-06-16T18:00:00+00:00",
+            "closeReason": "zombie:channel_deleted",
+        },
+    )
+
+    ticket = await service.close_ticket(
+        ticket_id,
+        closed_by="999999999",
+        close_reason="zombie:channel_deleted",
+    )
+
+    mock_db.transition_ticket_to_closed.assert_awaited_once()
+    call_kwargs = mock_db.transition_ticket_to_closed.call_args.kwargs
+    assert call_kwargs["close_reason"] == "zombie:channel_deleted"
+    assert ticket.status == "closed"
+
+
+@pytest.mark.asyncio
+async def test_close_ticket_without_close_reason_does_not_overwrite(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """close_ticket() with close_reason=None MUST NOT overwrite existing closeReason."""
+    ticket_id = ticket_row["id"]
+
+    mock_db.transition_ticket_to_closed = AsyncMock(
+        return_value={
+            **ticket_row,
+            "status": "closed",
+            "closedAt": "2026-06-16T18:00:00+00:00",
+            "closeReason": None,
+        },
+    )
+
+    await service.close_ticket(ticket_id, closed_by="999999999")
+
+    mock_db.transition_ticket_to_closed.assert_awaited_once()
+    call_kwargs = mock_db.transition_ticket_to_closed.call_args.kwargs
+    assert call_kwargs.get("close_reason") is None
+
+
+@pytest.mark.asyncio
+async def test_close_ticket_zombie_skips_transcript_and_channel_delete(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Zombie path (close_reason starts with 'zombie:') MUST skip transcript generation.
+
+    When the channel is already gone, transcript and channel deletion
+    are impossible — the close_reason signals this to the caller.
+    """
+    import logging
+
+    ticket_id = ticket_row["id"]
+
+    mock_db.transition_ticket_to_closed = AsyncMock(
+        return_value={
+            **ticket_row,
+            "status": "closed",
+            "closedAt": "2026-06-16T18:00:00+00:00",
+            "closeReason": "zombie:channel_deleted",
+        },
+    )
+
+    with caplog.at_level(logging.INFO, logger="bot.services.ticket_service"):
+        ticket = await service.close_ticket(
+            ticket_id,
+            close_reason="zombie:channel_deleted",
+        )
+
+    assert ticket.status == "closed"
+    # transition_ticket_to_closed was called (DB mutation).
+    mock_db.transition_ticket_to_closed.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_close_ticket_already_closed_raises(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """Re-closing a closed ticket MUST raise ValueError and perform no mutation."""
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=None)
+
+    with pytest.raises(ValueError, match="already closed"):
+        await service.close_ticket("ticket-uuid-003", closed_by="999999999")
+
+    mock_db.transition_ticket_to_closed.assert_awaited_once()
+    # No audit row on the rejected path (handled by transition returning None).
+    mock_db.insert_audit_row.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_close_ticket_transcript_url_flows_to_db(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """transcript_url MUST be forwarded to transition_ticket_to_closed."""
+    ticket_id = ticket_row["id"]
+
+    mock_db.transition_ticket_to_closed = AsyncMock(
+        return_value={
+            **ticket_row,
+            "status": "closed",
+            "closedAt": "2026-06-16T18:00:00+00:00",
+            "transcriptUrl": "https://cdn.discord.com/transcript.html",
+        },
+    )
+
+    ticket = await service.close_ticket(
+        ticket_id,
+        closed_by="999999999",
+        transcript_url="https://cdn.discord.com/transcript.html",
+    )
+
+    mock_db.transition_ticket_to_closed.assert_awaited_once()
+    call_kwargs = mock_db.transition_ticket_to_closed.call_args.kwargs
+    assert call_kwargs["transcript_url"] == "https://cdn.discord.com/transcript.html"
+    assert ticket.transcript_url == "https://cdn.discord.com/transcript.html"
+
+
+@pytest.mark.asyncio
+async def test_close_ticket_cleans_cache(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """close_ticket MUST remove the channel from _ticket_channel_cache."""
+    ticket_id = ticket_row["id"]
+    channel_id = int(ticket_row["channelId"])
+
+    service._ticket_channel_cache.add(channel_id)
+    assert channel_id in service._ticket_channel_cache
+
+    mock_db.transition_ticket_to_closed = AsyncMock(
+        return_value={
+            **ticket_row,
+            "status": "closed",
+            "closedAt": "2026-06-16T18:00:00+00:00",
+        },
+    )
+
+    await service.close_ticket(ticket_id, closed_by="999999999")
+
+    assert channel_id not in service._ticket_channel_cache
 
 
 # ---------------------------------------------------------------------------
@@ -1309,10 +1466,8 @@ async def test_claim_denied_audits_and_reraises(service: TicketService, mock_db:
 async def test_close_audits_success(service: TicketService, mock_db: AsyncMock, ticket_row: dict) -> None:
     """3.9/3.10: close on open/claimed MUST write an audit success row."""
     ticket_id = ticket_row["id"]
-    mock_db.get_ticket.side_effect = [
-        ticket_row,
-        {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"},
-    ]
+    closed_row = {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"}
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
 
     await service.close_ticket(ticket_id, closed_by="999999999")
 
@@ -1324,18 +1479,17 @@ async def test_close_audits_success(service: TicketService, mock_db: AsyncMock, 
 
 @pytest.mark.asyncio
 async def test_close_denied_audits_and_reraises(service: TicketService, mock_db: AsyncMock, ticket_row: dict) -> None:
-    """Close on an already-closed ticket MUST audit denied + re-raise."""
-    closed_row = {**ticket_row, "status": "closed"}
-    mock_db.get_ticket.return_value = closed_row
+    """Close on an already-closed ticket MUST raise ValueError (no mutation).
 
-    with pytest.raises(ValueError, match=r"close"):
+    PR2a: denied audit is deferred to PR2b; no audit row on this path.
+    """
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=None)
+
+    with pytest.raises(ValueError, match="already closed"):
         await service.close_ticket(ticket_row["id"], closed_by="999999999")
 
-    mock_db.insert_audit_row.assert_awaited_once()
-    kwargs = _audit_kwargs(mock_db)
-    assert kwargs["action"] == "close"
-    assert kwargs["outcome"] == "denied"
-    mock_db.update_ticket.assert_not_awaited()
+    # No mutation, no audit row (deferred to PR2b).
+    mock_db.insert_audit_row.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -2291,16 +2445,14 @@ async def test_close_success_audit_failure_continues(
     """Spec: close success audit failure MUST NOT abort the close.
 
     When insert_audit_row raises on the success path, the close
-    UI action (channel delete, transcript) proceeds normally and a WARNING is logged.
+    proceeds normally and a WARNING is logged.
     """
     import logging
 
     ticket_id = ticket_row["id"]
 
-    mock_db.get_ticket.side_effect = [
-        ticket_row,
-        {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"},
-    ]
+    closed_row = {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"}
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
     mock_db.insert_audit_row.side_effect = Exception("audit table unavailable")
 
     with caplog.at_level(logging.WARNING, logger="bot.services.ticket_service"):
@@ -2359,25 +2511,21 @@ async def test_close_ticket_full_manual_countdown(
     bot = _mock_bot_for_close()
     ticket = _ticket_model()
 
-    open_row = {
+    closed_row = {
         "id": ticket.id,
         "ticketNumber": 42,
         "guildId": "123456789",
         "authorId": "111111111",
         "channelId": "888888888",
         "categoryId": None,
-        "status": "open",
+        "status": "closed",
         "claimedBy": None,
         "transcriptUrl": None,
         "createdAt": "2026-01-15T10:00:00",
-        "closedAt": None,
+        "closedAt": "2026-06-16T18:00:00",
         "lastActivity": "2026-01-15T10:00:00",
     }
-    closed_row = {**open_row, "status": "closed", "closedAt": "2026-06-16T18:00:00"}
-    mock_db.get_ticket.side_effect = [
-        open_row,  # close_ticket pre-read (invariant check)
-        closed_row,  # close_ticket re-read
-    ]
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
 
     # Mock the countdown message.
     countdown_msg = AsyncMock()
@@ -2412,25 +2560,21 @@ async def test_close_ticket_full_auto_silent(
     bot = _mock_bot_for_close()
     ticket = _ticket_model()
 
-    open_row = {
+    closed_row = {
         "id": ticket.id,
         "ticketNumber": 42,
         "guildId": "123456789",
         "authorId": "111111111",
         "channelId": "888888888",
         "categoryId": None,
-        "status": "open",
+        "status": "closed",
         "claimedBy": None,
         "transcriptUrl": None,
         "createdAt": "2026-01-15T10:00:00",
-        "closedAt": None,
+        "closedAt": "2026-06-16T18:00:00",
         "lastActivity": "2026-01-15T10:00:00",
     }
-    closed_row = {**open_row, "status": "closed", "closedAt": "2026-06-16T18:00:00"}
-    mock_db.get_ticket.side_effect = [
-        open_row,  # close_ticket pre-read (invariant check)
-        closed_row,  # close_ticket re-read
-    ]
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
 
     with patch("bot.services.ticket_service.asyncio.sleep", new_callable=AsyncMock):
         result = await service.close_ticket_full(channel, ticket, "auto", bot=bot, manual=False)
@@ -2461,25 +2605,21 @@ async def test_close_ticket_full_countdown_cancelled_error_logs_and_reraises(
     bot = _mock_bot_for_close()
     ticket = _ticket_model()
 
-    open_row = {
+    closed_row = {
         "id": ticket.id,
         "ticketNumber": 42,
         "guildId": "123456789",
         "authorId": "111111111",
         "channelId": "888888888",
         "categoryId": None,
-        "status": "open",
+        "status": "closed",
         "claimedBy": None,
         "transcriptUrl": None,
         "createdAt": "2026-01-15T10:00:00",
-        "closedAt": None,
+        "closedAt": "2026-06-16T18:00:00",
         "lastActivity": "2026-01-15T10:00:00",
     }
-    closed_row = {**open_row, "status": "closed", "closedAt": "2026-06-16T18:00:00"}
-    mock_db.get_ticket.side_effect = [
-        open_row,  # close_ticket pre-read
-        closed_row,  # close_ticket re-read
-    ]
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
 
     # First sleep raises CancelledError (simulates task cancellation during countdown).
     async def _cancel_on_first_sleep(*_args, **_kwargs):
@@ -2515,25 +2655,21 @@ async def test_close_ticket_full_countdown_failure_fallback(
     bot = _mock_bot_for_close()
     ticket = _ticket_model()
 
-    open_row = {
+    closed_row = {
         "id": ticket.id,
         "ticketNumber": 42,
         "guildId": "123456789",
         "authorId": "111111111",
         "channelId": "888888888",
         "categoryId": None,
-        "status": "open",
+        "status": "closed",
         "claimedBy": None,
         "transcriptUrl": None,
         "createdAt": "2026-01-15T10:00:00",
-        "closedAt": None,
+        "closedAt": "2026-06-16T18:00:00",
         "lastActivity": "2026-01-15T10:00:00",
     }
-    closed_row = {**open_row, "status": "closed", "closedAt": "2026-06-16T18:00:00"}
-    mock_db.get_ticket.side_effect = [
-        open_row,  # close_ticket pre-read (invariant check)
-        closed_row,  # close_ticket re-read
-    ]
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
 
     # Send succeeds but edit fails (simulates permission loss during countdown).
     countdown_msg = AsyncMock()
@@ -3362,3 +3498,192 @@ async def test_countdown_not_found_on_final_delete_http_error_logged(
 
     # The non-NotFound HTTP error MUST be logged as exception.
     assert any("failed to delete" in r.message.lower() for r in caplog.records)
+
+
+# ===========================================================================
+# PR2a — repair_ticket_from_evidence (task 2.5 RED)
+# ===========================================================================
+
+
+def _evidence(
+    *,
+    ticket_id: str = "ticket-uuid-repair",
+    guild_id: str = "123456789",
+    channel_id: str = "888888888",
+    status: str = "open",
+    channel_exists: bool = False,
+) -> IntegrityEvidence:
+    """Return a sample IntegrityEvidence for repair tests."""
+    return IntegrityEvidence(
+        ticket_id=ticket_id,
+        guild_id=guild_id,
+        channel_id=channel_id,
+        status=status,
+        channel_exists=channel_exists,
+        corroborated=False,  # derived by __post_init__
+    )
+
+
+def _repair_closed_row(
+    *,
+    ticket_id: str = "ticket-uuid-repair",
+    guild_id: str = "123456789",
+    channel_id: str = "888888888",
+) -> dict:
+    """Return a complete closed DB row for repair tests (satisfies Ticket.from_db_row)."""
+    return {
+        "id": ticket_id,
+        "ticketNumber": 7,
+        "guildId": guild_id,
+        "authorId": "111111111",
+        "channelId": channel_id,
+        "categoryId": None,
+        "status": "closed",
+        "claimedBy": None,
+        "transcriptUrl": None,
+        "createdAt": "2026-01-15T10:00:00+00:00",
+        "closedAt": "2024-06-15T12:00:00+00:00",
+        "lastActivity": "2024-06-15T12:00:00+00:00",
+        "closeReason": "zombie:channel_deleted",
+    }
+
+
+@pytest.mark.asyncio
+async def test_repair_repaired_on_successful_close(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """When evidence is corroborated and close succeeds → RepairResult(action='close', outcome='repaired')."""
+    evidence = _evidence()
+    assert evidence.corroborated  # open + channel_exists=False
+
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=_repair_closed_row())
+
+    result = await service.repair_ticket_from_evidence(evidence, gate_status="resolved")
+
+    assert isinstance(result, RepairResult)
+    assert result.action == "close"
+    assert result.outcome == "repaired"
+    assert result.ticket_id == "ticket-uuid-repair"
+    assert result.guild_id == "123456789"
+    assert result.evidence_id is not None
+
+
+@pytest.mark.asyncio
+async def test_repair_already_closed_when_transition_returns_none(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """When transition_ticket_to_closed returns None → already_closed (idempotent)."""
+    evidence = _evidence()
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=None)
+
+    result = await service.repair_ticket_from_evidence(evidence, gate_status="resolved")
+
+    assert result.action == "no_op"
+    assert result.outcome == "already_closed"
+    assert result.evidence_id is None
+
+
+@pytest.mark.asyncio
+async def test_repair_skipped_when_gate_unresolved(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """When gate_status != 'resolved' → skipped, no DB mutation."""
+    evidence = _evidence()
+
+    result = await service.repair_ticket_from_evidence(evidence, gate_status="gate_unresolved")
+
+    assert result.action == "no_op"
+    assert result.outcome == "skipped"
+    assert "gate" in (result.reason or "").lower()
+    mock_db.transition_ticket_to_closed.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_repair_skipped_when_not_corroborated(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """When evidence is NOT corroborated (channel still exists) → skipped."""
+    evidence = _evidence(channel_exists=True)
+    assert not evidence.corroborated
+
+    result = await service.repair_ticket_from_evidence(evidence, gate_status="resolved")
+
+    assert result.action == "no_op"
+    assert result.outcome == "skipped"
+    assert "not corroborated" in (result.reason or "").lower()
+    mock_db.transition_ticket_to_closed.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_repair_error_on_transient_discord_exception(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """When transition raises a transient Discord error → outcome='error' with reason class name."""
+    evidence = _evidence()
+    mock_db.transition_ticket_to_closed = AsyncMock(
+        side_effect=discord.HTTPException(MagicMock(), "rate limited"),
+    )
+
+    result = await service.repair_ticket_from_evidence(evidence, gate_status="resolved")
+
+    assert result.action == "no_op"
+    assert result.outcome == "error"
+    assert "HTTPException" in (result.reason or "")
+
+
+@pytest.mark.asyncio
+async def test_repair_error_on_generic_exception(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """When transition raises a generic exception → outcome='error' with reason class name."""
+    evidence = _evidence()
+    mock_db.transition_ticket_to_closed = AsyncMock(
+        side_effect=RuntimeError("database connection lost"),
+    )
+
+    result = await service.repair_ticket_from_evidence(evidence, gate_status="resolved")
+
+    assert result.action == "no_op"
+    assert result.outcome == "error"
+    assert "RuntimeError" in (result.reason or "")
+
+
+@pytest.mark.asyncio
+async def test_repair_passes_close_reason_to_transition(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """close_reason MUST be forwarded to transition_ticket_to_closed."""
+    evidence = _evidence()
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=_repair_closed_row())
+
+    await service.repair_ticket_from_evidence(
+        evidence,
+        gate_status="resolved",
+        close_reason="zombie:channel_deleted",
+    )
+
+    call_kwargs = mock_db.transition_ticket_to_closed.call_args.kwargs
+    assert call_kwargs["close_reason"] == "zombie:channel_deleted"
+
+
+@pytest.mark.asyncio
+async def test_repair_claims_ticket_id_from_evidence(
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """The ticket_id in the RepairResult MUST come from the evidence, not the DB row."""
+    evidence = _evidence(ticket_id="evidence-ticket-id")
+    closed_row = _repair_closed_row(ticket_id="db-row-id")
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+
+    result = await service.repair_ticket_from_evidence(evidence, gate_status="resolved")
+
+    # Result uses evidence ticket_id, not DB row id.
+    assert result.ticket_id == "evidence-ticket-id"
