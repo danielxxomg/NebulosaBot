@@ -6,6 +6,101 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+_ACTIVE_STATUSES = frozenset({"open", "claimed"})
+_VALID_REPAIR_COMBINATIONS = frozenset({"close/repaired", "no_op/already_closed", "no_op/skipped", "no_op/error"})
+
+
+@dataclass(frozen=True)
+class IntegrityEvidence:
+    """Read-only evidence that an active ticket's channel is missing."""
+
+    ticket_id: str
+    guild_id: str
+    channel_id: str | None
+    status: str
+    channel_exists: bool
+    corroborated: bool
+
+    def __post_init__(self) -> None:
+        """Derive corroboration from immutable ticket and channel evidence."""
+        object.__setattr__(
+            self,
+            "corroborated",
+            self.status in _ACTIVE_STATUSES and not self.channel_exists,
+        )
+
+    @classmethod
+    def from_db_row(cls, row: dict[str, Any], channel_exists: bool) -> IntegrityEvidence:
+        """Build evidence from a ticket row and a completed channel check."""
+        return cls(
+            ticket_id=row["ticketId"],
+            guild_id=row["guildId"],
+            channel_id=row.get("channelId"),
+            status=row["status"],
+            channel_exists=channel_exists,
+            corroborated=False,
+        )
+
+    def to_db_dict(self) -> dict[str, Any]:
+        """Serialize evidence using the ticket table's camelCase convention."""
+        return {
+            "ticketId": self.ticket_id,
+            "guildId": self.guild_id,
+            "channelId": self.channel_id,
+            "status": self.status,
+            "channelExists": self.channel_exists,
+            "corroborated": self.corroborated,
+        }
+
+
+@dataclass(frozen=True)
+class RepairResult:
+    """Deterministic, auditable result of one ticket repair attempt."""
+
+    ticket_id: str
+    guild_id: str
+    action: str
+    outcome: str
+    reason: str | None
+    evidence_id: str | None
+    timestamp: datetime
+
+    def __post_init__(self) -> None:
+        """Reject wire values outside the documented repair contract."""
+        combination = f"{self.action}/{self.outcome}"
+        if combination not in _VALID_REPAIR_COMBINATIONS:
+            raise ValueError(f"Invalid repair action/outcome combination: {self.action}/{self.outcome}")
+        if combination == "close/repaired" and not self.evidence_id:
+            raise ValueError("Repaired close requires evidence_id")
+
+    @classmethod
+    def from_db_row(cls, row: dict[str, Any]) -> RepairResult:
+        """Build a result from a camelCase audit/evidence row."""
+        timestamp = row["timestamp"]
+        if isinstance(timestamp, str):
+            timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        return cls(
+            ticket_id=row["ticketId"],
+            guild_id=row["guildId"],
+            action=row["action"],
+            outcome=row["outcome"],
+            reason=row.get("reason"),
+            evidence_id=row.get("evidenceId"),
+            timestamp=timestamp,
+        )
+
+    def to_db_dict(self) -> dict[str, Any]:
+        """Serialize the result using camelCase persistence keys."""
+        return {
+            "ticketId": self.ticket_id,
+            "guildId": self.guild_id,
+            "action": self.action,
+            "outcome": self.outcome,
+            "reason": self.reason,
+            "evidenceId": self.evidence_id,
+            "timestamp": self.timestamp.isoformat(),
+        }
+
 
 @dataclass
 class Ticket:

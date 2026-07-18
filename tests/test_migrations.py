@@ -213,3 +213,37 @@ class TestMigrationParity:
         """Stale 005_ticket_audit.sql MUST NOT exist in migrations/."""
         path = MIGRATIONS_DIR / "005_ticket_audit.sql"
         assert not path.exists(), f"Stale migration {path} should have been removed"
+
+    def test_015_schema_objects_match_production_definition(self) -> None:
+        """Migration 015 MUST retain the production schema object contract."""
+        sql = _read_migration("015_ticket_lifecycle_reliability.sql")
+        normalized = " ".join(sql.lower().split())
+
+        expected_fragments = (
+            'alter table public.ticket add column if not exists "closereason" text',
+            "create unique index if not exists idx_ticket_active_slot on public.ticket "
+            '("guildid", "authorid", "categoryid")',
+            "where status in ('open', 'claimed') and \"categoryid\" is not null",
+            'create unique index if not exists idx_ticket_active_channel on public.ticket ("channelid")',
+            "create unique index if not exists idx_ticket_category_active_name on "
+            'public.ticket_category ("guildid", lower(btrim(name)))',
+            "create unique index if not exists idx_ticket_guild_ticket_number on public.ticket "
+            '("guildid", "ticketnumber")',
+            "drop table if exists public.ticket_backup_claimed_open_20260706",
+        )
+
+        for fragment in expected_fragments:
+            assert fragment in normalized
+
+        drop = "drop table if exists public.ticket_backup_claimed_open_20260706"
+        assert normalized.index("do $$") < normalized.index(drop)
+        assert "select exists (select 1 from public.ticket_backup_claimed_open_20260706 limit 1)" in normalized
+        assert normalized.index("raise exception") < normalized.index(drop)
+
+    def test_015_restoration_does_not_apply_or_down_migrate(self) -> None:
+        """Parity restoration MUST not contain migration execution or rollback."""
+        sql = _read_migration("015_ticket_lifecycle_reliability.sql").lower()
+
+        assert "insert into schema_migrations" not in sql
+        assert "down migration" not in sql
+        assert "drop column" not in sql
