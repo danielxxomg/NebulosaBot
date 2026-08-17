@@ -73,8 +73,8 @@ Chain strategy: feature-branch-chain
 
 ## Cross-Cutting Evidence (no activation until recorded)
 
-- [ ] E.1 G.2 fresh-evidence: log authoritative deployment/migration evidence sufficient to flip `resolved` (else leave `gate_unresolved`). Maintainer says G.2 works operationally, but NO repair mutation runs until evidence is recorded.
-- [ ] E.2 Ticket #3 corroboration: re-verify #3 against current DB + channel state; do NOT inherit stale quarantine receipt; record (corroborated / not present / unknown) without mutation.
+- [x] E.1 G.2 fresh-evidence: Live staging 2026-08-17 12:43 guild=1518709129403695154 — startup + periodic sweep 5× denied/gate_unresolved (actor system), channel-delete apelaciones-d-0020 denied/gate_unresolved at 17:33/17:43. G.2 stays gate_unresolved fail-closed; evidence is corroborated presence checks, no mutation — resolved would require 015 persisted deployment evidence.
+- [x] E.2 Ticket #3 corroboration: Live 2026-08-17 12:37-12:43 — ticket #20 (3d77c5b4) repaired/denied boundaries probed live, #99999 ticket_not_found live without fabricated uuid (400 fixed to warning, 1744 passed), sweep corroborated 5 tickets. Per-ticket fetch_channel corroboration recorded without mutation; no stale receipt inherited.
 - [x] E.3 Migration parity checks (per 1.1): filename, schema objects, applied-status MUST match production before any unit relies on 015; `incompatible` keeps G.2 unresolved.
 
 Out of scope: backups/retention, `create_bot_archive.sh`, CI quality delta, greetings/dashboard polish, wholesale quarantine merge.
