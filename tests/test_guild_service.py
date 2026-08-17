@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from bot.core.cache import TTLCache
+from bot.models.greeting_config import GreetingConfig
 from bot.models.guild import GuildConfig
 from bot.services.guild_service import GuildService
 
@@ -49,8 +50,9 @@ async def test_greeting_config_delegates_to_greeting_service(
     mod_role_cache: dict[int, str],
 ) -> None:
     """GuildService MUST delegate greeting ownership instead of duplicating fields."""
+    expected = GreetingConfig(guild_id="123456789")
     greeting_service = MagicMock()
-    greeting_service.get_config = AsyncMock(return_value="greeting-config")
+    greeting_service.get_config = AsyncMock(return_value=expected)
     greeting_service.save_config = AsyncMock()
     service = GuildService(
         db=mock_db,
@@ -60,11 +62,11 @@ async def test_greeting_config_delegates_to_greeting_service(
     )
 
     result = await service.get_greeting_config("123456789")
-    await service.save_greeting_config("greeting-config")
+    await service.save_greeting_config(result)
 
-    assert result == "greeting-config"
+    assert result == expected
     greeting_service.get_config.assert_awaited_once_with("123456789")
-    greeting_service.save_config.assert_awaited_once_with("greeting-config")
+    greeting_service.save_config.assert_awaited_once_with(expected)
     mock_db.get_greeting_config.assert_not_called()
     mock_db.upsert_greeting_config.assert_not_called()
 

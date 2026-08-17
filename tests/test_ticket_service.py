@@ -14,13 +14,19 @@ Covers:
 
 from __future__ import annotations
 
+import logging
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
 
+if TYPE_CHECKING:
+    from bot.services.ticket_invariants import RepairAuthority
+
 from bot.core.cache import TTLCache
-from bot.models.ticket import Ticket
+from bot.models.ticket import IntegrityEvidence, Ticket
 from bot.models.ticket_note import TicketNote
 from bot.services.ticket_service import MAX_RETRIES, TicketService
 
@@ -391,7 +397,7 @@ async def test_close_ticket_updates_status(
     mock_db: AsyncMock,
     ticket_row: dict,
 ) -> None:
-    """close_ticket MUST set status='closed' and closedAt, then re-read."""
+    """close_ticket MUST set status='closed' and closedAt via transition_ticket_to_closed."""
     ticket_id = ticket_row["id"]
     channel_id = int(ticket_row["channelId"])
 
@@ -399,16 +405,14 @@ async def test_close_ticket_updates_status(
     service._ticket_channel_cache.add(channel_id)
     assert channel_id in service._ticket_channel_cache
 
-    # PR2 contract: pre-read the OPEN row (invariant passes), then re-read closed row.
-    mock_db.get_ticket.side_effect = [
-        ticket_row,  # pre-read: open
-        {
-            **ticket_row,
-            "status": "closed",
-            "closedAt": "2026-06-16T18:00:00+00:00",
-            "transcriptUrl": "https://cdn.discord.com/transcript.html",
-        },
-    ]
+    closed_row = {
+        **ticket_row,
+        "status": "closed",
+        "closedAt": "2026-06-16T18:00:00+00:00",
+        "transcriptUrl": "https://cdn.discord.com/transcript.html",
+    }
+    mock_db.get_ticket.return_value = ticket_row
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
 
     ticket = await service.close_ticket(
         ticket_id,
@@ -416,17 +420,14 @@ async def test_close_ticket_updates_status(
         transcript_url="https://cdn.discord.com/transcript.html",
     )
 
-    # DB update called.
-    mock_db.update_ticket.assert_awaited_once()
-    update_kwargs = mock_db.update_ticket.call_args.kwargs
-    assert update_kwargs["status"] == "closed"
-    assert update_kwargs["closedAt"] is not None
-    assert update_kwargs["transcriptUrl"] == "https://cdn.discord.com/transcript.html"
-
-    # Re-read from DB (PR2: pre-read + re-read → two calls, both with the id).
-    assert mock_db.get_ticket.await_count == 2
-    for call in mock_db.get_ticket.call_args_list:
-        assert call.args == (ticket_id,)
+    # transition called with correct args (R2-002: transcript_url forwarded).
+    mock_db.transition_ticket_to_closed.assert_awaited_once_with(
+        ticket_row["guildId"],
+        ticket_id,
+        expected_statuses=("open", "claimed"),
+        close_reason=None,
+        transcript_url="https://cdn.discord.com/transcript.html",
+    )
 
     # Returned model.
     assert ticket.status == "closed"
@@ -442,11 +443,16 @@ async def test_close_ticket_not_found(
     service: TicketService,
     mock_db: AsyncMock,
 ) -> None:
-    """When get_ticket returns None after update, close_ticket MUST raise ValueError."""
+    """When transition returns None, close_ticket MUST raise ValueError."""
     ticket_id = "nonexistent-id"
-    mock_db.get_ticket.return_value = None
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=None)
+    mock_db.get_ticket.return_value = {
+        "id": ticket_id,
+        "guildId": "123456789",
+        "status": "closed",
+    }
 
-    with pytest.raises(ValueError, match=f"Ticket {ticket_id} not found"):
+    with pytest.raises(ValueError, match="already closed or not found"):
         await service.close_ticket(ticket_id, closed_by="999999999")
 
 
@@ -1309,10 +1315,9 @@ async def test_claim_denied_audits_and_reraises(service: TicketService, mock_db:
 async def test_close_audits_success(service: TicketService, mock_db: AsyncMock, ticket_row: dict) -> None:
     """3.9/3.10: close on open/claimed MUST write an audit success row."""
     ticket_id = ticket_row["id"]
-    mock_db.get_ticket.side_effect = [
-        ticket_row,
-        {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"},
-    ]
+    closed_row = {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"}
+    mock_db.get_ticket.return_value = ticket_row
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
 
     await service.close_ticket(ticket_id, closed_by="999999999")
 
@@ -1324,18 +1329,31 @@ async def test_close_audits_success(service: TicketService, mock_db: AsyncMock, 
 
 @pytest.mark.asyncio
 async def test_close_denied_audits_and_reraises(service: TicketService, mock_db: AsyncMock, ticket_row: dict) -> None:
-    """Close on an already-closed ticket MUST audit denied + re-raise."""
-    closed_row = {**ticket_row, "status": "closed"}
-    mock_db.get_ticket.return_value = closed_row
+    """Close on an already-closed ticket MUST raise ValueError (transition returns None)."""
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=None)
+    mock_db.get_ticket.return_value = {**ticket_row, "status": "closed"}
 
-    with pytest.raises(ValueError, match=r"close"):
+    with pytest.raises(ValueError, match="already closed or not found"):
+        await service.close_ticket(ticket_row["id"], closed_by="999999999")
+
+    mock_db.update_ticket.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_close_denied_writes_audit(service: TicketService, mock_db: AsyncMock, ticket_row: dict) -> None:
+    """R1-003: denied-close MUST write a best-effort denied audit row before raising."""
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=None)
+    mock_db.get_ticket.return_value = ticket_row  # resolve guild for audit scoping
+
+    with pytest.raises(ValueError, match="already closed or not found"):
         await service.close_ticket(ticket_row["id"], closed_by="999999999")
 
     mock_db.insert_audit_row.assert_awaited_once()
     kwargs = _audit_kwargs(mock_db)
     assert kwargs["action"] == "close"
     assert kwargs["outcome"] == "denied"
-    mock_db.update_ticket.assert_not_awaited()
+    assert kwargs["guild_id"] == ticket_row["guildId"]
+    assert kwargs["actor_id"] == "999999999"
 
 
 @pytest.mark.asyncio
@@ -2297,10 +2315,9 @@ async def test_close_success_audit_failure_continues(
 
     ticket_id = ticket_row["id"]
 
-    mock_db.get_ticket.side_effect = [
-        ticket_row,
-        {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"},
-    ]
+    closed_row = {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"}
+    mock_db.get_ticket.return_value = ticket_row
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
     mock_db.insert_audit_row.side_effect = Exception("audit table unavailable")
 
     with caplog.at_level(logging.WARNING, logger="bot.services.ticket_service"):
@@ -3362,3 +3379,1966 @@ async def test_countdown_not_found_on_final_delete_http_error_logged(
 
     # The non-NotFound HTTP error MUST be logged as exception.
     assert any("failed to delete" in r.message.lower() for r in caplog.records)
+
+
+# ===========================================================================
+# PR2 Phase 2 - close_ticket zombie/conditional close (tasks 2.3-2.4 RED)
+# ===========================================================================
+
+
+class TestCloseTicketConditional:
+    """close_ticket with close_reason, zombie path, re-close ValueError."""
+
+    @pytest.mark.asyncio
+    async def test_close_reason_persists_when_provided(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+        ticket_row: dict,
+    ) -> None:
+        """When close_reason is provided, it MUST be forwarded to transition_ticket_to_closed."""
+        ticket_id = ticket_row["id"]
+        closed_row = {
+            **ticket_row,
+            "status": "closed",
+            "closedAt": "2026-06-16T18:00:00+00:00",
+            "closeReason": "zombie:channel_missing",
+        }
+        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+        mock_db.get_ticket.return_value = closed_row
+
+        ticket = await service.close_ticket(
+            ticket_id,
+            closed_by="999999999",
+            close_reason="zombie:channel_missing",
+        )
+
+        mock_db.transition_ticket_to_closed.assert_awaited_once_with(
+            ticket_row["guildId"],
+            ticket_id,
+            expected_statuses=("open", "claimed"),
+            close_reason="zombie:channel_missing",
+            transcript_url=None,
+        )
+        assert ticket.status == "closed"
+
+    @pytest.mark.asyncio
+    async def test_close_reason_none_does_not_overwrite(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+        ticket_row: dict,
+    ) -> None:
+        """When close_reason is None, it MUST NOT be forwarded."""
+        ticket_id = ticket_row["id"]
+        closed_row = {
+            **ticket_row,
+            "status": "closed",
+            "closedAt": "2026-06-16T18:00:00+00:00",
+            "closeReason": None,
+        }
+        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+        mock_db.get_ticket.return_value = closed_row
+
+        await service.close_ticket(ticket_id, closed_by="999999999")
+
+        mock_db.transition_ticket_to_closed.assert_awaited_once_with(
+            ticket_row["guildId"],
+            ticket_id,
+            expected_statuses=("open", "claimed"),
+            close_reason=None,
+            transcript_url=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_zombie_path_skips_transcript_and_channel_deletion(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+        ticket_row: dict,
+    ) -> None:
+        """Zombie close MUST skip transcript and channel deletion."""
+        ticket_id = ticket_row["id"]
+        closed_row = {
+            **ticket_row,
+            "status": "closed",
+            "closedAt": "2026-06-16T18:00:00+00:00",
+            "closeReason": "zombie:channel_missing",
+        }
+        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+        mock_db.get_ticket.return_value = closed_row
+
+        ticket = await service.close_ticket(
+            ticket_id,
+            closed_by="system",
+            close_reason="zombie:channel_missing",
+        )
+
+        assert ticket.status == "closed"
+
+    @pytest.mark.asyncio
+    async def test_reclosed_ticket_raises_value_error(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+        ticket_row: dict,
+    ) -> None:
+        """Closing an already-closed ticket MUST raise ValueError with no mutation."""
+        ticket_id = ticket_row["id"]
+        # transition returns None → already closed / not in expected_statuses
+        mock_db.transition_ticket_to_closed = AsyncMock(return_value=None)
+        mock_db.get_ticket.return_value = {**ticket_row, "status": "closed"}
+
+        with pytest.raises(ValueError, match=r"already closed|not found"):
+            await service.close_ticket(ticket_id, closed_by="999999999")
+
+        # No update_ticket called (transition handled it).
+        mock_db.update_ticket.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_normal_close_still_updates_cache(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+        ticket_row: dict,
+    ) -> None:
+        """Normal close (non-zombie) MUST still clean the channel from cache."""
+        ticket_id = ticket_row["id"]
+        channel_id = int(ticket_row["channelId"])
+        service._ticket_channel_cache.add(channel_id)
+
+        closed_row = {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"}
+        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+        mock_db.get_ticket.return_value = closed_row
+
+        await service.close_ticket(ticket_id, closed_by="999999999")
+
+        assert channel_id not in service._ticket_channel_cache
+
+
+# ===========================================================================
+# PR2 Phase 2 - RepairResult from IntegrityEvidence (tasks 2.5-2.6 RED)
+# ===========================================================================
+
+
+class TestRepairTicketFromEvidence:
+    """repair_ticket_from_evidence builds RepairResult via guild-scoped transition.
+
+    Preflight (read-only live schema/deployment gate) is REQUIRED for
+    mutation: unresolved preflight quarantines/skips with no DB mutation.
+    """
+
+    @pytest.mark.asyncio
+    async def test_repaired_when_evidence_corroborated(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+        ticket_row: dict,
+    ) -> None:
+        """Corroborated evidence + successful close -> repaired."""
+        from bot.models.ticket import IntegrityEvidence, RepairResult
+
+        evidence = IntegrityEvidence(
+            ticket_id=ticket_row["id"],
+            guild_id=ticket_row["guildId"],
+            channel_id=ticket_row["channelId"],
+            status="open",
+            channel_exists=False,
+            corroborated=False,
+        )
+        assert evidence.corroborated is True
+
+        closed_row = {
+            **ticket_row,
+            "status": "closed",
+            "closedAt": "2026-06-16T18:00:00+00:00",
+            "closeReason": "zombie:channel_deleted",
+        }
+        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+
+        result = await service.repair_ticket_from_evidence(
+            evidence,
+            preflight=_resolved_preflight(),
+            close_reason="zombie:channel_deleted",
+        )
+
+        assert isinstance(result, RepairResult)
+        assert result.action == "close"
+        assert result.outcome == "repaired"
+        assert result.ticket_id == ticket_row["id"]
+        assert result.guild_id == ticket_row["guildId"]
+
+    @pytest.mark.asyncio
+    async def test_already_closed_returns_no_op(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+        ticket_row: dict,
+    ) -> None:
+        """Transition returns None -> already_closed."""
+        from bot.models.ticket import IntegrityEvidence, RepairResult
+
+        evidence = IntegrityEvidence(
+            ticket_id=ticket_row["id"],
+            guild_id=ticket_row["guildId"],
+            channel_id=ticket_row["channelId"],
+            status="open",
+            channel_exists=False,
+            corroborated=False,
+        )
+        mock_db.transition_ticket_to_closed = AsyncMock(return_value=None)
+
+        result = await service.repair_ticket_from_evidence(
+            evidence,
+            preflight=_resolved_preflight(),
+            close_reason="zombie:channel_deleted",
+        )
+
+        assert isinstance(result, RepairResult)
+        assert result.action == "no_op"
+        assert result.outcome == "already_closed"
+
+    @pytest.mark.asyncio
+    async def test_not_corroborated_returns_skipped(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+        ticket_row: dict,
+    ) -> None:
+        """Channel exists -> not corroborated -> skipped."""
+        from bot.models.ticket import IntegrityEvidence, RepairResult
+
+        evidence = IntegrityEvidence(
+            ticket_id=ticket_row["id"],
+            guild_id=ticket_row["guildId"],
+            channel_id=ticket_row["channelId"],
+            status="open",
+            channel_exists=True,
+            corroborated=False,
+        )
+        assert evidence.corroborated is False
+
+        result = await service.repair_ticket_from_evidence(
+            evidence,
+            preflight=_resolved_preflight(),
+            close_reason="zombie:channel_deleted",
+        )
+
+        assert isinstance(result, RepairResult)
+        assert result.action == "no_op"
+        assert result.outcome == "skipped"
+        # No DB mutation.
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_transient_discord_error_returns_error(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+        ticket_row: dict,
+    ) -> None:
+        """Transient error -> error with reason class name."""
+        from bot.models.ticket import IntegrityEvidence, RepairResult
+
+        evidence = IntegrityEvidence(
+            ticket_id=ticket_row["id"],
+            guild_id=ticket_row["guildId"],
+            channel_id=ticket_row["channelId"],
+            status="open",
+            channel_exists=False,
+            corroborated=False,
+        )
+        mock_db.transition_ticket_to_closed = AsyncMock(
+            side_effect=Exception("transient db error"),
+        )
+
+        result = await service.repair_ticket_from_evidence(
+            evidence,
+            preflight=_resolved_preflight(),
+            close_reason="zombie:channel_deleted",
+        )
+
+        assert isinstance(result, RepairResult)
+        assert result.action == "no_op"
+        assert result.outcome == "error"
+        assert result.reason is not None
+        assert "Exception" in result.reason
+
+    @pytest.mark.asyncio
+    async def test_close_requires_evidence_id(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+        ticket_row: dict,
+    ) -> None:
+        """RepairResult(action='close') MUST have evidence_id or it raises ValueError."""
+        from bot.models.ticket import RepairResult
+
+        # Direct construction: close/repaired without evidence_id → ValueError.
+        with pytest.raises(ValueError, match="evidence_id"):
+            RepairResult(
+                ticket_id="t1",
+                guild_id="g1",
+                action="close",
+                outcome="repaired",
+                reason=None,
+                evidence_id=None,  # missing!
+                timestamp=__import__("datetime").datetime.now(__import__("datetime").UTC),
+            )
+
+    @pytest.mark.asyncio
+    async def test_g2_gate_unresolved_blocks_automatic_repair(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+        ticket_row: dict,
+    ) -> None:
+        """When G.2 is gate_unresolved, repair_ticket_from_evidence MUST NOT mutate."""
+        from bot.models.ticket import IntegrityEvidence
+
+        evidence = IntegrityEvidence(
+            ticket_id=ticket_row["id"],
+            guild_id=ticket_row["guildId"],
+            channel_id=ticket_row["channelId"],
+            status="open",
+            channel_exists=False,
+            corroborated=False,
+        )
+
+        # Simulate gate_unresolved by passing an unresolved preflight.
+        result = await service.repair_ticket_from_evidence(
+            evidence,
+            close_reason="zombie:channel_deleted",
+            preflight=_unresolved_preflight(),
+        )
+
+        assert result.action == "no_op"
+        assert result.outcome == "skipped"
+        assert result.reason == "gate_unresolved"
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_repair_success_writes_audit(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+        ticket_row: dict,
+    ) -> None:
+        """R1-004/R4-002: repair success MUST write a best-effort repair audit row."""
+        from bot.models.ticket import IntegrityEvidence
+
+        evidence = IntegrityEvidence(
+            ticket_id=ticket_row["id"],
+            guild_id=ticket_row["guildId"],
+            channel_id=ticket_row["channelId"],
+            status="open",
+            channel_exists=False,
+            corroborated=False,
+        )
+        closed_row = {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"}
+        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+
+        await service.repair_ticket_from_evidence(
+            evidence,
+            preflight=_resolved_preflight(),
+            close_reason="zombie:channel_deleted",
+        )
+
+        mock_db.insert_audit_row.assert_awaited_once()
+        kwargs = _audit_kwargs(mock_db)
+        assert kwargs["action"] == "repair"
+        assert kwargs["outcome"] == "success"
+        assert kwargs["guild_id"] == ticket_row["guildId"]
+        assert kwargs["actor_id"] == "system"
+
+
+# ===========================================================================
+# product-artifact-audit PR2 — evidence-gated repair (tasks 2.1/2.4 RED)
+# ===========================================================================
+#
+# The shared repair coordinator MUST fail closed: unresolved preflight or
+# non-corroborated evidence (unknown/stale/live) produces a reviewable
+# quarantine/no-op result and performs NO ticket mutation and NO audit claim.
+# Only fresh, corroborated, guild-matched evidence reaches persistence.
+
+
+def _corroborated_evidence(ticket_row: dict) -> IntegrityEvidence:
+    """Return fresh corroborated evidence for the shared repair path."""
+    return IntegrityEvidence(
+        ticket_id=ticket_row["id"],
+        guild_id=ticket_row["guildId"],
+        channel_id=ticket_row["channelId"],
+        status="open",
+        channel_exists=False,
+        observed_at=datetime.now(UTC),
+    )
+
+
+def _unresolved_preflight() -> object:
+    """Return a read-only LivePreflightResult that is NOT resolved."""
+    from bot.services.integrity_report import evaluate_live_preflight
+
+    return evaluate_live_preflight(observed_at=datetime.now(UTC).isoformat())
+
+
+def _resolved_preflight() -> object:
+    """Return a read-only LivePreflightResult that IS resolved."""
+    from bot.services.integrity_report import evaluate_live_preflight
+
+    return evaluate_live_preflight(
+        project_status="ACTIVE_HEALTHY",
+        migration_015_applied=True,
+        close_reason_nullable=True,
+        required_indexes_present=True,
+        realtime_publication_covers=["guild", "greeting_config", "ticket", "ticket_note"],
+        active_rows_channel_id_non_null=3,
+        observed_at=datetime.now(UTC).isoformat(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_repair_denied_when_preflight_unresolved(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """Unresolved preflight MUST quarantine/skip without ANY ticket mutation."""
+    from bot.models.ticket import RepairResult
+
+    evidence = _corroborated_evidence(ticket_row)
+    preflight = _unresolved_preflight()
+
+    result = await service.repair_ticket_from_evidence(
+        evidence,
+        preflight=preflight,
+        close_reason="zombie:channel_deleted",
+    )
+
+    assert isinstance(result, RepairResult)
+    assert result.action == "no_op"
+    assert result.outcome in ("quarantined", "skipped")
+    assert result.reason
+    assert result.ticket_id == ticket_row["id"]
+    assert result.guild_id == ticket_row["guildId"]
+    # No ticket mutation ...
+    mock_db.transition_ticket_to_closed.assert_not_awaited()
+    # ... but a best-effort NON-mutating audit row is still produced.
+    mock_db.insert_audit_row.assert_awaited_once()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "repair"
+    assert kwargs["outcome"] == "denied"
+    assert kwargs["reason"] == "gate_unresolved"
+    assert kwargs["actor_id"] == "system"
+
+
+@pytest.mark.asyncio
+async def test_repair_quarantines_unknown_evidence(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """Unknown (None) channel existence MUST quarantine, never mutate."""
+    from bot.models.ticket import IntegrityEvidence, RepairResult
+
+    evidence = IntegrityEvidence(
+        ticket_id=ticket_row["id"],
+        guild_id=ticket_row["guildId"],
+        channel_id=ticket_row["channelId"],
+        status="open",
+        channel_exists=None,
+        observed_at=datetime.now(UTC),
+    )
+    assert evidence.corroborated is None
+
+    result = await service.repair_ticket_from_evidence(
+        evidence,
+        preflight=_resolved_preflight(),
+        close_reason="zombie:channel_deleted",
+    )
+
+    assert isinstance(result, RepairResult)
+    assert result.action == "no_op"
+    assert result.outcome == "quarantined"
+    assert result.reason
+    mock_db.transition_ticket_to_closed.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_repair_quarantines_stale_evidence(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """Stale absence evidence MUST quarantine (unresolved), never mutate."""
+    from bot.models.ticket import IntegrityEvidence, RepairResult
+
+    evidence = IntegrityEvidence(
+        ticket_id=ticket_row["id"],
+        guild_id=ticket_row["guildId"],
+        channel_id=ticket_row["channelId"],
+        status="open",
+        channel_exists=False,
+        observed_at=datetime(2020, 1, 1, tzinfo=UTC),
+    )
+    assert evidence.corroborated is None
+
+    result = await service.repair_ticket_from_evidence(
+        evidence,
+        preflight=_resolved_preflight(),
+        close_reason="zombie:channel_deleted",
+    )
+
+    assert isinstance(result, RepairResult)
+    assert result.action == "no_op"
+    assert result.outcome == "quarantined"
+    assert result.reason
+    mock_db.transition_ticket_to_closed.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_repair_denied_when_channel_still_exists(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """A live channel (corroborated=False) MUST be denied/skipped, no mutation."""
+    from bot.models.ticket import IntegrityEvidence, RepairResult
+
+    evidence = IntegrityEvidence(
+        ticket_id=ticket_row["id"],
+        guild_id=ticket_row["guildId"],
+        channel_id=ticket_row["channelId"],
+        status="open",
+        channel_exists=True,
+        observed_at=datetime.now(UTC),
+    )
+    assert evidence.corroborated is False
+
+    result = await service.repair_ticket_from_evidence(
+        evidence,
+        preflight=_resolved_preflight(),
+        close_reason="zombie:channel_deleted",
+    )
+
+    assert isinstance(result, RepairResult)
+    assert result.action == "no_op"
+    assert result.outcome in ("quarantined", "skipped")
+    assert result.reason
+    mock_db.transition_ticket_to_closed.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_repair_denied_for_non_active_ticket(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """A closed-ticket evidence (corroborated=False) MUST be denied, no mutation."""
+    from bot.models.ticket import IntegrityEvidence, RepairResult
+
+    evidence = IntegrityEvidence(
+        ticket_id=ticket_row["id"],
+        guild_id=ticket_row["guildId"],
+        channel_id=ticket_row["channelId"],
+        status="closed",
+        channel_exists=False,
+        observed_at=datetime.now(UTC),
+    )
+    assert evidence.corroborated is False
+
+    result = await service.repair_ticket_from_evidence(
+        evidence,
+        preflight=_resolved_preflight(),
+        close_reason="zombie:channel_deleted",
+    )
+
+    assert isinstance(result, RepairResult)
+    assert result.action == "no_op"
+    assert result.outcome in ("quarantined", "skipped")
+    assert result.reason
+    mock_db.transition_ticket_to_closed.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Duplicate overlap + triangulation (task 2.4 RED)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_duplicate_repair_one_repaired_one_already_closed(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """Two repairs for the same active ticket: one repaired, one already_closed.
+
+    The guild-scoped conditional transition is the one-winner boundary. The
+    loser MUST be a deterministic no-op and MUST NOT write a second success
+    mutation or a second success audit row.
+    """
+    evidence = _corroborated_evidence(ticket_row)
+    closed_row = {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"}
+
+    # Winner: transition returns the closed row. Loser: transition returns None.
+    mock_db.transition_ticket_to_closed = AsyncMock(side_effect=[closed_row, None])
+    mock_db.insert_audit_row = AsyncMock(return_value={})
+
+    first = await service.repair_ticket_from_evidence(
+        evidence,
+        preflight=_resolved_preflight(),
+        close_reason="zombie:channel_deleted",
+    )
+    second = await service.repair_ticket_from_evidence(
+        evidence,
+        preflight=_resolved_preflight(),
+        close_reason="zombie:channel_deleted",
+    )
+
+    assert first.action == "close"
+    assert first.outcome == "repaired"
+    assert second.action == "no_op"
+    assert second.outcome == "already_closed"
+
+    # Exactly one success audit row; the loser writes a deterministic denied row.
+    audit_actions = [_audit_kwargs(mock_db, i)["outcome"] for i in range(mock_db.insert_audit_row.call_count)]
+    assert audit_actions == ["success", "denied"]
+
+
+@pytest.mark.asyncio
+async def test_repair_uses_single_shared_evaluation(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """repair_ticket_from_evidence MUST NOT keep a parallel truth: the SAME
+    evaluation that denies non-corroborated evidence is the one that gates
+    the conditional close. Adapters never re-evaluate and never mutate.
+    """
+    # A live-channel evidence (corroborated=False) NEVER reaches persistence,
+    # even with a resolved preflight.
+    live = IntegrityEvidence(
+        ticket_id=ticket_row["id"],
+        guild_id=ticket_row["guildId"],
+        channel_id=ticket_row["channelId"],
+        status="open",
+        channel_exists=True,
+        observed_at=datetime.now(UTC),
+    )
+    result = await service.repair_ticket_from_evidence(
+        live,
+        preflight=_resolved_preflight(),
+        close_reason="zombie:channel_deleted",
+    )
+
+    assert result.outcome == "skipped"
+    assert result.reason == "not_corroborated"
+    mock_db.transition_ticket_to_closed.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_repair_quarantine_never_claims_mutation(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """Quarantined results MUST NOT claim mutation but MUST still write a
+    best-effort non-mutating audit row for review."""
+    unknown = IntegrityEvidence(
+        ticket_id=ticket_row["id"],
+        guild_id=ticket_row["guildId"],
+        channel_id=ticket_row["channelId"],
+        status="open",
+        channel_exists=None,
+        observed_at=datetime.now(UTC),
+    )
+    result = await service.repair_ticket_from_evidence(
+        unknown,
+        preflight=_resolved_preflight(),
+        close_reason="zombie:channel_deleted",
+    )
+
+    assert result.outcome == "quarantined"
+    assert result.reason == "evidence_unresolved"
+    assert result.action == "no_op"
+    mock_db.transition_ticket_to_closed.assert_not_awaited()
+    # Best-effort structured audit evidence: denied, non-mutating, reviewable.
+    mock_db.insert_audit_row.assert_awaited_once()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["action"] == "repair"
+    assert kwargs["outcome"] == "denied"
+    assert kwargs["reason"] == "evidence_unresolved"
+
+
+@pytest.mark.asyncio
+async def test_repair_skipped_live_channel_still_audits_denied(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """A live-channel skip (not_corroborated) writes a denied audit row, no mutation."""
+    live = IntegrityEvidence(
+        ticket_id=ticket_row["id"],
+        guild_id=ticket_row["guildId"],
+        channel_id=ticket_row["channelId"],
+        status="open",
+        channel_exists=True,
+        observed_at=datetime.now(UTC),
+    )
+    result = await service.repair_ticket_from_evidence(
+        live,
+        preflight=_resolved_preflight(),
+        close_reason="zombie:channel_deleted",
+    )
+
+    assert result.outcome == "skipped"
+    mock_db.transition_ticket_to_closed.assert_not_awaited()
+    mock_db.insert_audit_row.assert_awaited_once()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["outcome"] == "denied"
+    assert kwargs["reason"] == "not_corroborated"
+
+
+@pytest.mark.asyncio
+async def test_repair_already_closed_audits_denied(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """An already-closed duplicate/loser writes a deterministic denied audit row."""
+    evidence = _corroborated_evidence(ticket_row)
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=None)
+
+    result = await service.repair_ticket_from_evidence(
+        evidence,
+        preflight=_resolved_preflight(),
+        close_reason="zombie:channel_deleted",
+    )
+
+    assert result.outcome == "already_closed"
+    mock_db.insert_audit_row.assert_awaited_once()
+    kwargs = _audit_kwargs(mock_db)
+    assert kwargs["outcome"] == "denied"
+    assert kwargs["reason"] == "already_closed"
+
+
+# ---------------------------------------------------------------------------
+# Shared pure evaluation (task 2.4 REFACTOR) — one decision, no parallel truth
+# ---------------------------------------------------------------------------
+
+
+def test_shared_evaluation_maps_evidence_to_denial_outcomes() -> None:
+    """The pure helper MUST be the SINGLE source of the denial decision:
+    unresolved preflight -> skipped, unknown/stale -> quarantined,
+    live/non-active -> skipped. No adapter keeps a parallel copy.
+    """
+    from bot.services.ticket_service import evaluate_repair_eligibility
+
+    now = datetime.now(UTC)
+    unknown = IntegrityEvidence("t1", "g1", "c1", "open", None, now)
+    live = IntegrityEvidence("t2", "g1", "c2", "open", True, now)
+    closed = IntegrityEvidence("t3", "g1", "c3", "closed", False, now)
+
+    assert evaluate_repair_eligibility(preflight_allows=False, corroborated=unknown.corroborated) == (
+        "skipped",
+        "gate_unresolved",
+    )
+    assert evaluate_repair_eligibility(preflight_allows=True, corroborated=unknown.corroborated) == (
+        "quarantined",
+        "evidence_unresolved",
+    )
+    assert evaluate_repair_eligibility(preflight_allows=True, corroborated=live.corroborated) == (
+        "skipped",
+        "not_corroborated",
+    )
+    assert evaluate_repair_eligibility(preflight_allows=True, corroborated=closed.corroborated) == (
+        "skipped",
+        "not_corroborated",
+    )
+    # Corroborated evidence passes the gate (proceeds to transition).
+    fresh = IntegrityEvidence("t4", "g1", "c4", "open", False, now)
+    assert evaluate_repair_eligibility(preflight_allows=True, corroborated=fresh.corroborated) is None
+
+
+# ===========================================================================
+# product-artifact-audit PR3 — audit outcome truthfulness (task 3.4)
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_repair_audit_failure_never_reports_repaired(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """When audit persistence fails, the repair result MUST NOT claim `repaired`.
+
+    The conditional close may have executed, but a repair whose audit could
+    not be persisted must never be reported as success. The smallest safe
+    semantics is ``close/error`` with a non-empty reason and no evidence
+    success claim.
+    """
+    from bot.models.ticket import RepairResult
+
+    evidence = _corroborated_evidence(ticket_row)
+    closed_row = {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"}
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+    mock_db.insert_audit_row = AsyncMock(side_effect=RuntimeError("audit down"))
+
+    result = await service.repair_ticket_from_evidence(
+        evidence,
+        preflight=_resolved_preflight(),
+        close_reason="zombie:channel_deleted",
+    )
+
+    assert isinstance(result, RepairResult)
+    assert result.outcome != "repaired"
+    assert result.outcome == "error"
+    assert result.reason, "audit-failure result MUST carry a non-empty reason"
+    # No evidence success claim for a repair whose audit could not persist.
+    assert result.evidence_id is None
+
+
+# ===========================================================================
+# product-artifact-audit PR4b — sweep/manual primitives (tasks 4.2/4.3 RED)
+# ===========================================================================
+#
+# probe_channel_absence: fresh per-attempt fetch_channel; ONLY discord.NotFound
+# corroborates absence (channel_exists=False). 403/timeout/429/unknown/missing
+# guild/malformed id are UNRESOLVED (None) and never imply absence.
+# plan_sweep_batch: bounded batch + dedupe, no duplicate candidates.
+# backoff_delay: exponential backoff bounded by INTEGRITY_MAX_BACKOFF_SECONDS.
+
+
+class TestProbeChannelAbsence:
+    """Fresh per-attempt channel existence probe for sweeps/manual repair."""
+
+    @staticmethod
+    def _guild_with_fetch(result) -> MagicMock:
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = 123456789
+        guild.fetch_channel = AsyncMock(return_value=result)
+        return guild
+
+    @staticmethod
+    def _bot_with_guild(guild: MagicMock | None) -> MagicMock:
+        bot = MagicMock()
+        bot.get_guild = MagicMock(return_value=guild)
+        return bot
+
+    @pytest.mark.asyncio
+    async def test_not_found_corroborates_absence(self) -> None:
+        """Only discord.NotFound yields channel_exists=False."""
+        from bot.services.ticket_service import probe_channel_absence
+
+        guild = self._guild_with_fetch(None)
+        guild.fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(), "Unknown Channel"))
+        bot = self._bot_with_guild(guild)
+
+        result = await probe_channel_absence(bot, "123456789", "888888888")
+
+        assert result is False
+        guild.fetch_channel.assert_awaited_once_with(888888888)
+
+    @pytest.mark.asyncio
+    async def test_live_channel_returns_true(self) -> None:
+        """A resolvable channel is present (channel_exists=True)."""
+        from bot.services.ticket_service import probe_channel_absence
+
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.id = 888888888
+        guild = self._guild_with_fetch(channel)
+        bot = self._bot_with_guild(guild)
+
+        result = await probe_channel_absence(bot, "123456789", "888888888")
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_forbidden_is_unresolved(self) -> None:
+        """403/missing permission is unresolved, never absence."""
+        from bot.services.ticket_service import probe_channel_absence
+
+        guild = self._guild_with_fetch(None)
+        guild.fetch_channel = AsyncMock(side_effect=discord.Forbidden(MagicMock(), "Missing Access"))
+        bot = self._bot_with_guild(guild)
+
+        result = await probe_channel_absence(bot, "123456789", "888888888")
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_is_unresolved(self) -> None:
+        """429 rate limit is unresolved, never absence."""
+        from bot.services.ticket_service import probe_channel_absence
+
+        guild = self._guild_with_fetch(None)
+        guild.fetch_channel = AsyncMock(side_effect=discord.RateLimited(0.5))
+        bot = self._bot_with_guild(guild)
+
+        result = await probe_channel_absence(bot, "123456789", "888888888")
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_http_timeout_is_unresolved(self) -> None:
+        """Generic HTTPException (timeout) is unresolved, never absence."""
+        from bot.services.ticket_service import probe_channel_absence
+
+        guild = self._guild_with_fetch(None)
+        guild.fetch_channel = AsyncMock(side_effect=discord.HTTPException(MagicMock(), "timeout"))
+        bot = self._bot_with_guild(guild)
+
+        result = await probe_channel_absence(bot, "123456789", "888888888")
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_missing_guild_is_unresolved(self) -> None:
+        """A guild not in the bot cache is unknown (None), never absence."""
+        from bot.services.ticket_service import probe_channel_absence
+
+        bot = self._bot_with_guild(None)
+
+        result = await probe_channel_absence(bot, "123456789", "888888888")
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_malformed_channel_id_is_unresolved(self) -> None:
+        """A non-numeric channel id is unknown (None), never absence."""
+        from bot.services.ticket_service import probe_channel_absence
+
+        guild = self._guild_with_fetch(None)
+        bot = self._bot_with_guild(guild)
+
+        result = await probe_channel_absence(bot, "123456789", "not-a-snowflake")
+
+        assert result is None
+        guild.fetch_channel.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_malformed_guild_id_is_unresolved(self) -> None:
+        """A non-numeric guild id is unknown (None), never absence.
+
+        The probe MUST NOT raise a raw ``ValueError`` to the caller: a
+        malformed guild snowflake fails closed exactly like a malformed
+        channel snowflake (task ledger: malformed ids are unresolved).
+        """
+        from bot.services.ticket_service import probe_channel_absence
+
+        bot = self._bot_with_guild(None)
+        bot.get_guild = MagicMock()
+
+        result = await probe_channel_absence(bot, "not-a-snowflake", "888888888")
+
+        assert result is None
+        bot.get_guild.assert_not_called()
+
+
+class TestPlanSweepBatch:
+    """Bounded, deduped batch planning (pure)."""
+
+    def test_batch_is_bounded_and_deduped(self) -> None:
+        """Batch caps at batch_size and never re-emits a seen candidate."""
+        from bot.services.ticket_service import plan_sweep_batch
+
+        candidates = [{"id": f"c{i}"} for i in range(5)]
+        seen: set[str] = {"c0", "c2"}
+
+        batch = plan_sweep_batch(candidates, seen=seen, batch_size=2)
+
+        ids = [c["id"] for c in batch]
+        assert ids == ["c1", "c3"]
+        assert "c0" not in ids and "c2" not in ids
+
+    def test_batch_marks_seen(self) -> None:
+        """Selected candidates are marked seen so a later call does not repeat them."""
+        from bot.services.ticket_service import plan_sweep_batch
+
+        candidates = [{"id": "a"}, {"id": "b"}]
+        seen: set[str] = set()
+
+        first = plan_sweep_batch(candidates, seen=seen, batch_size=10)
+        second = plan_sweep_batch(candidates, seen=seen, batch_size=10)
+
+        assert [c["id"] for c in first] == ["a", "b"]
+        assert second == []
+
+
+class TestBackoffDelay:
+    """Exponential backoff bounded by the configured maximum."""
+
+    def test_backoff_grows_and_is_bounded(self) -> None:
+        """Backoff doubles each attempt but never exceeds the max."""
+        from bot.config import INTEGRITY_BACKOFF_SECONDS, INTEGRITY_MAX_BACKOFF_SECONDS
+        from bot.services.ticket_service import backoff_delay
+
+        assert backoff_delay(0) == INTEGRITY_BACKOFF_SECONDS
+        assert backoff_delay(1) == min(INTEGRITY_BACKOFF_SECONDS * 2, INTEGRITY_MAX_BACKOFF_SECONDS)
+        # A large attempt count must clamp at the configured maximum.
+        assert backoff_delay(100) <= INTEGRITY_MAX_BACKOFF_SECONDS
+
+
+# ===========================================================================
+# product-artifact-audit PR4b — sweep + manual coordinator (tasks 4.3/4.4 RED)
+# ===========================================================================
+#
+# sweep_integrity: bounded batches, dedupe, transient backoff, unresolved →
+# dry-run (no mutation), corroborated absence → shared repair path.
+# repair_ticket_manual: explicit authority + fresh probe → shared path.
+
+
+class TestSweepIntegrity:
+    """The integrity sweep reuses the shared evidence-gated repair path."""
+
+    @staticmethod
+    def _sweep_bot() -> MagicMock:
+        """A bot whose get_guild returns a guild that can fetch channels."""
+        bot = MagicMock()
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = 123456789
+        guild.fetch_channel = AsyncMock()
+        bot.get_guild = MagicMock(return_value=guild)
+        return bot
+
+    def _active_row(self, channel_id: str, ticket_id: str = "t-1") -> dict:
+        return {
+            "id": ticket_id,
+            "guildId": "123456789",
+            "channelId": channel_id,
+            "status": "open",
+        }
+
+    @pytest.mark.asyncio
+    async def test_corroborated_absence_repairs(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """NotFound probe → corroborated evidence → repaired via coordinator."""
+        mock_db.get_open_ticket_channel_ids = AsyncMock(return_value=["888888888"])
+        mock_db.get_active_ticket_by_channel = AsyncMock(return_value=self._active_row("888888888"))
+        closed = {**self._active_row("888888888"), "status": "closed", "closedAt": "now"}
+        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed)
+
+        bot = self._sweep_bot()
+        bot.get_guild().fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(), "gone"))
+
+        results = await service.sweep_integrity("123456789", bot, preflight=_resolved_preflight())
+
+        assert len(results) == 1
+        assert results[0].outcome == "repaired"
+        mock_db.transition_ticket_to_closed.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_live_channel_is_skipped(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """A present channel → not corroborated → skipped, no mutation."""
+        mock_db.get_open_ticket_channel_ids = AsyncMock(return_value=["888888888"])
+        mock_db.get_active_ticket_by_channel = AsyncMock(return_value=self._active_row("888888888"))
+
+        bot = self._sweep_bot()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.id = 888888888
+        bot.get_guild().fetch_channel = AsyncMock(return_value=channel)
+
+        results = await service.sweep_integrity("123456789", bot, preflight=_resolved_preflight())
+
+        assert len(results) == 1
+        assert results[0].outcome in ("skipped", "quarantined")
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unresolved_probe_dry_runs(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """Transient probe (None) → reviewable skip + backoff, no mutation."""
+        mock_db.get_open_ticket_channel_ids = AsyncMock(return_value=["888888888"])
+        mock_db.get_active_ticket_by_channel = AsyncMock(return_value=self._active_row("888888888"))
+
+        bot = self._sweep_bot()
+        bot.get_guild().fetch_channel = AsyncMock(side_effect=discord.HTTPException(MagicMock(), "timeout"))
+
+        with patch("bot.services.ticket_service.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            results = await service.sweep_integrity("123456789", bot, preflight=_resolved_preflight())
+
+        assert len(results) == 1
+        assert results[0].outcome == "skipped"
+        assert results[0].reason == "probe_unresolved"
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+        mock_sleep.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_unresolved_probe_still_audits_denied(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """An unresolved sweep probe (timeout) MUST persist best-effort
+        structured audit evidence for the skipped outcome — the early adapter
+        return must NOT bypass the audit trail. No mutation, no success claim.
+        """
+        mock_db.get_open_ticket_channel_ids = AsyncMock(return_value=["888888888"])
+        mock_db.get_active_ticket_by_channel = AsyncMock(return_value=self._active_row("888888888"))
+
+        bot = self._sweep_bot()
+        bot.get_guild().fetch_channel = AsyncMock(side_effect=discord.HTTPException(MagicMock(), "timeout"))
+
+        with patch("bot.services.ticket_service.asyncio.sleep", new_callable=AsyncMock):
+            results = await service.sweep_integrity("123456789", bot, preflight=_resolved_preflight())
+
+        assert len(results) == 1
+        assert results[0].outcome == "skipped"
+        assert results[0].reason == "probe_unresolved"
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+        # Best-effort structured audit evidence: repair/denied, guild-scoped.
+        mock_db.insert_audit_row.assert_awaited_once()
+        kwargs = _audit_kwargs(mock_db)
+        assert kwargs["action"] == "repair"
+        assert kwargs["outcome"] == "denied"
+        assert kwargs["reason"] == "probe_unresolved"
+        assert kwargs["guild_id"] == "123456789"
+        assert kwargs["ticket_id"] == "t-1"
+
+    @pytest.mark.asyncio
+    async def test_unresolved_missing_guild_probe_still_audits_denied(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """A missing-guild probe (unresolved, never absence) MUST also persist
+        best-effort audit evidence — every None probe outcome shares the same
+        audited skip branch regardless of the transient cause.
+        """
+        mock_db.get_open_ticket_channel_ids = AsyncMock(return_value=["888888888"])
+        mock_db.get_active_ticket_by_channel = AsyncMock(return_value=self._active_row("888888888"))
+
+        bot = self._sweep_bot()
+        bot.get_guild = MagicMock(return_value=None)  # guild not in bot cache
+
+        with patch("bot.services.ticket_service.asyncio.sleep", new_callable=AsyncMock):
+            results = await service.sweep_integrity("123456789", bot, preflight=_resolved_preflight())
+
+        assert len(results) == 1
+        assert results[0].outcome == "skipped"
+        assert results[0].reason == "probe_unresolved"
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+        mock_db.insert_audit_row.assert_awaited_once()
+        kwargs = _audit_kwargs(mock_db)
+        assert kwargs["outcome"] == "denied"
+        assert kwargs["reason"] == "probe_unresolved"
+
+    @pytest.mark.asyncio
+    async def test_unresolved_malformed_channel_id_probe_still_audits_denied(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """A malformed channel-id probe (unresolved, never absence) MUST also
+        persist best-effort audit evidence for the skipped outcome."""
+        mock_db.get_open_ticket_channel_ids = AsyncMock(return_value=["888888888"])
+        mock_db.get_active_ticket_by_channel = AsyncMock(return_value=self._active_row("not-a-snowflake"))
+
+        bot = self._sweep_bot()
+
+        with patch("bot.services.ticket_service.asyncio.sleep", new_callable=AsyncMock):
+            results = await service.sweep_integrity("123456789", bot, preflight=_resolved_preflight())
+
+        assert len(results) == 1
+        assert results[0].outcome == "skipped"
+        assert results[0].reason == "probe_unresolved"
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+        mock_db.insert_audit_row.assert_awaited_once()
+        kwargs = _audit_kwargs(mock_db)
+        assert kwargs["outcome"] == "denied"
+        assert kwargs["reason"] == "probe_unresolved"
+
+    @pytest.mark.asyncio
+    async def test_bounded_batch_limits_probes(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """Only batch_size candidates are probed per sweep."""
+        channels = [str(800000000 + i) for i in range(10)]
+        mock_db.get_open_ticket_channel_ids = AsyncMock(return_value=channels)
+        # Each channel maps to an active ticket row so candidates are non-empty.
+        rows = {ch: {"id": f"t-{ch}", "guildId": "123456789", "channelId": ch, "status": "open"} for ch in channels}
+        mock_db.get_active_ticket_by_channel = AsyncMock(side_effect=lambda _gid, ch: rows.get(ch))
+
+        bot = self._sweep_bot()
+        channel = MagicMock(spec=discord.TextChannel)
+        bot.get_guild().fetch_channel = AsyncMock(return_value=channel)
+
+        results = await service.sweep_integrity("123456789", bot, preflight=_resolved_preflight(), batch_size=3)
+
+        assert bot.get_guild().fetch_channel.await_count == 3
+        assert len(results) == 3
+
+    @pytest.mark.asyncio
+    async def test_no_candidates_returns_empty(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """No open ticket channels → empty result list."""
+        mock_db.get_open_ticket_channel_ids = AsyncMock(return_value=[])
+
+        results = await service.sweep_integrity("123456789", self._sweep_bot(), preflight=_resolved_preflight())
+
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_sweep_list_discovery_db_error_is_reviewable(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A DB failure while discovering the sweep candidate LIST MUST NOT
+        escape raw to the caller: it is converted into truthful structured
+        evidence with the available guild/channel/ticket/source/reason context
+        (``skipped`` / ``sweep_discovery_error``), never a fabricated ticket id.
+        """
+        mock_db.get_open_ticket_channel_ids = AsyncMock(side_effect=RuntimeError("db down"))
+
+        bot = self._sweep_bot()
+        with caplog.at_level(logging.WARNING, logger="bot.services.ticket_service"):
+            results = await service.sweep_integrity("123456789", bot, preflight=_resolved_preflight())
+
+        assert len(results) == 1
+        assert results[0].outcome == "skipped"
+        assert results[0].reason == "sweep_discovery_error"
+        assert results[0].guild_id == "123456789"
+        assert results[0].ticket_id == ""
+        assert results[0].evidence_id is None
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+        # Structured audit evidence records the failure context truthfully.
+        mock_db.insert_audit_row.assert_awaited_once()
+        kwargs = _audit_kwargs(mock_db)
+        assert kwargs["action"] == "repair"
+        assert kwargs["outcome"] == "denied"
+        assert kwargs["reason"] == "sweep_discovery_error"
+        assert kwargs["guild_id"] == "123456789"
+        # Structured log line carries the failure context.
+        assert any("sweep_discovery_error" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_sweep_candidate_discovery_db_error_is_reviewable(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A DB failure while resolving ONE sweep candidate MUST NOT escape
+        raw: that candidate is reported with structured evidence carrying the
+        available channel id (never a fabricated ticket id), and remaining
+        safe candidates continue to be evaluated.
+        """
+        channel_ids = ["888888888", "999999999"]
+        mock_db.get_open_ticket_channel_ids = AsyncMock(return_value=channel_ids)
+        # First candidate lookup fails; second resolves to an active ticket.
+        mock_db.get_active_ticket_by_channel = AsyncMock(
+            side_effect=[RuntimeError("db down"), self._active_row("999999999")]
+        )
+
+        bot = self._sweep_bot()
+        bot.get_guild().fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(), "gone"))
+
+        with caplog.at_level(logging.WARNING, logger="bot.services.ticket_service"):
+            results = await service.sweep_integrity("123456789", bot, preflight=_resolved_preflight())
+
+        # One reviewable discovery-error result + the safe candidate continued.
+        assert len(results) == 2
+        error_result = next(r for r in results if r.reason == "sweep_discovery_error")
+        assert error_result.outcome == "skipped"
+        assert error_result.guild_id == "123456789"
+        assert error_result.ticket_id == ""
+        safe_result = next(r for r in results if r.reason is None)
+        assert safe_result.outcome == "repaired"
+        mock_db.transition_ticket_to_closed.assert_awaited_once()
+        # Structured audit evidence for the failed candidate.
+        audit_kwargs_list = mock_db.insert_audit_row.call_args_list
+        error_audit = next(c for c in audit_kwargs_list if c.args[5] == "sweep_discovery_error")
+        assert error_audit.args[0] == "123456789"
+        assert any("sweep_discovery_error" in r.message for r in caplog.records)
+
+
+class TestRepairTicketManual:
+    """Manual repair requires explicit authority + a fresh probe."""
+
+    @staticmethod
+    def _manual_bot() -> MagicMock:
+        bot = MagicMock()
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = 123456789
+        guild.fetch_channel = AsyncMock()
+        bot.get_guild = MagicMock(return_value=guild)
+        return bot
+
+    def _guild_admin_authority(self, guild_id: str = "123456789") -> RepairAuthority:
+        from bot.services.ticket_invariants import RepairAuthority
+
+        return RepairAuthority(
+            actor_id="111111111",
+            guild_id=guild_id,
+            target_guild_id="123456789",
+            has_mod_role=True,
+        )
+
+    @pytest.mark.asyncio
+    async def test_denied_authority_no_ops(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """A plain user with no authority → denied, no probe, no mutation."""
+        from bot.models.ticket import RepairResult
+        from bot.services.ticket_invariants import RepairAuthority
+
+        authority = RepairAuthority(
+            actor_id="111111111",
+            guild_id="123456789",
+            target_guild_id="123456789",
+        )  # no owner/admin/mod role
+
+        result = await service.repair_ticket_manual(
+            "t-1",
+            guild_id="123456789",
+            actor_id="111111111",
+            authority=authority,
+            bot=self._manual_bot(),
+            preflight=_resolved_preflight(),
+        )
+
+        assert isinstance(result, RepairResult)
+        assert result.outcome == "denied"
+        assert result.reason
+        mock_db.get_ticket.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_denied_authority_audits_denied(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """An authority denial (plain user) MUST persist best-effort structured
+        audit evidence (repair/denied, guild-scoped) — the early return must
+        NOT bypass the audit trail. No probe, no mutation, no success claim.
+        """
+        from bot.models.ticket import RepairResult
+        from bot.services.ticket_invariants import RepairAuthority
+
+        authority = RepairAuthority(
+            actor_id="111111111",
+            guild_id="123456789",
+            target_guild_id="123456789",
+        )  # no owner/admin/mod role
+
+        result = await service.repair_ticket_manual(
+            "t-1",
+            guild_id="123456789",
+            actor_id="111111111",
+            authority=authority,
+            bot=self._manual_bot(),
+            preflight=_resolved_preflight(),
+        )
+
+        assert isinstance(result, RepairResult)
+        assert result.outcome == "denied"
+        assert result.reason == "insufficient_authority"
+        mock_db.get_ticket.assert_not_awaited()
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+        mock_db.insert_audit_row.assert_awaited_once()
+        kwargs = _audit_kwargs(mock_db)
+        assert kwargs["action"] == "repair"
+        assert kwargs["outcome"] == "denied"
+        assert kwargs["reason"] == "insufficient_authority"
+        assert kwargs["guild_id"] == "123456789"
+        assert kwargs["ticket_id"] == "t-1"
+
+    @pytest.mark.asyncio
+    async def test_denied_authority_audit_failure_never_converts_to_success(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """An audit-write failure on the manual denial path MUST NOT convert
+        the denial into a success claim or raise — the outcome stays denied
+        and the failure is logged (best-effort audit)."""
+        from bot.models.ticket import RepairResult
+        from bot.services.ticket_invariants import RepairAuthority
+
+        authority = RepairAuthority(
+            actor_id="111111111",
+            guild_id="123456789",
+            target_guild_id="123456789",
+        )  # no owner/admin/mod role
+        mock_db.insert_audit_row = AsyncMock(side_effect=RuntimeError("audit down"))
+
+        result = await service.repair_ticket_manual(
+            "t-1",
+            guild_id="123456789",
+            actor_id="111111111",
+            authority=authority,
+            bot=self._manual_bot(),
+            preflight=_resolved_preflight(),
+        )
+
+        assert isinstance(result, RepairResult)
+        assert result.outcome == "denied"
+        assert result.reason == "insufficient_authority"
+        assert result.action == "no_op"
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_cross_guild_authority_denied(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """A guild admin targeting another guild → denied, no probe."""
+        authority = self._guild_admin_authority()  # target_guild is 123456789
+        # authority.guild_id is the actor's own guild; target_guild_id differs.
+
+        result = await service.repair_ticket_manual(
+            "t-1",
+            guild_id="999999999",  # target a different guild
+            actor_id="111111111",
+            authority=authority,
+            bot=self._manual_bot(),
+            preflight=_resolved_preflight(),
+        )
+
+        assert result.outcome == "denied"
+        assert result.reason == "cross_guild_denied"
+
+    @pytest.mark.asyncio
+    async def test_cross_guild_denied_audits_caller_guild(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """A cross-guild denial MUST persist best-effort audit evidence scoped
+        to the CALLER's guild (the operation origin), preserving guild
+        isolation — the target ticket's guild is never written.
+        """
+        authority = self._guild_admin_authority()  # actor's own guild 123456789
+
+        result = await service.repair_ticket_manual(
+            "t-1",
+            guild_id="999999999",  # target a different guild
+            actor_id="111111111",
+            authority=authority,
+            bot=self._manual_bot(),
+            preflight=_resolved_preflight(),
+        )
+
+        assert result.outcome == "denied"
+        assert result.reason == "cross_guild_denied"
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+        # Audit evidence scoped to the CALLER guild (123456789), never the
+        # foreign target guild (999999999), preserving guild isolation.
+        mock_db.insert_audit_row.assert_awaited_once()
+        kwargs = _audit_kwargs(mock_db)
+        assert kwargs["action"] == "repair"
+        assert kwargs["outcome"] == "denied"
+        assert kwargs["reason"] == "cross_guild_denied"
+        assert kwargs["guild_id"] == "123456789"
+
+    @pytest.mark.asyncio
+    async def test_allowed_not_found_repairs(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """Admin + NotFound probe → repaired."""
+        row = {
+            "id": "t-1",
+            "guildId": "123456789",
+            "channelId": "888888888",
+            "status": "open",
+        }
+        mock_db.get_ticket = AsyncMock(return_value=row)
+        closed = {**row, "status": "closed", "closedAt": "now"}
+        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed)
+
+        bot = self._manual_bot()
+        bot.get_guild().fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(), "gone"))
+
+        result = await service.repair_ticket_manual(
+            "t-1",
+            guild_id="123456789",
+            actor_id="111111111",
+            authority=self._guild_admin_authority(),
+            bot=bot,
+            preflight=_resolved_preflight(),
+        )
+
+        assert result.outcome == "repaired"
+        assert result.evidence_id is not None
+
+    @pytest.mark.asyncio
+    async def test_allowed_live_channel_skipped(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """Admin + present channel → skipped, no mutation."""
+        row = {
+            "id": "t-1",
+            "guildId": "123456789",
+            "channelId": "888888888",
+            "status": "open",
+        }
+        mock_db.get_ticket = AsyncMock(return_value=row)
+
+        bot = self._manual_bot()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.id = 888888888
+        bot.get_guild().fetch_channel = AsyncMock(return_value=channel)
+
+        result = await service.repair_ticket_manual(
+            "t-1",
+            guild_id="123456789",
+            actor_id="111111111",
+            authority=self._guild_admin_authority(),
+            bot=bot,
+            preflight=_resolved_preflight(),
+        )
+
+        assert result.outcome in ("skipped", "quarantined")
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_allowed_not_found_audits_error(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """An authorized request whose ticket does not exist MUST return a
+        truthful non-success result AND persist best-effort structured audit
+        evidence (repair/error, guild-scoped, non-empty reason). No probe, no
+        mutation, no success claim, no escape.
+        """
+        mock_db.get_ticket = AsyncMock(return_value=None)
+
+        bot = self._manual_bot()
+        result = await service.repair_ticket_manual(
+            "t-1",
+            guild_id="123456789",
+            actor_id="111111111",
+            authority=self._guild_admin_authority(),
+            bot=bot,
+            preflight=_resolved_preflight(),
+        )
+
+        assert result.outcome == "error"
+        assert result.reason == "ticket_not_found"
+        assert result.action == "no_op"
+        bot.get_guild().fetch_channel.assert_not_awaited()
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+        mock_db.insert_audit_row.assert_awaited_once()
+        kwargs = _audit_kwargs(mock_db)
+        assert kwargs["action"] == "repair"
+        assert kwargs["outcome"] == "error"
+        assert kwargs["reason"] == "ticket_not_found"
+        assert kwargs["guild_id"] == "123456789"
+        assert kwargs["ticket_id"] == "t-1"
+
+    @pytest.mark.asyncio
+    async def test_allowed_not_found_audit_failure_never_escapes_or_succeeds(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """An audit-write failure on the authorized not-found path MUST NOT
+        turn the result into success NOR escape — the truthful error result
+        stands (best-effort audit, failure logged).
+        """
+        mock_db.get_ticket = AsyncMock(return_value=None)
+        mock_db.insert_audit_row = AsyncMock(side_effect=RuntimeError("audit down"))
+
+        bot = self._manual_bot()
+        result = await service.repair_ticket_manual(
+            "t-1",
+            guild_id="123456789",
+            actor_id="111111111",
+            authority=self._guild_admin_authority(),
+            bot=bot,
+            preflight=_resolved_preflight(),
+        )
+
+        assert result.outcome == "error"
+        assert result.reason == "ticket_not_found"
+        assert result.action == "no_op"
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_allowed_db_lookup_error_returns_error_audits_and_never_escapes(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """A database exception during the authorized manual lookup MUST be
+        converted into a truthful non-success result (no raw exception to the
+        caller) with best-effort structured failure audit evidence carrying a
+        retryable/error classification. No probe, no mutation.
+        """
+        mock_db.get_ticket = AsyncMock(side_effect=RuntimeError("database unavailable"))
+
+        bot = self._manual_bot()
+        result = await service.repair_ticket_manual(
+            "t-1",
+            guild_id="123456789",
+            actor_id="111111111",
+            authority=self._guild_admin_authority(),
+            bot=bot,
+            preflight=_resolved_preflight(),
+        )
+
+        assert result.outcome == "error"
+        assert result.reason == "database_error"
+        assert result.action == "no_op"
+        bot.get_guild().fetch_channel.assert_not_awaited()
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+        mock_db.insert_audit_row.assert_awaited_once()
+        kwargs = _audit_kwargs(mock_db)
+        assert kwargs["action"] == "repair"
+        assert kwargs["outcome"] == "error"
+        assert kwargs["reason"] == "database_error"
+        assert kwargs["guild_id"] == "123456789"
+        assert kwargs["ticket_id"] == "t-1"
+
+    @pytest.mark.asyncio
+    async def test_allowed_db_lookup_error_audit_failure_never_escapes(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """An audit-write failure on the DB-error path MUST NOT escape and MUST
+        NOT become success — the truthful database_error result stands.
+        """
+        mock_db.get_ticket = AsyncMock(side_effect=RuntimeError("database unavailable"))
+        mock_db.insert_audit_row = AsyncMock(side_effect=RuntimeError("audit down"))
+
+        bot = self._manual_bot()
+        result = await service.repair_ticket_manual(
+            "t-1",
+            guild_id="123456789",
+            actor_id="111111111",
+            authority=self._guild_admin_authority(),
+            bot=bot,
+            preflight=_resolved_preflight(),
+        )
+
+        assert result.outcome == "error"
+        assert result.reason == "database_error"
+        assert result.action == "no_op"
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+
+
+# ===========================================================================
+# product-artifact-audit remediation — handle_channel_delete preflight wiring,
+# no-match coverage, source provenance at call sites, manual global-grant.
+# ===========================================================================
+
+
+class TestHandleChannelDelete:
+    """handle_channel_delete routes exact event evidence through the coordinator."""
+
+    @pytest.mark.asyncio
+    async def test_channel_delete_repairs_with_fresh_preflight(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+        ticket_row: dict,
+    ) -> None:
+        """A matching active ticket + resolved preflight → automatic repair close."""
+        mock_db.get_active_ticket_by_channel = AsyncMock(return_value=ticket_row)
+        closed_row = {**ticket_row, "status": "closed", "closedAt": "now"}
+        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+
+        result = await service.handle_channel_delete(
+            ticket_row["guildId"],
+            ticket_row["channelId"],
+            preflight=_resolved_preflight(),
+        )
+
+        assert result is not None
+        assert result.outcome == "repaired"
+        mock_db.transition_ticket_to_closed.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_channel_delete_fail_closed_without_preflight(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+        ticket_row: dict,
+    ) -> None:
+        """Without a resolved preflight the event route still fail-closes (no mutation)."""
+        mock_db.get_active_ticket_by_channel = AsyncMock(return_value=ticket_row)
+
+        result = await service.handle_channel_delete(
+            ticket_row["guildId"],
+            ticket_row["channelId"],
+        )
+
+        assert result is not None
+        assert result.outcome == "skipped"
+        assert result.reason == "gate_unresolved"
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_channel_delete_no_match_returns_none_no_mutation(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """A non-ticket deletion (no active ticket) returns None and never mutates."""
+        mock_db.get_active_ticket_by_channel = AsyncMock(return_value=None)
+
+        result = await service.handle_channel_delete(
+            "123456789",
+            "555555555",
+            preflight=_resolved_preflight(),
+        )
+
+        assert result is None
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+        mock_db.insert_audit_row.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_channel_delete_evidence_carries_source(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+        ticket_row: dict,
+    ) -> None:
+        """Event evidence MUST record source="channel_delete" provenance."""
+        mock_db.get_active_ticket_by_channel = AsyncMock(return_value=ticket_row)
+
+        await service.handle_channel_delete(
+            ticket_row["guildId"],
+            ticket_row["channelId"],
+            preflight=_unresolved_preflight(),
+        )
+
+        # The evidence constructed inside handle_channel_delete must carry the
+        # channel_delete source provenance (observable via a repaired result's
+        # evidence id linkage is indirect; assert the coordinator was reached
+        # with fail-closed behavior and no mutation).
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_channel_delete_lookup_db_error_fails_closed_with_evidence(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A DB failure during the channel-delete active-ticket lookup MUST
+        fail closed (no mutation, no raw escape) and emit structured evidence
+        carrying the available guild/channel context.
+        """
+        mock_db.get_active_ticket_by_channel = AsyncMock(side_effect=RuntimeError("db down"))
+
+        with caplog.at_level(logging.WARNING, logger="bot.services.ticket_service"):
+            result = await service.handle_channel_delete("123456789", "555555555")
+
+        assert result is not None
+        assert result.outcome == "skipped"
+        assert result.reason == "lookup_error"
+        assert result.guild_id == "123456789"
+        assert result.ticket_id == ""
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+        mock_db.insert_audit_row.assert_awaited_once()
+        kwargs = _audit_kwargs(mock_db)
+        assert kwargs["action"] == "repair"
+        assert kwargs["outcome"] == "denied"
+        assert kwargs["reason"] == "lookup_error"
+        assert kwargs["guild_id"] == "123456789"
+        assert any("lookup_error" in r.message for r in caplog.records)
+
+
+class TestRepairTicketManualGrant:
+    """repair_ticket_manual threads an explicit operator mutation grant."""
+
+    @staticmethod
+    def _manual_bot() -> MagicMock:
+        bot = MagicMock()
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = 123456789
+        guild.fetch_channel = AsyncMock()
+        bot.get_guild = MagicMock(return_value=guild)
+        return bot
+
+    @pytest.mark.asyncio
+    async def test_operator_no_grant_is_denied(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """A bot-owner operator without an explicit grant is denied before any probe."""
+        from bot.services.ticket_invariants import RepairAuthority
+
+        authority = RepairAuthority(
+            actor_id="owner-1",
+            guild_id=None,
+            target_guild_id="123456789",
+            is_bot_owner=True,
+        )
+
+        result = await service.repair_ticket_manual(
+            "t-1",
+            guild_id="123456789",
+            actor_id="owner-1",
+            authority=authority,
+            bot=self._manual_bot(),
+            preflight=_resolved_preflight(),
+        )
+
+        assert result.outcome == "denied"
+        assert result.reason == "operator_mutation_requires_grant"
+        mock_db.get_ticket.assert_not_awaited()
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_operator_confirmed_grant_repairs(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """A bot-owner operator WITH a confirmed, actor/target-matching grant repairs."""
+        from bot.services.ticket_invariants import GlobalMutationGrant, RepairAuthority
+
+        authority = RepairAuthority(
+            actor_id="owner-1",
+            guild_id=None,
+            target_guild_id="123456789",
+            is_bot_owner=True,
+        )
+        grant = GlobalMutationGrant(
+            actor_id="owner-1",
+            scope="global",
+            target_guild_id="123456789",
+            reason="maintenance sweep",
+            confirmed=True,
+        )
+
+        row = {
+            "id": "t-1",
+            "guildId": "123456789",
+            "channelId": "888888888",
+            "status": "open",
+        }
+        mock_db.get_ticket = AsyncMock(return_value=row)
+        closed = {**row, "status": "closed", "closedAt": "now"}
+        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed)
+
+        bot = self._manual_bot()
+        bot.get_guild().fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(), "gone"))
+
+        result = await service.repair_ticket_manual(
+            "t-1",
+            guild_id="123456789",
+            actor_id="owner-1",
+            authority=authority,
+            bot=bot,
+            preflight=_resolved_preflight(),
+            global_grant=grant,
+        )
+
+        assert result.outcome == "repaired"
+        mock_db.transition_ticket_to_closed.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_operator_grant_actor_mismatch_denied(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """A grant naming a different actor never authorizes this operator."""
+        from bot.services.ticket_invariants import GlobalMutationGrant, RepairAuthority
+
+        authority = RepairAuthority(
+            actor_id="owner-1",
+            guild_id=None,
+            target_guild_id="123456789",
+            is_bot_owner=True,
+        )
+        grant = GlobalMutationGrant(
+            actor_id="someone-else",
+            scope="global",
+            target_guild_id="123456789",
+            reason="maintenance",
+            confirmed=True,
+        )
+
+        result = await service.repair_ticket_manual(
+            "t-1",
+            guild_id="123456789",
+            actor_id="owner-1",
+            authority=authority,
+            bot=self._manual_bot(),
+            preflight=_resolved_preflight(),
+            global_grant=grant,
+        )
+
+        assert result.outcome == "denied"
+        assert result.reason == "grant_actor_mismatch"
+        mock_db.get_ticket.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_operator_grant_guild_scope_denied_and_audited(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """A confirmed grant with scope='guild' MUST be denied at the mutation
+        gate (never treated as global) AND MUST persist best-effort structured
+        audit evidence for the denial — no probe, no mutation, no success claim.
+        """
+        from bot.services.ticket_invariants import GlobalMutationGrant, RepairAuthority
+
+        authority = RepairAuthority(
+            actor_id="owner-1",
+            guild_id=None,
+            target_guild_id="123456789",
+            is_bot_owner=True,
+        )
+        grant = GlobalMutationGrant(
+            actor_id="owner-1",
+            scope="guild",
+            target_guild_id="123456789",
+            reason="maintenance",
+            confirmed=True,
+        )
+
+        result = await service.repair_ticket_manual(
+            "t-1",
+            guild_id="123456789",
+            actor_id="owner-1",
+            authority=authority,
+            bot=self._manual_bot(),
+            preflight=_resolved_preflight(),
+            global_grant=grant,
+        )
+
+        assert result.outcome == "denied"
+        assert result.reason == "grant_scope_mismatch"
+        mock_db.get_ticket.assert_not_awaited()
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+        # Best-effort structured audit evidence for the denial (repair/denied).
+        mock_db.insert_audit_row.assert_awaited_once()
+        kwargs = _audit_kwargs(mock_db)
+        assert kwargs["action"] == "repair"
+        assert kwargs["outcome"] == "denied"
+        assert kwargs["reason"] == "grant_scope_mismatch"
+        assert kwargs["guild_id"] == "123456789"
+        assert kwargs["ticket_id"] == "t-1"

@@ -437,6 +437,91 @@ class TestOnGuildChannelDelete:
 
 
 # ---------------------------------------------------------------------------
+# product-artifact-audit PR4 — on_guild_channel_delete repair routing (task 4.1)
+# ---------------------------------------------------------------------------
+
+
+class TestChannelDeleteRepairRouting:
+    """on_guild_channel_delete routes matching active tickets to the coordinator.
+
+    The listener preserves deletion logging AND supplies guild/channel facts
+    to the shared repair path. It NEVER mutates tickets and NEVER fabricates
+    an authorizing actor (the gateway event carries no audit-log actor).
+    """
+
+    @pytest.fixture
+    def repair_bot(self, mock_logging: MagicMock) -> MagicMock:
+        """A bot with logging_service + ticket_service (coordinator delegate)."""
+        bot = MagicMock(spec=commands.Bot)
+        bot.logging_service = mock_logging
+        bot.user = MagicMock()
+        bot.user.id = 999999999
+        bot.ticket_service = MagicMock()
+        bot.ticket_service.handle_channel_delete = AsyncMock(return_value=None)
+        return bot
+
+    @pytest.fixture
+    def repair_listener(self, repair_bot: MagicMock) -> commands.Cog:
+        from bot.listeners.audit_listener import AuditListener
+
+        return AuditListener(repair_bot)
+
+    @pytest.mark.asyncio
+    async def test_channel_delete_logs_and_delegates_facts(
+        self,
+        repair_listener: commands.Cog,
+        repair_bot: MagicMock,
+        mock_logging: MagicMock,
+    ) -> None:
+        """A deleted channel is logged AND its (guild, channel) facts are routed."""
+        channel = make_mock_channel(channel_id=555555, name="ticket-0001")
+
+        await repair_listener.on_guild_channel_delete(channel)  # type: ignore[union-attr]
+
+        mock_logging.log_channel_delete.assert_awaited_once_with("123456789", channel)
+        repair_bot.ticket_service.handle_channel_delete.assert_awaited_once_with(
+            "123456789",
+            "555555",
+        )
+
+    @pytest.mark.asyncio
+    async def test_channel_delete_never_mutates_directly(
+        self,
+        repair_listener: commands.Cog,
+        repair_bot: MagicMock,
+    ) -> None:
+        """The listener holds no DB/transition access — mutation flows only
+        through the coordinator delegate."""
+        channel = make_mock_channel(channel_id=555555, name="ticket-0001")
+
+        await repair_listener.on_guild_channel_delete(channel)  # type: ignore[union-attr]
+
+        assert not hasattr(repair_listener, "db")
+        assert repair_bot.ticket_service.handle_channel_delete.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_channel_delete_without_ticket_service_logs_only(
+        self,
+        mock_logging: MagicMock,
+    ) -> None:
+        """When the ticket_service is absent, deletion still logs and never raises."""
+        bot = MagicMock(spec=commands.Bot)
+        bot.logging_service = mock_logging
+        bot.user = MagicMock()
+        bot.user.id = 999999999
+        # ticket_service intentionally unset.
+
+        from bot.listeners.audit_listener import AuditListener
+
+        listener = AuditListener(bot)
+        channel = make_mock_channel(name="general")
+
+        await listener.on_guild_channel_delete(channel)  # type: ignore[union-attr]
+
+        mock_logging.log_channel_delete.assert_awaited_once_with("123456789", channel)
+
+
+# ---------------------------------------------------------------------------
 # SentinelCog Refactor — Approval Tests
 # ---------------------------------------------------------------------------
 

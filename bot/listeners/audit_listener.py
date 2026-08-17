@@ -131,12 +131,29 @@ class AuditListener(commands.Cog):
         self,
         channel: discord.abc.GuildChannel,
     ) -> None:
-        """Log channel deletion events."""
+        """Log channel deletion and route active-ticket detection to the coordinator.
+
+        Preserves deletion logging and hands the exact (guild, channel) facts
+        to ``TicketService.handle_channel_delete`` so the shared, evidence-gated
+        repair path can detect a matching active ticket. The listener NEVER
+        mutates ticket state and NEVER fabricates an authorizing actor — the
+        gateway event carries no audit-log actor, so the coordinator treats
+        the deletion actor as informational only. A missing ticket_service is
+        tolerated (deletion logging continues, no repair is attempted).
+        """
         if channel.guild is None:
             return
 
         guild_id = str(channel.guild.id)
         await self._logging.log_channel_delete(guild_id, channel)
+
+        ticket_service = getattr(self.bot, "ticket_service", None)
+        if ticket_service is None:
+            return
+        handler = getattr(ticket_service, "handle_channel_delete", None)
+        if handler is None:
+            return
+        await handler(guild_id, str(channel.id))
 
 
 # ------------------------------------------------------------------

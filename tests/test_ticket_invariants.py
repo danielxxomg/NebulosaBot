@@ -457,3 +457,185 @@ def test_parse_ticket_ref_garbage_returns_none() -> None:
 
     assert parse_ticket_ref("not-a-ticket") is None
     assert parse_ticket_ref("ticket:hello") is None
+
+
+# ===========================================================================
+# Repair authority — one mod role; owner/Admin same-guild bypass; cross-guild
+# denied; deletion actor informational only; operator read-only diagnosis;
+# explicit targeted audited grant for global mutation (product-artifact-audit PR3)
+# ===========================================================================
+
+
+def _authority(**overrides: object) -> object:
+    """Build a :class:`RepairAuthority` with sane same-guild defaults."""
+    from bot.services.ticket_invariants import RepairAuthority
+
+    defaults: dict[str, object] = {
+        "actor_id": "actor-1",
+        "guild_id": "guildA",
+        "target_guild_id": "guildA",
+        "is_guild_owner": False,
+        "is_administrator": False,
+        "has_mod_role": False,
+        "is_bot_owner": False,
+        "deletion_actor": False,
+    }
+    defaults.update(overrides)
+    return RepairAuthority(**defaults)
+
+
+def _grant(**overrides: object) -> object:
+    """Build a :class:`GlobalMutationGrant` matching the default authority."""
+    from bot.services.ticket_invariants import GlobalMutationGrant
+
+    defaults: dict[str, object] = {
+        "actor_id": "actor-1",
+        "scope": "global",
+        "target_guild_id": "guildA",
+        "reason": "maintenance: channel delete sweep",
+        "confirmed": True,
+    }
+    defaults.update(overrides)
+    return GlobalMutationGrant(**defaults)
+
+
+def _evaluate(authority: object, grant: object | None = None) -> object:
+    from bot.services.ticket_invariants import evaluate_repair_authority
+
+    return evaluate_repair_authority(authority, global_grant=grant)
+
+
+class TestRepairAuthorityGuildScope:
+    """Verify guild-scoped authority: one mod role; owner/Admin same-guild bypass only."""
+
+    def test_mod_role_same_guild_allowed(self) -> None:
+        """The canonical configured mod role authorizes its own guild only."""
+        decision = _evaluate(_authority(has_mod_role=True))
+        assert decision.allowed is True
+        assert decision.scope == "guild"
+
+    def test_guild_owner_same_guild_bypass(self) -> None:
+        """Guild owner bypasses the mod-role check inside their own guild."""
+        decision = _evaluate(_authority(is_guild_owner=True))
+        assert decision.allowed is True
+
+    def test_administrator_same_guild_bypass(self) -> None:
+        """Discord Administrator bypasses the mod-role check inside their own guild."""
+        decision = _evaluate(_authority(is_administrator=True))
+        assert decision.allowed is True
+
+    def test_mod_role_cross_guild_denied(self) -> None:
+        """A mod of guild A targeting guild B is denied."""
+        decision = _evaluate(_authority(has_mod_role=True, target_guild_id="guildB"))
+        assert decision.allowed is False
+        assert decision.reason == "cross_guild_denied"
+
+    def test_owner_cross_guild_denied(self) -> None:
+        """A guild owner targeting another guild is denied (no silent global bypass)."""
+        decision = _evaluate(_authority(is_guild_owner=True, target_guild_id="guildB"))
+        assert decision.allowed is False
+        assert decision.reason == "cross_guild_denied"
+
+    def test_admin_cross_guild_denied(self) -> None:
+        """An administrator targeting another guild is denied."""
+        decision = _evaluate(_authority(is_administrator=True, target_guild_id="guildB"))
+        assert decision.allowed is False
+        assert decision.reason == "cross_guild_denied"
+
+    def test_plain_user_denied(self) -> None:
+        """An actor with no role, owner, admin, or operator authority is denied."""
+        decision = _evaluate(_authority())
+        assert decision.allowed is False
+        assert decision.reason == "insufficient_authority"
+
+
+class TestRepairAuthorityDeletionActor:
+    """Verify the channel-deletion actor is informational only and never authorizes."""
+
+    def test_deletion_actor_alone_denied(self) -> None:
+        """A deletion actor with no other authority is denied."""
+        decision = _evaluate(_authority(deletion_actor=True))
+        assert decision.allowed is False
+
+    def test_deletion_actor_does_not_upgrade_authority(self) -> None:
+        """Being the deletion actor adds nothing to an otherwise plain user."""
+        decision = _evaluate(_authority(deletion_actor=True, has_mod_role=False))
+        assert decision.allowed is False
+        assert decision.reason == "insufficient_authority"
+
+    def test_deletion_actor_mod_still_guild_scoped(self) -> None:
+        """A deletion actor who is also a mod is authorized only in their guild."""
+        allowed = _evaluate(_authority(deletion_actor=True, has_mod_role=True))
+        assert allowed.allowed is True
+        denied = _evaluate(_authority(deletion_actor=True, has_mod_role=True, target_guild_id="guildB"))
+        assert denied.allowed is False
+
+
+class TestRepairAuthorityOperator:
+    """Verify bot owner gets read-only diagnosis; global mutation needs an explicit grant."""
+
+    def test_operator_diagnosis_read_only_without_grant(self) -> None:
+        """A bot owner without an explicit grant is denied mutation (read-only diagnosis)."""
+        decision = _evaluate(_authority(is_bot_owner=True, guild_id=None))
+        assert decision.allowed is False
+        assert decision.reason == "operator_mutation_requires_grant"
+
+    def test_operator_with_grant_allowed(self) -> None:
+        """An explicit, targeted, confirmed, audited grant authorizes global mutation."""
+        decision = _evaluate(
+            _authority(is_bot_owner=True, guild_id=None),
+            _grant(),
+        )
+        assert decision.allowed is True
+        assert decision.scope == "global"
+        assert decision.reason  # the auditable reason is carried through
+
+    def test_grant_requires_confirmation(self) -> None:
+        """An unconfirmed grant never authorizes mutation."""
+        decision = _evaluate(
+            _authority(is_bot_owner=True, guild_id=None),
+            _grant(confirmed=False),
+        )
+        assert decision.allowed is False
+
+    def test_grant_requires_non_empty_reason(self) -> None:
+        """A grant with an empty/blank reason never authorizes mutation."""
+        decision = _evaluate(
+            _authority(is_bot_owner=True, guild_id=None),
+            _grant(reason=""),
+        )
+        assert decision.allowed is False
+
+    def test_grant_requires_matching_actor(self) -> None:
+        """A grant naming a different actor never authorizes this actor."""
+        decision = _evaluate(
+            _authority(is_bot_owner=True, guild_id=None, actor_id="actor-2"),
+            _grant(actor_id="actor-1"),
+        )
+        assert decision.allowed is False
+
+    def test_grant_requires_matching_target(self) -> None:
+        """A grant targeting a different guild never authorizes this target."""
+        decision = _evaluate(
+            _authority(is_bot_owner=True, guild_id=None, target_guild_id="guildB"),
+            _grant(target_guild_id="guildA"),
+        )
+        assert decision.allowed is False
+
+    def test_grant_requires_global_scope(self) -> None:
+        """A confirmed grant whose scope is 'guild' MUST NOT authorize global mutation.
+
+        The mutation gate is the evaluator itself: a scope="guild" grant is a
+        denial with a precise reason, never an implicit global bypass.
+        """
+        decision = _evaluate(
+            _authority(is_bot_owner=True, guild_id=None),
+            _grant(scope="guild"),
+        )
+        assert decision.allowed is False
+        assert decision.reason == "grant_scope_mismatch"
+
+    def test_grant_ignored_for_non_operator(self) -> None:
+        """A grant cannot upgrade a plain non-operator actor."""
+        decision = _evaluate(_authority(), _grant())
+        assert decision.allowed is False

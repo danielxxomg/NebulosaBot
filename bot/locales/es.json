@@ -77,7 +77,9 @@
         "channel": "Establecer el canal para mensajes de despedida.",
         "toggle": "Activar o desactivar los mensajes de despedida.",
         "message": "Establecer la plantilla del mensaje de despedida."
-      }
+      },
+      "sweep_integrity": "Verificar los canales de tickets activos y cerrar los que ya no existen.",
+      "repair_ticket": "Reparar un ticket cuyo canal fue eliminado (requiere corroboración)."
     },
     "describes": {
       "help": {
@@ -195,6 +197,9 @@
         "message": {
           "template": "Plantilla de mensaje (comodines: {user}, {server}, {mention})"
         }
+      },
+      "repair_ticket": {
+        "ticket_ref": "Referencia del ticket: '#0003', '0003', un UUID, o 'ticket:#0003'"
       }
     }
   },
@@ -552,6 +557,19 @@
       "wrong_guild_description": "Esa categoría pertenece a un servidor diferente.",
       "failed_title": "Error de Actualización",
       "failed_description": "No se pudieron actualizar las definiciones de campos. Intenta de nuevo."
+    },
+    "integrity": {
+      "server_only_title": "Solo Servidores",
+      "server_only_description": "Los comandos de integridad solo se pueden usar en un servidor.",
+      "sweep_failed_title": "Verificación Fallida",
+      "sweep_failed_description": "No se pudo ejecutar la verificación de integridad. Inténtalo de nuevo.",
+      "sweep_summary_title": "Verificación de Integridad",
+      "sweep_summary_description": "Reparados: {repaired} · Revisables (sin mutación): {reviewable}",
+      "repair_failed_title": "Reparación Fallida",
+      "repair_failed_description": "No se pudo reparar el ticket. Inténtalo de nuevo.",
+      "repair_result_title": "Resultado de Reparación",
+      "repair_result_description": "Resultado: `{outcome}`{reason}",
+      "repair_result_reason": " · Razón: `{reason}`"
     }
   },
   "ocio": {

@@ -77,7 +77,9 @@
         "channel": "Set the channel for goodbye messages.",
         "toggle": "Toggle goodbye messages on or off.",
         "message": "Set the goodbye message template."
-      }
+      },
+      "sweep_integrity": "Run an integrity sweep over active ticket channels.",
+      "repair_ticket": "Repair a ticket whose channel was deleted (requires corroboration)."
     },
     "describes": {
       "help": {
@@ -195,6 +197,9 @@
         "message": {
           "template": "Message template (placeholders: {user}, {server}, {mention})"
         }
+      },
+      "repair_ticket": {
+        "ticket_ref": "Optional ticket reference: '#0003', '0003', a UUID, or 'ticket:#0003'"
       }
     }
   },
@@ -552,6 +557,19 @@
       "wrong_guild_description": "That category belongs to a different server.",
       "failed_title": "Update Failed",
       "failed_description": "Could not update field definitions. Please try again."
+    },
+    "integrity": {
+      "server_only_title": "Server Only",
+      "server_only_description": "Integrity commands can only be used in a server.",
+      "sweep_failed_title": "Sweep Failed",
+      "sweep_failed_description": "Could not run the integrity sweep. Please try again.",
+      "sweep_summary_title": "Integrity Sweep",
+      "sweep_summary_description": "Repaired: {repaired} · Reviewable (no mutation): {reviewable}",
+      "repair_failed_title": "Repair Failed",
+      "repair_failed_description": "Could not repair the ticket. Please try again.",
+      "repair_result_title": "Repair Result",
+      "repair_result_description": "Outcome: `{outcome}`{reason}",
+      "repair_result_reason": " · Reason: `{reason}`"
     }
   },
   "ocio": {
