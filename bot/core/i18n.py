@@ -291,7 +291,7 @@ def validate_slash_localizations(
         _check_localizations(cmd)
 
 
-def _check_localizations(cmd: app_commands.Command | app_commands.Group) -> None:
+def _check_localizations(cmd: app_commands.Command[Any, Any, Any] | app_commands.Group) -> None:
     """Check and log if a command is missing description localizations.
 
     Safe for ``HybridAppCommand`` instances which do not expose a
@@ -362,6 +362,8 @@ SLASH_DESCRIPTIONS: dict[str, str] = {
     "note add": "slash.descriptions.note.add",
     "note list": "slash.descriptions.note.list",
     "note delete": "slash.descriptions.note.delete",
+    "sweep_integrity": "slash.descriptions.sweep_integrity",
+    "repair_ticket": "slash.descriptions.repair_ticket",
     # Utility
     "avatar": "slash.descriptions.avatar",
     "serverinfo": "slash.descriptions.serverinfo",
@@ -435,6 +437,7 @@ SLASH_DESCRIBES: dict[str, dict[str, str]] = {
     "transfer": {"member": "slash.describes.transfer.member"},
     "note add": {"content": "slash.describes.note.add.content"},
     "note delete": {"note_id": "slash.describes.note.delete.note_id"},
+    "repair_ticket": {"ticket_ref": "slash.describes.repair_ticket.ticket_ref"},
     # Utility
     "avatar": {"member": "slash.describes.avatar.member"},
     "userinfo": {"member": "slash.describes.userinfo.member"},

@@ -68,6 +68,8 @@ export interface GreetingConfig {
   welcomeChannelId: string | null;
   /** Channel ID for goodbye messages. */
   goodbyeChannelId: string | null;
+  /** Optional channel ID used by the welcome onboarding CTA. */
+  onboardingChannelId: string | null;
   /** Template for welcome messages. */
   welcomeMessage: string | null;
   /** Template for goodbye messages. */

@@ -227,6 +227,118 @@ class TicketDBMixin:
         response = await query.execute()
         return response.count or 0
 
+    async def get_active_ticket_by_channel(
+        self: Any,
+        guild_id: str,
+        channel_id: str,
+    ) -> dict[str, Any] | None:
+        """Fetch the active (open/claimed) ticket for a guild+channel pair.
+
+        Returns ``None`` when no active ticket maps to the given channel —
+        either the channel has no ticket or the ticket is already closed.
+        Used by the authoritative ``on_guild_channel_delete`` event and
+        evidence-gated sweeps to detect zombie tickets.
+        """
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        logger.debug("DB get_active_ticket_by_channel(guild=%s, ch=%s)", guild_id, channel_id)
+        response = (
+            await self._client.table("ticket")
+            .select("*")
+            .eq("guildId", guild_id)
+            .eq("channelId", channel_id)
+            .in_("status", ["open", "claimed"])
+            .execute()
+        )
+        rows = _unwrap(response)
+        return rows[0] if rows else None
+
+    async def transition_ticket_to_closed(
+        self: Any,
+        guild_id: str,
+        ticket_id: str,
+        *,
+        expected_statuses: tuple[str, ...] = ("open", "claimed"),
+        close_reason: str | None = None,
+        transcript_url: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Conditionally close a ticket whose status is in *expected_statuses*.
+
+        The transition is scoped by BOTH ``guild_id`` and ``ticket_id`` on the
+        SELECT and the UPDATE, so a ticket in another guild can never be
+        mutated even when its UUID is known. Returns the closed row on
+        success, or ``None`` when the ticket is not in an expected status
+        (already closed, nonexistent, other guild, or wrong status).
+
+        The DB-level ``in_`` filter eliminates read-then-write races: two
+        concurrent callers both targeting ``("open", "claimed")`` produce
+        exactly one close mutation and one deterministic ``already_closed``
+        (``None`` return). Because both the SELECT and the UPDATE carry the
+        same status predicate, a status change between the two queries makes
+        the UPDATE match 0 rows and the method returns ``None``.
+
+        When *close_reason* is provided it is persisted on the row. When
+        ``None``, the ``closeReason`` column is NOT included in the update
+        so an existing value is preserved. When *transcript_url* is provided
+        it is persisted as ``transcriptUrl``.
+
+        Backwards compatibility: callers that already know the ticket's
+        guild may pass ``ticket_id`` positionally with an explicit
+        ``guild_id`` keyword (``transition_ticket_to_closed("t1",
+        guild_id="g1")``) so the ``(ticket_id, ...)`` form keeps working.
+        """
+        if self._client is None:
+            raise RuntimeError("Database.connect() must be called first")
+
+        logger.debug(
+            "DB transition_ticket_to_closed(guild=%s, %s, expected=%s, reason=%s)",
+            guild_id,
+            ticket_id,
+            expected_statuses,
+            close_reason,
+        )
+        # Step 1: fetch the ticket only if it belongs to the guild AND
+        # matches expected_statuses.
+        response = (
+            await self._client.table("ticket")
+            .select("*")
+            .eq("guildId", guild_id)
+            .eq("id", ticket_id)
+            .in_("status", list(expected_statuses))
+            .execute()
+        )
+        rows = _unwrap(response)
+        if not rows:
+            return None
+
+        # Step 2: update to closed, guarded by the same guild + status
+        # predicates so a race or cross-guild probe mutates 0 rows.
+        now = datetime.now(UTC).isoformat()
+        update_data: dict[str, Any] = {
+            "status": "closed",
+            "closedAt": now,
+        }
+        if close_reason is not None:
+            update_data["closeReason"] = close_reason
+        if transcript_url is not None:
+            update_data["transcriptUrl"] = transcript_url
+
+        update_response = (
+            await self._client.table("ticket")
+            .update(update_data)
+            .eq("guildId", guild_id)
+            .eq("id", ticket_id)
+            .in_("status", list(expected_statuses))
+            .execute()
+        )
+        updated_rows = _unwrap(update_response)
+        if not updated_rows:
+            return None
+        if self._on_write is not None:
+            await self._on_write("ticket", ticket_id)
+        return updated_rows[0]
+
     async def update_ticket_last_activity(self: Any, guild_id: str, channel_id: str, timestamp: str) -> None:
         """Set ``lastActivity`` for the ticket with the given channel ID in a guild.
 

@@ -107,6 +107,10 @@ export function buildMockServiceClient(overrides: {
     then: vi.fn(),
   };
 
+  const greetingUpsert = vi.fn().mockReturnValue({
+    eq: vi.fn().mockReturnValue(upsertEqChainGreeting),
+  });
+
   Object.defineProperty(upsertEqChainGreeting, "then", {
     value: (resolve: (v: unknown) => void) =>
       resolve(overrides.greetingUpsertError ? { error: overrides.greetingUpsertError } : { error: null }),
@@ -186,9 +190,7 @@ export function buildMockServiceClient(overrides: {
       }
       if (table === "greeting_config") {
         return {
-          upsert: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue(upsertEqChainGreeting),
-          }),
+          upsert: greetingUpsert,
         };
       }
       if (table === "ticket") {
@@ -233,6 +235,9 @@ export function buildMockServiceClient(overrides: {
       eq: ticketAuditEq,
       order: ticketAuditOrder,
       range: ticketAuditRange,
+    },
+    greeting: {
+      upsert: greetingUpsert,
     },
   };
 }

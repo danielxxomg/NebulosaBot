@@ -11,9 +11,11 @@ Covers the ``ticket-model`` spec scenarios for the tickets-subsidiados change:
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from bot.models.ticket import Ticket
+import pytest
+
+from bot.models.ticket import IntegrityEvidence, RepairResult, Ticket
 
 # ---------------------------------------------------------------------------
 # Shared row builder — a valid camelCase Supabase ticket row
@@ -566,3 +568,345 @@ def test_ticket_note_round_trip() -> None:
     rebuilt = TicketNote.from_db_row(original.to_db_dict())
 
     assert rebuilt == original
+
+
+# ==========================================================================
+# IntegrityEvidence and RepairResult contracts
+# ==========================================================================
+
+
+def test_integrity_evidence_derives_corrobated_zombie_from_active_missing_channel() -> None:
+    """Active tickets with a completed missing-channel check are corroborated."""
+    evidence = IntegrityEvidence.from_db_row(
+        {
+            "ticketId": "t1",
+            "guildId": "g1",
+            "channelId": "c1",
+            "status": "open",
+        },
+        channel_exists=False,
+    )
+
+    now = datetime.now(UTC)
+    evidence = IntegrityEvidence.from_db_row(
+        {
+            "ticketId": "t1",
+            "guildId": "g1",
+            "channelId": "c1",
+            "status": "open",
+            "observedAt": now.isoformat(),
+        },
+        channel_exists=False,
+    )
+
+    assert evidence == IntegrityEvidence(
+        ticket_id="t1",
+        guild_id="g1",
+        channel_id="c1",
+        status="open",
+        channel_exists=False,
+        observed_at=now,
+        evidence_id=evidence.evidence_id,
+    )
+    assert evidence.corroborated is True
+
+
+def test_integrity_evidence_does_not_corrobate_live_or_closed_ticket() -> None:
+    """A live channel and a closed ticket are both safe no-op evidence."""
+    live = IntegrityEvidence.from_db_row(
+        {"ticketId": "t2", "guildId": "g1", "channelId": "c2", "status": "open"},
+        channel_exists=True,
+    )
+    closed = IntegrityEvidence.from_db_row(
+        {"ticketId": "t3", "guildId": "g1", "channelId": "c3", "status": "closed"},
+        channel_exists=False,
+    )
+
+    assert live.corroborated is False
+    assert closed.corroborated is False  # closed ticket never corroborates
+
+
+def test_integrity_evidence_serializes_camelcase_without_mutating_input() -> None:
+    """Evidence serialization preserves identifiers and does not alter the row."""
+    row = {"ticketId": "t4", "guildId": "g2", "channelId": None, "status": "claimed"}
+    original = row.copy()
+
+    evidence = IntegrityEvidence.from_db_row(row, channel_exists=False)
+
+    assert evidence.to_db_dict() == {
+        "ticketId": "t4",
+        "guildId": "g2",
+        "channelId": None,
+        "status": "claimed",
+        "channelExists": False,
+        "observedAt": evidence.observed_at.isoformat(),
+        "evidenceId": evidence.evidence_id,
+        "source": None,
+        "corroborated": True,
+    }
+    assert row == original
+
+
+def test_repair_result_accepts_each_deterministic_contract_outcome() -> None:
+    """Repair results expose only the documented action/outcome combinations."""
+    timestamp = datetime(2026, 7, 17, 12, 0, tzinfo=UTC)
+    results = (
+        RepairResult("t1", "g1", "close", "repaired", None, "e1", timestamp),
+        RepairResult("t1", "g1", "no_op", "already_closed", None, None, timestamp),
+        RepairResult("t2", "g1", "no_op", "skipped", "channel_exists", None, timestamp),
+        RepairResult("t3", "g1", "no_op", "error", "HTTPException", None, timestamp),
+    )
+
+    assert [result.outcome for result in results] == ["repaired", "already_closed", "skipped", "error"]
+    assert results[0].evidence_id == "e1"
+    assert results[1].action == "no_op"
+
+
+def test_repair_result_round_trips_camelcase_fields() -> None:
+    """Repair results serialize and deserialize without losing audit data."""
+    result = RepairResult("t1", "g1", "close", "repaired", "done", "e1", datetime(2026, 7, 17, tzinfo=UTC))
+
+    assert RepairResult.from_db_row(result.to_db_dict()) == result
+
+
+def test_repair_result_quarantined_requires_non_empty_reason() -> None:
+    """A quarantined result MUST carry a non-empty review reason."""
+    timestamp = datetime(2026, 7, 17, 12, 0, tzinfo=UTC)
+    with pytest.raises(ValueError, match="reason"):
+        RepairResult("t1", "g1", "no_op", "quarantined", None, None, timestamp)
+    with pytest.raises(ValueError, match="reason"):
+        RepairResult("t1", "g1", "no_op", "quarantined", "   ", None, timestamp)
+
+
+def test_repair_result_error_requires_non_empty_reason() -> None:
+    """An error result MUST carry a non-empty reason (never a silent failure)."""
+    timestamp = datetime(2026, 7, 17, 12, 0, tzinfo=UTC)
+    with pytest.raises(ValueError, match="reason"):
+        RepairResult("t1", "g1", "no_op", "error", None, None, timestamp)
+
+
+def test_repair_result_close_error_is_valid_combination() -> None:
+    """A transition that executed but whose audit could not persist MUST be
+    representable as ``close/error`` (mutation happened, success NOT claimed)."""
+    timestamp = datetime(2026, 7, 17, 12, 0, tzinfo=UTC)
+    result = RepairResult("t1", "g1", "close", "error", "audit_persistence_failed", None, timestamp)
+    assert result.action == "close"
+    assert result.outcome == "error"
+    assert result.evidence_id is None
+
+
+# ==========================================================================
+# IntegrityEvidence tri-state + freshness (product-artifact-audit PR1)
+# ==========================================================================
+
+
+def test_integrity_evidence_channel_exists_none_is_unresolved_not_false() -> None:
+    """channel_exists=None MUST yield corroborated=None (tri-state), never False."""
+    evidence = IntegrityEvidence.from_db_row(
+        {"ticketId": "t-unk", "guildId": "g1", "channelId": "c1", "status": "open"},
+        channel_exists=None,
+    )
+
+    assert evidence.channel_exists is None
+    assert evidence.corroborated is None
+    # Serialization preserves the tri-state without coercion.
+    assert evidence.to_db_dict()["channelExists"] is None
+
+
+def test_integrity_evidence_corroborated_requires_fresh_active_absence() -> None:
+    """corroborated is True only for an active ticket, False channel, fresh window."""
+    fresh = datetime.now(UTC)
+    evidence = IntegrityEvidence(
+        ticket_id="t1",
+        guild_id="g1",
+        channel_id="c1",
+        status="open",
+        channel_exists=False,
+        observed_at=fresh,
+    )
+
+    assert evidence.corroborated is True
+
+
+def test_integrity_evidence_stale_absence_is_unresolved() -> None:
+    """A stale channel-absent observation MUST NOT corroborate (fail closed)."""
+    stale = datetime(2020, 1, 1, tzinfo=UTC)
+    evidence = IntegrityEvidence(
+        ticket_id="t1",
+        guild_id="g1",
+        channel_id="c1",
+        status="open",
+        channel_exists=False,
+        observed_at=stale,
+    )
+
+    assert evidence.corroborated is None
+
+
+def test_integrity_evidence_evidence_id_round_trips() -> None:
+    """A stable evidence_id MUST survive the camelCase round-trip."""
+    evidence = IntegrityEvidence(
+        ticket_id="t1",
+        guild_id="g1",
+        channel_id="c1",
+        status="open",
+        channel_exists=False,
+        observed_at=datetime.now(UTC),
+    )
+
+    rebuilt = IntegrityEvidence.from_db_row(evidence.to_db_dict())
+
+    assert rebuilt.evidence_id == evidence.evidence_id
+    assert evidence.evidence_id  # non-empty
+
+
+def test_integrity_evidence_future_dated_observation_fails_closed() -> None:
+    """A future-dated observation MUST NOT corroborate (fail closed to unresolved)."""
+    future = datetime.now(UTC) + timedelta(days=2)
+    evidence = IntegrityEvidence(
+        ticket_id="t1",
+        guild_id="g1",
+        channel_id="c1",
+        status="open",
+        channel_exists=False,
+        observed_at=future,
+    )
+
+    assert evidence.corroborated is None
+
+
+def test_integrity_evidence_future_dated_margin_rejected() -> None:
+    """Even a barely-future observation (1 minute) MUST fail closed."""
+    future = datetime.now(UTC) + timedelta(minutes=1)
+    evidence = IntegrityEvidence(
+        ticket_id="t1",
+        guild_id="g1",
+        channel_id="c1",
+        status="open",
+        channel_exists=False,
+        observed_at=future,
+    )
+
+    assert evidence.corroborated is None
+
+
+def test_integrity_evidence_has_source_provenance() -> None:
+    """IntegrityEvidence MUST carry an immutable ``source`` provenance field."""
+    evidence = IntegrityEvidence(
+        ticket_id="t1",
+        guild_id="g1",
+        channel_id="c1",
+        status="open",
+        channel_exists=False,
+        observed_at=datetime.now(UTC),
+        source="channel_delete",
+    )
+
+    assert evidence.source == "channel_delete"
+
+
+def test_integrity_evidence_source_serializes_camelcase() -> None:
+    """The source field MUST serialize to ``source`` in to_db_dict."""
+    evidence = IntegrityEvidence(
+        ticket_id="t1",
+        guild_id="g1",
+        channel_id="c1",
+        status="open",
+        channel_exists=False,
+        observed_at=datetime.now(UTC),
+        source="sweep",
+    )
+
+    assert evidence.to_db_dict()["source"] == "sweep"
+
+
+def test_integrity_evidence_source_from_db_row() -> None:
+    """from_db_row MUST map the ``source`` key back to ``source``."""
+    evidence = IntegrityEvidence.from_db_row(
+        {
+            "ticketId": "t1",
+            "guildId": "g1",
+            "channelId": "c1",
+            "status": "open",
+            "source": "manual",
+        },
+        channel_exists=False,
+    )
+
+    assert evidence.source == "manual"
+
+
+def test_integrity_evidence_source_defaults_none() -> None:
+    """When no source is supplied, it defaults to None without breaking corroboration."""
+    evidence = IntegrityEvidence(
+        ticket_id="t1",
+        guild_id="g1",
+        channel_id="c1",
+        status="open",
+        channel_exists=False,
+        observed_at=datetime.now(UTC),
+    )
+
+    assert evidence.source is None
+    assert evidence.corroborated is True
+
+
+# ==========================================================================
+# CloseResult contract (product-artifact-audit PR1 — ported from reconciliation)
+# ==========================================================================
+
+
+def test_close_result_success_contract() -> None:
+    """A successful close result carries reason, transcript URL, and evidence."""
+    from bot.models.ticket import CloseResult
+
+    result = CloseResult(
+        ticket_id="t1",
+        outcome="success",
+        close_reason="manual",
+        transcript_url="https://transcripts.example/t1",
+        evidence_id=None,
+    )
+
+    assert result.outcome == "success"
+    assert result.close_reason == "manual"
+    assert result.transcript_url == "https://transcripts.example/t1"
+    assert result.evidence_id is None
+
+
+def test_close_result_denied_and_error_are_distinct() -> None:
+    """Denied and error outcomes MUST be distinguishable from success."""
+    from bot.models.ticket import CloseResult
+
+    denied = CloseResult("t2", "denied", "already_closed", None, None)
+    errored = CloseResult("t3", "error", "HTTPException", None, None)
+
+    assert denied.outcome == "denied"
+    assert errored.outcome == "error"
+    assert denied.outcome != "success"
+    assert errored.outcome != "success"
+    assert denied.close_reason == "already_closed"
+    assert errored.close_reason == "HTTPException"
+
+
+def test_close_result_is_immutable_and_serializable() -> None:
+    """CloseResult MUST be frozen and round-trip its fields."""
+    from dataclasses import FrozenInstanceError
+
+    import pytest
+
+    from bot.models.ticket import CloseResult
+
+    result = CloseResult(
+        ticket_id="t1",
+        outcome="success",
+        close_reason="zombie:repair",
+        transcript_url=None,
+        evidence_id="e1",
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        result.outcome = "denied"  # type: ignore[misc]
+
+    assert result.evidence_id == "e1"
+    assert result.ticket_id == "t1"

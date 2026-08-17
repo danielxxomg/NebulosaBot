@@ -12,8 +12,10 @@ Strict TDD: RED phase — tests written BEFORE the implementation exists.
 from __future__ import annotations
 
 import io
+from unittest.mock import patch
 
 import pytest
+from PIL import Image
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -373,3 +375,118 @@ class TestGenerateGreetingCard:
             card_type="unknown_value",
         )
         assert _is_valid_png(buf.getvalue())
+
+    def test_supplied_localized_strings_are_rendered(self) -> None:
+        """Renderer must use localized title and member-count text from its caller."""
+        with patch("bot.services.image_service.ImageDraw.ImageDraw.text", autospec=True) as draw_text:
+            self.service.generate_greeting_card(
+                username="Usuario",
+                avatar_url=None,
+                guild_name="Servidor",
+                member_count=7,
+                greeting_title="¡Bienvenido al servidor!",
+                member_count_text="Miembro #7",
+            )
+
+        rendered_text = [call.args[2] for call in draw_text.call_args_list]
+        assert "¡Bienvenido al servidor!\nUsuario!" in rendered_text
+        assert "Miembro #7" in rendered_text
+
+    def test_omitted_localized_strings_preserve_default_rendering(self) -> None:
+        """Existing callers retain the current English rendering when strings are omitted."""
+        with patch("bot.services.image_service.ImageDraw.ImageDraw.text", autospec=True) as draw_text:
+            self.service.generate_greeting_card(
+                username="User",
+                avatar_url=None,
+                guild_name="Guild",
+                member_count=7,
+            )
+
+        rendered_text = [call.args[2] for call in draw_text.call_args_list]
+        assert "Welcome,\nUser!" in rendered_text
+        assert "Member #7" in rendered_text
+
+    def test_greeting_card_renders_guild_identity_and_premium_hierarchy(self) -> None:
+        """Guild identity assets and text must be included in the banner."""
+        member_avatar = Image.new("RGBA", (32, 32), (40, 180, 220, 255))
+        guild_icon = Image.new("RGBA", (32, 32), (230, 150, 40, 255))
+
+        def fetch_asset(url: str | None) -> Image.Image | None:
+            return guild_icon if url == "guild-icon" else member_avatar
+
+        with patch("bot.services.image_service.ImageService._fetch_avatar", side_effect=fetch_asset) as fetch:
+            buffer = self.service.generate_greeting_card(
+                username="Usuario",
+                avatar_url="member-avatar",
+                guild_name="Servidor Premium",
+                member_count=7,
+                guild_icon_url="guild-icon",
+                greeting_title="¡Bienvenido!",
+                member_count_text="Miembro #7",
+            )
+
+        assert _is_valid_png(buffer.getvalue())
+        assert [call.args[0] for call in fetch.call_args_list] == ["guild-icon", "member-avatar"]
+
+        with patch("bot.services.image_service.ImageDraw.ImageDraw.text", autospec=True) as draw_text:
+            self.service.generate_greeting_card(
+                username="Usuario",
+                avatar_url=None,
+                guild_name="Servidor Premium",
+                member_count=7,
+                guild_icon_url=None,
+                greeting_title="¡Bienvenido!",
+                member_count_text="Miembro #7",
+            )
+        rendered_text = [call.args[2] for call in draw_text.call_args_list]
+        assert "Servidor Premium" in rendered_text
+        assert "¡Bienvenido!\nUsuario!" in rendered_text
+        assert "Miembro #7" in rendered_text
+
+    def test_missing_assets_use_deterministic_placeholders(self) -> None:
+        """Missing guild/member assets must render the same visible fallback."""
+        with patch("bot.services.image_service.ImageService._fetch_avatar", return_value=None):
+            first = self.service.generate_greeting_card(
+                username="Fallback",
+                avatar_url=None,
+                guild_name="No Icon Guild",
+                member_count=1,
+                guild_icon_url=None,
+                greeting_title="Welcome",
+                member_count_text="Member #1",
+            )
+            second = self.service.generate_greeting_card(
+                username="Fallback",
+                avatar_url=None,
+                guild_name="No Icon Guild",
+                member_count=1,
+                guild_icon_url=None,
+                greeting_title="Welcome",
+                member_count_text="Member #1",
+            )
+
+        assert first.getvalue() == second.getvalue()
+        assert _is_valid_png(first.getvalue())
+        rendered = Image.open(first)
+        assert rendered.getpixel((124, 141)) != rendered.getpixel((500, 141))
+
+    def test_avatar_fetch_failure_keeps_localized_copy(self) -> None:
+        """Avatar download failures must not remove localized card content."""
+        with patch(
+            "bot.services.image_service.ImageService._fetch_avatar",
+            side_effect=RuntimeError("network"),
+        ):
+            with patch("bot.services.image_service.ImageDraw.ImageDraw.text", autospec=True) as draw_text:
+                buffer = self.service.generate_greeting_card(
+                    username="Sin Avatar",
+                    avatar_url="broken-avatar",
+                    guild_name="Servidor",
+                    member_count=9,
+                    greeting_title="¡Bienvenido!",
+                    member_count_text="Miembro #9",
+                )
+
+        assert _is_valid_png(buffer.getvalue())
+        rendered_text = [call.args[2] for call in draw_text.call_args_list]
+        assert "¡Bienvenido!\nSin Avatar!" in rendered_text
+        assert "Miembro #9" in rendered_text
