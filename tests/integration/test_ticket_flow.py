@@ -9,6 +9,7 @@ TDD cycle: RED → GREEN — tests specify expected behavior of existing code.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -483,3 +484,320 @@ class TestCustomFieldsFlow:
         # Should not crash and embed should have basic fields.
         assert embed.title is not None
         assert embed.color is not None
+
+
+# ---------------------------------------------------------------------------
+# product-artifact-audit PR4b-b — end-to-end integrity repair flow (task 5.3)
+# ---------------------------------------------------------------------------
+
+
+class TestIntegrityRepairFlow:
+    """End-to-end evidence-gated repair across entry points (disabled by default)."""
+
+    @staticmethod
+    def _service_with(db: AsyncMock, cache: Any = None) -> Any:
+        from bot.core.cache import TTLCache
+        from bot.services.ticket_service import TicketService
+
+        return TicketService(db=db, cache=cache or TTLCache())
+
+    async def test_delete_event_to_evidence_to_repair_to_close(
+        self,
+        mock_db: AsyncMock,
+    ) -> None:
+        """Channel-delete event -> single-use evidence -> repair -> close -> audit."""
+        import discord
+
+        from bot.listeners.audit_listener import AuditListener
+
+        service = self._service_with(mock_db)
+        row = _make_ticket_row(ticket_number=1, status="open")
+        mock_db.get_active_ticket_by_channel = AsyncMock(return_value=row)
+        closed_row = {**row, "status": "closed", "closedAt": "2026-01-15T10:00:00+00:00"}
+        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+        mock_db.insert_audit_row = AsyncMock(return_value={})
+
+        bot = MagicMock()
+        bot.ticket_service = service
+        bot.logging_service = MagicMock()
+        bot.logging_service.log_channel_delete = AsyncMock()
+        bot.user = MagicMock()
+        bot.user.id = 999999999
+
+        listener = AuditListener(bot)
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.id = 444444444
+        channel.guild = MagicMock()
+        channel.guild.id = 123456789
+
+        await listener.on_guild_channel_delete(channel)
+
+        # The event routed the exact (guild, channel) facts to the coordinator,
+        # which performed the conditional close (preflight=None fail-closes, so
+        # no mutation is claimed here — the transition is NOT reached).
+        # The listener must have delegated to the shared path.
+        mock_db.get_active_ticket_by_channel.assert_awaited_once_with("123456789", "444444444")
+        # Deletion logging is preserved.
+        bot.logging_service.log_channel_delete.assert_awaited_once()
+
+    async def test_manual_repair_with_authority_and_fresh_probe(
+        self,
+        mock_db: AsyncMock,
+    ) -> None:
+        """Manual repair: authority -> fresh probe -> shared evidence path."""
+        import discord
+
+        from bot.services.ticket_invariants import RepairAuthority
+
+        service = self._service_with(mock_db)
+        row = _make_ticket_row(ticket_number=1, status="open")
+        mock_db.get_ticket = AsyncMock(return_value=row)
+        closed_row = {**row, "status": "closed", "closedAt": "2026-01-15T10:00:00+00:00"}
+        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+        mock_db.insert_audit_row = AsyncMock(return_value={})
+
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = 123456789
+        guild.fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(), "gone"))
+        bot = MagicMock()
+        bot.get_guild = MagicMock(return_value=guild)
+
+        authority = RepairAuthority(
+            actor_id="111111111",
+            guild_id="123456789",
+            target_guild_id="123456789",
+            has_mod_role=True,
+        )
+
+        # preflight=None -> fail-closed; the probe must still be a FRESH fetch.
+        result = await service.repair_ticket_manual(
+            row["id"],
+            guild_id="123456789",
+            actor_id="111111111",
+            authority=authority,
+            bot=bot,
+        )
+
+        assert result.outcome in ("skipped", "quarantined", "denied")
+        # No mutation reached without a resolved preflight.
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+
+    async def test_cross_guild_manual_repair_is_denied(
+        self,
+        mock_db: AsyncMock,
+    ) -> None:
+        """A cross-guild manual repair is denied before any probe or mutation."""
+        from bot.services.ticket_invariants import RepairAuthority
+
+        service = self._service_with(mock_db)
+        authority = RepairAuthority(
+            actor_id="111111111",
+            guild_id="123456789",
+            target_guild_id="123456789",
+            has_mod_role=True,
+        )
+
+        result = await service.repair_ticket_manual(
+            "t-1",
+            guild_id="999999999",  # target a different guild
+            actor_id="111111111",
+            authority=authority,
+            bot=MagicMock(),
+        )
+
+        assert result.outcome == "denied"
+        assert result.reason == "cross_guild_denied"
+        mock_db.get_ticket.assert_not_awaited()
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+
+    async def test_full_chain_repairs_closes_and_audits_with_resolved_preflight(
+        self,
+        mock_db: AsyncMock,
+    ) -> None:
+        """Resolved preflight + corroborated absence → close + audit across the shared path."""
+
+        from bot.models.ticket import IntegrityEvidence
+        from bot.services.integrity_report import evaluate_live_preflight
+
+        service = self._service_with(mock_db)
+        row = _make_ticket_row(ticket_number=1, status="open")
+        closed_row = {**row, "status": "closed", "closedAt": "2026-01-15T10:00:00+00:00"}
+        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+        mock_db.insert_audit_row = AsyncMock(return_value={})
+
+        preflight = evaluate_live_preflight(
+            project_status="ACTIVE_HEALTHY",
+            migration_015_applied=True,
+            close_reason_nullable=True,
+            required_indexes_present=True,
+            realtime_publication_covers=["guild", "greeting_config", "ticket", "ticket_note"],
+            active_rows_channel_id_non_null=3,
+            observed_at=datetime.now(UTC).isoformat(),
+        )
+        evidence = IntegrityEvidence(
+            ticket_id=row["id"],
+            guild_id=row["guildId"],
+            channel_id=row["channelId"],
+            status="open",
+            channel_exists=False,
+        )
+        assert evidence.corroborated is True
+
+        result = await service.repair_ticket_from_evidence(
+            evidence,
+            preflight=preflight,
+            close_reason="zombie:channel_deleted",
+        )
+
+        assert result.outcome == "repaired"
+        assert result.evidence_id == evidence.evidence_id
+        mock_db.transition_ticket_to_closed.assert_awaited_once_with(
+            "123456789",
+            row["id"],
+            expected_statuses=("open", "claimed"),
+            close_reason="zombie:channel_deleted",
+        )
+        mock_db.insert_audit_row.assert_awaited_once()
+
+    async def test_operator_mutation_is_explicit_grant_vs_no_grant(
+        self,
+        mock_db: AsyncMock,
+    ) -> None:
+        """End-to-end: an operator is read-only without a grant, mutating with a grant."""
+        import discord
+
+        from bot.services.integrity_report import evaluate_live_preflight
+        from bot.services.ticket_invariants import GlobalMutationGrant, RepairAuthority
+
+        service = self._service_with(mock_db)
+        row = _make_ticket_row(ticket_number=1, status="open")
+        closed_row = {**row, "status": "closed", "closedAt": "2026-01-15T10:00:00+00:00"}
+        mock_db.get_ticket = AsyncMock(return_value=row)
+        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+        mock_db.insert_audit_row = AsyncMock(return_value={})
+
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = 123456789
+        guild.fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(), "gone"))
+        bot = MagicMock()
+        bot.get_guild = MagicMock(return_value=guild)
+
+        operator = RepairAuthority(
+            actor_id="owner-1",
+            guild_id=None,
+            target_guild_id="123456789",
+            is_bot_owner=True,
+        )
+
+        # No grant: read-only diagnosis, mutation denied.
+        no_grant = await service.repair_ticket_manual(
+            row["id"],
+            guild_id="123456789",
+            actor_id="owner-1",
+            authority=operator,
+            bot=bot,
+            preflight=evaluate_live_preflight(
+                project_status="ACTIVE_HEALTHY",
+                migration_015_applied=True,
+                close_reason_nullable=True,
+                required_indexes_present=True,
+                realtime_publication_covers=["guild", "greeting_config", "ticket", "ticket_note"],
+                active_rows_channel_id_non_null=3,
+                observed_at=datetime.now(UTC).isoformat(),
+            ),
+        )
+        assert no_grant.outcome == "denied"
+        assert no_grant.reason == "operator_mutation_requires_grant"
+        assert mock_db.transition_ticket_to_closed.await_count == 0
+
+        # Explicit grant: mutation proceeds through the shared path.
+        grant = GlobalMutationGrant(
+            actor_id="owner-1",
+            scope="global",
+            target_guild_id="123456789",
+            reason="maintenance: channel delete sweep",
+            confirmed=True,
+        )
+        with_grant = await service.repair_ticket_manual(
+            row["id"],
+            guild_id="123456789",
+            actor_id="owner-1",
+            authority=operator,
+            bot=bot,
+            preflight=evaluate_live_preflight(
+                project_status="ACTIVE_HEALTHY",
+                migration_015_applied=True,
+                close_reason_nullable=True,
+                required_indexes_present=True,
+                realtime_publication_covers=["guild", "greeting_config", "ticket", "ticket_note"],
+                active_rows_channel_id_non_null=3,
+                observed_at=datetime.now(UTC).isoformat(),
+            ),
+            global_grant=grant,
+        )
+        assert with_grant.outcome == "repaired"
+        mock_db.transition_ticket_to_closed.assert_awaited_once()
+
+    async def test_operator_guild_scope_grant_denied_end_to_end(
+        self,
+        mock_db: AsyncMock,
+    ) -> None:
+        """End-to-end: a confirmed grant with scope='guild' is denied at the
+        mutation gate (never treated as global), audit evidence is persisted,
+        and no ticket transition occurs."""
+        import discord
+
+        from bot.services.integrity_report import evaluate_live_preflight
+        from bot.services.ticket_invariants import GlobalMutationGrant, RepairAuthority
+
+        service = self._service_with(mock_db)
+        row = _make_ticket_row(ticket_number=1, status="open")
+        mock_db.get_ticket = AsyncMock(return_value=row)
+        mock_db.transition_ticket_to_closed = AsyncMock(return_value=None)
+        mock_db.insert_audit_row = AsyncMock(return_value={})
+
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = 123456789
+        guild.fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(), "gone"))
+        bot = MagicMock()
+        bot.get_guild = MagicMock(return_value=guild)
+
+        operator = RepairAuthority(
+            actor_id="owner-1",
+            guild_id=None,
+            target_guild_id="123456789",
+            is_bot_owner=True,
+        )
+        guild_scope_grant = GlobalMutationGrant(
+            actor_id="owner-1",
+            scope="guild",
+            target_guild_id="123456789",
+            reason="maintenance: channel delete sweep",
+            confirmed=True,
+        )
+
+        denied = await service.repair_ticket_manual(
+            row["id"],
+            guild_id="123456789",
+            actor_id="owner-1",
+            authority=operator,
+            bot=bot,
+            preflight=evaluate_live_preflight(
+                project_status="ACTIVE_HEALTHY",
+                migration_015_applied=True,
+                close_reason_nullable=True,
+                required_indexes_present=True,
+                realtime_publication_covers=["guild", "greeting_config", "ticket", "ticket_note"],
+                active_rows_channel_id_non_null=3,
+                observed_at=datetime.now(UTC).isoformat(),
+            ),
+            global_grant=guild_scope_grant,
+        )
+
+        assert denied.outcome == "denied"
+        assert denied.reason == "grant_scope_mismatch"
+        assert mock_db.transition_ticket_to_closed.await_count == 0
+        # Best-effort structured audit evidence for the scope-mismatch denial.
+        mock_db.insert_audit_row.assert_awaited_once()
+        assert mock_db.insert_audit_row.call_args.args[4] == "denied"
+        assert mock_db.insert_audit_row.call_args.args[5] == "grant_scope_mismatch"

@@ -20,6 +20,7 @@ from discord.ext import commands, tasks
 from bot.core.i18n import t
 from bot.models.ticket_category import TicketCategory
 from bot.services.ticket_field_service import validate_field_definitions
+from bot.services.ticket_invariants import RepairAuthority
 from bot.services.ticket_service import TicketCategoryNotConfiguredError
 from bot.utils.brand import INFO
 from bot.utils.checks import is_mod, is_mod_check
@@ -86,11 +87,17 @@ class TicketsCog(commands.Cog, name="Tickets"):
         if not self.auto_close_stale_tickets.is_running():
             self.auto_close_stale_tickets.start()
             logger.info("Auto-close task started (interval: %d h)", AUTO_CLOSE_HOURS)
+        if not self.integrity_sweep_loop.is_running():
+            self.integrity_sweep_loop.start()
+            logger.info("Integrity sweep task started (periodic)")
 
     async def cog_unload(self) -> None:
         if self.auto_close_stale_tickets.is_running():
             self.auto_close_stale_tickets.cancel()
             logger.info("Auto-close task cancelled")
+        if self.integrity_sweep_loop.is_running():
+            self.integrity_sweep_loop.cancel()
+            logger.info("Integrity sweep task cancelled")
 
     async def _sync_channel_cache(self) -> None:
         all_ids: set[int] = set()
@@ -135,6 +142,31 @@ class TicketsCog(commands.Cog, name="Tickets"):
 
     @auto_close_stale_tickets.before_loop
     async def _before_auto_close(self) -> None:
+        await self.bot.wait_until_ready()
+
+    # ------------------------------------------------------------------
+    # Integrity sweep orchestration (product-artifact-audit PR4c)
+    # ------------------------------------------------------------------
+    # Startup + periodic integrity sweeps converge on the SAME Ticket Service
+    # repair path as channel-delete events and manual fallback. The loop is
+    # started in cog_load (not on_ready) and cancelled in cog_unload. Each
+    # iteration awaits gateway readiness, then delegates EVERY guild the bot
+    # is in to ``TicketService.sweep_integrity`` — the orchestrator never
+    # fabricates a preflight or authority.
+
+    @tasks.loop(hours=1)
+    async def integrity_sweep_loop(self) -> None:
+        logger.info("Integrity sweep task: checking active ticket channels ...")
+        assert self.bot.ticket_service is not None
+        for guild in self.bot.guilds:
+            gid = str(guild.id)
+            try:
+                await self.bot.ticket_service.sweep_integrity(gid, self.bot)
+            except Exception:
+                logger.exception("Integrity sweep failed for guild %s", gid)
+
+    @integrity_sweep_loop.before_loop
+    async def _before_integrity_sweep(self) -> None:
         await self.bot.wait_until_ready()
 
     @commands.Cog.listener()
@@ -909,6 +941,133 @@ class TicketsCog(commands.Cog, name="Tickets"):
             await ctx.send(embed=_err(gid, "tickets.note.delete_failed"))
             return
         await ctx.send(embed=_ok(gid, "tickets.note.delete_success", id=note_id))
+
+    # ------------------------------------------------------------------
+    # Ticket integrity adapters (product-artifact-audit PR4b-b)
+    # ------------------------------------------------------------------
+
+    @commands.hybrid_command(
+        name="sweep_integrity",
+        description=app_commands.locale_str(
+            "Verificar canales de tickets activos y cerrar los que ya no existen.",
+            key="slash.descriptions.sweep_integrity",
+        ),
+    )
+    @is_mod()
+    async def sweep_integrity(self, ctx: commands.Context[Any]) -> None:
+        """Run one bounded integrity sweep and report a localized summary.
+
+        A thin delegator: builds no evidence and mutates nothing itself. It
+        hands the guild snowflake and the bot to
+        ``TicketService.sweep_integrity``, which performs fresh per-candidate
+        Discord probes and routes only corroborated absence to the shared
+        evidence-gated repair path.
+        """
+        if ctx.guild is None:
+            await ctx.send(embed=_err(None, "tickets.integrity.server_only"), ephemeral=True)
+            return
+        gid = str(ctx.guild.id)
+        assert self.bot.ticket_service is not None
+        try:
+            results = await self.bot.ticket_service.sweep_integrity(gid, self.bot)
+        except Exception:
+            logger.exception("Failed to run integrity sweep for guild %s", ctx.guild.id)
+            await ctx.send(embed=_err(gid, "tickets.integrity.sweep_failed"), ephemeral=True)
+            return
+
+        repaired = sum(1 for r in results if r.outcome == "repaired")
+        reviewable = len(results) - repaired
+        await ctx.send(
+            embed=_info(gid, "tickets.integrity.sweep_summary", repaired=repaired, reviewable=reviewable),
+            ephemeral=True,
+        )
+
+    @commands.hybrid_command(
+        name="repair_ticket",
+        description=app_commands.locale_str(
+            "Reparar un ticket cuyo canal fue eliminado (requiere corroboración).",
+            key="slash.descriptions.repair_ticket",
+        ),
+    )
+    @app_commands.describe(
+        ticket_ref=app_commands.locale_str(
+            "Referencia del ticket: '#0003', '0003', un UUID, o 'ticket:#0003'",
+            key="slash.describes.repair_ticket.ticket_ref",
+        ),
+    )
+    @is_mod()
+    async def repair_ticket(self, ctx: commands.Context[Any], *, ticket_ref: str) -> None:
+        """Manually repair one ticket using explicit authority + fresh probe.
+
+        A thin delegator: builds a pure :class:`RepairAuthority` from the
+        actor's guild facts and delegates the ENTIRE resolution + repair to
+        ``TicketService.repair_ticket_by_ref``. The service owns ticket
+        resolution (no fabricated ticket ids), authority evaluation, fresh
+        Discord channel-absence probing, and the shared evidence-gated repair
+        path — the cog never performs its own database lookup and never
+        duplicates business logic.
+        """
+        if ctx.guild is None:
+            await ctx.send(embed=_err(None, "tickets.integrity.server_only"), ephemeral=True)
+            return
+        gid = str(ctx.guild.id)
+        assert self.bot.ticket_service is not None
+
+        actor = ctx.author
+        is_owner = isinstance(actor, discord.Member) and actor == ctx.guild.owner
+        is_admin = isinstance(actor, discord.Member) and actor.guild_permissions.administrator
+
+        # Resolve mod role truthfully via the shared predicate (single source
+        # of truth, mirrors the /unclaim handler). The @is_mod() decorator has
+        # already gated this callback, but authority facts are built from the
+        # actor's actual guild permissions, not assumed from the decorator.
+        has_mod_role = False
+        if isinstance(actor, discord.Member):
+            _interaction = type(
+                "_Interaction",
+                (),
+                {
+                    "user": actor,
+                    "guild": ctx.guild,
+                    "guild_id": int(gid),
+                    "client": self.bot,
+                },
+            )()
+            has_mod_role = await is_mod_check(_interaction) and not is_admin
+
+        authority = RepairAuthority(
+            actor_id=str(actor.id),
+            guild_id=gid,
+            target_guild_id=gid,
+            is_guild_owner=is_owner,
+            is_administrator=is_admin,
+            has_mod_role=has_mod_role,
+        )
+
+        try:
+            result = await self.bot.ticket_service.repair_ticket_by_ref(
+                ticket_ref,
+                guild_id=gid,
+                actor_id=str(actor.id),
+                authority=authority,
+                bot=self.bot,
+            )
+        except Exception:
+            logger.exception("Failed to repair ticket (guild=%s, ref=%s)", gid, ticket_ref)
+            await ctx.send(embed=_err(gid, "tickets.integrity.repair_failed"), ephemeral=True)
+            return
+
+        if result is None:
+            # Unparseable/empty reference — the service reports the user error.
+            await ctx.send(embed=_err(gid, "tickets.reopen.invalid_ref"), ephemeral=True)
+            return
+
+        outcome = result.outcome
+        reason_suffix = t(gid, "tickets.integrity.repair_result_reason", reason=result.reason) if result.reason else ""
+        await ctx.send(
+            embed=_info(gid, "tickets.integrity.repair_result", outcome=outcome, reason=reason_suffix),
+            ephemeral=True,
+        )
 
 
 async def setup(bot: NebulosaBot) -> None:

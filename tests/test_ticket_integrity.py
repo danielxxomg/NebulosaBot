@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -103,3 +103,142 @@ def test_repair_result_rejects_invalid_combinations_or_missing_evidence() -> Non
         with pytest.raises(ValueError):
             action, outcome = value.split("/")
             RepairResult("t1", "g1", action, outcome, None, None, datetime(2026, 7, 17, tzinfo=UTC))
+
+
+# ==========================================================================
+# Live evidence preflight (product-artifact-audit PR1, task 1.4)
+# ==========================================================================
+
+
+def _live_schema_evidence() -> dict:
+    """Return the verified 2026-08-11 read-only schema/deployment facts.
+
+    ``observed_at`` is a fresh observation time so the schema facts can be
+    validated against the configured freshness window; the stale/missing
+    scenarios override it explicitly.
+    """
+    return {
+        "project_status": "ACTIVE_HEALTHY",
+        "migration_015_applied": True,
+        "close_reason_nullable": True,
+        "required_indexes_present": True,
+        "realtime_publication_covers": ["guild", "greeting_config", "ticket", "ticket_note"],
+        "active_rows_channel_id_non_null": 3,
+        "evidence_verified_at": "2026-08-11T00:00:00+00:00",
+        "observed_at": datetime.now(UTC).isoformat(),
+    }
+
+
+def test_live_schema_evidence_resolves_preflight_half() -> None:
+    """Verified fresh live evidence MUST resolve the schema/deployment half."""
+    from bot.services.integrity_report import evaluate_live_preflight
+
+    result = evaluate_live_preflight(**_live_schema_evidence())
+
+    assert result.status == "resolved"
+    assert result.schema_ready is True
+    assert result.reasons == ()
+
+
+def test_stale_live_evidence_fails_closed() -> None:
+    """Stale or missing live evidence MUST keep the preflight unresolved."""
+    from bot.services.integrity_report import evaluate_live_preflight
+
+    evidence = _live_schema_evidence()
+    evidence["observed_at"] = "2020-01-01T00:00:00+00:00"
+
+    result = evaluate_live_preflight(**evidence)
+
+    assert result.status == "gate_unresolved"
+    assert result.schema_ready is False
+    assert result.reasons
+
+
+def test_future_dated_live_evidence_fails_closed() -> None:
+    """Future-dated live preflight evidence MUST fail closed (never trusted fresh)."""
+    from bot.services.integrity_report import evaluate_live_preflight
+
+    evidence = _live_schema_evidence()
+    future = datetime.now(UTC) + timedelta(days=2)
+    evidence["observed_at"] = future.isoformat()
+
+    result = evaluate_live_preflight(**evidence)
+
+    assert result.status == "gate_unresolved"
+    assert result.schema_ready is False
+    assert "future_evidence" in result.reasons
+
+
+def test_missing_live_evidence_fails_closed() -> None:
+    """Missing project or migration evidence MUST fail closed."""
+    from bot.services.integrity_report import evaluate_live_preflight
+
+    result = evaluate_live_preflight()
+
+    assert result.status == "gate_unresolved"
+    assert result.schema_ready is False
+
+
+def test_advisor_findings_do_not_authorize_repair() -> None:
+    """Advisor WARN/INFO findings are non-goals and never authorize repair."""
+    from bot.services.integrity_report import evaluate_live_preflight
+
+    evidence = _live_schema_evidence()
+    evidence["advisor_warns"] = 1
+    evidence["advisor_infos"] = 9
+
+    result = evaluate_live_preflight(**evidence)
+
+    assert result.status == "resolved"  # advisor findings do not block schema readiness
+    assert result.schema_ready is True
+
+
+def test_preflight_is_read_only_no_ticket_mutation() -> None:
+    """Preflight never writes ticket rows; it only reports schema readiness."""
+    from bot.services.integrity_report import evaluate_live_preflight
+
+    evidence = _live_schema_evidence()
+    before = dict(evidence)
+
+    result = evaluate_live_preflight(**evidence)
+
+    assert dict(evidence) == before
+    assert result.schema_ready is True
+
+
+@pytest.mark.parametrize("diagnostic_value", [0, 1, 2, 4, 5, 10])
+def test_active_rows_diagnostic_value_is_informational_only(diagnostic_value: int) -> None:
+    """The optional active-row channel-ID count MUST NOT gate preflight readiness.
+
+    ``active_rows_channel_id_non_null`` is reportable diagnostic context only:
+    schema readiness and repair activation MUST be identical whether the count
+    is 0, 1, non-3, or the verified 3 — it never blocks (or uniquely permits)
+    the gate. A non-3 value resolves exactly like the verified 3 evidence.
+    """
+    from bot.services.integrity_report import evaluate_live_preflight
+
+    evidence = _live_schema_evidence()
+    evidence["active_rows_channel_id_non_null"] = diagnostic_value
+
+    result = evaluate_live_preflight(**evidence)
+
+    assert result.status == "resolved"
+    assert result.schema_ready is True
+    assert result.reasons == ()
+    assert result.repair_activation_allowed is True
+
+
+def test_active_rows_diagnostic_none_is_informational_only() -> None:
+    """A missing/None diagnostic count is also informational: the schema facts
+    still resolve readiness without it (it is NOT a required gate input)."""
+    from bot.services.integrity_report import evaluate_live_preflight
+
+    evidence = _live_schema_evidence()
+    evidence["active_rows_channel_id_non_null"] = None
+
+    result = evaluate_live_preflight(**evidence)
+
+    assert result.status == "resolved"
+    assert result.schema_ready is True
+    assert result.reasons == ()
+    assert result.repair_activation_allowed is True

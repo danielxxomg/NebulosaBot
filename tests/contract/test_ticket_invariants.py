@@ -89,6 +89,41 @@ def _contract_db() -> AsyncMock:
     db.get_ticket_by_channel = AsyncMock()
     # PR4 channel naming: category lookup for reopen.
     db.get_ticket_category = AsyncMock(return_value=None)
+
+    async def transition_ticket_to_closed(
+        guild_id: str,
+        ticket_id: str,
+        *,
+        expected_statuses: tuple[str, ...],
+        close_reason: str | None = None,
+        transcript_url: str | None = None,
+    ) -> dict[str, object] | None:
+        """Model the conditional close boundary used by ``TicketService``.
+
+        The contract suite must not rely on ``AsyncMock`` truthiness for this
+        method: a bare mock would make an already-closed ticket look like a
+        successful transition. Read the row configured by each scenario and
+        return ``None`` unless its status is eligible for closing and it
+        belongs to *guild_id*.
+        """
+        row = await db.get_ticket(ticket_id)
+        if not isinstance(row, dict) or row.get("status") not in expected_statuses:
+            return None
+        if row.get("guildId") != guild_id:
+            return None
+
+        closed_row = {
+            **row,
+            "status": "closed",
+            "closedAt": row.get("closedAt") or "2026-01-15T10:00:00+00:00",
+        }
+        if close_reason is not None:
+            closed_row["closeReason"] = close_reason
+        if transcript_url is not None:
+            closed_row["transcriptUrl"] = transcript_url
+        return closed_row
+
+    db.transition_ticket_to_closed = AsyncMock(side_effect=transition_ticket_to_closed)
     return db
 
 
@@ -368,8 +403,8 @@ async def test_ti019_audit_every_success() -> None:
     await service.claim_ticket(ticket_id, claimed_by="999999999")
     db.get_ticket.reset_mock(side_effect=True)
 
-    # --- close → success (pre=open post-claim, re-read=closed) -------------
-    db.get_ticket.side_effect = [open_row, {**open_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"}]
+    # --- close → success (pre=open for guild scope, fake transition re-reads) -
+    db.get_ticket.side_effect = [open_row, open_row]
     await service.close_ticket(ticket_id, closed_by="999999999")
     db.get_ticket.reset_mock(side_effect=True)
 

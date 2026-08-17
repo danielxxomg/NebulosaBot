@@ -714,9 +714,7 @@ class TestDispatchWelcome:
             await service.dispatch_welcome(member)
 
         resolve_cta.assert_not_called()
-        member.guild.get_channel.return_value.send.assert_awaited_once_with(
-            content="Welcome <@333>!"
-        )
+        member.guild.get_channel.return_value.send.assert_awaited_once_with(content="Welcome <@333>!")
 
     @pytest.mark.asyncio
     async def test_disabled_card_invalid_cta_does_not_block_text(
@@ -741,9 +739,7 @@ class TestDispatchWelcome:
             await service.dispatch_welcome(member)
 
         resolve_cta.assert_not_called()
-        member.guild.get_channel.return_value.send.assert_awaited_once_with(
-            content="Welcome <@333>!"
-        )
+        member.guild.get_channel.return_value.send.assert_awaited_once_with(content="Welcome <@333>!")
 
     @pytest.mark.asyncio
     async def test_disabled_card_missing_cta_sends_text(
@@ -768,9 +764,7 @@ class TestDispatchWelcome:
             await service.dispatch_welcome(member)
 
         resolve_cta.assert_not_called()
-        member.guild.get_channel.return_value.send.assert_awaited_once_with(
-            content="Welcome <@333>!"
-        )
+        member.guild.get_channel.return_value.send.assert_awaited_once_with(content="Welcome <@333>!")
 
     @pytest.mark.asyncio
     async def test_disabled_card_empty_despite_resolvable_cta(
@@ -840,9 +834,7 @@ class TestDispatchWelcome:
             await service.dispatch_welcome(member)
 
         resolve_cta.assert_not_called()
-        member.guild.get_channel.return_value.send.assert_awaited_once_with(
-            content="Hola <@333> en TestServer!"
-        )
+        member.guild.get_channel.return_value.send.assert_awaited_once_with(content="Hola <@333> en TestServer!")
 
     @pytest.mark.asyncio
     async def test_card_enabled_empty_msg_resolvable_cta_sends_cta_only(
@@ -863,9 +855,7 @@ class TestDispatchWelcome:
 
         await service.dispatch_welcome(member)
 
-        assert member.guild.get_channel.return_value.send.call_args.kwargs["content"] == (
-            "Start here: <#999999999>"
-        )
+        assert member.guild.get_channel.return_value.send.call_args.kwargs["content"] == ("Start here: <#999999999>")
 
     @pytest.mark.asyncio
     async def test_card_enabled_with_msg_appends_cta(
