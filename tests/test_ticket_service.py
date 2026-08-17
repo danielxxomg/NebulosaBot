@@ -3495,9 +3495,9 @@ class TestCloseTicketConditional:
         mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
         mock_db.get_ticket.return_value = closed_row
 
-        # SERVICE-1.5 mock flags: BOTH operations must be proven skipped.
-        transcript_generate = AsyncMock(name="transcript_generate")
-        channel_delete = AsyncMock(name="channel_delete")
+        # SERVICE-1.5: zombie path proven via DB contract — transcript_url=None
+        # and closeReason persisted. External channel deletion is handled by
+        # handle_channel_delete/probe bypass, not close_ticket.
         ticket = await service.close_ticket(
             ticket_id,
             closed_by="system",
@@ -3505,11 +3505,6 @@ class TestCloseTicketConditional:
         )
 
         assert ticket.status == "closed"
-        # BOTH zombie-skipped operations: no transcript generation and no channel deletion.
-        assert transcript_generate.await_count == 0
-        assert channel_delete.await_count == 0
-        assert transcript_generate.call_count == 0
-        assert channel_delete.call_count == 0
         # Explicit zombie contract: closeReason persisted and no channel mutation.
         mock_db.transition_ticket_to_closed.assert_awaited_once_with(
             ticket_row["guildId"],

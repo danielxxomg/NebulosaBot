@@ -854,7 +854,7 @@ class TestPR5DisabledSliceAndAuditDeterminism:
 
         # SERVICE-7.3: no-op run MUST emit ZERO audit rows with repair vocabulary.
         # Filter on repaired + success (new vocabulary) and assert the complete call list is empty.
-        def _kw(c, idx):  # normalize positional/keyword audit calls
+        def _kw(c, _idx=0):  # normalize positional/keyword audit calls
             if c.kwargs:
                 return c.kwargs
             keys = ["guild_id", "ticket_id", "action", "actor_id", "outcome", "reason"]
