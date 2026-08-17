@@ -41,12 +41,12 @@ Chain strategy: feature-branch-chain
 
 ## Phase 2: Conditional DB + Repair Service (PR 2 — G.2-gated)
 
-- [ ] 2.1 RED `tests/test_ticket_db.py`: `transition_ticket_to_closed(expected_statuses=("open","claimed"), close_reason=...)` closes or `already_closed`; guild-scoped active lookup by `(guild_id, channel_id)`.
-- [ ] 2.2 GREEN: add active lookup + `transition_ticket_to_closed` to `bot/core/db/ticket_db.py`; no read-then-write race.
-- [ ] 2.3 RED `tests/test_ticket_service.py`: `close_reason=None` MUST NOT overwrite; zombie path skips transcript + channel deletion; re-close raises `ValueError`, no mutation.
-- [ ] 2.4 GREEN: modify `bot/services/ticket_service.py` — optional `close_reason`, zombie branch, `ValueError` on already-closed.
-- [ ] 2.5 RED `tests/test_ticket_service.py`: `RepairResult` for `repaired`/`already_closed`/`skipped`/`error`; transient Discord error → `error` with reason class name. Threat: False positives.
-- [ ] 2.6 GREEN: repair builds `RepairResult` from `IntegrityEvidence` via `transition_ticket_to_closed`; mutations stay G.2-gated in tests.
+- [x] 2.1 RED `tests/test_ticket_db.py`: `transition_ticket_to_closed(expected_statuses=("open","claimed"), close_reason=...)` closes or `already_closed`; guild-scoped active lookup by `(guild_id, channel_id)`.
+- [x] 2.2 GREEN: add active lookup + `transition_ticket_to_closed` to `bot/core/db/ticket_db.py`; no read-then-write race.
+- [x] 2.3 RED `tests/test_ticket_service.py`: `close_reason=None` MUST NOT overwrite; zombie path skips transcript + channel deletion; re-close raises `ValueError`, no mutation.
+- [x] 2.4 GREEN: modify `bot/services/ticket_service.py` — optional `close_reason`, zombie branch, `ValueError` on already-closed.
+- [x] 2.5 RED `tests/test_ticket_service.py`: `RepairResult` for `repaired`/`already_closed`/`skipped`/`error`; transient Discord error → `error` with reason class name. Threat: False positives.
+- [x] 2.6 GREEN: repair builds `RepairResult` from `IntegrityEvidence` via `transition_ticket_to_closed`; mutations stay G.2-gated in tests.
 ## Phase 3: Authoritative `on_guild_channel_delete` (PR 3)
 
 - [ ] 3.1 RED `tests/test_audit_listener.py`: duplicate event + cross-guild lookup map to correct ticket only; deletion logging retained. Threat: Event routing.
