@@ -84,7 +84,7 @@ async def test_automatic_repair_persists_repaired_not_success():
 
 @pytest.mark.asyncio
 async def test_manual_repair_persists_single_manual_repair_repaired():
-    """SERVICE-5.3 + SERVICE-4.1: manual repair must persist exactly ONE manual_repair/repaired row with close_reason zombie:manual_repair."""
+    """SERVICE-5.3 + SERVICE-4.1: manual repair persists one manual_repair row."""
     db = AsyncMock()
     row = {"id": "t1", "guildId": "123456789", "channelId": "888888888", "status": "open"}
     db.get_ticket = AsyncMock(return_value=row)
