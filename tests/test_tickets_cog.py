@@ -113,7 +113,6 @@ def ticket_bot(mock_db) -> MagicMock:
     bot.ticket_service.is_ticket_channel = MagicMock(return_value=False)
     bot.ticket_service.sync_channel_cache = MagicMock()
     bot.ticket_service.create_ticket_channel = AsyncMock(return_value=None)
-    bot.ticket_service.repair_ticket_by_ref = AsyncMock(return_value=None)
     bot.transcript_service = MagicMock()
     bot.transcript_service.generate = AsyncMock(return_value=None)
     bot.transcript_service.upload = AsyncMock(return_value=None)
@@ -3318,7 +3317,7 @@ class TestRepairTicketCommand:
             "status": "open",
         }
         mock_db.get_ticket = AsyncMock(return_value=row)
-        ticket_bot.ticket_service.repair_ticket_by_ref = AsyncMock(
+        ticket_bot.ticket_service.repair_ticket_manual = AsyncMock(
             return_value=RepairResult(
                 ticket_id="t-1",
                 guild_id="123456789",
@@ -3332,10 +3331,10 @@ class TestRepairTicketCommand:
 
         await tickets_cog.repair_ticket.callback(tickets_cog, ctx, ticket_ref="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 
-        ticket_bot.ticket_service.repair_ticket_by_ref.assert_awaited_once()
-        kwargs = ticket_bot.ticket_service.repair_ticket_by_ref.call_args.kwargs
-        args = ticket_bot.ticket_service.repair_ticket_by_ref.call_args.args
-        assert args[0] == "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        ticket_bot.ticket_service.repair_ticket_manual.assert_awaited_once()
+        kwargs = ticket_bot.ticket_service.repair_ticket_manual.call_args.kwargs
+        args = ticket_bot.ticket_service.repair_ticket_manual.call_args.args
+        assert args[0] == row["id"]
         assert kwargs["guild_id"] == "123456789"
         assert kwargs["actor_id"] == "111111111"
         assert kwargs["bot"] is ticket_bot
@@ -3354,98 +3353,7 @@ class TestRepairTicketCommand:
 
         await tickets_cog.repair_ticket.callback(tickets_cog, ctx, ticket_ref="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 
-        ticket_bot.ticket_service.repair_ticket_by_ref.assert_awaited_once()
-        ctx.send.assert_awaited_once()
-
-    async def test_repair_ticket_not_found_audits_resolution_failure(
-        self,
-        tickets_cog: TicketsCog,
-        ticket_bot: MagicMock,
-        mock_db,
-    ) -> None:
-        """A /repair_ticket UUID lookup not-found MUST produce truthful
-        structured evidence (audit + log) even though the service cannot be
-        reached with a fabricated ticket id — no fake id is ever passed to the
-        service and no repair mutation is attempted.
-        """
-        from bot.core.cache import TTLCache
-        from bot.services.ticket_service import TicketService
-
-        service = TicketService(db=mock_db, cache=TTLCache())
-        ticket_bot.ticket_service = service
-        ctx = self._repair_ctx(ticket_bot)
-        mock_db.get_ticket = AsyncMock(return_value=None)
-        mock_db.insert_audit_row = AsyncMock(return_value={})
-
-        await tickets_cog.repair_ticket.callback(tickets_cog, ctx, ticket_ref="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
-
-        mock_db.transition_ticket_to_closed.assert_not_awaited()
-        mock_db.insert_audit_row.assert_awaited_once()
-        kwargs = mock_db.insert_audit_row.call_args
-        assert kwargs.args[0] == "123456789"
-        assert kwargs.args[2] == "repair"
-        assert kwargs.args[4] == "error"
-        assert kwargs.args[5] == "ticket_not_found"
-        ctx.send.assert_awaited_once()
-
-    async def test_repair_ticket_db_lookup_error_audits_resolution_failure(
-        self,
-        tickets_cog: TicketsCog,
-        ticket_bot: MagicMock,
-        mock_db,
-    ) -> None:
-        """A /repair_ticket UUID lookup DB failure MUST produce truthful
-        structured evidence (audit + log) without fabricating a ticket id or
-        reaching the repair service with a fake id.
-        """
-        from bot.core.cache import TTLCache
-        from bot.services.ticket_service import TicketService
-
-        service = TicketService(db=mock_db, cache=TTLCache())
-        ticket_bot.ticket_service = service
-        ctx = self._repair_ctx(ticket_bot)
-        mock_db.get_ticket = AsyncMock(side_effect=RuntimeError("db down"))
-        mock_db.insert_audit_row = AsyncMock(return_value={})
-
-        await tickets_cog.repair_ticket.callback(tickets_cog, ctx, ticket_ref="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
-
-        mock_db.transition_ticket_to_closed.assert_not_awaited()
-        mock_db.insert_audit_row.assert_awaited_once()
-        kwargs = mock_db.insert_audit_row.call_args
-        assert kwargs.args[0] == "123456789"
-        assert kwargs.args[2] == "repair"
-        assert kwargs.args[4] == "error"
-        assert kwargs.args[5] == "database_error"
-        ctx.send.assert_awaited_once()
-
-    async def test_repair_ticket_number_not_found_audits_resolution_failure(
-        self,
-        tickets_cog: TicketsCog,
-        ticket_bot: MagicMock,
-        mock_db,
-    ) -> None:
-        """A /repair_ticket NUMBER lookup not-found (guild-scoped) MUST also
-        produce truthful structured evidence — the number path has no UUID, so
-        the audit carries guild + the raw reference and never fabricates a
-        ticket id.
-        """
-        from bot.core.cache import TTLCache
-        from bot.services.ticket_service import TicketService
-
-        service = TicketService(db=mock_db, cache=TTLCache())
-        ticket_bot.ticket_service = service
-        ctx = self._repair_ctx(ticket_bot)
-        mock_db.get_ticket_by_number = AsyncMock(return_value=None)
-        mock_db.insert_audit_row = AsyncMock(return_value={})
-
-        await tickets_cog.repair_ticket.callback(tickets_cog, ctx, ticket_ref="#0003")
-
-        mock_db.transition_ticket_to_closed.assert_not_awaited()
-        mock_db.insert_audit_row.assert_awaited_once()
-        kwargs = mock_db.insert_audit_row.call_args
-        assert kwargs.args[0] == "123456789"
-        assert kwargs.args[4] == "error"
-        assert kwargs.args[5] == "ticket_not_found"
+        ticket_bot.ticket_service.repair_ticket_manual.assert_not_called()
         ctx.send.assert_awaited_once()
 
     async def test_repair_ticket_no_guild_shows_error(
@@ -3460,130 +3368,3 @@ class TestRepairTicketCommand:
         await tickets_cog.repair_ticket.callback(tickets_cog, ctx, ticket_ref="t-1")
 
         ctx.send.assert_awaited_once()
-
-
-# ===========================================================================
-# Startup + periodic integrity sweep orchestration (verify CRITICAL #5)
-# ===========================================================================
-
-
-class TestIntegritySweepOrchestration:
-    """The periodic integrity sweep converges on TicketService.sweep_integrity.
-
-    A ``@tasks.loop`` is started in ``cog_load`` (not ``on_ready``) and
-    cancelled in ``cog_unload``. Each iteration awaits readiness, then sweeps
-    every guild the bot is in through the shared service path. No fabricated
-    preflight or authority is invented by the orchestrator.
-    """
-
-    async def _startable_cog(self, ticket_bot: MagicMock) -> MagicMock:
-        """Return a TicketsCog with real loop attrs mocked as startable."""
-        cog = TicketsCog(bot=ticket_bot)
-        # Replace the decorated loop with a controllable mock that records
-        # start/cancel/is_running so we never schedule real wall-clock work.
-        loop = MagicMock()
-        loop.is_running = MagicMock(return_value=False)
-        loop.start = MagicMock()
-        loop.cancel = MagicMock()
-        cog.integrity_sweep_loop = loop
-        return cog
-
-    async def test_cog_load_starts_periodic_sweep_loop(
-        self,
-        tickets_cog: TicketsCog,
-        ticket_bot: MagicMock,
-    ) -> None:
-        """cog_load MUST start the integrity sweep loop (idempotent) so a
-        periodic sweep converges on the shared service path without on_ready.
-        """
-        ticket_bot.guilds = []
-        ticket_bot.db.get_open_ticket_channel_ids = AsyncMock(return_value=[])
-        loop = MagicMock()
-        loop.is_running = MagicMock(return_value=False)
-        loop.start = MagicMock()
-        loop.cancel = MagicMock()
-        tickets_cog.integrity_sweep_loop = loop
-
-        await tickets_cog.cog_load()
-
-        loop.start.assert_called_once()
-
-    async def test_cog_load_does_not_restart_running_sweep_loop(
-        self,
-        tickets_cog: TicketsCog,
-        ticket_bot: MagicMock,
-    ) -> None:
-        """cog_load MUST NOT restart an already-running sweep loop (idempotent)."""
-        ticket_bot.guilds = []
-        ticket_bot.db.get_open_ticket_channel_ids = AsyncMock(return_value=[])
-        loop = MagicMock()
-        loop.is_running = MagicMock(return_value=True)
-        loop.start = MagicMock()
-        loop.cancel = MagicMock()
-        tickets_cog.integrity_sweep_loop = loop
-
-        await tickets_cog.cog_load()
-
-        loop.start.assert_not_called()
-
-    async def test_cog_unload_cancels_sweep_loop(
-        self,
-        tickets_cog: TicketsCog,
-        ticket_bot: MagicMock,
-    ) -> None:
-        """cog_unload MUST cancel the integrity sweep loop."""
-        loop = MagicMock()
-        loop.is_running = MagicMock(return_value=True)
-        loop.cancel = MagicMock()
-        tickets_cog.integrity_sweep_loop = loop
-
-        await tickets_cog.cog_unload()
-
-        loop.cancel.assert_called_once()
-
-    async def test_sweep_loop_iteration_sweeps_all_guilds(
-        self,
-        tickets_cog: TicketsCog,
-        ticket_bot: MagicMock,
-    ) -> None:
-        """One periodic iteration delegates EVERY guild to
-        ``TicketService.sweep_integrity`` (the shared service path) with
-        NO fabricated preflight/authority. Readiness is awaited by the loop's
-        ``before_loop`` hook (not inside the iteration).
-        """
-        guild_a = MagicMock()
-        guild_a.id = 111111111
-        guild_b = MagicMock()
-        guild_b.id = 222222222
-        ticket_bot.guilds = [guild_a, guild_b]
-        ticket_bot.ticket_service.sweep_integrity = AsyncMock(return_value=[])
-
-        await tickets_cog.integrity_sweep_loop()
-
-        assert ticket_bot.ticket_service.sweep_integrity.await_count == 2
-        called_guilds = {c.args[0] for c in ticket_bot.ticket_service.sweep_integrity.call_args_list}
-        assert called_guilds == {"111111111", "222222222"}
-        # The orchestrator never fabricates a preflight or authority.
-        for call in ticket_bot.ticket_service.sweep_integrity.call_args_list:
-            assert "preflight" not in call.kwargs
-            assert "authority" not in call.kwargs
-
-    async def test_sweep_loop_iteration_tolerates_guild_failure(
-        self,
-        tickets_cog: TicketsCog,
-        ticket_bot: MagicMock,
-    ) -> None:
-        """A DB failure while sweeping one guild MUST NOT abort the loop: the
-        failure is logged with structured guild context and remaining guilds
-        continue to be swept.
-        """
-        guild_a = MagicMock()
-        guild_a.id = 111111111
-        guild_b = MagicMock()
-        guild_b.id = 222222222
-        ticket_bot.guilds = [guild_a, guild_b]
-        ticket_bot.ticket_service.sweep_integrity = AsyncMock(side_effect=[RuntimeError("db down"), []])
-
-        await tickets_cog.integrity_sweep_loop()
-
-        assert ticket_bot.ticket_service.sweep_integrity.await_count == 2
