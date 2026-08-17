@@ -238,6 +238,8 @@ Los sub-tickets permiten derivar un ticket secundario vinculado a uno principal.
 | Agregar nota | `/note add "texto de la nota"` | Nota privada visible solo para mods |
 | Listar notas | `/note list` | Lista todas las notas del ticket (por DM o ephemeral) |
 | Eliminar nota | `/note delete <uuid>` | Elimina una nota específica |
+| Verificar integridad | `/sweep_integrity` | Cierra tickets cuyo canal ya no existe (requiere corroboración de Discord) |
+| Reparar ticket | `/repair_ticket <referencia>` | Repara manualmente un ticket con canal eliminado (solo mod/admin) |
 
 #### Cierre automático
 
@@ -331,6 +333,8 @@ Los tickets sin actividad por **48 horas** se cierran automáticamente. El bot r
 | `/note add` | `<contenido>` | Mod | Agrega nota privada |
 | `/note list` | — | Mod | Lista notas del ticket |
 | `/note delete` | `<uuid_nota>` | Mod | Elimina nota |
+| `/sweep_integrity` | — | Mod | Verifica canales activos y cierra zombies |
+| `/repair_ticket` | `<referencia>` | Mod | Repara manualmente un ticket zombie |
 
 ### Bienvenida y despedida
 

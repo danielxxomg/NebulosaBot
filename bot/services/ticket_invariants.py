@@ -293,6 +293,107 @@ class TicketRef:
     uuid: str | None = None
 
 
+# ---------------------------------------------------------------------------
+# Repair authority — provisional one-role core model + scoped exceptions
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RepairAuthority:
+    """Facts about the actor requesting a ticket-integrity repair.
+
+    Pure — no Discord objects. ``guild_id`` is the actor's own guild (``None``
+    for a cross-guild operator). ``deletion_actor`` records that the actor
+    performed the channel deletion, and is INFORMATIONAL ONLY: it never
+    participates in the authorization decision.
+    """
+
+    actor_id: str
+    guild_id: str | None
+    target_guild_id: str
+    is_guild_owner: bool = False
+    is_administrator: bool = False
+    has_mod_role: bool = False
+    is_bot_owner: bool = False
+    deletion_actor: bool = False
+
+
+@dataclass(frozen=True)
+class GlobalMutationGrant:
+    """An explicit, targeted, audited grant for a cross-guild/global mutation.
+
+    Operator diagnosis is read-only by default; mutation requires this grant
+    naming the actor, the scope, the target guild, a non-empty auditable
+    reason, and explicit confirmation.
+    """
+
+    actor_id: str
+    scope: str
+    target_guild_id: str
+    reason: str
+    confirmed: bool
+
+
+@dataclass(frozen=True)
+class AuthorityDecision:
+    """The outcome of evaluating repair authority for one attempt."""
+
+    allowed: bool
+    scope: str  # "guild" | "global"
+    reason: str | None
+
+
+def evaluate_repair_authority(
+    authority: RepairAuthority,
+    global_grant: GlobalMutationGrant | None = None,
+) -> AuthorityDecision:
+    """Evaluate whether *authority* may mutate a ticket in its target guild.
+
+    Two distinct audiences:
+
+    - **Guild-scoped actors** (the configured moderator role, the guild owner,
+      and Discord Administrators) are authorized ONLY for their own guild.
+      The configured moderator role is the single canonical role; the owner
+      and Administrator bypass the role check only inside their own guild.
+      Cross-guild targeting is always denied.
+    - **The bot owner** (``is_bot_owner=True``) receives read-only diagnosis
+      globally. Any cross-guild/global mutation requires an explicit
+      :class:`GlobalMutationGrant` that names this actor, the target, a
+      non-empty auditable reason, and explicit confirmation. A silent
+      mutation bypass never exists.
+
+    ``deletion_actor`` is ignored — it is informational context only and can
+    never make an unsafe claim actionable.
+    """
+    # Bot owner: diagnosis is read-only; mutation needs an explicit grant.
+    if authority.is_bot_owner:
+        if global_grant is None:
+            return AuthorityDecision(False, "global", "operator_mutation_requires_grant")
+        if not global_grant.confirmed:
+            return AuthorityDecision(False, "global", "grant_unconfirmed")
+        if not global_grant.reason or not global_grant.reason.strip():
+            return AuthorityDecision(False, "global", "grant_missing_reason")
+        if global_grant.scope != "global":
+            # A confirmed grant is only global when its scope is explicitly
+            # "global". A scope="guild" grant never upgrades to a global
+            # mutation bypass at the evaluator (the actual mutation gate).
+            return AuthorityDecision(False, "global", "grant_scope_mismatch")
+        if global_grant.actor_id != authority.actor_id:
+            return AuthorityDecision(False, "global", "grant_actor_mismatch")
+        if global_grant.target_guild_id != authority.target_guild_id:
+            return AuthorityDecision(False, "global", "grant_target_mismatch")
+        return AuthorityDecision(True, "global", global_grant.reason)
+
+    # Guild-scoped actors: only their own guild.
+    if authority.guild_id is None or authority.guild_id != authority.target_guild_id:
+        return AuthorityDecision(False, "guild", "cross_guild_denied")
+
+    if authority.is_guild_owner or authority.is_administrator or authority.has_mod_role:
+        return AuthorityDecision(True, "guild", None)
+
+    return AuthorityDecision(False, "guild", "insufficient_authority")
+
+
 # UUID v4-ish (we do not enforce version — any 8-4-4-4-12 hex block).
 _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",

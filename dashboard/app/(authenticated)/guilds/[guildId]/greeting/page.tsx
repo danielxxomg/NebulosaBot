@@ -14,6 +14,7 @@ const GREETING_DEFAULTS = {
   goodbyeEnabled: false,
   welcomeChannelId: null as string | null,
   goodbyeChannelId: null as string | null,
+  onboardingChannelId: null as string | null,
   welcomeMessage: null as string | null,
   goodbyeMessage: null as string | null,
   welcomeCardEnabled: true,
@@ -62,6 +63,14 @@ export default async function GreetingConfigPage({
       defaultValue: config.welcomeChannelId ?? "",
       placeholder: "123456789012345678",
       hint: "Discord channel ID where welcome messages are sent. Required when enabled.",
+    },
+    {
+      name: "onboardingChannelId",
+      label: "Onboarding Channel ID",
+      type: "text",
+      defaultValue: config.onboardingChannelId ?? "",
+      placeholder: "123456789012345678",
+      hint: "Optional channel mentioned in welcome messages to help new members get started.",
     },
     {
       name: "welcomeMessage",

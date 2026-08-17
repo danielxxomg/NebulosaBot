@@ -592,3 +592,238 @@ class TestLogEmbedFooterIcon:
 
         embed = mock_log_channel.send.call_args.kwargs["embed"]
         assert embed.footer.icon_url == "https://cdn.discordapp.com/icons/456/server.png"
+
+
+# ---------------------------------------------------------------------------
+# product-artifact-audit PR4b-b — repair audit vs operator diagnosis records
+# (task 5.1)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildRepairAuditRecord:
+    """build_repair_audit_record produces guild-scoped, truthful repair evidence."""
+
+    @pytest.mark.parametrize(
+        ("outcome", "mutated"),
+        [
+            ("repaired", True),
+            ("quarantined", False),
+            ("denied", False),
+            ("skipped", False),
+            ("already_closed", False),
+            ("error", False),
+        ],
+    )
+    def test_mutation_truthfulness(self, outcome: str, mutated: bool) -> None:
+        """Only a ``repaired`` outcome reports mutation; every other outcome is a no-op."""
+        from bot.services.logging_service import build_repair_audit_record
+
+        record = build_repair_audit_record(guild_id="111", ticket_id="t-1", outcome=outcome)
+
+        assert record.mutated is mutated
+        assert record.outcome == outcome
+        assert record.guild_id == "111"
+        assert record.ticket_id == "t-1"
+
+    def test_record_carries_reason_source_actor(self) -> None:
+        """The record preserves its structured review context (reason/source/actor)."""
+        from bot.services.logging_service import build_repair_audit_record
+
+        record = build_repair_audit_record(
+            guild_id="111",
+            ticket_id="t-1",
+            outcome="denied",
+            reason="cross_guild_denied",
+            source="manual",
+            actor_id="999",
+        )
+
+        assert record.reason == "cross_guild_denied"
+        assert record.source == "manual"
+        assert record.actor_id == "999"
+
+    def test_record_is_guild_scoped(self) -> None:
+        """Each record is bound to exactly one guild."""
+        from bot.services.logging_service import build_repair_audit_record
+
+        guild_a = build_repair_audit_record(guild_id="A", ticket_id="t-1", outcome="repaired")
+        guild_b = build_repair_audit_record(guild_id="B", ticket_id="t-1", outcome="repaired")
+
+        assert guild_a.guild_id == "A"
+        assert guild_b.guild_id == "B"
+        assert guild_a.guild_id != guild_b.guild_id
+
+    def test_record_serializes_structured_evidence(self) -> None:
+        """The record exposes non-empty ticket/guild/outcome in its dict form."""
+        from bot.services.logging_service import build_repair_audit_record
+
+        record = build_repair_audit_record(
+            guild_id="111", ticket_id="t-1", outcome="error", reason="audit_persistence_failed"
+        )
+        data = record.to_dict()
+
+        assert data["guildId"] == "111"
+        assert data["ticketId"] == "t-1"
+        assert data["outcome"] == "error"
+        assert data["mutated"] is False
+
+
+class TestBuildOperatorDiagnosisRecord:
+    """build_operator_diagnosis_record is global but read-only without a grant."""
+
+    @pytest.mark.parametrize(
+        ("grant_kwargs", "expected_mutated", "expected_reason"),
+        [
+            (None, False, "operator_mutation_requires_grant"),
+            ({"confirmed": False, "reason": "targeted"}, False, "grant_unconfirmed"),
+            ({"confirmed": True, "reason": "  "}, False, "grant_missing_reason"),
+            ({"confirmed": True, "reason": "targeted"}, True, "targeted"),
+        ],
+    )
+    def test_grant_gates_mutation(
+        self, grant_kwargs: dict | None, expected_mutated: bool, expected_reason: str
+    ) -> None:
+        """Mutation requires an explicit, confirmed, non-empty-reason grant."""
+        from bot.services.logging_service import build_operator_diagnosis_record
+        from bot.services.ticket_invariants import GlobalMutationGrant
+
+        grant = (
+            GlobalMutationGrant(actor_id="bot-owner", scope="global", target_guild_id="A", **grant_kwargs)
+            if grant_kwargs is not None
+            else None
+        )
+
+        record = build_operator_diagnosis_record(target_guild_ids=["A"], grant=grant, actor_id="bot-owner")
+
+        assert record.mutated is expected_mutated
+        assert record.reason == expected_reason
+
+    def test_identifies_target_guilds_and_findings(self) -> None:
+        """The diagnosis names every target guild and carries its findings."""
+        from bot.services.logging_service import build_operator_diagnosis_record
+
+        record = build_operator_diagnosis_record(
+            target_guild_ids=["A", "B", "C"], findings=["finding-one", "finding-two"]
+        )
+
+        assert set(record.target_guild_ids) == {"A", "B", "C"}
+        assert record.findings == ("finding-one", "finding-two")
+
+    def test_grant_actor_mismatch_never_mutates(self) -> None:
+        """A confirmed grant naming a different actor MUST NOT set mutated=True."""
+        from bot.services.logging_service import build_operator_diagnosis_record
+        from bot.services.ticket_invariants import GlobalMutationGrant
+
+        grant = GlobalMutationGrant(
+            actor_id="bot-owner",
+            scope="global",
+            target_guild_id="A",
+            reason="targeted",
+            confirmed=True,
+        )
+        record = build_operator_diagnosis_record(
+            target_guild_ids=["A"],
+            grant=grant,
+            actor_id="someone-else",
+        )
+
+        assert record.mutated is False
+        assert record.reason == "grant_actor_mismatch"
+
+    def test_grant_target_mismatch_never_mutates(self) -> None:
+        """A confirmed grant for a different target guild MUST NOT set mutated=True."""
+        from bot.services.logging_service import build_operator_diagnosis_record
+        from bot.services.ticket_invariants import GlobalMutationGrant
+
+        grant = GlobalMutationGrant(
+            actor_id="bot-owner",
+            scope="global",
+            target_guild_id="A",
+            reason="targeted",
+            confirmed=True,
+        )
+        record = build_operator_diagnosis_record(
+            target_guild_ids=["B"],
+            grant=grant,
+            actor_id="bot-owner",
+        )
+
+        assert record.mutated is False
+        assert record.reason == "grant_target_mismatch"
+
+    def test_grant_scope_mismatch_never_mutates(self) -> None:
+        """A confirmed grant whose scope is not 'global' MUST NOT set mutated=True."""
+        from bot.services.logging_service import build_operator_diagnosis_record
+        from bot.services.ticket_invariants import GlobalMutationGrant
+
+        grant = GlobalMutationGrant(
+            actor_id="bot-owner",
+            scope="guild",
+            target_guild_id="A",
+            reason="targeted",
+            confirmed=True,
+        )
+        record = build_operator_diagnosis_record(
+            target_guild_ids=["A"],
+            grant=grant,
+            actor_id="bot-owner",
+        )
+
+        assert record.mutated is False
+        assert record.reason == "grant_scope_mismatch"
+
+    def test_grant_requires_actor_argument(self) -> None:
+        """Without an actor_id, a non-empty grant cannot be validated and MUST NOT mutate."""
+        from bot.services.logging_service import build_operator_diagnosis_record
+        from bot.services.ticket_invariants import GlobalMutationGrant
+
+        grant = GlobalMutationGrant(
+            actor_id="bot-owner",
+            scope="global",
+            target_guild_id="A",
+            reason="targeted",
+            confirmed=True,
+        )
+        record = build_operator_diagnosis_record(target_guild_ids=["A"], grant=grant)
+
+        assert record.mutated is False
+        assert record.reason == "grant_actor_missing"
+
+
+# ===========================================================================
+# product-artifact-audit remediation — duplicate-event logging deduplication
+# (task: "Duplicate event is not double-counted")
+# ===========================================================================
+
+
+class TestDuplicateEventLogging:
+    """Duplicate delete events produce one success at most, loser is denied/no-op."""
+
+    def test_duplicate_event_builds_one_success_and_one_denied(self) -> None:
+        """build_repair_audit_record maps a winner + a deterministic loser distinctly."""
+        from bot.services.logging_service import build_repair_audit_record
+
+        winner = build_repair_audit_record(guild_id="111", ticket_id="t-1", outcome="repaired", source="channel_delete")
+        loser = build_repair_audit_record(
+            guild_id="111", ticket_id="t-1", outcome="already_closed", source="channel_delete"
+        )
+
+        # Exactly one record reports a mutation.
+        mutating = [r for r in (winner, loser) if r.mutated]
+        assert len(mutating) == 1
+        assert winner.mutated is True
+        assert loser.mutated is False
+        # The loser is a deterministic no-op/denied outcome, not a second success.
+        assert loser.outcome == "already_closed"
+        assert loser.to_dict()["mutated"] is False
+
+    def test_duplicate_event_never_double_counts_success(self) -> None:
+        """Two records for the same ticket never both report mutation."""
+        from bot.services.logging_service import build_repair_audit_record
+
+        first = build_repair_audit_record(guild_id="111", ticket_id="t-1", outcome="repaired")
+        second = build_repair_audit_record(guild_id="111", ticket_id="t-1", outcome="already_closed")
+
+        successes = sum(1 for r in (first, second) if r.outcome == "repaired")
+        assert successes == 1
+        assert first.mutated is True and second.mutated is False

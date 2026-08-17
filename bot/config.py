@@ -10,6 +10,11 @@ from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
+INTEGRITY_BATCH_SIZE = 50
+INTEGRITY_BACKOFF_SECONDS = 1.0
+INTEGRITY_MAX_BACKOFF_SECONDS = 30.0
+INTEGRITY_EVIDENCE_FRESHNESS_SECONDS = 3600
+
 
 @dataclass
 class BotConfig:

@@ -227,8 +227,12 @@ class ImageService:
     # ------------------------------------------------------------------
 
     # Greeting card layout constants
-    GREETING_AVATAR_X = 60
-    GREETING_AVATAR_Y = 77
+    GREETING_GUILD_ICON_X = 28
+    GREETING_GUILD_ICON_Y = 24
+    GREETING_GUILD_ICON_SIZE = 48
+
+    GREETING_AVATAR_X = 54
+    GREETING_AVATAR_Y = 92
     GREETING_AVATAR_SIZE = 128
 
     GREETING_TITLE_X = 210
@@ -236,6 +240,13 @@ class ImageService:
 
     GREETING_COUNT_X = 210
     GREETING_COUNT_Y = 170
+
+    GREETING_GUILD_NAME_X = 210
+    GREETING_GUILD_NAME_Y = 28
+    GREETING_ACCENT = (114, 137, 218, 255)
+    GREETING_PANEL = (255, 255, 255, 18)
+    GREETING_PLACEHOLDER = (74, 78, 91, 255)
+    GREETING_PLACEHOLDER_INNER = (56, 59, 68, 255)
 
     GREETING_TITLE_COLOR = (255, 255, 255, 255)
     GREETING_COUNT_COLOR = (185, 187, 190, 255)
@@ -247,6 +258,9 @@ class ImageService:
         guild_name: str,
         member_count: int,
         card_type: str = "welcome",
+        greeting_title: str | None = None,
+        member_count_text: str | None = None,
+        guild_icon_url: str | None = None,
     ) -> io.BytesIO:
         """Generate a welcome or goodbye card PNG image.
 
@@ -258,6 +272,12 @@ class ImageService:
             member_count: Current member count for the guild.
             card_type: ``"welcome"`` or ``"goodbye"`` — determines the
                 greeting text.  Unknown values fall back to ``"welcome"``.
+            greeting_title: Optional pretranslated title.  When omitted,
+                preserves the existing English title rendering.
+            member_count_text: Optional pretranslated member-count text.  When
+                omitted, preserves the existing English count rendering.
+            guild_icon_url: URL to the guild icon, or ``None`` for a
+                deterministic branded placeholder.
 
         Returns:
             A :class:`io.BytesIO` buffer containing the PNG image.
@@ -276,38 +296,66 @@ class ImageService:
             b = int(BG_TOP[2] + (BG_BOTTOM[2] - BG_TOP[2]) * ratio)
             draw.line([(0, y), (CARD_WIDTH, y)], fill=(r, g, b, 255))
 
+        # -- Branded hierarchy ---------------------------------------------
+        draw.rounded_rectangle(
+            (18, 16, CARD_WIDTH - 18, CARD_HEIGHT - 16),
+            radius=18,
+            outline=(255, 255, 255, 34),
+            width=2,
+        )
+        draw.rounded_rectangle(
+            (18, 16, CARD_WIDTH - 18, 56),
+            radius=18,
+            fill=self.GREETING_PANEL,
+        )
+        draw.rectangle((18, 48, CARD_WIDTH - 18, 56), fill=self.GREETING_PANEL)
+        draw.rectangle((18, 16, 24, CARD_HEIGHT - 16), fill=self.GREETING_ACCENT)
+
         # -- Load fonts ---------------------------------------------------
+        font_guild = self._load_font(16)
         font_title = self._load_font(32)
         font_count = self._load_font(22)
 
-        # -- Avatar (circular crop) ----------------------------------------
-        avatar = self._fetch_avatar(avatar_url)
-        if avatar is not None:
-            avatar = avatar.resize(
-                (self.GREETING_AVATAR_SIZE, self.GREETING_AVATAR_SIZE),
-                Image.LANCZOS,  # type: ignore[attr-defined]  # Pillow exposes LANCZOS at runtime but stubs omit it
-            )
-            mask = Image.new("L", (self.GREETING_AVATAR_SIZE, self.GREETING_AVATAR_SIZE), 0)
-            ImageDraw.Draw(mask).ellipse(
-                (0, 0, self.GREETING_AVATAR_SIZE, self.GREETING_AVATAR_SIZE),
-                fill=255,
-            )
-            avatar.putalpha(mask)
-            img.paste(
-                avatar,
-                (self.GREETING_AVATAR_X, self.GREETING_AVATAR_Y),
-                avatar,
-            )
+        # -- Guild identity and member avatar -----------------------------
+        guild_icon = self._safe_fetch_avatar(guild_icon_url)
+        self._paste_circular_asset(
+            img,
+            guild_icon,
+            self.GREETING_GUILD_ICON_X,
+            self.GREETING_GUILD_ICON_Y,
+            self.GREETING_GUILD_ICON_SIZE,
+            self.GREETING_ACCENT,
+        )
+
+        avatar = self._safe_fetch_avatar(avatar_url)
+        self._paste_circular_asset(
+            img,
+            avatar,
+            self.GREETING_AVATAR_X,
+            self.GREETING_AVATAR_Y,
+            self.GREETING_AVATAR_SIZE,
+            self.GREETING_PLACEHOLDER,
+        )
+
+        guild_display_name = guild_name.strip()[:42] or "Nebulosa"
+        draw.text(
+            (self.GREETING_GUILD_NAME_X, self.GREETING_GUILD_NAME_Y),
+            guild_display_name,
+            fill=self.GREETING_ACCENT,
+            font=font_guild,
+        )
 
         # -- Greeting title (e.g. "Welcome, Username!") --------------------
-        greeting = "Welcome" if card_type == "welcome" else "Goodbye"
-
         # Truncate username if too long.
         display_name = username[:MAX_USERNAME_DISPLAY]
         if len(username) > MAX_USERNAME_DISPLAY:
             display_name += "…"
 
-        title_text = f"{greeting},\n{display_name}!"
+        if greeting_title is None:
+            greeting = "Welcome" if card_type == "welcome" else "Goodbye"
+            title_text = f"{greeting},\n{display_name}!"
+        else:
+            title_text = f"{greeting_title}\n{display_name}!"
         draw.text(
             (self.GREETING_TITLE_X, self.GREETING_TITLE_Y),
             title_text,
@@ -316,7 +364,7 @@ class ImageService:
         )
 
         # -- Member count --------------------------------------------------
-        count_text = f"Member #{member_count:,}"
+        count_text = member_count_text if member_count_text is not None else f"Member #{member_count:,}"
         draw.text(
             (self.GREETING_COUNT_X, self.GREETING_COUNT_Y),
             count_text,
@@ -329,6 +377,44 @@ class ImageService:
         img.save(buffer, format="PNG")
         buffer.seek(0)
         return buffer
+
+    def _safe_fetch_avatar(self, avatar_url: str | None) -> Image.Image | None:
+        """Fetch an optional image without allowing an asset failure to abort rendering."""
+        try:
+            return self._fetch_avatar(avatar_url)
+        except Exception:
+            logger.debug("Greeting card asset fetch failed — using placeholder", exc_info=True)
+            return None
+
+    @staticmethod
+    def _paste_circular_asset(
+        img: Image.Image,
+        asset: Image.Image | None,
+        x: int,
+        y: int,
+        size: int,
+        placeholder_color: tuple[int, int, int, int],
+    ) -> None:
+        """Paste a circular asset or deterministic placeholder into *img*."""
+        draw = ImageDraw.Draw(img)
+        bounds = (x, y, x + size, y + size)
+        if asset is None:
+            draw.ellipse(bounds, fill=placeholder_color)
+            inset = max(4, size // 8)
+            draw.ellipse(
+                (x + inset, y + inset, x + size - inset, y + size - inset),
+                fill=ImageService.GREETING_PLACEHOLDER_INNER,
+            )
+            return
+
+        resized = asset.convert("RGBA").resize(
+            (size, size),
+            Image.LANCZOS,  # type: ignore[attr-defined]  # Pillow exposes LANCZOS at runtime but stubs omit it
+        )
+        mask = Image.new("L", (size, size), 0)
+        ImageDraw.Draw(mask).ellipse((0, 0, size, size), fill=255)
+        resized.putalpha(mask)
+        img.paste(resized, (x, y), resized)
 
     # ------------------------------------------------------------------
     # Helpers

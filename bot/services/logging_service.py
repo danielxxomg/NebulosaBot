@@ -2,13 +2,17 @@
 
 Replaces the private ``SentinelCog._log_action()`` with a shared service
 consumed by both ``SentinelCog`` and ``AuditListener``.
+
+Also exposes the two structured record builders that separate guild-scoped
+ticket audit from bot-operator systemic diagnosis (product-artifact-audit).
 """
 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import discord
 
@@ -17,11 +21,15 @@ from bot.utils.embeds import guild_footer_icon
 
 if TYPE_CHECKING:
     from bot.bot import NebulosaBot
+    from bot.services.ticket_invariants import GlobalMutationGrant
 
 logger = logging.getLogger(__name__)
 
 LOG_COLOR = INFO
 MAX_FIELD_LENGTH = 1024
+
+# Outcomes that represent a real ticket mutation (a conditional close executed).
+_MUTATING_OUTCOMES = frozenset({"repaired"})
 
 
 def _truncate(text: str, max_len: int = MAX_FIELD_LENGTH) -> str:
@@ -29,6 +37,156 @@ def _truncate(text: str, max_len: int = MAX_FIELD_LENGTH) -> str:
     if len(text) <= max_len:
         return text
     return text[: max_len - 1] + "…"
+
+
+@dataclass(frozen=True)
+class RepairAuditRecord:
+    """Structured, guild-scoped audit evidence for one repair outcome.
+
+    Truthful by construction: ``mutated`` is ``True`` ONLY for a
+    ``repaired`` outcome. Denied, quarantined, skipped, already-closed, and
+    error outcomes never report mutation. ``reason`` and ``source`` are
+    preserved as structured context for later review.
+    """
+
+    guild_id: str
+    ticket_id: str
+    outcome: str
+    mutated: bool
+    reason: str | None = None
+    source: str | None = None
+    actor_id: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the record using camelCase persistence keys."""
+        return {
+            "guildId": self.guild_id,
+            "ticketId": self.ticket_id,
+            "outcome": self.outcome,
+            "mutated": self.mutated,
+            "reason": self.reason,
+            "source": self.source,
+            "actorId": self.actor_id,
+        }
+
+
+@dataclass(frozen=True)
+class OperatorDiagnosisRecord:
+    """Structured, cross-guild operator diagnosis — read-only without a grant.
+
+    ``mutated`` is ``False`` unless an explicit, confirmed
+    :class:`~bot.services.ticket_invariants.GlobalMutationGrant` authorizes
+    mutation. The record always names the target guilds it aggregates over.
+    """
+
+    target_guild_ids: tuple[str, ...]
+    mutated: bool
+    reason: str | None = None
+    findings: tuple[str, ...] = ()
+
+
+def build_repair_audit_record(
+    *,
+    guild_id: str,
+    ticket_id: str,
+    outcome: str,
+    reason: str | None = None,
+    source: str | None = None,
+    actor_id: str | None = None,
+) -> RepairAuditRecord:
+    """Build a guild-scoped repair audit record from a repair outcome.
+
+    ``mutated`` is derived strictly from *outcome*: only ``"repaired"``
+    reports a mutation. Every other outcome (denied, quarantined, skipped,
+    already_closed, error) is a non-mutating no-op/audit record.
+    """
+    return RepairAuditRecord(
+        guild_id=guild_id,
+        ticket_id=ticket_id,
+        outcome=outcome,
+        mutated=outcome in _MUTATING_OUTCOMES,
+        reason=reason,
+        source=source,
+        actor_id=actor_id,
+    )
+
+
+def build_operator_diagnosis_record(
+    *,
+    target_guild_ids: list[str] | tuple[str, ...],
+    findings: list[str] | tuple[str, ...] = (),
+    grant: GlobalMutationGrant | None = None,
+    actor_id: str | None = None,
+) -> OperatorDiagnosisRecord:
+    """Build a read-only (by default) cross-guild operator diagnosis record.
+
+    Without an explicit, confirmed, actor-matching, target-matching,
+    scope-matching :class:`~bot.services.ticket_invariants.GlobalMutationGrant`
+    (validated against the *actor_id* performing the diagnosis), the record
+    reports ``mutated=False``. The record always names every target guild it
+    aggregates over and never implies mutation authority on its own.
+
+    Mutation truthfulness requires the grant to satisfy EVERY binding: it must
+    be confirmed, carry a non-empty reason, name the acting *actor_id*, name a
+    target guild present in *target_guild_ids*, and use the ``"global"`` scope.
+    Any mismatch is reported as a non-mutating record with a precise reason.
+    """
+    target = tuple(target_guild_ids)
+    if grant is None:
+        return OperatorDiagnosisRecord(
+            target_guild_ids=target,
+            mutated=False,
+            reason="operator_mutation_requires_grant",
+            findings=tuple(findings),
+        )
+    if not grant.confirmed:
+        return OperatorDiagnosisRecord(
+            target_guild_ids=target,
+            mutated=False,
+            reason="grant_unconfirmed",
+            findings=tuple(findings),
+        )
+    if not grant.reason or not grant.reason.strip():
+        return OperatorDiagnosisRecord(
+            target_guild_ids=target,
+            mutated=False,
+            reason="grant_missing_reason",
+            findings=tuple(findings),
+        )
+    if actor_id is None:
+        return OperatorDiagnosisRecord(
+            target_guild_ids=target,
+            mutated=False,
+            reason="grant_actor_missing",
+            findings=tuple(findings),
+        )
+    if grant.actor_id != actor_id:
+        return OperatorDiagnosisRecord(
+            target_guild_ids=target,
+            mutated=False,
+            reason="grant_actor_mismatch",
+            findings=tuple(findings),
+        )
+    if grant.scope != "global":
+        return OperatorDiagnosisRecord(
+            target_guild_ids=target,
+            mutated=False,
+            reason="grant_scope_mismatch",
+            findings=tuple(findings),
+        )
+    if grant.target_guild_id not in target:
+        return OperatorDiagnosisRecord(
+            target_guild_ids=target,
+            mutated=False,
+            reason="grant_target_mismatch",
+            findings=tuple(findings),
+        )
+    return OperatorDiagnosisRecord(
+        target_guild_ids=target,
+        mutated=True,
+        reason=grant.reason,
+        findings=tuple(findings),
+    )
 
 
 class LoggingService:
