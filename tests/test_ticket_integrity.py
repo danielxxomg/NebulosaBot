@@ -204,3 +204,84 @@ def test_preflight_is_read_only_no_ticket_mutation() -> None:
 
     assert dict(evidence) == before
     assert result.schema_ready is True
+
+
+# ── DB-1.2 runtime parity binder — single path binding disk bytes + registry + schema ──
+
+
+def test_runtime_parity_binder_joins_disk_registry_and_schema() -> None:
+    """DB-1.2: one runtime binder MUST join on-disk SQL + registry + schema facts.
+
+    The production preflight must not consume caller-supplied parity flags: a
+    single testable binder joins local migration bytes, live migration registry,
+    and live schema facts before G.2 may resolve. Fakes only — no live writes.
+    """
+    from pathlib import Path
+
+    from bot.services.integrity_report import bind_runtime_parity
+
+    sql = Path("migrations/015_ticket_lifecycle_reliability.sql").read_text(encoding="utf-8")
+    snap = bind_runtime_parity(
+        on_disk_sql=sql,
+        on_disk_filename="015_ticket_lifecycle_reliability.sql",
+        live_migration_ids=["015_ticket_lifecycle_reliability", "014_ticket_category_fields"],
+        live_schema_close_reason_nullable=True,
+        live_schema_required_indexes_present=True,
+    )
+    assert snap.parity.compatible is True
+    assert snap.parity.status == "compatible"
+    assert snap.parity.filename_matches is True
+    assert snap.parity.schema_objects_match is True
+    assert snap.parity.applied is True
+    assert snap.registry_has_015 is True
+    assert snap.schema_has_close_reason is True
+    assert snap.schema_has_required_indexes is True
+    assert snap.resolved is True
+    assert snap.reasons == ()
+    assert snap.observed_bytes_len > 0
+    # Binder alone MUST be consumable by evaluate_preflight to reach resolved G.2.
+    preflight = evaluate_preflight(
+        migration=snap.parity,
+        deployment_mode="supabase_transaction",
+        schema_drift_detected=False,
+        evidence_persisted=True,
+    )
+    assert preflight.status == "resolved"
+    assert preflight.repair_activation_allowed is True
+
+
+def test_runtime_parity_binder_rejects_mismatched_disk_bytes() -> None:
+    """Binder fails closed when on-disk bytes do not match 015 fragments."""
+    from bot.services.integrity_report import bind_runtime_parity
+
+    snap = bind_runtime_parity(
+        on_disk_sql="-- empty migration",
+        on_disk_filename="015_ticket_lifecycle_reliability.sql",
+        live_migration_ids=["015_ticket_lifecycle_reliability"],
+        live_schema_close_reason_nullable=True,
+        live_schema_required_indexes_present=True,
+    )
+    assert snap.parity.schema_objects_match is False
+    assert snap.parity.compatible is False
+    assert snap.resolved is False
+    assert "parity_schema_mismatch" in snap.reasons
+
+
+def test_runtime_parity_binder_rejects_missing_registry_entry() -> None:
+    """Binder fails closed when live registry has no 015 entry."""
+    from pathlib import Path
+
+    from bot.services.integrity_report import bind_runtime_parity
+
+    sql = Path("migrations/015_ticket_lifecycle_reliability.sql").read_text(encoding="utf-8")
+    snap = bind_runtime_parity(
+        on_disk_sql=sql,
+        on_disk_filename="015_ticket_lifecycle_reliability.sql",
+        live_migration_ids=["014_ticket_category_fields"],
+        live_schema_close_reason_nullable=True,
+        live_schema_required_indexes_present=True,
+    )
+    assert snap.parity.applied is False
+    assert snap.registry_has_015 is False
+    assert snap.resolved is False
+    assert "parity_registry_missing_015" in snap.reasons

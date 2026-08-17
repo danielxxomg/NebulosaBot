@@ -851,8 +851,21 @@ class TestPR5DisabledSliceAndAuditDeterminism:
         # The only candidate was live (channel_exists=True) -> skipped, no close.
         assert all(r.action != "close" for r in results)
         assert all(r.outcome != "repaired" for r in results)
-        # No successful repair audit was produced for this no-op run.
-        repair_success_audits = [
-            c for c in mock_db.insert_audit_row.call_args_list if c.args[2] == "repair" and c.args[4] == "success"
+
+        # SERVICE-7.3: no-op run MUST emit ZERO audit rows with repair vocabulary.
+        # Filter on repaired + success (new vocabulary) and assert the complete call list is empty.
+        def _kw(c, idx):  # normalize positional/keyword audit calls
+            if c.kwargs:
+                return c.kwargs
+            keys = ["guild_id", "ticket_id", "action", "actor_id", "outcome", "reason"]
+            return dict(zip(keys, c.args, strict=False))
+
+        repaired_or_success_audits = [
+            c for c in mock_db.insert_audit_row.call_args_list if _kw(c)["outcome"] in ("repaired", "success")
         ]
-        assert len(repair_success_audits) == 0
+        assert len(repaired_or_success_audits) == 0
+        # Complete audit call list for repair/manual_repair actions must be empty on no-op.
+        repair_like_audits = [
+            c for c in mock_db.insert_audit_row.call_args_list if _kw(c)["action"] in ("repair", "manual_repair")
+        ]
+        assert len(repair_like_audits) == 0
