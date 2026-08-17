@@ -102,9 +102,11 @@ class LivePreflightResult:
     """Read-only result of the live schema/deployment preflight half.
 
     Resolves only from verified, fresh, read-only live evidence (project
-    status, migration 015 applied, required indexes, Realtime publication,
-    non-null active channel IDs). ``schema_ready`` proves schema readiness
-    ONLY — it never proves Discord channels exist and never mutates tickets.
+    status, migration 015 applied, required indexes, Realtime publication).
+    The optional ``active_rows_channel_id_non_null`` diagnostic is
+    informational only and does NOT participate in readiness.
+    ``schema_ready`` proves schema readiness ONLY — it never proves Discord
+    channels exist and never mutates tickets.
     """
 
     status: str
@@ -160,8 +162,11 @@ def evaluate_live_preflight(**evidence: object) -> LivePreflightResult:
         realtime_covers = ()
     if not REQUIRED_REALTIME_PUBLICATION.issubset(set(realtime_covers)):
         reasons.append("realtime_publication_incomplete")
-    if evidence.get("active_rows_channel_id_non_null") not in (3, None):
-        reasons.append("active_rows_channel_missing")
+    # ``active_rows_channel_id_non_null`` is informational diagnostic context
+    # ONLY: it MAY be reported alongside the schema facts but MUST NOT gate
+    # readiness or authorize repair (spec database-layer). It is intentionally
+    # not consumed here, so any value (None, 0, 1, 3, …) leaves readiness
+    # determined solely by the required schema/deployment facts above.
 
     return LivePreflightResult(
         status="resolved" if not reasons else "gate_unresolved",

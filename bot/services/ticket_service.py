@@ -33,6 +33,7 @@ from bot.services.ticket_invariants import (
     compute_note_hash,
     evaluate_repair_authority,
     is_duplicate_note,
+    parse_ticket_ref,
 )
 from bot.utils.ticket_helpers import (
     build_ticket_overwrites,
@@ -108,7 +109,17 @@ async def probe_channel_absence(bot: Any, guild_id: str, channel_id: str) -> boo
     A fresh fetch is performed on EVERY call: evidence is never reused across
     independent sweep/manual attempts (design.md).
     """
-    guild = bot.get_guild(int(guild_id)) if guild_id else None
+    if guild_id:
+        try:
+            guild_id_int = int(guild_id)
+        except (ValueError, TypeError):
+            # A malformed guild snowflake fails closed exactly like a malformed
+            # channel snowflake: unresolved (None), never absence, never a raw
+            # ValueError escaping to the caller.
+            return None
+        guild = bot.get_guild(guild_id_int)
+    else:
+        guild = None
     if guild is None:
         return None
     try:
@@ -588,7 +599,35 @@ class TicketService:
         Returns:
             A :class:`RepairResult`, or ``None`` when no active ticket matches.
         """
-        row = await self._db.get_active_ticket_by_channel(guild_id, channel_id)
+        try:
+            row = await self._db.get_active_ticket_by_channel(guild_id, channel_id)
+        except Exception as exc:
+            # A DB failure during the active-ticket lookup must fail closed
+            # (no mutation, no raw escape) and emit truthful structured
+            # evidence carrying the available guild/channel context. No ticket
+            # id is fabricated — the audit records the empty id truthfully.
+            logger.warning(
+                "Channel-delete lookup failed (guild=%s, channel=%s, reason=lookup_error): %s",
+                guild_id,
+                channel_id,
+                exc,
+                exc_info=True,
+            )
+            await self._audit_denied(
+                guild_id,
+                "",
+                "lookup_error",
+                "system",
+            )
+            return RepairResult(
+                ticket_id="",
+                guild_id=guild_id,
+                action="no_op",
+                outcome="skipped",
+                reason="lookup_error",
+                evidence_id=None,
+                timestamp=datetime.now(UTC),
+            )
         if row is None:
             return None
         evidence = IntegrityEvidence(
@@ -645,21 +684,91 @@ class TicketService:
         Returns:
             One :class:`RepairResult` per candidate evaluated (or empty).
         """
-        channel_ids = await self._db.get_open_ticket_channel_ids(guild_id)
+        try:
+            channel_ids = await self._db.get_open_ticket_channel_ids(guild_id)
+        except Exception as exc:
+            # A DB failure while discovering the sweep candidate LIST must not
+            # escape raw: it is converted into truthful structured evidence
+            # (guild + retryable classification) with NO fabricated ticket id,
+            # and no mutation is attempted.
+            logger.warning(
+                "Integrity sweep failed to discover candidate channels (guild=%s, reason=sweep_discovery_error): %s",
+                guild_id,
+                exc,
+                exc_info=True,
+            )
+            await self._audit_denied(
+                guild_id,
+                "",
+                "sweep_discovery_error",
+                "system",
+            )
+            return [
+                RepairResult(
+                    ticket_id="",
+                    guild_id=guild_id,
+                    action="no_op",
+                    outcome="skipped",
+                    reason="sweep_discovery_error",
+                    evidence_id=None,
+                    timestamp=datetime.now(UTC),
+                )
+            ]
         candidates: list[dict[str, Any]] = []
+        results: list[RepairResult] = []
         for channel_id in channel_ids:
-            row = await self._db.get_active_ticket_by_channel(guild_id, channel_id)
+            try:
+                row = await self._db.get_active_ticket_by_channel(guild_id, channel_id)
+            except Exception as exc:
+                # A DB failure resolving ONE candidate must not escape raw nor
+                # abort the sweep: that candidate is reported with structured
+                # evidence carrying the available channel id (never a
+                # fabricated ticket id) and safe candidates continue.
+                logger.warning(
+                    "Integrity sweep failed to resolve candidate "
+                    "(guild=%s, channel=%s, reason=sweep_discovery_error): %s",
+                    guild_id,
+                    channel_id,
+                    exc,
+                    exc_info=True,
+                )
+                await self._audit_denied(
+                    guild_id,
+                    "",
+                    "sweep_discovery_error",
+                    "system",
+                )
+                results.append(
+                    RepairResult(
+                        ticket_id="",
+                        guild_id=guild_id,
+                        action="no_op",
+                        outcome="skipped",
+                        reason="sweep_discovery_error",
+                        evidence_id=None,
+                        timestamp=datetime.now(UTC),
+                    )
+                )
+                continue
             if row is not None:
                 candidates.append(row)
 
         batch = plan_sweep_batch(candidates, batch_size=batch_size)
-        results: list[RepairResult] = []
         attempt = 0
         for candidate in batch:
             raw_channel_id = candidate.get("channelId")
             channel_exists = await probe_channel_absence(bot, guild_id, str(raw_channel_id))
             if channel_exists is None:
                 # Transient/uncertain: backoff + reviewable skip, no mutation.
+                # Best-effort structured audit evidence is still persisted so a
+                # transient failure never bypasses the audit trail; an audit
+                # write failure is logged and never converted into mutation.
+                await self._audit_denied(
+                    guild_id,
+                    candidate["id"],
+                    "probe_unresolved",
+                    "system",
+                )
                 await asyncio.sleep(backoff_delay(attempt))
                 attempt += 1
                 results.append(
@@ -693,6 +802,180 @@ class TicketService:
                 )
             )
         return results
+
+    async def repair_ticket_by_ref(
+        self,
+        ticket_ref: str,
+        *,
+        guild_id: str,
+        actor_id: str,
+        authority: RepairAuthority,
+        bot: Any,
+        preflight: object | None = None,
+        global_grant: GlobalMutationGrant | None = None,
+    ) -> RepairResult | None:
+        """Resolve *ticket_ref* and repair the ticket through the shared path.
+
+        This is the SERVICE-OWNED resolution boundary for ``/repair_ticket``:
+        the cog is a thin delegator that never performs its own ticket lookup.
+        A malformed/empty reference, a not-found row, and a DB lookup failure
+        all produce truthful structured evidence (best-effort audit + log)
+        with the AVAILABLE context — guild id, the raw reference, source, and
+        reason. No canonical ticket UUID exists on those paths, so the audit
+        records an empty ticket id rather than fabricating one.
+
+        *preflight* defaults to ``None`` (fail-closed) and *global_grant* is
+        the optional explicit operator mutation grant — both are forwarded to
+        the shared repair path unchanged.
+
+        Returns:
+            A :class:`RepairResult` for the repair outcome, or ``None`` when
+            the reference is malformed/empty (the cog reports the user error).
+        """
+        ref = parse_ticket_ref(ticket_ref)
+        if ref is None or (ref.number is None and ref.uuid is None):
+            logger.warning(
+                "repair_ticket_by_ref: unparseable reference (guild=%s, ref=%r)",
+                guild_id,
+                ticket_ref,
+            )
+            return None
+
+        row: dict[str, Any] | None = None
+        if ref.number is not None:
+            try:
+                row = await self._db.get_ticket_by_number(guild_id, ref.number)
+            except Exception as exc:
+                logger.warning(
+                    "repair_ticket_by_ref: number lookup failed (guild=%s, ref=%r): %s",
+                    guild_id,
+                    ticket_ref,
+                    exc,
+                    exc_info=True,
+                )
+                await self._audit_denied(
+                    guild_id,
+                    "",
+                    "database_error",
+                    actor_id,
+                    outcome="error",
+                )
+                return RepairResult(
+                    ticket_id="",
+                    guild_id=guild_id,
+                    action="no_op",
+                    outcome="error",
+                    reason="database_error",
+                    evidence_id=None,
+                    timestamp=datetime.now(UTC),
+                )
+            if row is None:
+                logger.warning(
+                    "repair_ticket_by_ref: number not found (guild=%s, ref=%r)",
+                    guild_id,
+                    ticket_ref,
+                )
+                await self._audit_denied(
+                    guild_id,
+                    "",
+                    "ticket_not_found",
+                    actor_id,
+                    outcome="error",
+                )
+                return RepairResult(
+                    ticket_id="",
+                    guild_id=guild_id,
+                    action="no_op",
+                    outcome="error",
+                    reason="ticket_not_found",
+                    evidence_id=None,
+                    timestamp=datetime.now(UTC),
+                )
+        else:
+            assert ref.uuid is not None
+            try:
+                row = await self._db.get_ticket(ref.uuid)
+            except Exception as exc:
+                logger.warning(
+                    "repair_ticket_by_ref: uuid lookup failed (guild=%s, ref=%r): %s",
+                    guild_id,
+                    ticket_ref,
+                    exc,
+                    exc_info=True,
+                )
+                await self._audit_denied(
+                    guild_id,
+                    "",
+                    "database_error",
+                    actor_id,
+                    outcome="error",
+                )
+                return RepairResult(
+                    ticket_id="",
+                    guild_id=guild_id,
+                    action="no_op",
+                    outcome="error",
+                    reason="database_error",
+                    evidence_id=None,
+                    timestamp=datetime.now(UTC),
+                )
+            if row is None:
+                logger.warning(
+                    "repair_ticket_by_ref: uuid not found (guild=%s, ref=%r)",
+                    guild_id,
+                    ticket_ref,
+                )
+                await self._audit_denied(
+                    guild_id,
+                    "",
+                    "ticket_not_found",
+                    actor_id,
+                    outcome="error",
+                )
+                return RepairResult(
+                    ticket_id="",
+                    guild_id=guild_id,
+                    action="no_op",
+                    outcome="error",
+                    reason="ticket_not_found",
+                    evidence_id=None,
+                    timestamp=datetime.now(UTC),
+                )
+
+        if row.get("guildId") != guild_id:
+            # Defense-in-depth row-guild validation: a foreign-guild row must
+            # never be probed or mutated through this path.
+            logger.warning(
+                "repair_ticket_by_ref: row guild mismatch (requested=%s, row=%s, ref=%r)",
+                guild_id,
+                row.get("guildId"),
+                ticket_ref,
+            )
+            await self._audit_denied(
+                guild_id,
+                row.get("id") or "",
+                "cross_guild_denied",
+                actor_id,
+            )
+            return RepairResult(
+                ticket_id=row.get("id") or "",
+                guild_id=guild_id,
+                action="no_op",
+                outcome="denied",
+                reason="cross_guild_denied",
+                evidence_id=None,
+                timestamp=datetime.now(UTC),
+            )
+
+        return await self.repair_ticket_manual(
+            row["id"],
+            guild_id=guild_id,
+            actor_id=actor_id,
+            authority=authority,
+            bot=bot,
+            preflight=preflight,
+            global_grant=global_grant,
+        )
 
     async def repair_ticket_manual(
         self,
@@ -733,8 +1016,16 @@ class TicketService:
         decision = evaluate_repair_authority(authority, global_grant=global_grant)
         # Defense-in-depth: an authority evaluated for guild X must never
         # authorize a mutation targeting guild Y, even if the caller
-        # supplies a mismatched target id.
+        # supplies a mismatched target id. The denial is audited best-effort,
+        # scoped to the CALLER's guild (the operation origin), so a foreign
+        # target guild's audit trail is never polluted (guild isolation).
         if authority.target_guild_id != guild_id:
+            await self._audit_denied(
+                authority.guild_id or guild_id,
+                ticket_id,
+                "cross_guild_denied",
+                actor_id,
+            )
             return RepairResult(
                 ticket_id=ticket_id,
                 guild_id=guild_id,
@@ -745,6 +1036,12 @@ class TicketService:
                 timestamp=datetime.now(UTC),
             )
         if not decision.allowed:
+            await self._audit_denied(
+                guild_id,
+                ticket_id,
+                decision.reason or "insufficient_authority",
+                actor_id,
+            )
             return RepairResult(
                 ticket_id=ticket_id,
                 guild_id=guild_id,
@@ -755,8 +1052,48 @@ class TicketService:
                 timestamp=datetime.now(UTC),
             )
 
-        row = await self._db.get_ticket(ticket_id)
+        row = None
+        try:
+            row = await self._db.get_ticket(ticket_id)
+        except Exception:
+            # A transient database failure must NOT escape raw to the caller:
+            # it is converted into a truthful non-success result with
+            # best-effort structured failure audit evidence (repair/error,
+            # guild-scoped, retryable classification in the reason). An
+            # audit-write failure is logged and never turns this into success.
+            logger.warning(
+                "Manual repair DB lookup failed for ticket %s (guild %s)",
+                ticket_id,
+                guild_id,
+                exc_info=True,
+            )
+            await self._audit_denied(
+                guild_id,
+                ticket_id,
+                "database_error",
+                actor_id,
+                outcome="error",
+            )
+            return RepairResult(
+                ticket_id=ticket_id,
+                guild_id=guild_id,
+                action="no_op",
+                outcome="error",
+                reason="database_error",
+                evidence_id=None,
+                timestamp=datetime.now(UTC),
+            )
         if row is None:
+            # Authorized request for a missing ticket: truthful error result
+            # plus best-effort structured non-mutating audit evidence so the
+            # failed outcome is reviewable (guild/ticket/outcome/reason).
+            await self._audit_denied(
+                guild_id,
+                ticket_id,
+                "ticket_not_found",
+                actor_id,
+                outcome="error",
+            )
             return RepairResult(
                 ticket_id=ticket_id,
                 guild_id=guild_id,
@@ -786,6 +1123,42 @@ class TicketService:
             close_reason="zombie:manual",
             actor_id=actor_id,
         )
+
+    async def _audit_denied(
+        self,
+        guild_id: str,
+        ticket_id: str,
+        reason: str,
+        actor_id: str | None,
+        *,
+        outcome: str = "denied",
+    ) -> None:
+        """Persist best-effort structured audit evidence for a failed repair.
+
+        A failure must never be silently dropped from the audit trail, and an
+        audit-write failure must never be converted into a mutation claim: the
+        failure is logged at WARNING and the (already non-success) outcome
+        stands. *outcome* defaults to ``"denied"``; the authorized manual
+        not-found and DB-error paths pass ``"error"`` so their structured
+        evidence carries the truthful non-mutating outcome.
+        """
+        try:
+            await self._db.insert_audit_row(
+                guild_id,
+                ticket_id,
+                "repair",
+                actor_id,
+                outcome,
+                reason,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to write repair %s audit row for ticket %s (guild %s)",
+                outcome,
+                ticket_id,
+                guild_id,
+                exc_info=True,
+            )
 
     async def claim_ticket(self, ticket_id: str, claimed_by: str) -> Ticket:
         """Claim a ticket, assigning it to a staff member.

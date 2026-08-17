@@ -4198,6 +4198,90 @@ async def test_repair_audit_failure_never_reports_repaired(
 
 
 # ===========================================================================
+# PR5 — Idempotency / audit best-effort + disabled-slice / rollback (tasks 5.1-5.4 RED)
+# ===========================================================================
+#
+# Strict TDD RED for the last unchecked tasks. The repair already has one-winner
+# idempotency (duplicate -> already_closed) proved above, and audit-persistence
+# failure degrades to close/error (never repaired). PR5 adds two integration
+# boundaries explicitly demanded by the spec:
+#  - Disabled/rollback slice leaves tickets untouched and keeps deletion-only logging.
+#  - An audit write failure on the DENIED already_closed path never hides the failure.
+
+
+class TestPR5IdempotencyAndBestEffort:
+    """PR5 5.1/5.2: audit is best-effort, idempotency is one-winner, and no second mutation."""
+
+    @pytest.mark.asyncio
+    async def test_already_closed_audit_write_failure_still_already_closed(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+        ticket_row: dict,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Already-closed with audit insert failure MUST still return already_closed and log WARNING.
+
+        The close mutation is already persisted (or correctly skipped by the
+        conditional transition). A best-effort audit row whose insert raises
+        must be logged at WARNING and must NOT change the outcome or claim mutation.
+        """
+        import logging
+
+        evidence = _corroborated_evidence(ticket_row)
+        # Transition returns None -> already_closed loser path.
+        mock_db.transition_ticket_to_closed = AsyncMock(return_value=None)
+        # The already_closed audit insert fails (audit table down).
+        mock_db.insert_audit_row = AsyncMock(side_effect=RuntimeError("audit down"))
+
+        with caplog.at_level(logging.WARNING, logger="bot.services.ticket_service"):
+            result = await service.repair_ticket_from_evidence(
+                evidence,
+                preflight=_resolved_preflight(),
+                close_reason="zombie:channel_deleted",
+            )
+
+        assert result.outcome == "already_closed"
+        assert result.action == "no_op"
+        # The denied audit failure was logged, not swallowed silently.
+        assert any("audit" in r.message.lower() for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_successful_close_persists_despite_audit_warning(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+        ticket_row: dict,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """When the success audit insert fails, the close STILL persists and WARNING is logged.
+
+        Threat: Audit best-effort — audit failure must not roll back the repair mutation.
+        The current semantics degrades repaired to close/error with a non-empty reason
+        so no success is claimed without evidence.
+        """
+        import logging
+
+        evidence = _corroborated_evidence(ticket_row)
+        closed_row = {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"}
+        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+        # This is the SUCCESS audit path (success -> insert fails).
+        mock_db.insert_audit_row = AsyncMock(side_effect=RuntimeError("audit down"))
+
+        with caplog.at_level(logging.WARNING, logger="bot.services.ticket_service"):
+            result = await service.repair_ticket_from_evidence(
+                evidence, preflight=_resolved_preflight(), close_reason="zombie:channel_deleted"
+            )
+
+        # The DB row was closed (transition succeeded) even though audit persistence failed.
+        mock_db.transition_ticket_to_closed.assert_awaited_once()
+        assert result.outcome == "error"
+        assert result.reason == "audit_persistence_failed"
+        assert result.evidence_id is None
+        assert any("audit" in r.message.lower() for r in caplog.records)
+
+
+# ===========================================================================
 # product-artifact-audit PR4b — sweep/manual primitives (tasks 4.2/4.3 RED)
 # ===========================================================================
 #

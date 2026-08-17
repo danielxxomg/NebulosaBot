@@ -49,27 +49,27 @@ Chain strategy: feature-branch-chain
 - [x] 2.6 GREEN: repair builds `RepairResult` from `IntegrityEvidence` via `transition_ticket_to_closed`; mutations stay G.2-gated in tests.
 ## Phase 3: Authoritative `on_guild_channel_delete` (PR 3)
 
-- [ ] 3.1 RED `tests/test_audit_listener.py`: duplicate event + cross-guild lookup map to correct ticket only; deletion logging retained. Threat: Event routing.
-- [ ] 3.2 RED same: transient `discord.HTTPException` check → `skipped`, no mutation. Threat: Discord/API integration.
-- [ ] 3.3 RED same: G.2 unresolved → logs detection, no `close_ticket`; resolved → conditional close, `closeReason="zombie:channel_deleted"`.
-- [ ] 3.4 RED same: concurrent duplicate events → exactly one `repaired`, second `already_closed`.
-- [ ] 3.5 GREEN: modify `bot/listeners/audit_listener.py` `on_guild_channel_delete` — retain logging then active lookup + G.2 gate + conditional repair (no-op when no mapping).
+- [x] 3.1 RED `tests/test_audit_listener.py`: duplicate event + cross-guild lookup map to correct ticket only; deletion logging retained. Threat: Event routing.
+- [x] 3.2 RED same: transient `discord.HTTPException` check → `skipped`, no mutation. Threat: Discord/API integration.
+- [x] 3.3 RED same: G.2 unresolved → logs detection, no `close_ticket`; resolved → conditional close, `closeReason="zombie:channel_deleted"`.
+- [x] 3.4 RED same: concurrent duplicate events → exactly one `repaired`, second `already_closed`.
+- [x] 3.5 GREEN: modified `bot/services/ticket_service.py::handle_channel_delete` with DB-error no-escape (`lookup_error` audited), plus the shared `audit_listener.py` delegation path; sweep/manual remain deferred — PR4 wiring stays in master. Verified via `TestAuthoritativeChannelDeletePR3` in `tests/test_audit_listener.py`.
 
 ## Phase 4: Sweeps + Manual Fallback (PR 4 — bounded/rate-limit safe)
 
-- [ ] 4.1 RED `tests/test_tickets_cog.py`: bounded batch (50/250); 429 → skip + backoff, no rate-limit breach. Threat: Rate limits.
-- [ ] 4.2 RED same: dry-run only when G.2 unresolved; corroborated-close when resolved; missing-evidence candidate → `skipped`, no mutation.
-- [ ] 4.3 GREEN: modify `bot/cogs/tickets.py` startup/hourly `@tasks.loop` → bounded service sweep with backoff.
-- [ ] 4.4 RED `tests/test_tickets_cog.py`: mod `userM` manual repair closes corroborated zombie, `closeReason="zombie:manual_repair"`, audit `actorId=userM`; non-zombie `skipped`; idempotent re-run `already_closed`.
-- [ ] 4.5 GREEN: add moderator manual-repair command to `bot/cogs/tickets.py` as thin delegator (G.2-gated; idempotent + bounded).
+- [x] 4.1 RED `tests/test_tickets_cog.py`: bounded batch (50/250); 429 → skip + backoff, no rate-limit breach. Threat: Rate limits.
+- [x] 4.2 RED same: dry-run only when G.2 unresolved; corroborated-close when resolved; missing-evidence candidate → `skipped`, no mutation.
+- [x] 4.3 GREEN: modify `bot/cogs/tickets.py` startup/hourly `@tasks.loop` → bounded service sweep with backoff.
+- [x] 4.4 RED `tests/test_tickets_cog.py`: mod `userM` manual repair closes corroborated zombie, `closeReason="zombie:manual_repair"`, audit `actorId=userM`; non-zombie `skipped`; idempotent re-run `already_closed`.
+- [x] 4.5 GREEN: add moderator manual-repair command to `bot/cogs/tickets.py` as thin delegator (G.2-gated; idempotent + bounded).
 
 ## Phase 5: Idempotency/Audit + Integration + Fresh Evidence (PR 5)
 
-- [ ] 5.1 RED `tests/test_ticket_service.py`: idempotent re-run → no second close; audit-insert failure → close persists + WARNING. Threat: Audit best-effort.
-- [ ] 5.2 GREEN: every repair path emits `RepairResult` + best-effort `ticket_audit` (`actorId="system"` auto/sweep, mod id manual); re-run after `already_closed` deterministic no-op.
-- [ ] 5.3 RED `tests/integration/test_ticket_flow.py`: disabled slice leaves tickets untouched; deletion-only logging continues when gate off. Threat: Rollback/no-op.
-- [ ] 5.4 GREEN: rollback flag/gate wiring; no-op run emits no `RepairResult(action="close")` and no repair audit rows.
-- [ ] 5.5 Verify: `uv run pytest tests/test_ticket_integrity.py tests/test_ticket_model.py tests/test_ticket_db.py tests/test_ticket_service.py tests/test_audit_listener.py tests/test_tickets_cog.py tests/integration/test_ticket_flow.py tests/test_migrations.py -q`; then `uv run pytest` and `python -m py_compile bot/__main__.py`. Write fresh evidence in `verify-report.md`.
+- [x] 5.1 RED `tests/test_ticket_service.py`: idempotent re-run → no second close; audit-insert failure → close persists + WARNING. Threat: Audit best-effort.
+- [x] 5.2 GREEN: every repair path emits `RepairResult` + best-effort `ticket_audit` (`actorId="system"` auto/sweep, mod id manual); re-run after `already_closed` deterministic no-op.
+- [x] 5.3 RED `tests/integration/test_ticket_flow.py`: disabled slice leaves tickets untouched; deletion-only logging continues when gate off. Threat: Rollback/no-op.
+- [x] 5.4 GREEN: rollback flag/gate wiring; no-op run emits no `RepairResult(action="close")` and no repair audit rows.
+- [x] 5.5 Verify: `uv run pytest tests/test_ticket_integrity.py tests/test_ticket_model.py tests/test_ticket_db.py tests/test_ticket_service.py tests/test_audit_listener.py tests/test_tickets_cog.py tests/integration/test_ticket_flow.py tests/test_migrations.py -q`; then `uv run pytest` and `python -m py_compile bot/__main__.py`. Write fresh evidence in `verify-report.md`.
 
 ## Cross-Cutting Evidence (no activation until recorded)
 

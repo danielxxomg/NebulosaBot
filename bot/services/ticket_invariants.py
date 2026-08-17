@@ -373,6 +373,11 @@ def evaluate_repair_authority(
             return AuthorityDecision(False, "global", "grant_unconfirmed")
         if not global_grant.reason or not global_grant.reason.strip():
             return AuthorityDecision(False, "global", "grant_missing_reason")
+        if global_grant.scope != "global":
+            # A confirmed grant is only global when its scope is explicitly
+            # "global". A scope="guild" grant never upgrades to a global
+            # mutation bypass at the evaluator (the actual mutation gate).
+            return AuthorityDecision(False, "global", "grant_scope_mismatch")
         if global_grant.actor_id != authority.actor_id:
             return AuthorityDecision(False, "global", "grant_actor_mismatch")
         if global_grant.target_guild_id != authority.target_guild_id:

@@ -737,3 +737,123 @@ class TestIntegrityRepairFlow:
         )
         assert with_grant.outcome == "repaired"
         mock_db.transition_ticket_to_closed.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# PR5 — Disabled / rollback + audit best-effort determinism (tasks 5.3-5.4 RED)
+# ---------------------------------------------------------------------------
+#
+# The disabled/rollback gate MUST leave tickets untouched. The channel-delete
+# listener always preserves deletion-only logging, while repair/sweep remain
+# fail-closed when no resolved preflight is supplied. No repair audit rows
+# are claimed, and a best-effort audit WARNING is emitted when audit persistence
+# fails.
+
+
+class TestPR5DisabledSliceAndAuditDeterminism:
+    """Disabled slice and audit best-effort integration cases."""
+
+    @staticmethod
+    def _service_with(db, cache=None):
+        from bot.core.cache import TTLCache
+        from bot.services.ticket_service import TicketService
+
+        return TicketService(db=db, cache=cache or TTLCache())
+
+    async def test_disabled_slice_leaves_tickets_untouched(self, mock_db: AsyncMock) -> None:
+        """Disabled/gate-off slice MUST NOT mutate tickets; deletion auditing continues.
+
+        Threat: Rollback/no-op — the prior close/channel-delete behavior must be
+        preserved and tickets must be left untouched when repair is disabled.
+        """
+        from bot.listeners.audit_listener import AuditListener
+
+        # An open ticket maps to the deleted channel, but the listener is invoked
+        # WITHOUT a resolved preflight (the default disabled state).
+        row = _make_ticket_row(ticket_number=9, status="open")
+        mock_db.get_active_ticket_by_channel = AsyncMock(return_value=row)
+        mock_db.transition_ticket_to_closed = AsyncMock(return_value={**row, "status": "closed"})
+        mock_db.insert_audit_row = AsyncMock(return_value={})
+
+        # The service path itself is also disabled without a resolved preflight.
+        from bot.models.ticket import IntegrityEvidence
+
+        svc = self._service_with(mock_db)
+        evidence = IntegrityEvidence(
+            ticket_id=row["id"],
+            guild_id=row["guildId"],
+            channel_id=row["channelId"],
+            status="open",
+            channel_exists=False,
+        )
+        # No preflight supplied -> gate_unresolved -> no mutation.
+        result = await svc.repair_ticket_from_evidence(evidence)
+        assert result.outcome == "skipped"
+        assert result.reason == "gate_unresolved"
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+
+        # The listener, which is the deletion-only boundary, must still log the deletion.
+        bot = MagicMock()
+        bot.db = mock_db
+        bot.ticket_service = svc
+        bot.logging_service = MagicMock()
+        bot.logging_service.log_channel_delete = AsyncMock()
+        bot.user = MagicMock()
+        bot.user.id = 1
+        listener = AuditListener(bot)
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.guild = MagicMock()
+        channel.guild.id = int(row["guildId"])
+        channel.id = int(row["channelId"])
+
+        # Even though a ticket maps to the channel, the disabled listener must
+        # NOT close it (fail-closed) and MUST still emit deletion logging.
+        mock_db.get_active_ticket_by_channel = AsyncMock(return_value=row)
+        mock_db.transition_ticket_to_closed = AsyncMock()  # should stay unawaited
+        await listener.on_guild_channel_delete(channel)
+        bot.logging_service.log_channel_delete.assert_awaited_once()
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
+
+    async def test_no_op_run_emits_no_close_and_no_repair_audit(self, mock_db: AsyncMock) -> None:
+        """A no-op sweep/run MUST emit no close and no repair audit rows.
+
+        Threat: Rollback/no-op — a run that finds no corroborated zombies must
+        not claim completion or side effects.
+        """
+        svc = self._service_with(mock_db)
+
+        # The sweep discovers one live ticket whose channel still exists.
+        mock_db.get_open_ticket_channel_ids = AsyncMock(return_value=[_make_ticket_row(ticket_number=7)["channelId"]])
+        mock_db.get_active_ticket_by_channel = AsyncMock(return_value=_make_ticket_row(ticket_number=7, status="open"))
+        mock_db.insert_audit_row = AsyncMock(return_value={})
+
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = 123456789
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.id = 444444444
+        guild.fetch_channel = AsyncMock(return_value=channel)
+        bot = MagicMock()
+        bot.get_guild = MagicMock(return_value=guild)
+
+        from bot.services.integrity_report import evaluate_live_preflight
+
+        preflight = evaluate_live_preflight(
+            project_status="ACTIVE_HEALTHY",
+            migration_015_applied=True,
+            close_reason_nullable=True,
+            required_indexes_present=True,
+            realtime_publication_covers=["guild", "greeting_config", "ticket", "ticket_note"],
+            active_rows_channel_id_non_null=3,
+            observed_at=datetime.now(UTC).isoformat(),
+        )
+
+        results = await svc.sweep_integrity("123456789", bot, preflight=preflight)
+
+        # The only candidate was live (channel_exists=True) -> skipped, no close.
+        assert all(r.action != "close" for r in results)
+        assert all(r.outcome != "repaired" for r in results)
+        # No successful repair audit was produced for this no-op run.
+        repair_success_audits = [
+            c for c in mock_db.insert_audit_row.call_args_list if c.args[2] == "repair" and c.args[4] == "success"
+        ]
+        assert len(repair_success_audits) == 0
