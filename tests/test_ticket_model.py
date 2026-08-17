@@ -670,12 +670,12 @@ def test_repair_result_round_trips_camelcase_fields() -> None:
 
 
 def test_repair_result_quarantined_requires_non_empty_reason() -> None:
-    """A quarantined result MUST carry a non-empty review reason."""
+    """Quarantined is no longer a valid outcome per spec; it must be rejected as invalid combination."""
     timestamp = datetime(2026, 7, 17, 12, 0, tzinfo=UTC)
-    with pytest.raises(ValueError, match="reason"):
+    with pytest.raises(ValueError, match="Invalid"):
+        RepairResult("t1", "g1", "no_op", "quarantined", "reason", None, timestamp)
+    with pytest.raises(ValueError, match="Invalid"):
         RepairResult("t1", "g1", "no_op", "quarantined", None, None, timestamp)
-    with pytest.raises(ValueError, match="reason"):
-        RepairResult("t1", "g1", "no_op", "quarantined", "   ", None, timestamp)
 
 
 def test_repair_result_error_requires_non_empty_reason() -> None:

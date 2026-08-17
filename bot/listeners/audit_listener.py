@@ -153,7 +153,25 @@ class AuditListener(commands.Cog):
         handler = getattr(ticket_service, "handle_channel_delete", None)
         if handler is None:
             return
-        await handler(guild_id, str(channel.id))
+        # Resolve live G.2 preflight (read-only) and forward resolved evidence
+        # through the real listener so resolved repair is reachable.
+        preflight = None
+        live_preflight_fn = getattr(self.bot, "live_preflight", None)
+        if callable(live_preflight_fn):
+            try:
+                preflight = live_preflight_fn()
+            except Exception:
+                logger.exception("Failed to resolve live preflight for channel_delete")
+                preflight = None
+        else:
+            # Fallback: try evaluate_live_preflight from bot if available
+            evaluator = getattr(ticket_service, "_live_preflight_evaluator", None)
+            if callable(evaluator):
+                try:
+                    preflight = evaluator()
+                except Exception:
+                    logger.exception("Failed to evaluate live preflight for channel_delete")
+        await handler(guild_id, str(channel.id), preflight=preflight)
 
 
 # ------------------------------------------------------------------
