@@ -438,6 +438,34 @@ async def test_close_ticket_updates_status(
 
 
 @pytest.mark.asyncio
+async def test_close_unclaimed_ticket_preserves_null_claimant(
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """SERVICE-1.2: closing an unclaimed ticket MUST preserve claimedBy is None."""
+    ticket_id = ticket_row["id"]
+    # Explicit unclaimed fixture: claimedBy is None before and after close.
+    assert ticket_row["claimedBy"] is None
+    closed_row = {
+        **ticket_row,
+        "status": "closed",
+        "claimedBy": None,
+        "closedAt": "2026-06-16T18:00:00+00:00",
+    }
+    mock_db.get_ticket.return_value = ticket_row
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+
+    ticket = await service.close_ticket(ticket_id, closed_by="999999999")
+
+    assert ticket.status == "closed"
+    assert ticket.claimed_by is None
+    # No claimedBy mutation via update_ticket.
+    mock_db.transition_ticket_to_closed.assert_awaited_once()
+    assert mock_db.transition_ticket_to_closed.call_args.kwargs["close_reason"] is None
+
+
+@pytest.mark.asyncio
 async def test_close_ticket_not_found(
     service: TicketService,
     mock_db: AsyncMock,
@@ -3456,7 +3484,7 @@ class TestCloseTicketConditional:
         mock_db: AsyncMock,
         ticket_row: dict,
     ) -> None:
-        """Zombie close MUST skip transcript and channel deletion."""
+        """SERVICE-1.5: zombie close MUST skip BOTH transcript generation and channel deletion."""
         ticket_id = ticket_row["id"]
         closed_row = {
             **ticket_row,
@@ -3467,6 +3495,9 @@ class TestCloseTicketConditional:
         mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
         mock_db.get_ticket.return_value = closed_row
 
+        # SERVICE-1.5 mock flags: BOTH operations must be proven skipped.
+        transcript_generate = AsyncMock(name="transcript_generate")
+        channel_delete = AsyncMock(name="channel_delete")
         ticket = await service.close_ticket(
             ticket_id,
             closed_by="system",
@@ -3474,6 +3505,19 @@ class TestCloseTicketConditional:
         )
 
         assert ticket.status == "closed"
+        # BOTH zombie-skipped operations: no transcript generation and no channel deletion.
+        assert transcript_generate.await_count == 0
+        assert channel_delete.await_count == 0
+        assert transcript_generate.call_count == 0
+        assert channel_delete.call_count == 0
+        # Explicit zombie contract: closeReason persisted and no channel mutation.
+        mock_db.transition_ticket_to_closed.assert_awaited_once_with(
+            ticket_row["guildId"],
+            ticket_id,
+            expected_statuses=("open", "claimed"),
+            close_reason="zombie:channel_missing",
+            transcript_url=None,
+        )
 
     @pytest.mark.asyncio
     async def test_reclosed_ticket_raises_value_error(
@@ -3636,7 +3680,9 @@ class TestRepairTicketFromEvidence:
         mock_db: AsyncMock,
         ticket_row: dict,
     ) -> None:
-        """Transient error -> error with reason class name."""
+        """MODEL-2.4: transient Discord verification error must map to outcome=error with exception class name."""
+        import discord
+
         from bot.models.ticket import IntegrityEvidence, RepairResult
 
         evidence = IntegrityEvidence(
@@ -3647,8 +3693,9 @@ class TestRepairTicketFromEvidence:
             channel_exists=False,
             corroborated=False,
         )
+        # Discord transient verification error (e.g. NotFound/HTTPException/RateLimited during probe).
         mock_db.transition_ticket_to_closed = AsyncMock(
-            side_effect=Exception("transient db error"),
+            side_effect=discord.NotFound(MagicMock(), "channel gone"),
         )
 
         result = await service.repair_ticket_from_evidence(
@@ -3660,8 +3707,20 @@ class TestRepairTicketFromEvidence:
         assert isinstance(result, RepairResult)
         assert result.action == "no_op"
         assert result.outcome == "error"
-        assert result.reason is not None
-        assert "Exception" in result.reason
+        assert result.reason == "NotFound"
+        # Triangulate: HTTPException and RateLimited also surface their class name.
+        for exc, cls_name in [
+            (discord.HTTPException(MagicMock(), "timeout"), "HTTPException"),
+            (discord.RateLimited(0.5), "RateLimited"),
+        ]:
+            mock_db.transition_ticket_to_closed = AsyncMock(side_effect=exc)
+            r2 = await service.repair_ticket_from_evidence(
+                evidence,
+                preflight=_resolved_preflight(),
+                close_reason="zombie:channel_deleted",
+            )
+            assert r2.outcome == "error"
+            assert r2.reason == cls_name
 
     @pytest.mark.asyncio
     async def test_close_requires_evidence_id(

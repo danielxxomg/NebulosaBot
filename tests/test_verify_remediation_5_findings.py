@@ -84,7 +84,7 @@ async def test_automatic_repair_persists_repaired_not_success():
 
 @pytest.mark.asyncio
 async def test_manual_repair_persists_single_manual_repair_repaired():
-    """SERVICE-5.3: manual repair must persist exactly ONE manual_repair/repaired row."""
+    """SERVICE-5.3 + SERVICE-4.1: manual repair must persist exactly ONE manual_repair/repaired row with close_reason zombie:manual_repair."""
     db = AsyncMock()
     row = {"id": "t1", "guildId": "123456789", "channelId": "888888888", "status": "open"}
     db.get_ticket = AsyncMock(return_value=row)
@@ -100,6 +100,10 @@ async def test_manual_repair_persists_single_manual_repair_repaired():
     auth = RepairAuthority(actor_id="userM", guild_id="123456789", target_guild_id="123456789", has_mod_role=True)
     result = await svc.repair_ticket_manual("t1", guild_id="123456789", actor_id="userM", authority=auth, bot=bot)
     assert result.outcome == "repaired"
+    assert result.action == "close"
+    # Direct audit assertion: manual_repair + actor + outcome, and close_reason persisted.
+    assert db.transition_ticket_to_closed.await_count == 1
+    assert db.transition_ticket_to_closed.call_args.kwargs["close_reason"] == "zombie:manual_repair"
     # MUST be exactly one audit row, with manual_repair/repaired, no extra repair/success
     assert db.insert_audit_row.await_count == 1, db.insert_audit_row.call_args_list
     kwargs = _audit_kwargs(db)
