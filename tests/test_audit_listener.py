@@ -479,10 +479,11 @@ class TestChannelDeleteRepairRouting:
         await repair_listener.on_guild_channel_delete(channel)  # type: ignore[union-attr]
 
         mock_logging.log_channel_delete.assert_awaited_once_with("123456789", channel)
-        repair_bot.ticket_service.handle_channel_delete.assert_awaited_once_with(
-            "123456789",
-            "555555",
-        )
+        assert repair_bot.ticket_service.handle_channel_delete.await_count == 1
+        await_args, await_kwargs = repair_bot.ticket_service.handle_channel_delete.call_args
+        assert await_args[0] == "123456789"
+        assert await_args[1] == "555555"
+        assert "preflight" in await_kwargs
 
     @pytest.mark.asyncio
     async def test_channel_delete_never_mutates_directly(
@@ -519,6 +520,155 @@ class TestChannelDeleteRepairRouting:
         await listener.on_guild_channel_delete(channel)  # type: ignore[union-attr]
 
         mock_logging.log_channel_delete.assert_awaited_once_with("123456789", channel)
+
+
+# ---------------------------------------------------------------------------
+# PR3 — TestAuthoritativeChannelDeletePR3: resolved channel-delete through real listener
+# ---------------------------------------------------------------------------
+
+
+class TestAuthoritativeChannelDeletePR3:
+    """Resolved channel-delete repair is reachable through the real AuditListener."""
+
+    @pytest.mark.asyncio
+    async def test_resolved_preflight_reaches_conditional_close(self) -> None:
+        """G.2 resolved + active ticket -> handle_channel_delete with resolved preflight repairs."""
+        from datetime import UTC, datetime
+
+        from bot.core.cache import TTLCache
+        from bot.listeners.audit_listener import AuditListener
+        from bot.services.integrity_report import evaluate_live_preflight
+        from bot.services.ticket_service import TicketService
+
+        db = AsyncMock()
+        row = {"id": "t-1", "guildId": "123", "channelId": "555", "status": "open"}
+        db.get_active_ticket_by_channel = AsyncMock(return_value=row)
+        db.transition_ticket_to_closed = AsyncMock(return_value={**row, "status": "closed"})
+        db.insert_audit_row = AsyncMock(return_value={})
+        svc = TicketService(db=db, cache=TTLCache())
+        bot = MagicMock()
+        bot.ticket_service = svc
+        bot.logging_service = MagicMock()
+        bot.logging_service.log_channel_delete = AsyncMock()
+        bot.user = MagicMock()
+        preflight = evaluate_live_preflight(
+            project_status="ACTIVE_HEALTHY",
+            migration_015_applied=True,
+            close_reason_nullable=True,
+            required_indexes_present=True,
+            realtime_publication_covers=["guild", "greeting_config", "ticket", "ticket_note"],
+            observed_at=datetime.now(UTC).isoformat(),
+        )
+        bot.live_preflight = lambda: preflight
+        listener = AuditListener(bot)
+        channel = make_mock_channel(channel_id=555, name="ticket-0001")
+        channel.guild.id = 123
+        await listener.on_guild_channel_delete(channel)  # type: ignore[union-attr]
+        db.transition_ticket_to_closed.assert_awaited_once()
+        assert db.transition_ticket_to_closed.call_args.kwargs["close_reason"] == "zombie:channel_deleted"
+
+    @pytest.mark.asyncio
+    async def test_gate_unresolved_is_fail_closed_no_mutation(self) -> None:
+        """G.2 unresolved -> no conditional close, but deletion logging preserved."""
+        from bot.core.cache import TTLCache
+        from bot.listeners.audit_listener import AuditListener
+        from bot.services.ticket_service import TicketService
+
+        db = AsyncMock()
+        row = {"id": "t-1", "guildId": "123", "channelId": "555", "status": "open"}
+        db.get_active_ticket_by_channel = AsyncMock(return_value=row)
+        db.transition_ticket_to_closed = AsyncMock(return_value={**row, "status": "closed"})
+        db.insert_audit_row = AsyncMock(return_value={})
+        svc = TicketService(db=db, cache=TTLCache())
+        bot = MagicMock()
+        bot.ticket_service = svc
+        bot.logging_service = MagicMock()
+        bot.logging_service.log_channel_delete = AsyncMock()
+        bot.user = MagicMock()
+        # no live_preflight -> unresolved
+        listener = AuditListener(bot)
+        channel = make_mock_channel(channel_id=555, name="ticket-0001")
+        channel.guild.id = 123
+        await listener.on_guild_channel_delete(channel)  # type: ignore[union-attr]
+        db.transition_ticket_to_closed.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_two_resolved_events_one_repaired_one_already_closed(self) -> None:
+        """Two concurrent resolved deletes -> one repaired, one already_closed."""
+        import asyncio
+        from datetime import UTC, datetime
+
+        from bot.core.cache import TTLCache
+        from bot.listeners.audit_listener import AuditListener
+        from bot.services.integrity_report import evaluate_live_preflight
+        from bot.services.ticket_service import TicketService
+
+        db = AsyncMock()
+        row = {"id": "t-1", "guildId": "123", "channelId": "555", "status": "open"}
+        db.get_active_ticket_by_channel = AsyncMock(return_value=row)
+        db.transition_ticket_to_closed = AsyncMock(side_effect=[{**row, "status": "closed"}, None])
+        db.insert_audit_row = AsyncMock(return_value={})
+        svc = TicketService(db=db, cache=TTLCache())
+        bot = MagicMock()
+        bot.ticket_service = svc
+        bot.logging_service = MagicMock()
+        bot.logging_service.log_channel_delete = AsyncMock()
+        bot.user = MagicMock()
+        preflight = evaluate_live_preflight(
+            project_status="ACTIVE_HEALTHY",
+            migration_015_applied=True,
+            close_reason_nullable=True,
+            required_indexes_present=True,
+            realtime_publication_covers=["guild", "greeting_config", "ticket", "ticket_note"],
+            observed_at=datetime.now(UTC).isoformat(),
+        )
+        bot.live_preflight = lambda: preflight
+        listener = AuditListener(bot)
+        channel = make_mock_channel(channel_id=555, name="ticket-0001")
+        channel.guild.id = 123
+        await asyncio.gather(listener.on_guild_channel_delete(channel), listener.on_guild_channel_delete(channel))  # type: ignore[union-attr]
+        assert db.transition_ticket_to_closed.await_count == 2
+        # Strengthened: exactly one repaired close and one already_closed no-op via service harnesses
+        db2 = AsyncMock()
+        db2.get_active_ticket_by_channel = AsyncMock(return_value=row)
+        db2.transition_ticket_to_closed = AsyncMock(side_effect=[{**row, "status": "closed"}, None])
+        db2.insert_audit_row = AsyncMock(return_value={})
+        svc2 = TicketService(db=db2, cache=TTLCache())
+        r1, r2 = await asyncio.gather(
+            svc2.handle_channel_delete("123", "555", preflight=preflight),
+            svc2.handle_channel_delete("123", "555", preflight=preflight),
+        )
+        assert {r.outcome for r in (r1, r2)} == {"repaired", "already_closed"}  # type: ignore[union-attr]
+        assert {r.action for r in (r1, r2)} == {"close", "no_op"}  # type: ignore[union-attr]
+        # Exact audit contracts: one repaired, one already_closed denied
+        assert db2.insert_audit_row.await_count == 2
+        outcomes = [
+            c.args[4] if len(c.args) > 4 else c.kwargs.get("outcome") for c in db2.insert_audit_row.call_args_list
+        ]
+        assert "repaired" in outcomes
+        assert "denied" in outcomes
+
+    @pytest.mark.asyncio
+    async def test_cross_guild_lookup_is_isolated(self) -> None:
+        """Cross-guild channel delete does not leak tickets across guilds."""
+        from bot.core.cache import TTLCache
+        from bot.listeners.audit_listener import AuditListener
+        from bot.services.ticket_service import TicketService
+
+        db = AsyncMock()
+        # No ticket in this guild
+        db.get_active_ticket_by_channel = AsyncMock(return_value=None)
+        svc = TicketService(db=db, cache=TTLCache())
+        bot = MagicMock()
+        bot.ticket_service = svc
+        bot.logging_service = MagicMock()
+        bot.logging_service.log_channel_delete = AsyncMock()
+        bot.user = MagicMock()
+        listener = AuditListener(bot)
+        channel = make_mock_channel(channel_id=999, name="other")
+        channel.guild.id = 999
+        await listener.on_guild_channel_delete(channel)  # type: ignore[union-attr]
+        db.transition_ticket_to_closed.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

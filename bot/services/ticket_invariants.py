@@ -207,9 +207,7 @@ def check_one_ticket_per_user_per_category(
         return
     open_count = count_fn(user_id, category_id)
     if open_count > 0:
-        raise ValueError(
-            f"User {user_id} already has an open ticket in category {category_id!r}"
-        )
+        raise ValueError(f"User {user_id} already has an open ticket in category {category_id!r}")
 
 
 # ---------------------------------------------------------------------------

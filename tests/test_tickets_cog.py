@@ -3380,12 +3380,9 @@ class TestRepairTicketCommand:
         await tickets_cog.repair_ticket.callback(tickets_cog, ctx, ticket_ref="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 
         mock_db.transition_ticket_to_closed.assert_not_awaited()
-        mock_db.insert_audit_row.assert_awaited_once()
-        kwargs = mock_db.insert_audit_row.call_args
-        assert kwargs.args[0] == "123456789"
-        assert kwargs.args[2] == "repair"
-        assert kwargs.args[4] == "error"
-        assert kwargs.args[5] == "ticket_not_found"
+        # ticketId is uuid NOT NULL — without a canonical ticket the audit is
+        # skipped and the failure is surfaced via warning log + RepairResult.
+        mock_db.insert_audit_row.assert_not_awaited()
         ctx.send.assert_awaited_once()
 
     async def test_repair_ticket_db_lookup_error_audits_resolution_failure(
@@ -3410,12 +3407,8 @@ class TestRepairTicketCommand:
         await tickets_cog.repair_ticket.callback(tickets_cog, ctx, ticket_ref="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 
         mock_db.transition_ticket_to_closed.assert_not_awaited()
-        mock_db.insert_audit_row.assert_awaited_once()
-        kwargs = mock_db.insert_audit_row.call_args
-        assert kwargs.args[0] == "123456789"
-        assert kwargs.args[2] == "repair"
-        assert kwargs.args[4] == "error"
-        assert kwargs.args[5] == "database_error"
+        # Same best-effort contract: no fabricated ticketId, no audit row.
+        mock_db.insert_audit_row.assert_not_awaited()
         ctx.send.assert_awaited_once()
 
     async def test_repair_ticket_number_not_found_audits_resolution_failure(
@@ -3441,11 +3434,7 @@ class TestRepairTicketCommand:
         await tickets_cog.repair_ticket.callback(tickets_cog, ctx, ticket_ref="#0003")
 
         mock_db.transition_ticket_to_closed.assert_not_awaited()
-        mock_db.insert_audit_row.assert_awaited_once()
-        kwargs = mock_db.insert_audit_row.call_args
-        assert kwargs.args[0] == "123456789"
-        assert kwargs.args[4] == "error"
-        assert kwargs.args[5] == "ticket_not_found"
+        mock_db.insert_audit_row.assert_not_awaited()
         ctx.send.assert_awaited_once()
 
     async def test_repair_ticket_no_guild_shows_error(

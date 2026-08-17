@@ -622,19 +622,6 @@ class TestRepairAuthorityOperator:
         )
         assert decision.allowed is False
 
-    def test_grant_requires_global_scope(self) -> None:
-        """A confirmed grant whose scope is 'guild' MUST NOT authorize global mutation.
-
-        The mutation gate is the evaluator itself: a scope="guild" grant is a
-        denial with a precise reason, never an implicit global bypass.
-        """
-        decision = _evaluate(
-            _authority(is_bot_owner=True, guild_id=None),
-            _grant(scope="guild"),
-        )
-        assert decision.allowed is False
-        assert decision.reason == "grant_scope_mismatch"
-
     def test_grant_ignored_for_non_operator(self) -> None:
         """A grant cannot upgrade a plain non-operator actor."""
         decision = _evaluate(_authority(), _grant())

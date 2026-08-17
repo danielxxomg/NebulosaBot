@@ -16,14 +16,16 @@ _VALID_REPAIR_COMBINATIONS = frozenset(
         "close/error",
         "no_op/already_closed",
         "no_op/skipped",
-        "no_op/quarantined",
-        "no_op/denied",
         "no_op/error",
     }
 )
 
 # Outcomes that MUST carry a non-empty review/audit reason.
-_REASON_REQUIRED_OUTCOMES = frozenset({"quarantined", "error", "denied"})
+# Per ticket-model spec only repaired/already_closed/skipped/error are valid;
+# quarantined/denied were product-artifact-audit vocabulary and are now
+# rejected as invalid combinations (see evaluate_repair_eligibility which
+# maps unknown evidence to skipped/evidence_unresolved).
+_REASON_REQUIRED_OUTCOMES = frozenset({"error"})
 
 
 @dataclass(frozen=True)
@@ -120,6 +122,7 @@ class RepairResult:
     reason: str | None
     evidence_id: str | None
     timestamp: datetime
+    corroborated: bool | None = None
 
     def __post_init__(self) -> None:
         """Reject wire values outside the documented repair contract."""
@@ -147,6 +150,7 @@ class RepairResult:
             reason=row.get("reason"),
             evidence_id=row.get("evidenceId"),
             timestamp=timestamp,
+            corroborated=row.get("corroborated"),
         )
 
     def to_db_dict(self) -> dict[str, Any]:
@@ -159,6 +163,7 @@ class RepairResult:
             "reason": self.reason,
             "evidenceId": self.evidence_id,
             "timestamp": self.timestamp.isoformat(),
+            "corroborated": self.corroborated,
         }
 
 
