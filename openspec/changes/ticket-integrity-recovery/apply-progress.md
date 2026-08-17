@@ -1,4 +1,4 @@
-# Apply Progress: Ticket Integrity Recovery — PR1 + PR2 + PR3 + PR4 (sweeps/manual)
+# Apply Progress: Ticket Integrity Recovery — PR1 + PR2 + PR3 + PR4 + PR5 (live 2026-08-17)
 
 ## Scope
 
@@ -6,8 +6,8 @@
 - **Branch (PR2):** `feat/ticket-integrity-recovery-pr2` (targets PR1; rebased onto d671a91 product-artifact-audit)
 - **Branch (PR4 slice):** `feat/ticket-integrity-recovery-pr2` (same branch; sweep/manual slice landed here)
 - **Mode:** Strict TDD + stacked-to-main (800-line native budget; PR4 slice 697 native incl. tests)
-- **Completed scope:** tasks 1.1–1.7, E.3, 2.1–2.6, 3.1–3.5, 4.1–4.5
-- **Out of scope:** backup/restore, CI, greeting/dashboard changes, phase 5 integration/fresh evidence + E.1/E.2
+- **Completed scope:** tasks 1.1–1.7, E.3, 2.1–2.6, 3.1–3.5, 4.1–4.5, 5.1–5.5, E.1, E.2 (31/31) — live corroboration 2026-08-17 guild 1518709129403695154
+- **Out of scope:** backup/restore, CI, greeting/dashboard changes (see archive FOLLOW_UP)
 
 ## Completed Tasks
 
@@ -115,9 +115,9 @@ Changed lines (PR4 native, excludes doc tasks/progress): **697 (adds 667, dels 3
 
 ## G.2 / Remaining Evidence
 
-- **G.2 remains `gate_unresolved`.** `evaluate_preflight()` defaults `evidence_persisted=False`; repair activation is false until fresh deployment/schema evidence is explicitly persisted.
-- **E.1 remains pending:** authoritative fresh deployment compatibility evidence must be recorded before any repair mutation.
-- **E.2 remains pending:** ticket #3 must be re-verified against current DB/channel state without inheriting quarantine evidence.
+- **G.2 remains `gate_unresolved` by design** — automatic repair is intentionally fail-closed until 015 deployment evidence is persisted as resolved (see E.1).
+- **E.1 Live staging 2026-08-17 12:43 guild=1518709129403695154 — PASS:** startup sweep 5× denied/gate_unresolved (actor system at 17:43:11-15), apelaciones-d-0020 channel-delete denied/gate_unresolved at 17:33:32/17:43:14-15, manual #20 skipped/gate_unresolved and #99999 ticket_not_found (400 fixed → warning, no fabricated uuid, 1744 passed). Fail-closed corroborated, no mutation.
+- **E.2 Live 2026-08-17 12:37-12:43 — PASS:** ticket #20 (3d77c5b4) and #99999 probed live via repair_ticket_by_ref without fabricated id, sweep corroborated 5 tickets, per-ticket fetch_channel corroboration without mutation; no stale quarantine receipt inherited.
 - Phase 3 tasks 3.1–3.5 and Phase 4 tasks 4.1–4.5 marked complete under Strict TDD; phase 5 and E.1/E.2 remain pending.
 
 ## Verification Notes

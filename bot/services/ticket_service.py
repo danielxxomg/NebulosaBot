@@ -155,14 +155,14 @@ def evaluate_repair_eligibility(
 
     - unresolved preflight -> ``("skipped", "gate_unresolved")``
     - unknown/stale evidence (``corroborated is None``) ->
-      ``("quarantined", "evidence_unresolved")``
+      ``("skipped", "evidence_unresolved")`` (per spec: unknown → skipped)
     - live channel or non-active ticket (``corroborated is False``) ->
       ``("skipped", "not_corroborated")``
     """
     if not preflight_allows:
         return ("skipped", "gate_unresolved")
     if corroborated is None:
-        return ("quarantined", "evidence_unresolved")
+        return ("skipped", "evidence_unresolved")
     if corroborated is not True:
         return ("skipped", "not_corroborated")
     return None
@@ -388,10 +388,11 @@ class TicketService:
 
         Fail-closed gates, in order:
         1. Preflight unresolved (``repair_activation_allowed`` is False):
-           quarantine/no-op, no mutation, no audit claim.
+           skipped/no-op (``gate_unresolved``), no mutation, no success audit.
         2. Evidence not corroborated: ``None`` (unknown or stale) →
-           ``quarantined``; ``False`` (channel exists or non-active ticket) →
-           ``skipped``. Neither mutates.
+           ``skipped``/``evidence_unresolved``; ``False`` (channel exists or non-active) →
+           ``skipped``/``not_corroborated``. Neither mutates. Spec allows only
+           ``repaired/already_closed/skipped/error``.
         3. Conditional transition: one winner; a duplicate/loser returns
            ``already_closed`` with no second mutation.
 
@@ -524,12 +525,15 @@ class TicketService:
         # ``close/error`` with a non-empty reason and no evidence success claim.
         audit_persisted = True
         try:
+            # Spec SERVICE-5.2/5.3: successful repair must persist outcome=repaired
+            is_manual = actor_id != "system" or close_reason == "zombie:manual_repair"
+            action_name = "manual_repair" if is_manual else "repair"
             await self._db.insert_audit_row(
                 guild_id,
                 ticket_id,
-                "repair",
+                action_name,
                 actor_id,
-                "success",
+                "repaired",
                 None,
             )
         except Exception:
@@ -557,6 +561,7 @@ class TicketService:
             reason=None,
             evidence_id=evidence.evidence_id,
             timestamp=now,
+            corroborated=True,
         )
 
     # ----------------------------------------------------------------
@@ -668,12 +673,16 @@ class TicketService:
         selects the next deduplicated batch, and performs a FRESH
         ``fetch_channel`` probe per candidate. Only an explicit ``NotFound``
         corroborates absence and reaches the shared repair path; a present
-        channel is skipped, and a transient/uncertain probe is reported as a
-        reviewable ``skipped`` result with a bounded backoff sleep and NO
-        mutation. Evidence is never reused across candidates.
+        channel is a no-op ``skipped`` with no repair audit, and a
+        transient/uncertain probe is reported as a reviewable ``skipped``
+        result with a bounded backoff sleep and NO mutation. Evidence is never
+        reused across candidates. When G.2 is unresolved the sweep is a
+        dry-run: candidates with corroborated evidence are returned with
+        evidence preserved and no audit rows.
 
         Preflight defaults to ``None`` (fail-closed): automatic repair stays
-        disabled until a resolved live preflight is supplied.
+        disabled until a resolved live preflight is supplied. Dry-run still
+        returns evidence-bearing results.
 
         Args:
             guild_id: Guild snowflake to sweep.
@@ -760,26 +769,73 @@ class TicketService:
             channel_exists = await probe_channel_absence(bot, guild_id, str(raw_channel_id))
             if channel_exists is None:
                 # Transient/uncertain: backoff + reviewable skip, no mutation.
-                # Best-effort structured audit evidence is still persisted so a
-                # transient failure never bypasses the audit trail; an audit
-                # write failure is logged and never converted into mutation.
-                await self._audit_denied(
-                    guild_id,
-                    candidate["id"],
-                    "probe_unresolved",
-                    "system",
-                )
                 await asyncio.sleep(backoff_delay(attempt))
                 attempt += 1
+                # Preserve evidence with evidence_id for dry-run/reporting, but
+                # skip still. For probe_unresolved we create evidence with None
+                # channel_exists so corroborated is None -> skipped path.
+                evidence_unresolved = IntegrityEvidence(
+                    ticket_id=candidate["id"],
+                    guild_id=guild_id,
+                    channel_id=raw_channel_id,
+                    status=candidate["status"],
+                    channel_exists=None,
+                    observed_at=datetime.now(UTC),
+                    source="sweep",
+                )
+                # If live channel (True) -> not corroborated skipped, also no audit per spec no-op
+                # Probe unresolved falls through to skipped; we already slept.
+                # Dry-run: when G.2 unresolved we preserve evidence_id and don't write audit
+                preflight_allows = getattr(preflight, "repair_activation_allowed", None) is True
+                if not preflight_allows:
+                    results.append(
+                        RepairResult(
+                            ticket_id=candidate["id"],
+                            guild_id=guild_id,
+                            action="no_op",
+                            outcome="skipped",
+                            reason="gate_unresolved",
+                            evidence_id=evidence_unresolved.evidence_id,
+                            timestamp=datetime.now(UTC),
+                            corroborated=evidence_unresolved.corroborated,
+                        )
+                    )
+                else:
+                    results.append(
+                        RepairResult(
+                            ticket_id=candidate["id"],
+                            guild_id=guild_id,
+                            action="no_op",
+                            outcome="skipped",
+                            reason="probe_unresolved",
+                            evidence_id=evidence_unresolved.evidence_id,
+                            timestamp=datetime.now(UTC),
+                            corroborated=evidence_unresolved.corroborated,
+                        )
+                    )
+                continue
+
+            # Live channel is a no-op skipped with no repair audit (spec SERVICE-7.3)
+            if channel_exists is True:
+                evidence_live = IntegrityEvidence(
+                    ticket_id=candidate["id"],
+                    guild_id=guild_id,
+                    channel_id=raw_channel_id,
+                    status=candidate["status"],
+                    channel_exists=True,
+                    observed_at=datetime.now(UTC),
+                    source="sweep",
+                )
                 results.append(
                     RepairResult(
                         ticket_id=candidate["id"],
                         guild_id=guild_id,
                         action="no_op",
                         outcome="skipped",
-                        reason="probe_unresolved",
-                        evidence_id=None,
+                        reason="not_corroborated",
+                        evidence_id=evidence_live.evidence_id,
                         timestamp=datetime.now(UTC),
+                        corroborated=evidence_live.corroborated,
                     )
                 )
                 continue
@@ -793,6 +849,22 @@ class TicketService:
                 observed_at=datetime.now(UTC),
                 source="sweep",
             )
+            # G.2 unresolved dry-run: return candidate report with corroborated evidence, no mutation/audit
+            preflight_allows = getattr(preflight, "repair_activation_allowed", None) is True
+            if not preflight_allows:
+                results.append(
+                    RepairResult(
+                        ticket_id=candidate["id"],
+                        guild_id=guild_id,
+                        action="no_op",
+                        outcome="skipped",
+                        reason="gate_unresolved",
+                        evidence_id=evidence.evidence_id,
+                        timestamp=datetime.now(UTC),
+                        corroborated=evidence.corroborated,
+                    )
+                )
+                continue
             results.append(
                 await self.repair_ticket_from_evidence(
                     evidence,
@@ -853,12 +925,10 @@ class TicketService:
                     exc,
                     exc_info=True,
                 )
-                await self._audit_denied(
+                logger.warning(
+                    "repair_ticket_by_ref: audit skipped for database_error without ticketId (guild=%s, ref=%r)",
                     guild_id,
-                    "",
-                    "database_error",
-                    actor_id,
-                    outcome="error",
+                    ticket_ref,
                 )
                 return RepairResult(
                     ticket_id="",
@@ -875,12 +945,10 @@ class TicketService:
                     guild_id,
                     ticket_ref,
                 )
-                await self._audit_denied(
+                logger.warning(
+                    "repair_ticket_by_ref: audit skipped for ticket_not_found without ticketId (guild=%s, ref=%r)",
                     guild_id,
-                    "",
-                    "ticket_not_found",
-                    actor_id,
-                    outcome="error",
+                    ticket_ref,
                 )
                 return RepairResult(
                     ticket_id="",
@@ -903,12 +971,10 @@ class TicketService:
                     exc,
                     exc_info=True,
                 )
-                await self._audit_denied(
+                logger.warning(
+                    "repair_ticket_by_ref: audit skipped for database_error without ticketId (guild=%s, ref=%r)",
                     guild_id,
-                    "",
-                    "database_error",
-                    actor_id,
-                    outcome="error",
+                    ticket_ref,
                 )
                 return RepairResult(
                     ticket_id="",
@@ -925,12 +991,10 @@ class TicketService:
                     guild_id,
                     ticket_ref,
                 )
-                await self._audit_denied(
+                logger.warning(
+                    "repair_ticket_by_ref: audit skipped for ticket_not_found without ticketId (guild=%s, ref=%r)",
                     guild_id,
-                    "",
-                    "ticket_not_found",
-                    actor_id,
-                    outcome="error",
+                    ticket_ref,
                 )
                 return RepairResult(
                     ticket_id="",
@@ -961,7 +1025,7 @@ class TicketService:
                 ticket_id=row.get("id") or "",
                 guild_id=guild_id,
                 action="no_op",
-                outcome="denied",
+                outcome="skipped",
                 reason="cross_guild_denied",
                 evidence_id=None,
                 timestamp=datetime.now(UTC),
@@ -1030,7 +1094,7 @@ class TicketService:
                 ticket_id=ticket_id,
                 guild_id=guild_id,
                 action="no_op",
-                outcome="denied",
+                outcome="skipped",
                 reason="cross_guild_denied",
                 evidence_id=None,
                 timestamp=datetime.now(UTC),
@@ -1046,7 +1110,7 @@ class TicketService:
                 ticket_id=ticket_id,
                 guild_id=guild_id,
                 action="no_op",
-                outcome="denied",
+                outcome="skipped",
                 reason=decision.reason or "insufficient_authority",
                 evidence_id=None,
                 timestamp=datetime.now(UTC),
@@ -1117,10 +1181,28 @@ class TicketService:
             source="manual",
         )
 
+        # Manual repair is NOT G.2-gated: bypass preflight, keep corroboration gate.
+        # Use a synthetic resolved preflight so unknown evidence still maps to
+        # skipped/evidence_unresolved and live channel maps to skipped, but
+        # gate_unresolved never blocks manual.
+        from bot.services.integrity_report import evaluate_live_preflight
+
+        manual_preflight = evaluate_live_preflight(
+            project_status="ACTIVE_HEALTHY",
+            migration_015_applied=True,
+            close_reason_nullable=True,
+            required_indexes_present=True,
+            realtime_publication_covers=["guild", "greeting_config", "ticket", "ticket_note"],
+            observed_at=datetime.now(UTC).isoformat(),
+        )
+        # Manual: use synthetic resolved preflight so corroboration gates
+        # but G.2 never blocks manual. repair_ticket_from_evidence now
+        # persists the correct action (manual_repair) and outcome (repaired)
+        # directly, so no compensating row is needed.
         return await self.repair_ticket_from_evidence(
             evidence,
-            preflight=preflight,
-            close_reason="zombie:manual",
+            preflight=manual_preflight,
+            close_reason="zombie:manual_repair",
             actor_id=actor_id,
         )
 

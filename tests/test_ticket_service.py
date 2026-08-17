@@ -3724,16 +3724,7 @@ class TestRepairTicketFromEvidence:
         ticket_row: dict,
     ) -> None:
         """R1-004/R4-002: repair success MUST write a best-effort repair audit row."""
-        from bot.models.ticket import IntegrityEvidence
-
-        evidence = IntegrityEvidence(
-            ticket_id=ticket_row["id"],
-            guild_id=ticket_row["guildId"],
-            channel_id=ticket_row["channelId"],
-            status="open",
-            channel_exists=False,
-            corroborated=False,
-        )
+        evidence = _corroborated_evidence(ticket_row)
         closed_row = {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"}
         mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
 
@@ -3746,7 +3737,8 @@ class TestRepairTicketFromEvidence:
         mock_db.insert_audit_row.assert_awaited_once()
         kwargs = _audit_kwargs(mock_db)
         assert kwargs["action"] == "repair"
-        assert kwargs["outcome"] == "success"
+        assert kwargs["outcome"] == "repaired"
+        assert kwargs["reason"] is None
         assert kwargs["guild_id"] == ticket_row["guildId"]
         assert kwargs["actor_id"] == "system"
 
@@ -3857,8 +3849,8 @@ async def test_repair_quarantines_unknown_evidence(
 
     assert isinstance(result, RepairResult)
     assert result.action == "no_op"
-    assert result.outcome == "quarantined"
-    assert result.reason
+    assert result.outcome == "skipped"
+    assert result.reason == "evidence_unresolved"
     mock_db.transition_ticket_to_closed.assert_not_awaited()
 
 
@@ -3889,8 +3881,8 @@ async def test_repair_quarantines_stale_evidence(
 
     assert isinstance(result, RepairResult)
     assert result.action == "no_op"
-    assert result.outcome == "quarantined"
-    assert result.reason
+    assert result.outcome == "skipped"
+    assert result.reason == "evidence_unresolved"
     mock_db.transition_ticket_to_closed.assert_not_awaited()
 
 
@@ -3998,9 +3990,9 @@ async def test_duplicate_repair_one_repaired_one_already_closed(
     assert second.action == "no_op"
     assert second.outcome == "already_closed"
 
-    # Exactly one success audit row; the loser writes a deterministic denied row.
+    # Exactly one repaired audit row; the loser writes a deterministic denied row.
     audit_actions = [_audit_kwargs(mock_db, i)["outcome"] for i in range(mock_db.insert_audit_row.call_count)]
-    assert audit_actions == ["success", "denied"]
+    assert audit_actions == ["repaired", "denied"]
 
 
 @pytest.mark.asyncio
@@ -4056,7 +4048,7 @@ async def test_repair_quarantine_never_claims_mutation(
         close_reason="zombie:channel_deleted",
     )
 
-    assert result.outcome == "quarantined"
+    assert result.outcome == "skipped"
     assert result.reason == "evidence_unresolved"
     assert result.action == "no_op"
     mock_db.transition_ticket_to_closed.assert_not_awaited()
@@ -4142,7 +4134,7 @@ def test_shared_evaluation_maps_evidence_to_denial_outcomes() -> None:
         "gate_unresolved",
     )
     assert evaluate_repair_eligibility(preflight_allows=True, corroborated=unknown.corroborated) == (
-        "quarantined",
+        "skipped",
         "evidence_unresolved",
     )
     assert evaluate_repair_eligibility(preflight_allows=True, corroborated=live.corroborated) == (
@@ -4622,7 +4614,7 @@ class TestRepairTicketManual:
         )
 
         assert isinstance(result, RepairResult)
-        assert result.outcome == "denied"
+        assert result.outcome == "skipped"
         assert result.reason
         mock_db.get_ticket.assert_not_awaited()
 
@@ -4645,7 +4637,7 @@ class TestRepairTicketManual:
             preflight=_resolved_preflight(),
         )
 
-        assert result.outcome == "denied"
+        assert result.outcome == "skipped"
         assert result.reason == "cross_guild_denied"
 
     @pytest.mark.asyncio
@@ -4843,7 +4835,7 @@ class TestRepairTicketManualGrant:
             preflight=_resolved_preflight(),
         )
 
-        assert result.outcome == "denied"
+        assert result.outcome == "skipped"
         assert result.reason == "operator_mutation_requires_grant"
         mock_db.get_ticket.assert_not_awaited()
         mock_db.transition_ticket_to_closed.assert_not_awaited()
@@ -4930,6 +4922,6 @@ class TestRepairTicketManualGrant:
             global_grant=grant,
         )
 
-        assert result.outcome == "denied"
+        assert result.outcome == "skipped"
         assert result.reason == "grant_actor_mismatch"
         mock_db.get_ticket.assert_not_awaited()

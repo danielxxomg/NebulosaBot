@@ -569,7 +569,7 @@ class TestIntegrityRepairFlow:
             has_mod_role=True,
         )
 
-        # preflight=None -> fail-closed; the probe must still be a FRESH fetch.
+        # Manual bypasses G.2: fresh NotFound -> repaired even without external preflight
         result = await service.repair_ticket_manual(
             row["id"],
             guild_id="123456789",
@@ -578,9 +578,8 @@ class TestIntegrityRepairFlow:
             bot=bot,
         )
 
-        assert result.outcome in ("skipped", "quarantined", "denied")
-        # No mutation reached without a resolved preflight.
-        mock_db.transition_ticket_to_closed.assert_not_awaited()
+        assert result.outcome == "repaired"
+        mock_db.transition_ticket_to_closed.assert_awaited_once()
 
     async def test_cross_guild_manual_repair_is_denied(
         self,
@@ -605,7 +604,7 @@ class TestIntegrityRepairFlow:
             bot=MagicMock(),
         )
 
-        assert result.outcome == "denied"
+        assert result.outcome == "skipped"
         assert result.reason == "cross_guild_denied"
         mock_db.get_ticket.assert_not_awaited()
         mock_db.transition_ticket_to_closed.assert_not_awaited()
@@ -706,7 +705,7 @@ class TestIntegrityRepairFlow:
                 observed_at=datetime.now(UTC).isoformat(),
             ),
         )
-        assert no_grant.outcome == "denied"
+        assert no_grant.outcome == "skipped"
         assert no_grant.reason == "operator_mutation_requires_grant"
         assert mock_db.transition_ticket_to_closed.await_count == 0
 
