@@ -132,7 +132,7 @@ class TestBuildCogHelpEmbed:
 
         embed = _build_cog_help_embed(bot, "Core", "nb!")
         assert embed is not None
-        assert "[prefix + slash]" in embed.fields[0].value
+        assert embed.fields[0].value is not None and "[prefix + slash]" in embed.fields[0].value
 
     def test_prefix_only_commands_show_prefix_suffix(self) -> None:
         """Non-hybrid commands get [prefix] suffix in field value."""
@@ -142,7 +142,7 @@ class TestBuildCogHelpEmbed:
 
         embed = _build_cog_help_embed(bot, "Legacy", "nb!")
         assert embed is not None
-        assert "[prefix]" in embed.fields[0].value
+        assert embed.fields[0].value is not None and "[prefix]" in embed.fields[0].value
 
 
 # ---------------------------------------------------------------------------
@@ -235,6 +235,7 @@ class TestHelpDescriptionsLocalized:
         embed = _build_cog_help_embed(bot, "Core", "nb!", guild_id="eng_guild")
 
         assert embed is not None
+        assert embed.fields[0].value is not None
         field_value = embed.fields[0].value
         # English description from en.json for slash.descriptions.ping
         assert "WebSocket latency" in field_value
@@ -255,6 +256,7 @@ class TestHelpDescriptionsLocalized:
         embed = _build_cog_help_embed(bot, "Core", "nb!", guild_id="spa_guild")
 
         assert embed is not None
+        assert embed.fields[0].value is not None
         field_value = embed.fields[0].value
         # Spanish description from es.json for slash.descriptions.ping
         assert "latencia WebSocket" in field_value
@@ -274,7 +276,7 @@ class TestHelpDescriptionsLocalized:
         embed = _build_cog_help_embed(bot, "Core", "nb!", guild_id="eng_guild2")
 
         assert embed is not None
-        assert "Some raw description" in embed.fields[0].value
+        assert embed.fields[0].value is not None and "Some raw description" in embed.fields[0].value
 
     def test_none_guild_id_uses_default_locale(self) -> None:
         """guild_id=None MUST use the default locale (Spanish)."""
@@ -289,4 +291,4 @@ class TestHelpDescriptionsLocalized:
         embed = _build_cog_help_embed(bot, "Core", "nb!", guild_id=None)
 
         assert embed is not None
-        assert "latencia WebSocket" in embed.fields[0].value
+        assert embed.fields[0].value is not None and "latencia WebSocket" in embed.fields[0].value
