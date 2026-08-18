@@ -107,7 +107,7 @@ def test_cog_preserves_hybrid_command_names(cog_bot: MagicMock) -> None:
         assert expected in combined, f"missing command {expected} — got {combined}"
     # Subcommands
     # configure_fields -> set, subticket -> create, note -> add/list/delete
-    assert "set" in combined or any("set" in n for n in combined) or True  # fallback check via children
+    assert "set" in combined or any("set" in n for n in combined)
     # Check children via walk
     child_names = set()
     for cmd in cog.walk_commands():
@@ -267,4 +267,3 @@ async def test_lifecycle_guild_scoping_568_cross_guild_denied(cog_bot: MagicMock
     assert call_kwargs is not None
     args, kwargs = call_kwargs
     assert kwargs.get("guild_id") == "123456789" or (len(args) > 1 and args[1] == "123456789")
-

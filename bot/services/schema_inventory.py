@@ -154,10 +154,19 @@ async def fetch_live_metadata(
             return ""
         return str(value)
 
-    fks_raw = _unwrap_response(await supabase_client.table("pg_constraint").select("*").execute())
-    policies_raw = _unwrap_response(await supabase_client.table("pg_policies").select("*").execute())
-    publication_raw = _unwrap_response(await supabase_client.table("pg_publication_tables").select("*").execute())
-    migrations_raw = _unwrap_response(await supabase_client.table("supabase_migrations").select("*").execute())
+    try:
+        fks_raw = _unwrap_response(await supabase_client.table("pg_constraint").select("*").execute())
+        policies_raw = _unwrap_response(await supabase_client.table("pg_policies").select("*").execute())
+        publication_raw = _unwrap_response(await supabase_client.table("pg_publication_tables").select("*").execute())
+        migrations_raw = _unwrap_response(await supabase_client.table("supabase_migrations").select("*").execute())
+    except Exception as exc:
+        # PostgREST PGRST205: system catalogs (pg_constraint) not in schema cache
+        # → fail-closed to unresolved LiveEvidenceReport (S4 stages DB/RPC fallback,
+        # not PostgREST catalog). No DDL, no mutation — caller treats as unavailable.
+        msg = str(exc)
+        if "PGRST205" in msg or "pg_constraint" in msg or "schema cache" in msg:
+            raise RuntimeError("PGRST205: catalog unavailable — use DB/RPC staging path (S4)") from exc
+        raise
 
     live_fks: list[dict[str, Any]] = []
     for row in fks_raw:

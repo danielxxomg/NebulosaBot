@@ -6,7 +6,7 @@ Keep thin facades. `TicketService` delegates once to `TicketQueryService` (query
 
 ## Blast Radius
 
-25 `is_mod` decorators (17 tickets, 8 sentinel), 31 `TicketService` callers, and persistent `TicketActionsView` IDs/timeouts. Rollback is per child PR.
+24 `is_mod` decorators (16 tickets, 8 sentinel; `unclaim` intentionally undecorated — claimer-or-mod inline check), 31 `TicketService` callers, and persistent `TicketActionsView` IDs/timeouts. Rollback is per child PR.
 
 ## Architecture Decisions
 
@@ -17,7 +17,7 @@ Keep thin facades. `TicketService` delegates once to `TicketQueryService` (query
 | FK actions | `parentId` RESTRICT; category SET NULL; note CASCADE; audit SET NULL | Cascading parents/audits; rejecting category deletion | Protects child history, preserves labels, removes dependent notes, and retains audits. Retention/nullable cleanup precedes audit FK; no audit `guildId` FK. |
 | Index policy | Drop only `idx_ticket_guild_number` | Drop channel or advisor-listed indexes | It is shadowed and unused; channel lookup also serves closed tickets, and small cumulative stats are weak removal evidence. |
 | Credential evidence | Probe opaque `sb_secret_`; PyJWT/JWKS only for legacy JWTs | Decode secret payload; trust PostgREST catalogs | Read-only `guild`/`ticket` access proves usable scope. Catalog parity needs staging DB/RPC because `pg_constraint` returns PGRST205. |
-| Delivery/counts | Six stacked PRs for four workstreams; recalculate 25 decorators | Four oversized PRs; stale 23/21 ledger | Authored move lines exceed review limits. Current count: 17 `tickets.py` + 8 `sentinel.py`; logic stays in `checks.py`. |
+| Delivery/counts | Six stacked PRs for four workstreams; recalculate 24 decorators (16+8; unclaim is claimer-or-mod) | Four oversized PRs; stale 23/21 ledger | Authored move lines exceed review limits. Current count: 16 `tickets.py` + 8 `sentinel.py`; logic stays in `checks.py`. |
 
 ## Data Flow
 
@@ -85,7 +85,7 @@ sequenceDiagram
 
 | Layer | What to Test | Approach |
 |---|---|---|
-| Unit | Delegation, repair gate, 25 decorators, FK/index rules, credentials, IDs/timeouts | pytest fakes and structural RED tests. |
+| Unit | Delegation, repair gate, 24 decorators (16+8; unclaim claimer-or-mod), FK/index rules, credentials, IDs/timeouts | pytest fakes and structural RED tests. |
 | Integration | Guild isolation, cache invalidation, catalog/RLS/publication/migration parity, API probe | Supabase doubles plus opt-in `live`; never mutate/DDL. |
 | E2E | Discord workflow | N/A: disabled; persistent startup/callback contracts use integration tests. |
 

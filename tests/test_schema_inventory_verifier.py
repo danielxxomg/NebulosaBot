@@ -242,6 +242,27 @@ class TestFetchLiveMetadataSelectPath:
         assert report.no_ddl is True
         assert report.migration_count == 19
 
+    @pytest.mark.asyncio
+    async def test_fetch_live_metadata_pgrst205_fails_closed(self) -> None:
+        """PostgREST PGRST205 (pg_constraint not in schema cache) MUST fail closed (no DDL)."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        mock_client = MagicMock()
+        mock_client.table.return_value.select.return_value.execute = AsyncMock(
+            side_effect=Exception('PGRST205: Could not find table "public.pg_constraint" in schema cache')
+        )
+        with pytest.raises(RuntimeError, match="PGRST205"):
+            await fetch_live_metadata(mock_client)
+
+    @pytest.mark.asyncio
+    async def test_fetch_live_metadata_documents_db_rpc_fallback(self) -> None:
+        """Catalog fallback MUST be documented as DB/RPC staging path (S4) in module docstring."""
+        import pathlib
+
+        text = pathlib.Path("bot/services/schema_inventory.py").read_text(encoding="utf-8")
+        assert "DB/RPC" in text or "DB / RPC" in text or "staging" in text.lower()
+        assert "S4" in text
+
 
 @pytest.mark.live
 def test_live_supabase_read_only_when_creds_present() -> None:

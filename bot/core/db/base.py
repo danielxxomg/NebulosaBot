@@ -92,24 +92,12 @@ class DatabaseBase:
             logger.info("Supabase connection verified")
 
     async def health_check(self) -> bool:
-        """Ping the database by selecting 1 row from the guild and ticket tables.
+        """Ping the database and prove ``sb_secret_`` via RLS on guild+ticket.
 
-        For ``sb_secret_`` keys this is the read-only RLS probe that proves
-        the credential can read RLS-enabled tables (guild + ticket) without
-        decoding the key as a JWT. Returns ``True`` if the query succeeds,
-        ``False`` otherwise. No mutation.
+        Delegates to :meth:`health_probe` so both ``guild`` and ``ticket`` are
+        read — a credential that can only read one table fails closed. No mutation.
         """
-        if self._client is None:
-            logger.error("health_check called before connect()")
-            return False
-
-        try:
-            response = await self._client.table("guild").select("id").limit(1).execute()
-            _unwrap(response)
-            return True
-        except Exception:
-            logger.exception("Supabase health check query failed")
-            return False
+        return await self.health_probe()
 
     async def health_probe(self) -> bool:
         """Read-only probe proving ``sb_secret_`` can read RLS tables via guild+ticket.
