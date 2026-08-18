@@ -1,0 +1,21 @@
+-- ============================================================================
+-- Migration 005: RLS Secure Default (already live 2026-07-09)
+-- NebulosaBot — Parity stub for remote 005_rls_secure_default
+-- ============================================================================
+-- NOTE: Remote Supabase ledger contains 005_rls_secure_default as a
+-- security-default RLS enablement that is already live. Local repository
+-- previously stored the same ticket_audit DDL under 005_ticket_audit.sql
+-- (never applied under that name — remote had a different 005). Live now
+-- holds ticket_audit under 012_ticket_audit (parity restored). This stub
+-- documents that the remote 005 DDL is already live and requires no
+-- additional local DDL; it exists solely for migration parity (17 local
+-- files vs 19 remote entries). For fresh environments the RLS posture is
+-- covered by 008_ticket_note_rls + 012_ticket_audit. Idempotent — no DDL.
+-- Rollback: no-op (already live).
+-- ============================================================================
+-- Parity: 17 local (001..017) vs 19 remote — remote 005_rls_secure_default
+-- already live; local 017_ticket_audit_repaired_outcome already live
+-- (proved 2026-08-18 via ticket_audit insert outcome='repaired'). After
+-- adding this parity stub + 018_ticket_integrity_fks.sql local count is 19.
+-- ============================================================================
+SELECT 1;
