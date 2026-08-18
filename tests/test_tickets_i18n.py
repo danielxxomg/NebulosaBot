@@ -1310,8 +1310,7 @@ class TestDynamicLabelResolution:
         interaction.response.send_message = AsyncMock()
 
         open_button = next(
-            c for c in view.children
-            if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:open"
+            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:open"
         )
         await open_button.callback(interaction)
 
@@ -1334,8 +1333,7 @@ class TestDynamicLabelResolution:
         interaction.response.send_message = AsyncMock()
 
         open_button = next(
-            c for c in view.children
-            if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:open"
+            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:open"
         )
         await open_button.callback(interaction)
 
@@ -1362,8 +1360,7 @@ class TestDynamicLabelResolution:
         interaction.response.edit_message = AsyncMock()
 
         claim_button = next(
-            c for c in view.children
-            if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:claim"
+            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:claim"
         )
         await claim_button.callback(interaction)
 
@@ -1389,8 +1386,7 @@ class TestDynamicLabelResolution:
         interaction.response.send_message = AsyncMock()
 
         close_button = next(
-            c for c in view.children
-            if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:close"
+            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:close"
         )
         await close_button.callback(interaction)
 

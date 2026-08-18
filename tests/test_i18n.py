@@ -323,23 +323,24 @@ class TestGreetingLocaleKeys:
         del i18n._locales["en"]["greetings"]["card"]["welcome_title"]
 
         assert t("222", "greetings.card.welcome_title") == "¡Bienvenido!"
-        assert t(
-            "222",
-            "greetings.card.member_count",
-            count=7,
-            mention="{mention}",
-            user="{user}",
-            server="{server}",
-        ) == "Member #7"
+        assert (
+            t(
+                "222",
+                "greetings.card.member_count",
+                count=7,
+                mention="{mention}",
+                user="{user}",
+                server="{server}",
+            )
+            == "Member #7"
+        )
 
         from bot.services.greeting_service import _format_template
 
         member = MagicMock()
         member.mention = "<@222>"
         member.guild.name = "Example Server"
-        assert _format_template("Welcome {mention} to {server}", member) == (
-            "Welcome <@222> to Example Server"
-        )
+        assert _format_template("Welcome {mention} to {server}", member) == ("Welcome <@222> to Example Server")
 
     def test_real_locale_files_define_greeting_namespace(self) -> None:
         """The shipped ES/EN locale files expose every Phase 2 greeting key."""
@@ -688,6 +689,7 @@ class TestSlashMetadataKeys:
     def _load_real_locales_for_slash(self) -> None:
         """Load the real locale files so slash key lookups work."""
         from bot.core.i18n import load_locales
+
         load_locales()
 
     def test_descriptions_keys_exist_in_both_locales(self) -> None:
@@ -695,20 +697,54 @@ class TestSlashMetadataKeys:
         from bot.core import i18n
 
         required_keys = [
-            "ping", "status", "help", "sync",
-            "warn", "unwarn", "mute", "unmute", "kick", "ban", "lock", "unlock", "modlogs",
-            "ticket_panel", "create_category", "list_categories", "delete_category",
-            "configure_fields._", "configure_fields.set",
-            "subticket._", "subticket.create",
-            "reopen", "transfer", "unclaim",
-            "note._", "note.add", "note.list", "note.delete",
-            "avatar", "serverinfo", "userinfo",
+            "ping",
+            "status",
+            "help",
+            "sync",
+            "warn",
+            "unwarn",
+            "mute",
+            "unmute",
+            "kick",
+            "ban",
+            "lock",
+            "unlock",
+            "modlogs",
+            "ticket_panel",
+            "create_category",
+            "list_categories",
+            "delete_category",
+            "configure_fields._",
+            "configure_fields.set",
+            "subticket._",
+            "subticket.create",
+            "reopen",
+            "transfer",
+            "unclaim",
+            "note._",
+            "note.add",
+            "note.list",
+            "note.delete",
+            "avatar",
+            "serverinfo",
+            "userinfo",
             "setup",
-            "daily", "coins", "leaderboard", "rank",
-            "welcome_test", "goodbye_test",
-            "welcome._", "welcome.channel", "welcome.toggle", "welcome.message",
-            "goodbye._", "goodbye.channel", "goodbye.toggle", "goodbye.message",
-            "dados", "banana",
+            "daily",
+            "coins",
+            "leaderboard",
+            "rank",
+            "welcome_test",
+            "goodbye_test",
+            "welcome._",
+            "welcome.channel",
+            "welcome.toggle",
+            "welcome.message",
+            "goodbye._",
+            "goodbye.channel",
+            "goodbye.toggle",
+            "goodbye.message",
+            "dados",
+            "banana",
         ]
 
         for key in required_keys:
@@ -723,20 +759,32 @@ class TestSlashMetadataKeys:
 
         required_describes = [
             ("help", "module"),
-            ("warn", "member"), ("warn", "reason"),
+            ("warn", "member"),
+            ("warn", "reason"),
             ("unwarn", "member"),
-            ("mute", "member"), ("mute", "duration"), ("mute", "reason"),
+            ("mute", "member"),
+            ("mute", "duration"),
+            ("mute", "reason"),
             ("unmute", "member"),
-            ("kick", "member"), ("kick", "reason"),
-            ("ban", "member"), ("ban", "reason"), ("ban", "delete_days"),
+            ("kick", "member"),
+            ("kick", "reason"),
+            ("ban", "member"),
+            ("ban", "reason"),
+            ("ban", "delete_days"),
             ("lock", "channel"),
             ("unlock", "channel"),
-            ("modlogs", "member"), ("modlogs", "type"), ("modlogs", "after"),
-            ("ticket_panel", "title"), ("ticket_panel", "description_text"),
-            ("create_category", "name"), ("create_category", "emoji"),
-            ("create_category", "description"), ("create_category", "position"),
+            ("modlogs", "member"),
+            ("modlogs", "type"),
+            ("modlogs", "after"),
+            ("ticket_panel", "title"),
+            ("ticket_panel", "description_text"),
+            ("create_category", "name"),
+            ("create_category", "emoji"),
+            ("create_category", "description"),
+            ("create_category", "position"),
             ("delete_category", "category_id"),
-            ("configure_fields.set", "category_id"), ("configure_fields.set", "fields_json"),
+            ("configure_fields.set", "category_id"),
+            ("configure_fields.set", "fields_json"),
             ("subticket.create", "parent_id"),
             ("reopen", "ticket_ref"),
             ("transfer", "member"),
@@ -744,8 +792,10 @@ class TestSlashMetadataKeys:
             ("note.delete", "note_id"),
             ("avatar", "member"),
             ("userinfo", "member"),
-            ("setup", "ticket_category"), ("setup", "mod_role"),
-            ("setup", "log_channel"), ("setup", "language"),
+            ("setup", "ticket_category"),
+            ("setup", "mod_role"),
+            ("setup", "log_channel"),
+            ("setup", "language"),
             ("coins", "member"),
             ("leaderboard", "lb_type"),
             ("rank", "member"),

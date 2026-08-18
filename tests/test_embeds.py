@@ -18,7 +18,6 @@ import pytest
 
 from bot.utils.brand import ERROR, INFO, PRIMARY, SUCCESS, WARNING
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -215,9 +214,7 @@ class TestBuildTicketEmbed:
         embed = build_ticket_embed(ticket, bot=mock_bot)
         assert embed.footer.icon_url == "https://cdn.discordapp.com/avatars/123/avatar.png"
 
-    def test_accepts_guild_for_footer_icon(
-        self, mock_bot: MagicMock, mock_guild_with_icon: MagicMock
-    ) -> None:
+    def test_accepts_guild_for_footer_icon(self, mock_bot: MagicMock, mock_guild_with_icon: MagicMock) -> None:
         """build_ticket_embed must accept guild kwarg and set guild icon as footer icon."""
         from bot.utils.embeds import build_ticket_embed
 
@@ -225,9 +222,7 @@ class TestBuildTicketEmbed:
         embed = build_ticket_embed(ticket, bot=mock_bot, guild=mock_guild_with_icon)
         assert embed.footer.icon_url == "https://cdn.discordapp.com/icons/111/server.png"
 
-    def test_guild_no_icon_falls_back_to_bot(
-        self, mock_bot: MagicMock, mock_guild_no_icon: MagicMock
-    ) -> None:
+    def test_guild_no_icon_falls_back_to_bot(self, mock_bot: MagicMock, mock_guild_no_icon: MagicMock) -> None:
         """build_ticket_embed with guild without icon must fall back to bot avatar."""
         from bot.utils.embeds import build_ticket_embed
 

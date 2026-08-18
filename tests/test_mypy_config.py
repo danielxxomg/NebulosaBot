@@ -72,16 +72,12 @@ class TestMypyOverrides:
     def test_no_bot_bot_override(self, mypy_overrides: list[dict]) -> None:
         """bot.bot override MUST NOT exist — attr-defined resolved via isinstance narrowing."""
         bot_bot_overrides = [o for o in mypy_overrides if o.get("module") == "bot.bot"]
-        assert len(bot_bot_overrides) == 0, (
-            f"bot.bot override still present — remove it: {bot_bot_overrides}"
-        )
+        assert len(bot_bot_overrides) == 0, f"bot.bot override still present — remove it: {bot_bot_overrides}"
 
     def test_no_bot_core_override(self, mypy_overrides: list[dict]) -> None:
         """bot.core.* override MUST NOT exist — modules pass strict without suppression."""
         core_overrides = [o for o in mypy_overrides if o.get("module") == "bot.core.*"]
-        assert len(core_overrides) == 0, (
-            f"bot.core.* override still present — remove it: {core_overrides}"
-        )
+        assert len(core_overrides) == 0, f"bot.core.* override still present — remove it: {core_overrides}"
 
     def test_no_bot_listeners_override(self, mypy_overrides: list[dict]) -> None:
         """bot.listeners.* override MUST NOT exist — modules pass strict without suppression."""
@@ -93,9 +89,7 @@ class TestMypyOverrides:
     def test_only_tech_debt_overrides_remain(self, mypy_overrides: list[dict]) -> None:
         """Only bot.cogs.* and tests.* overrides MUST remain after type-strict cleanup."""
         modules = sorted(str(o.get("module", "")) for o in mypy_overrides)
-        assert modules == ["bot.cogs.*", "tests.*"], (
-            f"Unexpected mypy override set: {modules}"
-        )
+        assert modules == ["bot.cogs.*", "tests.*"], f"Unexpected mypy override set: {modules}"
 
 
 # ---------------------------------------------------------------------------
@@ -134,13 +128,8 @@ class TestMypyNoServicesWildcard:
 
     def test_no_services_wildcard_override(self, mypy_overrides: list[dict]) -> None:
         """bot.services.* override MUST NOT exist."""
-        services_overrides = [
-            o for o in mypy_overrides
-            if o.get("module") == "bot.services.*"
-        ]
-        assert len(services_overrides) == 0, (
-            f"bot.services.* override still present — remove it: {services_overrides}"
-        )
+        services_overrides = [o for o in mypy_overrides if o.get("module") == "bot.services.*"]
+        assert len(services_overrides) == 0, f"bot.services.* override still present — remove it: {services_overrides}"
 
 
 # ---------------------------------------------------------------------------
@@ -153,10 +142,5 @@ class TestMypyNoModelsWildcard:
 
     def test_no_models_wildcard_override(self, mypy_overrides: list[dict]) -> None:
         """bot.models.* override MUST NOT exist."""
-        models_overrides = [
-            o for o in mypy_overrides
-            if o.get("module") == "bot.models.*"
-        ]
-        assert len(models_overrides) == 0, (
-            f"bot.models.* override still present — remove it: {models_overrides}"
-        )
+        models_overrides = [o for o in mypy_overrides if o.get("module") == "bot.models.*"]
+        assert len(models_overrides) == 0, f"bot.models.* override still present — remove it: {models_overrides}"

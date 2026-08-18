@@ -472,19 +472,21 @@ class TestGenerateGreetingCard:
 
     def test_avatar_fetch_failure_keeps_localized_copy(self) -> None:
         """Avatar download failures must not remove localized card content."""
-        with patch(
-            "bot.services.image_service.ImageService._fetch_avatar",
-            side_effect=RuntimeError("network"),
+        with (
+            patch(
+                "bot.services.image_service.ImageService._fetch_avatar",
+                side_effect=RuntimeError("network"),
+            ),
+            patch("bot.services.image_service.ImageDraw.ImageDraw.text", autospec=True) as draw_text,
         ):
-            with patch("bot.services.image_service.ImageDraw.ImageDraw.text", autospec=True) as draw_text:
-                buffer = self.service.generate_greeting_card(
-                    username="Sin Avatar",
-                    avatar_url="broken-avatar",
-                    guild_name="Servidor",
-                    member_count=9,
-                    greeting_title="¡Bienvenido!",
-                    member_count_text="Miembro #9",
-                )
+            buffer = self.service.generate_greeting_card(
+                username="Sin Avatar",
+                avatar_url="broken-avatar",
+                guild_name="Servidor",
+                member_count=9,
+                greeting_title="¡Bienvenido!",
+                member_count_text="Miembro #9",
+            )
 
         assert _is_valid_png(buffer.getvalue())
         rendered_text = [call.args[2] for call in draw_text.call_args_list]

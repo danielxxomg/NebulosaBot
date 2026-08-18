@@ -30,14 +30,14 @@ def test_manual_exists_and_non_empty(manual_text: str) -> None:
 # ---------------------------------------------------------------------------
 
 REQUIRED_SECTION_HEADINGS = [
-    "Vista general",           # Overview / Quick Start context
-    "Inicio rápido",           # Quick Start
-    "Configuración",           # Configuration
-    "Moderación",              # Commands — Moderation (audience: moderators)
-    "Sistema de tickets",      # Ticket System
-    "Economía",                # Economy (referenced by /daily, /coins, etc.)
+    "Vista general",  # Overview / Quick Start context
+    "Inicio rápido",  # Quick Start
+    "Configuración",  # Configuration
+    "Moderación",  # Commands — Moderation (audience: moderators)
+    "Sistema de tickets",  # Ticket System
+    "Economía",  # Economy (referenced by /daily, /coins, etc.)
     "Bienvenida y despedida",  # Welcome/Goodbye
-    "Deuda conocida",          # Known Debt
+    "Deuda conocida",  # Known Debt
     "Referencia de comandos",  # Commands by audience (reference section)
 ]
 
@@ -129,8 +129,11 @@ def test_manual_has_close_confirmation_section(manual_text: str) -> None:
     assert any(
         phrase in lower
         for phrase in [
-            "confirmar", "cancelar", "diálogo de confirmación",
-            "confirm", "cancel",
+            "confirmar",
+            "cancelar",
+            "diálogo de confirmación",
+            "confirm",
+            "cancel",
         ]
     ), "Missing close confirmation dialog documentation"
 
@@ -141,8 +144,12 @@ def test_manual_has_countdown_documentation(manual_text: str) -> None:
     assert any(
         phrase in manual_text.lower()
         for phrase in [
-            "countdown", "cuenta regresiva", "5 a 1", "5→1",
-            "5 a 1", "edita",
+            "countdown",
+            "cuenta regresiva",
+            "5 a 1",
+            "5→1",
+            "5 a 1",
+            "edita",
         ]
     ), "Missing countdown documentation"
 
@@ -159,8 +166,12 @@ def test_manual_has_claim_transfer(manual_text: str) -> None:
     assert any(
         phrase in lower
         for phrase in [
-            "transferir", "transfer", "ya reclamado", "already claimed",
-            "confirmación de transferencia", "transfer confirm",
+            "transferir",
+            "transfer",
+            "ya reclamado",
+            "already claimed",
+            "confirmación de transferencia",
+            "transfer confirm",
         ]
     ), "Missing claim-on-claimed transfer documentation"
 
@@ -171,9 +182,12 @@ def test_manual_has_channel_naming_format(manual_text: str) -> None:
     assert any(
         phrase in lower
         for phrase in [
-            "{category}-{username}-{number}", "categoría-usuario-número",
-            "category-username-number", "formato del canal",
-            "channel naming", "nomenclatura",
+            "{category}-{username}-{number}",
+            "categoría-usuario-número",
+            "category-username-number",
+            "formato del canal",
+            "channel naming",
+            "nomenclatura",
         ]
     ), "Missing channel naming format documentation"
 
@@ -184,8 +198,15 @@ def test_manual_has_branding_notes(manual_text: str) -> None:
     assert any(
         phrase in lower
         for phrase in [
-            "púrpura", "violeta", "purple", "violet", "brand",
-            "avatar del bot", "bot avatar", "paleta", "palette",
+            "púrpura",
+            "violeta",
+            "purple",
+            "violet",
+            "brand",
+            "avatar del bot",
+            "bot avatar",
+            "paleta",
+            "palette",
         ]
     ), "Missing branding notes"
 
@@ -313,9 +334,7 @@ def test_dynamic_discovery_order_resilience(manual_text: str) -> None:
 
     # Collect module names once.
     mod_names = [
-        modname
-        for _importer, modname, _ispkg in pkgutil.iter_modules(cogs_pkg.__path__)
-        if not modname.startswith("_")
+        modname for _importer, modname, _ispkg in pkgutil.iter_modules(cogs_pkg.__path__) if not modname.startswith("_")
     ]
     assert len(mod_names) > 0, "No cog modules found"
 
@@ -338,9 +357,7 @@ def test_dynamic_discovery_order_resilience(manual_text: str) -> None:
 
         reordered = _discover_hybrid_commands()
         assert reordered == baseline, (
-            f"Discovery differs under shuffled import order.\n"
-            f"Baseline: {baseline}\n"
-            f"Shuffled: {reordered}"
+            f"Discovery differs under shuffled import order.\nBaseline: {baseline}\nShuffled: {reordered}"
         )
     finally:
         # Restore evicted modules so other tests are unaffected.

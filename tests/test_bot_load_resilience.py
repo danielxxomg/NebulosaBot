@@ -7,14 +7,13 @@ from loading, and that tree.sync() still runs for successfully loaded commands.
 from __future__ import annotations
 
 import logging
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import discord
 import pytest
 
-from bot.bot import NebulosaBot, EXTENSIONS
+from bot.bot import EXTENSIONS, NebulosaBot
 from bot.config import BotConfig
-
 
 # ---------------------------------------------------------------------------
 # Helpers
