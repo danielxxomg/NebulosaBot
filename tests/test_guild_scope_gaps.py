@@ -264,36 +264,32 @@ class TestGuildScopeAudit:
 class TestGuildScopeServiceVertical:
     @pytest.mark.asyncio
     async def test_service_get_ticket_guild_scoped_denied(self) -> None:
-        """Service wrapper MUST deny when ticket guild != requested guild."""
+        """Service claim MUST deny when ticket guild != requested guild via real service path."""
 
         from bot.core.cache import TTLCache
         from bot.services.ticket_service import TicketService
 
-        mock_db = MagicMock()
-        # Simulate ticket belonging to guild-b
-        mock_db.get_ticket = AsyncMock(return_value={"id": "t-b", "guildId": "guild-b"})
-        mock_db.get_ticket_by_number = AsyncMock(return_value=None)
+        cache = TTLCache()
 
-        # For scoped call, simulate DB returns None for cross-guild
-        async def fake_get_ticket(ticket_id: str, guild_id: str | None = None) -> Any:
+        # DB returns None for cross-guild scoped reads
+        async def scoped_get_ticket(ticket_id: str, guild_id: str | None = None) -> Any:
             if guild_id == "guild-a" and ticket_id == "t-b":
                 return None
-            return {"id": ticket_id, "guildId": guild_id}
+            return {"id": ticket_id, "guildId": guild_id or "guild-b", "status": "open", "claimedBy": None}
 
-        mock_db.get_ticket.side_effect = fake_get_ticket
-        cache = TTLCache()
-        _svc = TicketService(mock_db, cache)
-        # If service exposes guild-scoped get, it should deny
-        # We test that direct DB scoped call is denied (already above)
-        # And that service's claim/update would fail if guild mismatched
-        # Simulate claim with wrong guild
-        mock_db.get_ticket = AsyncMock(
-            return_value={"id": "t-b", "guildId": "guild-b", "status": "open", "claimedBy": None}
-        )
+        mock_db = MagicMock()
+        mock_db.get_ticket = AsyncMock(side_effect=scoped_get_ticket)
         mock_db.update_ticket = AsyncMock(return_value=None)
         mock_db.insert_audit_row = AsyncMock(return_value={})
-        # Claim attempt with guild-a for ticket of guild-b should be denied via guild filter
-        # Our service after GREEN will pass guild_id to DB and get None -> raise or deny
-        # For now just assert the DB scoped mock returns None for cross-guild
-        result = await fake_get_ticket("t-b", guild_id="guild-a")
-        assert result is None
+        mock_db.get_ticket_by_number = AsyncMock(return_value=None)
+
+        svc = TicketService(mock_db, cache)  # type: ignore[arg-type]
+        # Claim with guild-a for a ticket that only exists in guild-b MUST be denied
+        with pytest.raises(ValueError, match="not found"):
+            await svc.claim_ticket("t-b", claimed_by="staff-1", guild_id="guild-a")
+        # Must have attempted a guild-scoped DB read
+        assert mock_db.get_ticket.await_count >= 1
+        call_kwargs = mock_db.get_ticket.call_args.kwargs if mock_db.get_ticket.call_args.kwargs else {}
+        call_args = mock_db.get_ticket.call_args.args if mock_db.get_ticket.call_args.args else ()
+        # guild_id must have been passed
+        assert call_kwargs.get("guild_id") == "guild-a" or (len(call_args) > 1 and "guild-a" in call_args)

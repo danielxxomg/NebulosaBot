@@ -67,37 +67,35 @@ class TicketDBMixin:
     async def get_tickets_by_parent(self: Any, parent_id: str, *, guild_id: str | None = None) -> list[dict[str, Any]]:
         """Return all tickets whose ``parentId`` equals *parent_id*.
 
-        Used to render a parent's sub-ticket children. Results are ordered
-        newest-first by ``createdAt`` to match the project's list-query
-        convention. Returns an empty list when the parent has no children.
-
-        When *guild_id* is provided the query is additionally filtered by
-        ``guildId`` so cross-guild children are never returned.
+        Guild-scoped by ``guildId`` — cross-guild children are never returned.
+        Results are ordered newest-first by ``createdAt``. A missing
+        ``guild_id`` raises ``ValueError("guild_id required")``.
         """
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
+        if guild_id is None:
+            raise ValueError("guild_id required")
 
         logger.debug("DB get_tickets_by_parent(%r, guild=%s)", parent_id, guild_id)
-        query = self._client.table("ticket").select("*").eq("parentId", parent_id)
-        if guild_id is not None:
-            query = query.eq("guildId", guild_id)
+        query = self._client.table("ticket").select("*").eq("parentId", parent_id).eq("guildId", guild_id)
         response = await query.order("createdAt", desc=True).execute()
         return _unwrap(response)
 
     async def get_ticket(self: Any, ticket_id: str, *, guild_id: str | None = None) -> dict[str, Any] | None:
         """Fetch a ticket by its UUID primary key.
 
-        When *guild_id* is provided the query includes ``WHERE guildId=:gid
-        AND id=:id`` so a guild A caller cannot read a guild B ticket even
-        when the UUID is known. Returns ``None`` when no eligible row exists.
+        Guild-scoped as ``WHERE guildId=:gid AND id=:id`` so a guild A caller
+        cannot read a guild B ticket even when the UUID is known. Returns
+        ``None`` when no eligible row exists. A missing ``guild_id`` raises
+        ``ValueError("guild_id required")``.
         """
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
+        if guild_id is None:
+            raise ValueError("guild_id required")
 
         logger.debug("DB get_ticket(%r, guild=%s)", ticket_id, guild_id)
-        query = self._client.table("ticket").select("*").eq("id", ticket_id)
-        if guild_id is not None:
-            query = query.eq("guildId", guild_id)
+        query = self._client.table("ticket").select("*").eq("id", ticket_id).eq("guildId", guild_id)
         response = await query.execute()
         rows = _unwrap(response)
         return rows[0] if rows else None
@@ -107,16 +105,17 @@ class TicketDBMixin:
     ) -> dict[str, Any] | None:
         """Fetch a ticket by its Discord channel snowflake.
 
-        When *guild_id* is provided the query includes ``WHERE guildId=:gid
-        AND channelId=:cid`` so cross-guild channel lookups return ``None``.
+        Guild-scoped as ``WHERE guildId=:gid AND channelId=:cid`` so
+        cross-guild channel lookups return ``None``. A missing ``guild_id``
+        raises ``ValueError("guild_id required")``.
         """
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
+        if guild_id is None:
+            raise ValueError("guild_id required")
 
         logger.debug("DB get_ticket_by_channel(%r, guild=%s)", channel_id, guild_id)
-        query = self._client.table("ticket").select("*").eq("channelId", channel_id)
-        if guild_id is not None:
-            query = query.eq("guildId", guild_id)
+        query = self._client.table("ticket").select("*").eq("channelId", channel_id).eq("guildId", guild_id)
         response = await query.execute()
         rows = _unwrap(response)
         return rows[0] if rows else None
@@ -142,24 +141,22 @@ class TicketDBMixin:
         """Update a ticket row with the given camelCase column values.
 
         Accepts keyword arguments matching the DB column names (e.g.
-        ``status="closed"``, ``claimedBy=staff_id``).
-
-        When ``guild_id`` is supplied as a keyword (``update_ticket(tid,
-        guild_id=gid, status=...)``) the update is scoped as ``WHERE
-        guildId=:gid AND id=:tid`` so cross-guild mutations match 0 rows.
+        ``status="closed"``, ``claimedBy=staff_id``). ``guild_id`` is
+        required and the update is scoped as ``WHERE guildId=:gid AND
+        id=:tid`` so cross-guild mutations match 0 rows. A missing
+        ``guild_id`` raises ``ValueError("guild_id required")`` fail-closed.
         The ``guild_id`` key is not persisted as a column.
         """
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
 
         guild_id = kwargs.pop("guild_id", None)
+        if guild_id is None:
+            raise ValueError("guild_id required")
         logger.debug("DB update_ticket(%s, guild=%s) %s", ticket_id, guild_id, kwargs)
-        query = self._client.table("ticket").update(kwargs).eq("id", ticket_id)
-        if guild_id is not None:
-            query = query.eq("guildId", guild_id)
+        query = self._client.table("ticket").update(kwargs).eq("id", ticket_id).eq("guildId", guild_id)
         await query.execute()
-        if self._on_write is not None and guild_id is not None:
-            # Only echo when guild-scoped (ownership established by DB).
+        if self._on_write is not None:
             await self._on_write("ticket", ticket_id)
 
     async def get_stale_tickets(self: Any, guild_id: str, hours: int = 48) -> list[dict[str, Any]]:

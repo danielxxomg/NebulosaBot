@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 import discord
 
-from bot.config import INTEGRITY_BACKOFF_SECONDS, INTEGRITY_BATCH_SIZE, INTEGRITY_MAX_BACKOFF_SECONDS
+from bot.config import INTEGRITY_BATCH_SIZE
 from bot.models.ticket import IntegrityEvidence, RepairResult, Ticket
 from bot.models.ticket_note import TicketNote
 from bot.services.ticket_invariants import (
@@ -35,6 +35,12 @@ from bot.services.ticket_invariants import (
     is_duplicate_note,
     parse_ticket_ref,
 )
+from bot.services.ticket_repair import (
+    backoff_delay as _coordinator_backoff_delay,
+)
+from bot.services.ticket_repair import evaluate_repair_eligibility as _coordinator_evaluate
+from bot.services.ticket_repair import plan_sweep_batch as _coordinator_plan_sweep_batch
+from bot.services.ticket_repair import probe_channel_absence as _coordinator_probe
 from bot.utils.ticket_helpers import (
     build_ticket_overwrites,
     resolve_category_name,
@@ -56,116 +62,13 @@ NOTE_CAP = 50  # v1 per-ticket staff note limit (see design.md non-goals)
 CHANNEL_DELETE_DELAY = 5  # seconds before deleting a closed ticket channel
 
 
-def backoff_delay(attempt: int) -> float:
-    """Return the exponential backoff delay for a retry *attempt* (0-indexed).
-
-    Doubles from :data:`bot.config.INTEGRITY_BACKOFF_SECONDS` on each retry,
-    clamped at :data:`bot.config.INTEGRITY_MAX_BACKOFF_SECONDS`. Pure — used
-    by the sweep coordinator to space transient Discord failures without an
-    unbounded wait.
-    """
-    delay = INTEGRITY_BACKOFF_SECONDS * (2 ** max(attempt, 0))
-    return float(min(delay, INTEGRITY_MAX_BACKOFF_SECONDS))
-
-
-def plan_sweep_batch(
-    candidates: list[dict[str, Any]],
-    *,
-    seen: set[str] | None = None,
-    batch_size: int = INTEGRITY_BATCH_SIZE,
-) -> list[dict[str, Any]]:
-    """Return the next bounded, deduplicated sweep batch.
-
-    *candidates* are active-ticket rows discovered by a sweep. Candidates
-    whose ``id`` is already in *seen* are skipped so a retried sweep never
-    re-emits a candidate already evaluated. At most *batch_size* candidates
-    are selected; each selected candidate's ``id`` is added to *seen*. Pure —
-    no I/O, no mutation.
-    """
-    seen = seen if seen is not None else set()
-    batch: list[dict[str, Any]] = []
-    for candidate in candidates:
-        if len(batch) >= batch_size:
-            break
-        cid = candidate.get("id")
-        if cid is None or cid in seen:
-            continue
-        batch.append(candidate)
-        seen.add(cid)
-    return batch
-
-
-async def probe_channel_absence(bot: Any, guild_id: str, channel_id: str) -> bool | None:
-    """Probe whether *channel_id* still exists in *guild_id* via a fresh fetch.
-
-    Tri-state, fail-closed:
-    - ``False`` ONLY when ``fetch_channel`` raises ``discord.NotFound`` (the
-      channel is explicitly absent — the single corroborating response).
-    - ``True`` when the channel resolves (it still exists).
-    - ``None`` (unresolved) for 403/Forbidden, 429/RateLimited, generic
-      ``HTTPException`` (timeout), a missing guild, or a malformed id — these
-      NEVER imply absence and quarantine/no-op downstream.
-
-    A fresh fetch is performed on EVERY call: evidence is never reused across
-    independent sweep/manual attempts (design.md).
-    """
-    if guild_id:
-        try:
-            guild_id_int = int(guild_id)
-        except (ValueError, TypeError):
-            # A malformed guild snowflake fails closed exactly like a malformed
-            # channel snowflake: unresolved (None), never absence, never a raw
-            # ValueError escaping to the caller.
-            return None
-        guild = bot.get_guild(guild_id_int)
-    else:
-        guild = None
-    if guild is None:
-        return None
-    try:
-        channel_id_int = int(channel_id)
-    except (ValueError, TypeError):
-        return None
-    try:
-        await guild.fetch_channel(channel_id_int)
-    except discord.NotFound:
-        return False
-    except (discord.Forbidden, discord.RateLimited, discord.HTTPException):
-        # RateLimited is a DiscordException (not HTTPException); Forbidden is
-        # missing permission; HTTPException covers timeouts. All are transient
-        # or uncertain and NEVER imply absence.
-        return None
-    return True
-
-
-def evaluate_repair_eligibility(
-    *,
-    preflight_allows: bool,
-    corroborated: bool | None,
-) -> tuple[str, str] | None:
-    """Return the single fail-closed decision for one repair attempt.
-
-    This is the ONE evidence/preflight evaluation shared by the channel-delete
-    listener, integrity sweeps, and manual fallback. Adapters never re-evaluate
-    and never keep a parallel truth. It is pure — no I/O, no mutation.
-
-    Returns ``None`` when the attempt may proceed to the conditional close
-    (preflight resolved AND evidence corroborated), otherwise a
-    ``(outcome, reason)`` denial tuple:
-
-    - unresolved preflight -> ``("skipped", "gate_unresolved")``
-    - unknown/stale evidence (``corroborated is None``) ->
-      ``("skipped", "evidence_unresolved")`` (per spec: unknown → skipped)
-    - live channel or non-active ticket (``corroborated is False``) ->
-      ``("skipped", "not_corroborated")``
-    """
-    if not preflight_allows:
-        return ("skipped", "gate_unresolved")
-    if corroborated is None:
-        return ("skipped", "evidence_unresolved")
-    if corroborated is not True:
-        return ("skipped", "not_corroborated")
-    return None
+# Repair coordinator facade — single source in bot.services.ticket_repair.
+# TicketService re-exports these so every adapter converges on one
+# fail-closed path without duplicating gate/evidence logic.
+backoff_delay = _coordinator_backoff_delay
+plan_sweep_batch = _coordinator_plan_sweep_batch
+probe_channel_absence = _coordinator_probe
+evaluate_repair_eligibility = _coordinator_evaluate
 
 
 class TicketCategoryNotConfiguredError(ValueError):
@@ -1435,10 +1338,10 @@ class TicketService:
             count_fn=lambda _u, _c: count,
         )
 
-        # DB mutation.
-        await self._db.update_ticket(ticket_id, categoryId=new_category_id)
+        # DB mutation (guild-scoped; update_ticket is now fail-closed without guild_id).
+        await self._db.update_ticket(ticket_id, guild_id=guild_id, categoryId=new_category_id)
 
-        row = await self._db.get_ticket(ticket_id)
+        row = await self._db.get_ticket(ticket_id, guild_id=guild_id)
         if row is None:
             raise ValueError(f"Ticket {ticket_id} not found after edit_category")
         ticket = Ticket.from_db_row(row)
@@ -1725,12 +1628,13 @@ class TicketService:
 
         await self._db.update_ticket(
             ticket_id,
+            guild_id=guild_id,
             channelId=str(new_channel.id),
             status="open",
             closedAt=None,
         )
 
-        row = await self._db.get_ticket(ticket_id)
+        row = await self._db.get_ticket(ticket_id, guild_id=guild_id)
         if row is None:
             raise ValueError(f"Ticket {ticket_id} not found after reopen")
         ticket = Ticket.from_db_row(row)

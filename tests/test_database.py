@@ -543,7 +543,7 @@ class TestGetTicketsByParent:
         ]
         fake_client.set_table_data("ticket", children)
 
-        result = await db.get_tickets_by_parent("p1")
+        result = await db.get_tickets_by_parent("p1", guild_id="g1")
 
         assert result == children
         assert len(result) == 2
@@ -553,7 +553,7 @@ class TestGetTicketsByParent:
         """get_tickets_by_parent() MUST apply an eq('parentId', ...) filter."""
         fake_client.set_table_data("ticket", [])
 
-        await db.get_tickets_by_parent("p1")
+        await db.get_tickets_by_parent("p1", guild_id="g1")
 
         filters = fake_client.get_table_filters("ticket")
         assert ("eq", "parentId", "p1") in filters, f"Missing parentId filter, got: {filters}"
@@ -563,7 +563,7 @@ class TestGetTicketsByParent:
         """get_tickets_by_parent() MUST return [] when the parent has no children."""
         fake_client.set_table_data("ticket", [])
 
-        result = await db.get_tickets_by_parent("orphan-parent")
+        result = await db.get_tickets_by_parent("orphan-parent", guild_id="g1")
 
         assert result == []
 
@@ -572,7 +572,7 @@ class TestGetTicketsByParent:
         """get_tickets_by_parent() MUST order by createdAt DESC (newest-first)."""
         fake_client.set_table_data("ticket", [])
 
-        await db.get_tickets_by_parent("p-0001")
+        await db.get_tickets_by_parent("p-0001", guild_id="g1")
 
         orders = fake_client.get_table_orders("ticket")
         assert ("createdAt", True) in orders, f"Expected order('createdAt', desc=True), got: {orders}"
@@ -598,7 +598,7 @@ class TestGetTicket:
         ticket_row = {"id": "t1", "guildId": "g1", "status": "open"}
         fake_client.set_table_data("ticket", [ticket_row])
 
-        result = await db.get_ticket("t1")
+        result = await db.get_ticket("t1", guild_id="g1")
 
         assert result == ticket_row
         assert result is not None
@@ -608,7 +608,7 @@ class TestGetTicket:
         """get_ticket() MUST return None when no ticket exists."""
         fake_client.set_table_data("ticket", [])
 
-        result = await db.get_ticket("nonexistent")
+        result = await db.get_ticket("nonexistent", guild_id="g1")
 
         assert result is None
 
@@ -629,7 +629,7 @@ class TestGetTicketByChannel:
         ticket_row = {"id": "t1", "channelId": "ch1", "status": "open"}
         fake_client.set_table_data("ticket", [ticket_row])
 
-        result = await db.get_ticket_by_channel("ch1")
+        result = await db.get_ticket_by_channel("ch1", guild_id="g1")
 
         assert result == ticket_row
         assert result is not None
@@ -642,7 +642,7 @@ class TestGetTicketByChannel:
         """get_ticket_by_channel() MUST return None when no ticket exists for channel."""
         fake_client.set_table_data("ticket", [])
 
-        result = await db.get_ticket_by_channel("unknown-channel")
+        result = await db.get_ticket_by_channel("unknown-channel", guild_id="g1")
 
         assert result is None
 
@@ -1156,9 +1156,10 @@ class TestInsertTicketNote:
         self, db: Database, fake_client: FakeSupabaseClient
     ) -> None:
         """insert_ticket_note() MUST return the persisted note row."""
+        fake_client.set_table_data("ticket", [{"id": "t-0001", "guildId": "g1"}])
         fake_client.set_table_data("ticket_note", [_note_row_db()])
 
-        result = await db.insert_ticket_note("t-0001", "staff-001", "Escalated.")
+        result = await db.insert_ticket_note("t-0001", "staff-001", "Escalated.", guild_id="g1")
 
         assert result["id"] == "n-uuid-1"
         assert result["ticketId"] == "t-0001"
@@ -1168,9 +1169,10 @@ class TestInsertTicketNote:
         self, db: Database, fake_client: FakeSupabaseClient
     ) -> None:
         """insert_ticket_note() MUST insert a row with camelCase columns + a UUID id."""
+        fake_client.set_table_data("ticket", [{"id": "t-0001", "guildId": "g1"}])
         fake_client.set_table_data("ticket_note", [_note_row_db()])
 
-        await db.insert_ticket_note("t-0001", "staff-001", "Escalated.")
+        await db.insert_ticket_note("t-0001", "staff-001", "Escalated.", guild_id="g1")
 
         insert_calls = fake_client.get_table_calls("ticket_note")
         assert len(insert_calls) == 1
@@ -1199,8 +1201,9 @@ class TestGetTicketNotes:
         """get_ticket_notes() MUST return rows filtered by ticketId."""
         notes = [_note_row_db(id="n1"), _note_row_db(id="n2", content="Second.")]
         fake_client.set_table_data("ticket_note", notes)
+        fake_client.set_table_data("ticket", [{"id": "t-0001", "guildId": "g1"}])
 
-        result = await db.get_ticket_notes("t-0001")
+        result = await db.get_ticket_notes("t-0001", guild_id="g1")
 
         assert result == notes
         assert len(result) == 2
@@ -1209,8 +1212,9 @@ class TestGetTicketNotes:
     async def test_filters_by_ticket_id(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """get_ticket_notes() MUST apply an eq('ticketId', ...) filter."""
         fake_client.set_table_data("ticket_note", [])
+        fake_client.set_table_data("ticket", [{"id": "t-0001", "guildId": "g1"}])
 
-        await db.get_ticket_notes("t-0001")
+        await db.get_ticket_notes("t-0001", guild_id="g1")
 
         filters = fake_client.get_table_filters("ticket_note")
         assert ("eq", "ticketId", "t-0001") in filters, f"Missing ticketId filter, got: {filters}"
@@ -1219,8 +1223,9 @@ class TestGetTicketNotes:
     async def test_orders_newest_first(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """get_ticket_notes() MUST order by createdAt DESC (newest-first)."""
         fake_client.set_table_data("ticket_note", [])
+        fake_client.set_table_data("ticket", [{"id": "t-0001", "guildId": "g1"}])
 
-        await db.get_ticket_notes("t-0001")
+        await db.get_ticket_notes("t-0001", guild_id="g1")
 
         orders = fake_client.get_table_orders("ticket_note")
         assert ("createdAt", True) in orders, f"Expected order('createdAt', desc=True), got: {orders}"
@@ -1229,8 +1234,9 @@ class TestGetTicketNotes:
     async def test_applies_default_cap_limit(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """get_ticket_notes() MUST apply a default limit (cap by caller)."""
         fake_client.set_table_data("ticket_note", [])
+        fake_client.set_table_data("ticket", [{"id": "t-0001", "guildId": "g1"}])
 
-        await db.get_ticket_notes("t-0001")
+        await db.get_ticket_notes("t-0001", guild_id="g1")
 
         limits = fake_client.get_table_limits("ticket_note")
         assert limits, f"Expected a limit() call, got: {limits}"
@@ -1240,8 +1246,9 @@ class TestGetTicketNotes:
     async def test_applies_explicit_limit(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """get_ticket_notes(limit=...) MUST pass the caller's cap through."""
         fake_client.set_table_data("ticket_note", [])
+        fake_client.set_table_data("ticket", [{"id": "t-0001", "guildId": "g1"}])
 
-        await db.get_ticket_notes("t-0001", limit=10)
+        await db.get_ticket_notes("t-0001", guild_id="g1", limit=10)
 
         limits = fake_client.get_table_limits("ticket_note")
         assert 10 in limits
@@ -1250,8 +1257,9 @@ class TestGetTicketNotes:
     async def test_returns_empty_when_no_notes(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """get_ticket_notes() MUST return [] when the ticket has no notes."""
         fake_client.set_table_data("ticket_note", [])
+        fake_client.set_table_data("ticket", [{"id": "t-empty", "guildId": "g1"}])
 
-        result = await db.get_ticket_notes("t-empty")
+        result = await db.get_ticket_notes("t-empty", guild_id="g1")
 
         assert result == []
 
@@ -1268,7 +1276,9 @@ class TestDeleteTicketNote:
     @pytest.mark.asyncio
     async def test_delete_targets_note_by_id(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """delete_ticket_note() MUST delete the row matching the given id."""
-        await db.delete_ticket_note("n-uuid-1")
+        fake_client.set_table_data("ticket", [{"id": "t-0001", "guildId": "g1"}])
+        fake_client.set_table_data("ticket_note", [{"id": "n-uuid-1", "ticketId": "t-0001"}])
+        await db.delete_ticket_note("n-uuid-1", guild_id="g1", ticket_id="t-0001")
 
         filters = fake_client.get_table_filters("ticket_note")
         assert ("eq", "id", "n-uuid-1") in filters, f"delete_ticket_note MUST filter by id, got: {filters}"
@@ -1480,9 +1490,10 @@ class TestGetRecentNotesForDedup:
     async def test_returns_recent_notes_for_author(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """get_recent_notes_for_dedup() MUST return notes by this author in the window."""
         notes = [{"content": "hello world"}, {"content": "hi"}]
+        fake_client.set_table_data("ticket", [{"id": "t1", "guildId": "g1"}])
         fake_client.set_table_data("ticket_note", notes)
 
-        result = await db.get_recent_notes_for_dedup("t1", "authorA")
+        result = await db.get_recent_notes_for_dedup("t1", "authorA", guild_id="g1")
 
         assert result == notes
         assert len(result) == 2
@@ -1490,19 +1501,21 @@ class TestGetRecentNotesForDedup:
     @pytest.mark.asyncio
     async def test_returns_empty_when_none(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """get_recent_notes_for_dedup() MUST return [] when no recent notes match."""
+        fake_client.set_table_data("ticket", [{"id": "t1", "guildId": "g1"}])
         fake_client.set_table_data("ticket_note", [])
 
-        result = await db.get_recent_notes_for_dedup("t1", "authorA")
+        result = await db.get_recent_notes_for_dedup("t1", "authorA", guild_id="g1")
 
         assert result == []
 
     @pytest.mark.asyncio
     async def test_filters_by_ticket_author_and_window(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """get_recent_notes_for_dedup() MUST eq ticketId + authorId + gte createdAt(cutoff)."""
+        fake_client.set_table_data("ticket", [{"id": "t1", "guildId": "g1"}])
         fake_client.set_table_data("ticket_note", [])
 
         with freeze_time("2024-06-15 12:00:00", tz_offset=0):
-            await db.get_recent_notes_for_dedup("t1", "authorA", window_seconds=2)
+            await db.get_recent_notes_for_dedup("t1", "authorA", guild_id="g1", window_seconds=2)
 
         filters = fake_client.get_table_filters("ticket_note")
         assert ("eq", "ticketId", "t1") in filters, f"Missing ticketId filter, got: {filters}"
@@ -1515,10 +1528,11 @@ class TestGetRecentNotesForDedup:
     @pytest.mark.asyncio
     async def test_custom_window_seconds_changes_cutoff(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """get_recent_notes_for_dedup(window_seconds=5) MUST compute cutoff = now()-5s."""
+        fake_client.set_table_data("ticket", [{"id": "t1", "guildId": "g1"}])
         fake_client.set_table_data("ticket_note", [])
 
         with freeze_time("2024-06-15 12:00:00", tz_offset=0):
-            await db.get_recent_notes_for_dedup("t1", "authorA", window_seconds=5)
+            await db.get_recent_notes_for_dedup("t1", "authorA", guild_id="g1", window_seconds=5)
 
         filters = fake_client.get_table_filters("ticket_note")
         gte_filters = [f for f in filters if f[0] == "gte" and f[1] == "createdAt"]
