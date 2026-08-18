@@ -141,24 +141,22 @@ class TicketDBMixin:
         """Update a ticket row with the given camelCase column values.
 
         Accepts keyword arguments matching the DB column names (e.g.
-        ``status="closed"``, ``claimedBy=staff_id``).
-
-        When ``guild_id`` is supplied as a keyword (``update_ticket(tid,
-        guild_id=gid, status=...)``) the update is scoped as ``WHERE
-        guildId=:gid AND id=:tid`` so cross-guild mutations match 0 rows.
+        ``status="closed"``, ``claimedBy=staff_id``). ``guild_id`` is
+        required and the update is scoped as ``WHERE guildId=:gid AND
+        id=:tid`` so cross-guild mutations match 0 rows. A missing
+        ``guild_id`` raises ``ValueError("guild_id required")`` fail-closed.
         The ``guild_id`` key is not persisted as a column.
         """
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
 
         guild_id = kwargs.pop("guild_id", None)
+        if guild_id is None:
+            raise ValueError("guild_id required")
         logger.debug("DB update_ticket(%s, guild=%s) %s", ticket_id, guild_id, kwargs)
-        query = self._client.table("ticket").update(kwargs).eq("id", ticket_id)
-        if guild_id is not None:
-            query = query.eq("guildId", guild_id)
+        query = self._client.table("ticket").update(kwargs).eq("id", ticket_id).eq("guildId", guild_id)
         await query.execute()
-        if self._on_write is not None and guild_id is not None:
-            # Only echo when guild-scoped (ownership established by DB).
+        if self._on_write is not None:
             await self._on_write("ticket", ticket_id)
 
     async def get_stale_tickets(self: Any, guild_id: str, hours: int = 48) -> list[dict[str, Any]]:

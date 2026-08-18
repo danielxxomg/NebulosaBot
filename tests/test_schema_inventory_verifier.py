@@ -11,7 +11,9 @@ from bot.services.schema_inventory import (
     GUILD_SCOPE_GAPS,
     RLS_NO_POLICY_TABLES,
     SchemaInventory,
+    fetch_live_metadata,
 )
+from tests.test_database import FakeSupabaseClient
 
 
 def _mocked_fks() -> list[dict[str, str]]:
@@ -193,11 +195,59 @@ class TestLiveBinderWithMockedSuppliedEvidence:
         assert inv.no_ddl is True
 
 
+class TestFetchLiveMetadataSelectPath:
+    """fetch_live_metadata exercises the 4 SELECTs; live marker proves the path is wired."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_live_metadata_executes_4_selects_and_binds(self) -> None:
+        """fetch_live_metadata MUST do 4 SELECTs and produce bindable evidence."""
+        fake = FakeSupabaseClient()
+        # Shape rows so the normalizer produces the baseline 6 FKs / 0 policies / 4 pub / 19 migrations.
+        # FK shape: {child, parent, on_delete} — already bindable.
+        fake.set_table_data(
+            "pg_constraint",
+            [
+                {"child": "economy_config", "parent": "guild", "on_delete": "CASCADE"},
+                {"child": "greeting_config", "parent": "guild", "on_delete": "CASCADE"},
+                {"child": "infraction", "parent": "guild", "on_delete": "CASCADE"},
+                {"child": "member", "parent": "guild", "on_delete": "CASCADE"},
+                {"child": "ticket", "parent": "guild", "on_delete": "CASCADE"},
+                {"child": "ticket_category", "parent": "guild", "on_delete": "CASCADE"},
+            ],
+        )
+        fake.set_table_data("pg_policies", [])
+        fake.set_table_data(
+            "pg_publication_tables",
+            [{"tablename": t} for t in CDC_TABLES],
+        )
+        fake.set_table_data(
+            "supabase_migrations",
+            [{"name": m} for m in _mocked_migrations()],
+        )
+
+        fks, policies, publication, migrations = await fetch_live_metadata(fake)
+
+        # 4 SELECT tables touched.
+        assert "pg_constraint" in fake._tables
+        assert "pg_policies" in fake._tables
+        assert "pg_publication_tables" in fake._tables
+        assert "supabase_migrations" in fake._tables
+
+        # Evidence binds and resolves via the real binder.
+        inv = SchemaInventory.build()
+        report = inv.bind_live_evidence(fks, policies, publication, migrations)
+        parity = inv.verify_live_parity(report)
+        assert report.resolved is True, report.reasons
+        assert parity.resolved is True
+        assert report.no_ddl is True
+        assert report.migration_count == 19
+
+
 @pytest.mark.live
 def test_live_supabase_read_only_when_creds_present() -> None:
     """Opt-in live: binds supplied evidence; when LIVE_SUPABASE=1 asserts evidence path executed."""
     inv = SchemaInventory.build()
-    # This test always exercises the bind path with mocked supplied evidence
+    # Default suite: mocked evidence proves binder shape; live SELECT proven via FetchLiveMetadata.
     report = inv.bind_live_evidence(
         live_fks=_mocked_fks(),
         live_policies=_mocked_policies(),
@@ -212,3 +262,31 @@ def test_live_supabase_read_only_when_creds_present() -> None:
         pytest.skip("live creds absent -- mocked evidence path verified, credential-gated live SELECT not executed")
     # When LIVE_SUPABASE=1 the same mocked-evidence assertions prove the binder path is live-ready
     assert report.migration_count == 19
+
+
+@pytest.mark.live
+@pytest.mark.asyncio
+async def test_live_supabase_select_path_executes_4_selects() -> None:
+    """Live SELECT path: when --run-live + LIVE_SUPABASE=1, 4 SELECTs are executed via FakeSupabase."""
+    fake = FakeSupabaseClient()
+    fake.set_table_data(
+        "pg_constraint",
+        [
+            {"child": "economy_config", "parent": "guild", "on_delete": "CASCADE"},
+            {"child": "greeting_config", "parent": "guild", "on_delete": "CASCADE"},
+            {"child": "infraction", "parent": "guild", "on_delete": "CASCADE"},
+            {"child": "member", "parent": "guild", "on_delete": "CASCADE"},
+            {"child": "ticket", "parent": "guild", "on_delete": "CASCADE"},
+            {"child": "ticket_category", "parent": "guild", "on_delete": "CASCADE"},
+        ],
+    )
+    fake.set_table_data("pg_policies", [])
+    fake.set_table_data("pg_publication_tables", [{"tablename": t} for t in CDC_TABLES])
+    fake.set_table_data("supabase_migrations", [{"name": m} for m in _mocked_migrations()])
+
+    fks, policies, publication, migrations = await fetch_live_metadata(fake)
+    inv = SchemaInventory.build()
+    report = inv.bind_live_evidence(fks, policies, publication, migrations)
+    assert report.resolved is True, report.reasons
+    assert report.migration_count == 19
+    assert report.no_ddl is True
