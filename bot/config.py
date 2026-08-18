@@ -47,7 +47,10 @@ def validate_supabase_key(key: str) -> None:
     gate startup without importing ``bot.core.db.base``.
 
     Contract (fail-closed): any key that is not a verifiable ``service_role``
-    JWT fails. The ``test-key`` sentinel bypasses ONLY in test environments
+    JWT fails, except the modern opaque ``sb_secret_`` prefix which is
+    accepted as a server-only credential and proven via a read-only RLS probe
+    (see :meth:`bot.core.db.base.DatabaseBase.health_check`). The
+    ``test-key`` sentinel bypasses ONLY in test environments
     (``PYTEST_CURRENT_TEST`` or ``ENV=test`` or pytest argv); in any other
     environment it is treated as unverifiable and fails closed.
     """
@@ -59,6 +62,10 @@ def validate_supabase_key(key: str) -> None:
         raise ServiceRoleValidationError("Supabase key is missing or empty — expected service_role")
     if key.startswith("sb_publishable_"):
         raise ServiceRoleValidationError("Publishable key is not service_role — RLS would deny anon access")
+    # Modern Supabase secret key — opaque, not a JWT; acceptance is proven
+    # by a read-only SELECT probe on RLS-enabled tables in health_check.
+    if key.startswith("sb_secret_"):
+        return
     role = _decode_jwt_role(key)
     if role is None:
         raise ServiceRoleValidationError("Supabase key is not a verifiable JWT — expected service_role JWT")
