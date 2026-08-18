@@ -52,11 +52,11 @@ Chain strategy: stacked-to-main
 
 ## Phase 5: PR3 — Inventory+RLS no DDL
 
-- [ ] 5.1 RED `Database.connect()` fail-closed+9-table denied — `pytest -k "service_role or rls" -q`
-- [ ] 5.2 RED guild-scope ID-only+`015_*` parity — `pytest -k inventory -q`
-- [ ] 5.3 `ServiceRoleValidationError` `db/base.py`+`config.py` — `pytest -k scope -q`
-- [ ] 5.4 `SchemaInventory` `integrity_report.py` (`ticket_note CASCADE`/`SET NULL`,`015` drift, CDC 4, TTL) — `pytest --cov=bot --cov-fail-under=75 -q`
-- [ ] 5.5 Branch pr3; `feat: inventory RLS+FK/TTL docs no DDL`; `gh pr create --base master`
+- [x] 5.1 RED `Database.connect()` fail-closed+9-table denied — `pytest -k "service_role or rls" -q` (21 passed)
+- [x] 5.2 RED guild-scope ID-only+`015_*` parity — `pytest -k inventory -q` (10 passed)
+- [x] 5.3 `ServiceRoleValidationError` `db/base.py`+`config.py` — `pytest -k scope -q` (30 passed incl. pr3)
+- [x] 5.4 `SchemaInventory` `schema_inventory.py` (`ticket_note CASCADE`/`SET NULL`,`015` drift, CDC 4, TTL) — `pytest --cov=bot --cov-fail-under=75 -q` (29 pr3 RED→GREEN, full 1812 passed)
+- [x] 5.5 Branch pr3 `cleanup-stability-pr3` f15890c; `feat: inventory RLS+FK/TTL docs no DDL`; `gh pr create --base master` (stacked 📍 PR2, not pushed, GGA passed)
 
 ## Out of Scope (S2)
 

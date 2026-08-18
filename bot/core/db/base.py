@@ -2,6 +2,11 @@
 
 Owns ``__slots__``, connection lifecycle (``connect`` / ``health_check``),
 and the ``_unwrap`` helper used by every domain mixin.
+
+RLS contract: Supabase tables are RLS-enabled with no policies, so only a
+``service_role`` JWT may obtain data.  ``connect()`` fail-closes when the
+configured key is not service_role, before any network call.
+Validation lives in :mod:`bot.config` — this module re-exports it.
 """
 
 from __future__ import annotations
@@ -12,7 +17,15 @@ from typing import Any
 
 from supabase import AsyncClientOptions, acreate_client
 
+from bot.config import ServiceRoleValidationError, validate_supabase_key
+
 logger = logging.getLogger(__name__)
+
+# Backwards-compat alias: older tests may import from base.
+validate_service_role_key = validate_supabase_key
+_decode_jwt_role = None  # not used from this module; canonical impl is in config
+
+__all__ = ["ServiceRoleValidationError", "validate_service_role_key", "validate_supabase_key"]
 
 
 # ------------------------------------------------------------------
@@ -58,9 +71,12 @@ class DatabaseBase:
     async def connect(self) -> None:
         """Create the async Supabase client and verify connectivity.
 
-        Uses ``acreate_client`` (async factory) so the underlying HTTP
-        adapter is created without blocking the event loop.
+        Validates ``service_role`` before any network call (fail-closed) so
+        anon/publishable credentials never obtain a client. Uses
+        ``acreate_client`` (async factory) so the underlying HTTP adapter is
+        created without blocking the event loop.
         """
+        validate_service_role_key(self._key)
         logger.info("Connecting to Supabase at %s ...", self._url)
         self._client = await acreate_client(
             self._url,
