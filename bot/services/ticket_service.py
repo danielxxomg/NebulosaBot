@@ -1242,26 +1242,37 @@ class TicketService:
                 exc_info=True,
             )
 
-    async def claim_ticket(self, ticket_id: str, claimed_by: str) -> Ticket:
+    async def claim_ticket(self, ticket_id: str, claimed_by: str, *, guild_id: str | None = None) -> Ticket:
         """Claim a ticket, assigning it to a staff member.
 
         Sets ``status='claimed'`` and ``claimedBy`` to the given user ID.
         Enforces the claim invariant (open + unclaimed) BEFORE mutating and
         writes a ``ticket_audit`` row on both success and denied paths.
+        When *guild_id* is provided the ticket is read and mutated only when
+        its ``guildId`` matches; a cross-guild claim is denied.
 
         Args:
             ticket_id: UUID of the ticket to claim.
             claimed_by: Discord user snowflake of the claiming staff member.
+            guild_id: Optional guild scope for ownership validation.
 
         Returns:
             The updated :class:`Ticket`.
 
         Raises:
-            ValueError: If the ticket does not exist or the claim invariant
-                fails (non-open status, already claimed).
+            ValueError: If the ticket does not exist, is cross-guild, or the
+                claim invariant fails (non-open status, already claimed).
         """
-        pre = await self._db.get_ticket(ticket_id)
+        pre = await self._db.get_ticket(ticket_id, guild_id=guild_id)
         if pre is None:
+            # Cross-guild or not found — audit with non-empty denied reason.
+            denied_gid = guild_id or ""
+            try:
+                await self._db.insert_audit_row(
+                    denied_gid, ticket_id, "claim", claimed_by, "denied", "cross_guild_denied"
+                )
+            except Exception:
+                logger.warning("Failed to write cross-guild claim denied audit for %s", ticket_id, exc_info=True)
             raise ValueError(f"Ticket {ticket_id} not found")
         guild_id = pre.get("guildId", "")
 
@@ -1273,11 +1284,12 @@ class TicketService:
 
         await self._db.update_ticket(
             ticket_id,
+            guild_id=guild_id,
             status="claimed",
             claimedBy=claimed_by,
         )
 
-        row = await self._db.get_ticket(ticket_id)
+        row = await self._db.get_ticket(ticket_id, guild_id=guild_id)
         if row is None:
             raise ValueError(f"Ticket {ticket_id} not found after claim")
         ticket = Ticket.from_db_row(row)
@@ -1295,27 +1307,38 @@ class TicketService:
         actor_id: str,
         *,
         is_mod: bool,
+        guild_id: str | None = None,
     ) -> Ticket:
         """Unclaim a ticket, releasing it back to open status.
 
         Sets ``status='open'`` and ``claimedBy`` to ``None``. Enforces the
         unclaim invariant (claimer OR mod) BEFORE mutating and writes a
         ``ticket_audit`` row on both success and denied paths.
+        When *guild_id* is provided cross-guild access is denied before
+        mutation and a non-empty denied reason is audited.
 
         Args:
             ticket_id: UUID of the ticket to unclaim.
             actor_id: Discord user snowflake of the actor requesting unclaim.
             is_mod: Whether the actor has the moderator role.
+            guild_id: Optional guild scope for ownership validation.
 
         Returns:
             The updated :class:`Ticket`.
 
         Raises:
-            ValueError: If the ticket does not exist, is not claimed, or
-                the actor is neither the claimer nor a mod.
+            ValueError: If the ticket does not exist, is cross-guild, is not
+                claimed, or the actor is neither the claimer nor a mod.
         """
-        pre = await self._db.get_ticket(ticket_id)
+        pre = await self._db.get_ticket(ticket_id, guild_id=guild_id)
         if pre is None:
+            denied_gid = guild_id or ""
+            try:
+                await self._db.insert_audit_row(
+                    denied_gid, ticket_id, "unclaim", actor_id, "denied", "cross_guild_denied"
+                )
+            except Exception:
+                logger.warning("Failed to write cross-guild unclaim denied audit for %s", ticket_id, exc_info=True)
             raise ValueError(f"Ticket {ticket_id} not found")
         guild_id = pre.get("guildId", "")
 
@@ -1327,11 +1350,12 @@ class TicketService:
 
         await self._db.update_ticket(
             ticket_id,
+            guild_id=guild_id,
             status="open",
             claimedBy=None,
         )
 
-        row = await self._db.get_ticket(ticket_id)
+        row = await self._db.get_ticket(ticket_id, guild_id=guild_id)
         if row is None:
             raise ValueError(f"Ticket {ticket_id} not found after unclaim")
         ticket = Ticket.from_db_row(row)
@@ -1794,15 +1818,24 @@ class TicketService:
         *,
         guild: discord.Guild | None = None,
         logging_service: LoggingService | None = None,
+        guild_id: str | None = None,
     ) -> Ticket:
         """Transfer a ticket's claim to *new_claimed_by* and audit the action.
 
         Emits a best-effort LoggingService audit embed when *guild* and
         *logging_service* are available.  A logging failure never blocks
-        the transfer.
+        the transfer. When *guild_id* is provided cross-guild access is
+        denied before mutation.
         """
-        pre = await self._db.get_ticket(ticket_id)
+        pre = await self._db.get_ticket(ticket_id, guild_id=guild_id)
         if pre is None:
+            denied_gid = guild_id or ""
+            try:
+                await self._db.insert_audit_row(
+                    denied_gid, ticket_id, "transfer", actor_id, "denied", "cross_guild_denied"
+                )
+            except Exception:
+                logger.warning("Failed to write cross-guild transfer denied audit for %s", ticket_id, exc_info=True)
             raise ValueError(f"Ticket {ticket_id} not found")
         guild_id = pre.get("guildId", "")
 
@@ -1814,11 +1847,12 @@ class TicketService:
 
         await self._db.update_ticket(
             ticket_id,
+            guild_id=guild_id,
             claimedBy=new_claimed_by,
             status="claimed",
         )
 
-        row = await self._db.get_ticket(ticket_id)
+        row = await self._db.get_ticket(ticket_id, guild_id=guild_id)
         if row is None:
             raise ValueError(f"Ticket {ticket_id} not found after transfer")
         ticket = Ticket.from_db_row(row)

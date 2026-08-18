@@ -793,7 +793,7 @@ class TestHandleModError:
 
 def test_warn_is_mod_dual_path_gated(sentinel_cog: SentinelCog) -> None:
     """warn MUST register BOTH prefix (cmd.checks) and slash (app_command.checks) gates."""
-    cmd = sentinel_cog.warn
+    cmd: object = sentinel_cog.warn
     assert cmd is not None
     assert len(cmd.checks) > 0, "warn must have prefix checks from @is_mod()"
     assert hasattr(cmd, "app_command") and cmd.app_command is not None
