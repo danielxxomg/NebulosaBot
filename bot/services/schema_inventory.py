@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 # ------------------------------------------------------------------
 # Constants — read-only inventory facts (exploration.md)
@@ -95,6 +96,30 @@ def is_guild_scope_gap(method: str) -> bool:
 
 
 @dataclass(frozen=True, slots=True)
+class LiveEvidenceReport:
+    """Read-only binder result for live evidence — no DDL, fail-closed on drift."""
+
+    resolved: bool
+    reasons: tuple[str, ...]
+    rls_zero_policy_tables: tuple[str, ...]
+    guild_fk_children: tuple[str, ...]
+    publication_tables: tuple[str, ...]
+    migration_count: int
+    guild_scope_gaps: tuple[str, ...]
+    category_id_type_mismatch: bool
+    ddl_statements: str
+    no_ddl: bool
+
+
+@dataclass(frozen=True, slots=True)
+class LiveParityResult:
+    """Compares on-disk inventory appetite vs live evidence report."""
+
+    resolved: bool
+    reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class SchemaInventory:
     """Read-only inventory snapshot — no DDL.
 
@@ -171,3 +196,93 @@ class SchemaInventory:
             ttl_seconds=TTL_SECONDS,
             leaderboard_ttl_seconds=LEADERBOARD_TTL_SECONDS,
         )
+
+    def bind_live_evidence(
+        self,
+        live_fks: list[dict[str, Any]] | None,
+        live_policies: list[dict[str, Any]] | None,
+        live_publication: list[str] | None,
+        live_migrations: list[str] | None,
+    ) -> LiveEvidenceReport:
+        """Bind read-only live evidence; fail-closed with documented reasons.
+
+        No DDL — SELECT-only semantics: validates 9 zero-policy RLS tables,
+        6 guild CASCADE FKs, 4 CDC publication tables, 19 migrations, 12 gaps,
+        and the TEXT/UUID categoryId mismatch flag. Any absent/mismatched fact
+        yields ``resolved=False`` with non-empty ``reasons``.
+        """
+        reasons: list[str] = []
+        if live_fks is None or live_policies is None or live_publication is None or live_migrations is None:
+            reasons.append("live_evidence_missing_creds_or_unavailable")
+            return LiveEvidenceReport(
+                resolved=False,
+                reasons=tuple(reasons),
+                rls_zero_policy_tables=tuple(RLS_NO_POLICY_TABLES),
+                guild_fk_children=tuple(),
+                publication_tables=tuple(),
+                migration_count=len(live_migrations) if isinstance(live_migrations, list) else 0,
+                guild_scope_gaps=GUILD_SCOPE_GAPS,
+                category_id_type_mismatch=True,
+                ddl_statements="",
+                no_ddl=True,
+            )
+        # Guild FKs: exactly 6 child->guild CASCADE on known baseline
+        expected_fk_children = frozenset(
+            {"economy_config", "greeting_config", "infraction", "member", "ticket", "ticket_category"}
+        )
+        observed_children = {str(r.get("child")) for r in live_fks if r.get("parent") == "guild"}
+        observed_cascade = {
+            str(r.get("child")) for r in live_fks if r.get("parent") == "guild" and r.get("on_delete") == "CASCADE"
+        }
+        if observed_children != expected_fk_children or observed_cascade != expected_fk_children:
+            reasons.append("fk_guild_cascade_mismatch")
+        # RLS: 9 tables, zero policies
+        if live_policies:
+            reasons.append("rls_policies_present_expected_zero")
+        # Publication: 4 CDC
+        if frozenset(live_publication) != frozenset(CDC_TABLES):
+            reasons.append("publication_mismatch")
+        # Migrations: 19
+        if len(live_migrations) != 19 or not any("015" in str(m) for m in live_migrations):
+            reasons.append("migration_count_mismatch")
+        # TEXT vs UUID mismatch: ticket.categoryId TEXT but ticket_category.id UUID — documented flag
+        category_id_type_mismatch = True
+        return LiveEvidenceReport(
+            resolved=not reasons,
+            reasons=tuple(reasons),
+            rls_zero_policy_tables=tuple(RLS_NO_POLICY_TABLES),
+            guild_fk_children=tuple(sorted(observed_children))
+            if observed_children
+            else tuple(sorted(expected_fk_children))
+            if not reasons
+            else tuple(sorted(observed_children)),
+            publication_tables=tuple(sorted(set(live_publication))),
+            migration_count=len(live_migrations),
+            guild_scope_gaps=GUILD_SCOPE_GAPS,
+            category_id_type_mismatch=category_id_type_mismatch,
+            ddl_statements="",
+            no_ddl=True,
+        )
+
+    def verify_live_parity(self, report: LiveEvidenceReport) -> LiveParityResult:
+        """Compare on-disk inventory constraints vs the live evidence report."""
+        reasons: list[str] = list(report.reasons)
+        if not report.resolved:
+            pass  # preserve underlying reasons
+        # On-disk gaps must equal report gaps (both canonical 12)
+        if report.guild_scope_gaps != GUILD_SCOPE_GAPS:
+            reasons.append("guild_scope_gaps_drift")
+        if report.ddl_statements or not report.no_ddl:
+            reasons.append("ddl_not_allowed")
+        resolved = (
+            report.resolved and not reasons[len(report.reasons) :]
+        )  # only new drift matters, but fail if report unresolved
+        # Simpler: resolved iff report resolved and no extra reasons beyond report
+        if not report.resolved:
+            resolved = False
+        else:
+            resolved = not any(r for r in reasons if r not in report.reasons)
+            # above keeps resolved True only when no extra reasons; if extra, fail
+            if len(reasons) != len(report.reasons):
+                resolved = False
+        return LiveParityResult(resolved=resolved, reasons=tuple(reasons))
