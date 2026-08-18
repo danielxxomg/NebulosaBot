@@ -58,15 +58,17 @@ class GuildDBMixin:
             raise RuntimeError("Database.connect() must be called first")
 
         logger.debug("DB ensure_guild_exists(%r)", guild_id)
-        await self._client.table("guild").upsert(
-            {"id": guild_id, "prefix": FALLBACK_PREFIX, "language": "es", "active": True},
-            on_conflict="id",
-            ignore_duplicates=True,
-        ).execute()
+        await (
+            self._client.table("guild")
+            .upsert(
+                {"id": guild_id, "prefix": FALLBACK_PREFIX, "language": "es", "active": True},
+                on_conflict="id",
+                ignore_duplicates=True,
+            )
+            .execute()
+        )
 
-    async def update_guild_panel(
-        self: Any, guild_id: str, message_id: str | None, channel_id: str | None
-    ) -> None:
+    async def update_guild_panel(self: Any, guild_id: str, message_id: str | None, channel_id: str | None) -> None:
         """Persist the ticket panel message and channel IDs on the guild row.
 
         Called after deploying a panel so it survives bot restarts.
@@ -81,11 +83,16 @@ class GuildDBMixin:
             message_id,
             channel_id,
         )
-        await self._client.table("guild").update(
-            {
-                "ticketPanelMessageId": message_id,
-                "ticketPanelChannelId": channel_id,
-            }
-        ).eq("id", guild_id).execute()
+        await (
+            self._client.table("guild")
+            .update(
+                {
+                    "ticketPanelMessageId": message_id,
+                    "ticketPanelChannelId": channel_id,
+                }
+            )
+            .eq("id", guild_id)
+            .execute()
+        )
         if self._on_write is not None:
             await self._on_write("guild", guild_id)

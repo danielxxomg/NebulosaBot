@@ -27,11 +27,7 @@ class MemberDBMixin:
 
         logger.debug("DB get_member(guild=%s, user=%s)", guild_id, user_id)
         response = (
-            await self._client.table("member")
-            .select("*")
-            .eq("guildId", guild_id)
-            .eq("userId", user_id)
-            .execute()
+            await self._client.table("member").select("*").eq("guildId", guild_id).eq("userId", user_id).execute()
         )
         rows = _unwrap(response)
         return rows[0] if rows else None

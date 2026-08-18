@@ -261,9 +261,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
         )
         if kind == "welcome":
             onboarding_display = (
-                f"<#{config.onboarding_channel_id}>"
-                if config.onboarding_channel_id
-                else _NOT_CONFIGURED
+                f"<#{config.onboarding_channel_id}>" if config.onboarding_channel_id else _NOT_CONFIGURED
             )
             description += f"\n**Onboarding:** {onboarding_display}"
 

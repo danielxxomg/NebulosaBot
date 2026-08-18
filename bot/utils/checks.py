@@ -142,9 +142,7 @@ def is_mod() -> Any:
             raise _commands.NoPrivateMessage("This command can only be used in a server.")
 
         if not isinstance(ctx.author, _discord.Member):
-            raise _commands.CheckFailure(
-                "This command can only be used by guild members."
-            )
+            raise _commands.CheckFailure("This command can only be used by guild members.")
 
         # Admin always passes.
         if ctx.author.guild_permissions.administrator:
