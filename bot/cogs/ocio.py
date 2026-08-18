@@ -6,15 +6,17 @@ pure random generation and static asset delivery.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import random
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
+from bot.core.context import NebulosaContext
 from bot.core.i18n import t
 from bot.utils.embeds import error_embed, info_embed
 
@@ -48,11 +50,11 @@ class OcioCog(commands.Cog, name="Ocio"):
             "Tirar un dado.",
             key="slash.descriptions.dados",
         ),
-    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    )
     @app_commands.describe(sides=app_commands.locale_str("Número de caras (2-100)", key="slash.describes.dados.sides"))
     async def dados(
         self,
-        ctx: commands.Context[Any],
+        ctx: NebulosaContext,
         sides: app_commands.Range[int, 2, 100] = 6,
     ) -> None:
         """Roll a die with *sides* faces and reply with the result."""
@@ -71,12 +73,13 @@ class OcioCog(commands.Cog, name="Ocio"):
             "Medir algo en bananas.",
             key="slash.descriptions.banana",
         ),
-    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
-    async def banana(self, ctx: commands.Context[Any]) -> None:
+    )
+    async def banana(self, ctx: NebulosaContext) -> None:
         """Reply with a banana image and a random measurement (2-30 cm)."""
         guild_id = ctx.guild.id if ctx.guild else None
 
-        if not _BANANA_IMAGE_PATH.exists():
+        exists = await asyncio.to_thread(_BANANA_IMAGE_PATH.exists)
+        if not exists:
             await ctx.send(
                 embed=error_embed(
                     t(guild_id, "ocio.banana.error_title"),
@@ -92,7 +95,7 @@ class OcioCog(commands.Cog, name="Ocio"):
             t(guild_id, "ocio.banana.description", size=size),
             guild_id=guild_id,
         )
-        file = discord.File(str(_BANANA_IMAGE_PATH), filename="banana.webp")
+        file = await asyncio.to_thread(lambda: discord.File(str(_BANANA_IMAGE_PATH), filename="banana.webp"))
         try:
             embed.set_image(url="attachment://banana.webp")
             await ctx.send(file=file, embed=embed)

@@ -265,8 +265,7 @@ class LocaleTranslator(app_commands.Translator):
         if lang is None:
             return None
 
-        value = _resolve_key(lang, key)
-        return value
+        return _resolve_key(lang, key)
 
 
 # ---------------------------------------------------------------------------

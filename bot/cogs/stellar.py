@@ -14,12 +14,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
+from bot.core.context import NebulosaContext
 from bot.core.i18n import t
 from bot.utils.brand import INFO
 from bot.utils.embeds import (
@@ -57,8 +58,8 @@ class StellarCog(commands.Cog, name="Stellar"):
             "Reclamar tu recompensa diaria de monedas.",
             key="slash.descriptions.daily",
         ),
-    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
-    async def daily(self, ctx: commands.Context[Any]) -> None:
+    )
+    async def daily(self, ctx: NebulosaContext) -> None:
         """Claim the daily coin reward with streak tracking."""
         guild_id = str(ctx.guild.id) if ctx.guild else ""
         user_id = str(ctx.author.id)
@@ -104,7 +105,7 @@ class StellarCog(commands.Cog, name="Stellar"):
             "Consultar tu balance de monedas o el de otro.",
             key="slash.descriptions.coins",
         ),
-    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    )
     @app_commands.describe(
         member=app_commands.locale_str(
             "El miembro a consultar (por defecto: tú)",
@@ -113,7 +114,7 @@ class StellarCog(commands.Cog, name="Stellar"):
     )
     async def coins(
         self,
-        ctx: commands.Context[Any],
+        ctx: NebulosaContext,
         member: discord.Member | None = None,
     ) -> None:
         """Show the coin balance for yourself or a target member."""
@@ -146,7 +147,7 @@ class StellarCog(commands.Cog, name="Stellar"):
     # /leaderboard
     # ------------------------------------------------------------------
 
-    @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @commands.hybrid_command(
         name="leaderboard",
         description=app_commands.locale_str(
             "Ver la tabla de líderes del servidor por XP o monedas.",
@@ -161,7 +162,7 @@ class StellarCog(commands.Cog, name="Stellar"):
     )
     async def leaderboard(
         self,
-        ctx: commands.Context[Any],
+        ctx: NebulosaContext,
         lb_type: str = "xp",
     ) -> None:
         """Display the top-10 leaderboard for XP or coins."""
@@ -216,7 +217,7 @@ class StellarCog(commands.Cog, name="Stellar"):
     # /rank
     # ------------------------------------------------------------------
 
-    @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @commands.hybrid_command(
         name="rank",
         description=app_commands.locale_str("Ver tu tarjeta de rango o la de otro.", key="slash.descriptions.rank"),
     )
@@ -228,7 +229,7 @@ class StellarCog(commands.Cog, name="Stellar"):
     )
     async def rank(
         self,
-        ctx: commands.Context[Any],
+        ctx: NebulosaContext,
         member: discord.Member | None = None,
     ) -> None:
         """Generate and send a rank card for yourself or a target member."""

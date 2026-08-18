@@ -14,12 +14,13 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
+from bot.core.context import NebulosaContext
 from bot.core.i18n import t
 from bot.models.greeting_config import GreetingConfig
 from bot.services.greeting_service import _resolve_avatar_url
@@ -88,7 +89,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
     # /welcome_test
     # ------------------------------------------------------------------
 
-    @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @commands.hybrid_command(
         name="welcome_test",
         description=app_commands.locale_str(
             "Enviar una tarjeta de bienvenida de prueba en este canal (solo admin).",
@@ -96,17 +97,9 @@ class GreetingsCog(commands.Cog, name="Greetings"):
         ),
     )
     @app_commands.default_permissions(administrator=True)
-    async def welcome_test(self, ctx: commands.Context[Any]) -> None:
+    async def welcome_test(self, ctx: NebulosaContext) -> None:
         """Generate and send a sample welcome card."""
-        if not isinstance(ctx.author, discord.Member) or not ctx.author.guild_permissions.administrator:
-            guild_id = str(ctx.guild.id) if ctx.guild else ""
-            await ctx.send(
-                embed=error_embed(
-                    t(guild_id, "greetings.permission_denied_title"),
-                    t(guild_id, "greetings.permission_denied_description"),
-                ),
-                ephemeral=True,
-            )
+        if not await self._admin_guard(ctx):
             return
 
         await ctx.defer(ephemeral=True)
@@ -150,7 +143,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
     # /goodbye_test
     # ------------------------------------------------------------------
 
-    @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @commands.hybrid_command(
         name="goodbye_test",
         description=app_commands.locale_str(
             "Enviar una tarjeta de despedida de prueba en este canal (solo admin).",
@@ -158,17 +151,9 @@ class GreetingsCog(commands.Cog, name="Greetings"):
         ),
     )
     @app_commands.default_permissions(administrator=True)
-    async def goodbye_test(self, ctx: commands.Context[Any]) -> None:
+    async def goodbye_test(self, ctx: NebulosaContext) -> None:
         """Generate and send a sample goodbye card."""
-        if not isinstance(ctx.author, discord.Member) or not ctx.author.guild_permissions.administrator:
-            guild_id = str(ctx.guild.id) if ctx.guild else ""
-            await ctx.send(
-                embed=error_embed(
-                    t(guild_id, "greetings.permission_denied_title"),
-                    t(guild_id, "greetings.permission_denied_description"),
-                ),
-                ephemeral=True,
-            )
+        if not await self._admin_guard(ctx):
             return
 
         await ctx.defer(ephemeral=True)
@@ -212,7 +197,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
     # Admin guard + embed builder
     # ------------------------------------------------------------------
 
-    async def _admin_guard(self, ctx: commands.Context[Any]) -> bool:
+    async def _admin_guard(self, ctx: NebulosaContext) -> bool:
         """Check admin permission and send error if denied. Returns True if OK."""
         if not isinstance(ctx.author, discord.Member) or not ctx.author.guild_permissions.administrator:
             guild_id = str(ctx.guild.id) if ctx.guild else ""
@@ -281,9 +266,9 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             "Configurar ajustes de tarjetas de bienvenida.",
             key="slash.descriptions.welcome._",
         ),
-    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    )
     @app_commands.default_permissions(administrator=True)
-    async def welcome(self, ctx: commands.Context[Any]) -> None:
+    async def welcome(self, ctx: NebulosaContext) -> None:
         """Show the current welcome configuration."""
         if not await self._admin_guard(ctx):
             return
@@ -301,7 +286,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             "Definir el canal para mensajes de bienvenida.",
             key="slash.descriptions.welcome.channel",
         ),
-    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    )
     @app_commands.describe(
         channel=app_commands.locale_str(
             "El canal para mensajes de bienvenida",
@@ -311,7 +296,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
     @app_commands.default_permissions(administrator=True)
     async def welcome_channel(
         self,
-        ctx: commands.Context[Any],
+        ctx: NebulosaContext,
         channel: discord.TextChannel,
     ) -> None:
         """Set the welcome channel."""
@@ -337,9 +322,9 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             "Activar o desactivar mensajes de bienvenida.",
             key="slash.descriptions.welcome.toggle",
         ),
-    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    )
     @app_commands.default_permissions(administrator=True)
-    async def welcome_toggle(self, ctx: commands.Context[Any]) -> None:
+    async def welcome_toggle(self, ctx: NebulosaContext) -> None:
         """Toggle welcome messages on/off."""
         if not await self._admin_guard(ctx):
             return
@@ -368,7 +353,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             "Definir la plantilla del mensaje de bienvenida.",
             key="slash.descriptions.welcome.message",
         ),
-    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    )
     @app_commands.describe(
         template=app_commands.locale_str(
             "Plantilla de mensaje (marcadores: {user}, {server}, {mention})",
@@ -378,7 +363,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
     @app_commands.default_permissions(administrator=True)
     async def welcome_message(
         self,
-        ctx: commands.Context[Any],
+        ctx: NebulosaContext,
         *,
         template: str,
     ) -> None:
@@ -409,9 +394,9 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             "Configurar ajustes de tarjetas de despedida.",
             key="slash.descriptions.goodbye._",
         ),
-    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    )
     @app_commands.default_permissions(administrator=True)
-    async def goodbye(self, ctx: commands.Context[Any]) -> None:
+    async def goodbye(self, ctx: NebulosaContext) -> None:
         """Show the current goodbye configuration."""
         if not await self._admin_guard(ctx):
             return
@@ -429,7 +414,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             "Definir el canal para mensajes de despedida.",
             key="slash.descriptions.goodbye.channel",
         ),
-    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    )
     @app_commands.describe(
         channel=app_commands.locale_str(
             "El canal para mensajes de despedida",
@@ -439,7 +424,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
     @app_commands.default_permissions(administrator=True)
     async def goodbye_channel(
         self,
-        ctx: commands.Context[Any],
+        ctx: NebulosaContext,
         channel: discord.TextChannel,
     ) -> None:
         """Set the goodbye channel."""
@@ -465,9 +450,9 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             "Activar o desactivar mensajes de despedida.",
             key="slash.descriptions.goodbye.toggle",
         ),
-    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    )
     @app_commands.default_permissions(administrator=True)
-    async def goodbye_toggle(self, ctx: commands.Context[Any]) -> None:
+    async def goodbye_toggle(self, ctx: NebulosaContext) -> None:
         """Toggle goodbye messages on/off."""
         if not await self._admin_guard(ctx):
             return
@@ -496,7 +481,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             "Definir la plantilla del mensaje de despedida.",
             key="slash.descriptions.goodbye.message",
         ),
-    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    )
     @app_commands.describe(
         template=app_commands.locale_str(
             "Plantilla de mensaje (marcadores: {user}, {server}, {mention})",
@@ -506,7 +491,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
     @app_commands.default_permissions(administrator=True)
     async def goodbye_message(
         self,
-        ctx: commands.Context[Any],
+        ctx: NebulosaContext,
         *,
         template: str,
     ) -> None:

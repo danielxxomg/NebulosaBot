@@ -11,6 +11,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, cast
 
+from bot.core.cache import LEADERBOARD_TTL, cache_key
 from bot.utils.timeparse import _to_datetime
 
 if TYPE_CHECKING:
@@ -27,7 +28,7 @@ DEFAULT_XP_COOLDOWN_SECONDS = 60
 DEFAULT_LEVEL_BASE_XP = 100
 DEFAULT_LEVEL_MULTIPLIER = 1.5
 
-LEADERBOARD_CACHE_TTL = 30  # seconds
+LEADERBOARD_CACHE_TTL = LEADERBOARD_TTL  # re-export from bot.core.cache (DRY; 30s staleness window)
 MAX_STREAK = 7
 STREAK_BONUS_MULTIPLIER = 0.10
 
@@ -283,15 +284,15 @@ class EconomyService:
         Cache key: ``{guild_id}:leaderboard:{sort_by}`` with 30s TTL.
         Cache hit returns cached data; cache miss queries DB and populates.
         """
-        cache_key = f"{guild_id}:leaderboard:{sort_by}"
-        cached = self._cache.get(cache_key)
+        ck = cache_key(guild_id, f"leaderboard:{sort_by}")
+        cached = self._cache.get(ck)
         if cached is not None:
-            logger.debug("get_leaderboard(%s): cache hit", cache_key)
+            logger.debug("get_leaderboard(%s): cache hit", ck)
             return cast(list[dict[str, Any]], cached)
 
-        logger.debug("get_leaderboard(%s): cache miss — querying DB", cache_key)
+        logger.debug("get_leaderboard(%s): cache miss — querying DB", ck)
         rows = await self._db.get_leaderboard(guild_id, sort_by, limit, offset)
-        self._cache.set(cache_key, rows, ttl=LEADERBOARD_CACHE_TTL)
+        self._cache.set(ck, rows, ttl=LEADERBOARD_CACHE_TTL)
         return rows
 
     # ------------------------------------------------------------------
@@ -348,5 +349,5 @@ class EconomyService:
 
     def _invalidate_leaderboard_cache(self, guild_id: str) -> None:
         """Invalidate all leaderboard cache keys for a guild."""
-        self._cache.invalidate(f"{guild_id}:leaderboard:xp")
-        self._cache.invalidate(f"{guild_id}:leaderboard:coins")
+        self._cache.invalidate(cache_key(guild_id, "leaderboard:xp"))
+        self._cache.invalidate(cache_key(guild_id, "leaderboard:coins"))
