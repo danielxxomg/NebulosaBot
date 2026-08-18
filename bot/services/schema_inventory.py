@@ -107,7 +107,9 @@ def _unwrap_response(response: Any) -> list[Any]:
     return []
 
 
-async def fetch_live_metadata(supabase_client: Any) -> tuple[
+async def fetch_live_metadata(
+    supabase_client: Any,
+) -> tuple[
     list[dict[str, Any]],
     list[dict[str, Any]],
     list[str],
@@ -145,12 +147,8 @@ async def fetch_live_metadata(supabase_client: Any) -> tuple[
 
     fks_raw = _unwrap_response(await supabase_client.table("pg_constraint").select("*").execute())
     policies_raw = _unwrap_response(await supabase_client.table("pg_policies").select("*").execute())
-    publication_raw = _unwrap_response(
-        await supabase_client.table("pg_publication_tables").select("*").execute()
-    )
-    migrations_raw = _unwrap_response(
-        await supabase_client.table("supabase_migrations").select("*").execute()
-    )
+    publication_raw = _unwrap_response(await supabase_client.table("pg_publication_tables").select("*").execute())
+    migrations_raw = _unwrap_response(await supabase_client.table("supabase_migrations").select("*").execute())
 
     live_fks: list[dict[str, Any]] = []
     for row in fks_raw:
