@@ -18,6 +18,7 @@ import json
 import logging
 from collections.abc import Generator
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import MagicMock
 
 import discord
@@ -635,7 +636,7 @@ class TestValidateSlashLocalizations:
             qualified_name = "ping"
             description = "Muestra la latencia WebSocket del bot."
             _locale_description = None
-            parameters = []
+            parameters: ClassVar[list] = []
 
         cmd = FakeHybridCmd()
 
@@ -667,7 +668,7 @@ class TestValidateSlashLocalizations:
             qualified_name = "ping"
             description = "Muestra la latencia WebSocket del bot."
             _locale_description = locale_desc
-            parameters = []
+            parameters: ClassVar[list] = []
 
         cmd = FakeHybridCmd()
 

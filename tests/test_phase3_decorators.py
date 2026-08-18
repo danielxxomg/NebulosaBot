@@ -12,6 +12,7 @@ Strict TDD: RED phase — tests written BEFORE the implementation.
 from __future__ import annotations
 
 import importlib
+import logging
 import pkgutil
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -54,6 +55,7 @@ def _get_cog_commands() -> list[tuple[str, commands.Cog, str, object]]:
             try:
                 cog_instance = cls(mock_bot)
             except Exception:
+                logging.debug("Skipping cog %s during decorator scan", cls, exc_info=True)
                 continue
             if not hasattr(cog_instance, "__cog_commands__"):
                 continue

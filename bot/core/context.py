@@ -11,12 +11,13 @@ from typing import TYPE_CHECKING, cast
 from discord.ext import commands
 
 if TYPE_CHECKING:
+    from bot.bot import NebulosaBot  # noqa: F401  # used as string forward ref in Context["NebulosaBot"]
     from bot.core.cache import TTLCache
     from bot.core.database import Database
     from bot.models.guild import GuildConfig
 
 
-class NebulosaContext(commands.Context):  # type: ignore[type-arg]  # circular import: cannot import NebulosaBot
+class NebulosaContext(commands.Context["NebulosaBot"]):
     """Custom context that exposes the bot's infrastructure services.
 
     ``guild_config`` is pre-populated by ``NebulosaBot.get_context()``
