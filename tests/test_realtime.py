@@ -401,9 +401,7 @@ class TestCdcDispatch:
         assert cache.get(f"{expected}:config") is None  # invalidated
 
     @pytest.mark.asyncio
-    async def test_greeting_config_onboarding_update_invalidates_cached_config(
-        self, cache: TTLCache
-    ) -> None:
+    async def test_greeting_config_onboarding_update_invalidates_cached_config(self, cache: TTLCache) -> None:
         """Changing onboardingChannelId must invalidate the greeting cache."""
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)

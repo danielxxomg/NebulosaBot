@@ -8,7 +8,6 @@ These tests enforce that refactoring goals are met:
 
 from __future__ import annotations
 
-import ast
 import re
 from pathlib import Path
 

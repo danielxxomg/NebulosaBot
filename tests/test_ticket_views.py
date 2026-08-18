@@ -70,9 +70,7 @@ class TestDeployTicketPanel:
 
         await deploy_ticket_panel(channel, "123456789", bot=mock_bot)
 
-        mock_bot.guild_service.update_guild_panel.assert_awaited_once_with(
-            "123456789", str(42), str(999)
-        )
+        mock_bot.guild_service.update_guild_panel.assert_awaited_once_with("123456789", str(42), str(999))
 
     @pytest.mark.asyncio
     async def test_raises_on_forbidden(self) -> None:
@@ -105,8 +103,11 @@ class TestDeployTicketPanel:
         mock_bot.guild_service.update_guild_panel = AsyncMock()
 
         await deploy_ticket_panel(
-            channel, "123456789", bot=mock_bot,
-            title="Soporte", description_text="Abre un ticket",
+            channel,
+            "123456789",
+            bot=mock_bot,
+            title="Soporte",
+            description_text="Abre un ticket",
         )
 
         embed = channel.send.call_args.kwargs["embed"]
@@ -272,8 +273,11 @@ class TestDeployTicketPanelDefaults:
         mock_bot.guild_service.update_guild_panel = AsyncMock()
 
         await deploy_ticket_panel(
-            channel, "500", bot=mock_bot,
-            title="Mi Panel", description_text="Descripción custom",
+            channel,
+            "500",
+            bot=mock_bot,
+            title="Mi Panel",
+            description_text="Descripción custom",
         )
 
         embed = channel.send.call_args.kwargs["embed"]
@@ -608,9 +612,7 @@ class TestTicketIntakeModalSubmit:
             {"key": "player_nick", "label": "Nick", "style": "short", "required": True, "max_length": 100},
             {"key": "evidence_url", "label": "Evidence", "style": "short", "required": False, "max_length": 100},
         ]
-        modal, _ = self._build_modal_with_mocked_inputs(
-            defs, custom_values=["DarkSlayer42", ""]
-        )
+        modal, _ = self._build_modal_with_mocked_inputs(defs, custom_values=["DarkSlayer42", ""])
 
         interaction = MagicMock()
         interaction.response = MagicMock()
@@ -1133,8 +1135,13 @@ class TestModalModRoleResolution:
         from bot.models.ticket import Ticket
 
         ticket = Ticket(
-            id="t1", ticket_number=1, guild_id="123", author_id="456",
-            channel_id="789", status="open", created_at="2026-01-01",
+            id="t1",
+            ticket_number=1,
+            guild_id="123",
+            author_id="456",
+            channel_id="789",
+            status="open",
+            created_at="2026-01-01",
             last_activity="2026-01-01",
         )
         mock_channel = MagicMock()
@@ -1175,8 +1182,13 @@ class TestModalModRoleResolution:
         from bot.models.ticket import Ticket
 
         ticket = Ticket(
-            id="t1", ticket_number=1, guild_id="123", author_id="456",
-            channel_id="789", status="open", created_at="2026-01-01",
+            id="t1",
+            ticket_number=1,
+            guild_id="123",
+            author_id="456",
+            channel_id="789",
+            status="open",
+            created_at="2026-01-01",
             last_activity="2026-01-01",
         )
         mock_channel = MagicMock()
@@ -1217,8 +1229,13 @@ class TestModalModRoleResolution:
         from bot.models.ticket import Ticket
 
         ticket = Ticket(
-            id="t1", ticket_number=1, guild_id="123", author_id="456",
-            channel_id="789", status="open", created_at="2026-01-01",
+            id="t1",
+            ticket_number=1,
+            guild_id="123",
+            author_id="456",
+            channel_id="789",
+            status="open",
+            created_at="2026-01-01",
             last_activity="2026-01-01",
         )
         mock_channel = MagicMock()
@@ -1257,9 +1274,7 @@ class TestCreateTicketLimitEphemeral:
         bot.guild_service.get_config = AsyncMock(return_value=config)
         bot.ticket_service = MagicMock()
         bot.ticket_service.create_ticket_channel = AsyncMock(
-            side_effect=ValueError(
-                "User 111 already has an open ticket in category 'cat-uuid'"
-            ),
+            side_effect=ValueError("User 111 already has an open ticket in category 'cat-uuid'"),
         )
 
         category_channel = MagicMock(spec=discord.CategoryChannel)
@@ -1274,7 +1289,12 @@ class TestCreateTicketLimitEphemeral:
         interaction.followup.send = AsyncMock()
 
         await _create_ticket_after_modal(
-            interaction, guild, "cat-uuid", "Support", "Help", "desc",
+            interaction,
+            guild,
+            "cat-uuid",
+            "Support",
+            "Help",
+            "desc",
         )
 
         interaction.followup.send.assert_awaited_once()
@@ -1380,8 +1400,7 @@ class TestEditCategoryButton:
 
         view = TicketActionsView(guild_id="123456789")
         buttons = [
-            c for c in view.children
-            if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:edit-category"
+            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:edit-category"
         ]
         assert len(buttons) == 1
         assert buttons[0].style == discord.ButtonStyle.secondary
@@ -1395,8 +1414,7 @@ class TestEditCategoryButton:
 
         mock_t.assert_any_call("123456789", "tickets.actions.edit_category_button")
         button = next(
-            c for c in view.children
-            if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:edit-category"
+            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:edit-category"
         )
         assert button.label == "Editar Categoría"
 
@@ -1528,8 +1546,11 @@ class TestEditCategorySelect:
         if categories is None:
             categories = [
                 TicketCategory(
-                    id="cat-uuid-2", guild_id="123456789", name="Billing",
-                    description="Billing issues", position=1,
+                    id="cat-uuid-2",
+                    guild_id="123456789",
+                    name="Billing",
+                    description="Billing issues",
+                    position=1,
                 ),
             ]
         if ticket_row is None:
@@ -1548,8 +1569,7 @@ class TestEditCategorySelect:
                 "lastActivity": "2026-01-15T10:00:00+00:00",
             }
         options = [
-            discord.SelectOption(label=cat.name, value=cat.id, description=cat.description)
-            for cat in categories
+            discord.SelectOption(label=cat.name, value=cat.id, description=cat.description) for cat in categories
         ]
         return _EditCategorySelect(options, guild, categories, ticket_row)
 
@@ -1606,10 +1626,15 @@ class TestEditCategorySelect:
         select._values = ["cat-uuid-2"]
 
         updated_ticket = Ticket(
-            id="ticket-uuid-select", ticket_number=5, guild_id="123456789",
-            author_id="111111111", channel_id="888888888", status="open",
+            id="ticket-uuid-select",
+            ticket_number=5,
+            guild_id="123456789",
+            author_id="111111111",
+            channel_id="888888888",
+            status="open",
             created_at="2026-01-15T10:00:00+00:00",
-            last_activity="2026-01-15T10:00:00+00:00", category_id="cat-uuid-2",
+            last_activity="2026-01-15T10:00:00+00:00",
+            category_id="cat-uuid-2",
         )
         interaction.client.ticket_service.edit_ticket_category = AsyncMock(
             return_value=(updated_ticket, True),
@@ -1635,9 +1660,7 @@ class TestEditCategorySelect:
 
         # Mirror the real invariant message from check_one_ticket_per_user_per_category.
         interaction.client.ticket_service.edit_ticket_category = AsyncMock(
-            side_effect=ValueError(
-                "User 111111111 already has an open ticket in category 'cat-uuid-2'"
-            ),
+            side_effect=ValueError("User 111111111 already has an open ticket in category 'cat-uuid-2'"),
         )
 
         # Patch t() to return the raw key so we can verify the right key is used.
@@ -1707,9 +1730,7 @@ class TestEditCategorySelect:
         select._values = ["cat-uuid-2"]
 
         interaction.client.ticket_service.edit_ticket_category = AsyncMock(
-            side_effect=ValueError(
-                "Cannot edit category of a closed ticket (status='closed')"
-            ),
+            side_effect=ValueError("Cannot edit category of a closed ticket (status='closed')"),
         )
 
         with (
@@ -1778,10 +1799,15 @@ class TestEditCategorySelect:
         select._values = ["cat-uuid-2"]
 
         updated_ticket = Ticket(
-            id="ticket-uuid-select", ticket_number=5, guild_id="123456789",
-            author_id="111111111", channel_id="888888888", status="open",
+            id="ticket-uuid-select",
+            ticket_number=5,
+            guild_id="123456789",
+            author_id="111111111",
+            channel_id="888888888",
+            status="open",
             created_at="2026-01-15T10:00:00+00:00",
-            last_activity="2026-01-15T10:00:00+00:00", category_id="cat-uuid-2",
+            last_activity="2026-01-15T10:00:00+00:00",
+            category_id="cat-uuid-2",
         )
         # rename_succeeded=False — the channel rename failed.
         interaction.client.ticket_service.edit_ticket_category = AsyncMock(
@@ -1811,10 +1837,15 @@ class TestEditCategorySelect:
         select._values = ["cat-uuid-2"]
 
         updated_ticket = Ticket(
-            id="ticket-uuid-select", ticket_number=5, guild_id="123456789",
-            author_id="111111111", channel_id="888888888", status="open",
+            id="ticket-uuid-select",
+            ticket_number=5,
+            guild_id="123456789",
+            author_id="111111111",
+            channel_id="888888888",
+            status="open",
             created_at="2026-01-15T10:00:00+00:00",
-            last_activity="2026-01-15T10:00:00+00:00", category_id="cat-uuid-2",
+            last_activity="2026-01-15T10:00:00+00:00",
+            category_id="cat-uuid-2",
         )
         interaction.client.ticket_service.edit_ticket_category = AsyncMock(
             return_value=(updated_ticket, True),
@@ -1836,16 +1867,26 @@ class TestEditCategorySelect:
         guild.id = 123456789
         categories = [
             TicketCategory(
-                id="cat-uuid-2", guild_id="123456789", name="Billing",
-                description="Billing", position=1,
+                id="cat-uuid-2",
+                guild_id="123456789",
+                name="Billing",
+                description="Billing",
+                position=1,
             ),
         ]
         options = [discord.SelectOption(label="Billing", value="cat-uuid-2")]
         ticket_row = {
-            "id": "ticket-uuid-select", "ticketNumber": 5, "guildId": "123456789",
-            "authorId": "111111111", "channelId": "888888888", "categoryId": "cat-uuid-1",
-            "status": "open", "claimedBy": None, "transcriptUrl": None,
-            "createdAt": "2026-01-15T10:00:00+00:00", "closedAt": None,
+            "id": "ticket-uuid-select",
+            "ticketNumber": 5,
+            "guildId": "123456789",
+            "authorId": "111111111",
+            "channelId": "888888888",
+            "categoryId": "cat-uuid-1",
+            "status": "open",
+            "claimedBy": None,
+            "transcriptUrl": None,
+            "createdAt": "2026-01-15T10:00:00+00:00",
+            "closedAt": None,
             "lastActivity": "2026-01-15T10:00:00+00:00",
         }
         view = _EditCategoryView(options, guild, categories, ticket_row)
@@ -1864,12 +1905,18 @@ class TestEditCategorySelect:
             guild,
             categories=[
                 TicketCategory(
-                    id="cat-uuid-1", guild_id="123456789", name="Support",
-                    description="General support", position=0,
+                    id="cat-uuid-1",
+                    guild_id="123456789",
+                    name="Support",
+                    description="General support",
+                    position=0,
                 ),
                 TicketCategory(
-                    id="cat-uuid-2", guild_id="123456789", name="Billing",
-                    description="Billing issues", position=1,
+                    id="cat-uuid-2",
+                    guild_id="123456789",
+                    name="Billing",
+                    description="Billing issues",
+                    position=1,
                 ),
             ],
         )
@@ -1879,10 +1926,15 @@ class TestEditCategorySelect:
         select._values = ["cat-uuid-2"]
 
         updated_ticket = Ticket(
-            id="ticket-uuid-select", ticket_number=5, guild_id="123456789",
-            author_id="111111111", channel_id="888888888", status="open",
+            id="ticket-uuid-select",
+            ticket_number=5,
+            guild_id="123456789",
+            author_id="111111111",
+            channel_id="888888888",
+            status="open",
             created_at="2026-01-15T10:00:00+00:00",
-            last_activity="2026-01-15T10:00:00+00:00", category_id="cat-uuid-2",
+            last_activity="2026-01-15T10:00:00+00:00",
+            category_id="cat-uuid-2",
         )
         interaction.client.ticket_service.edit_ticket_category = AsyncMock(
             return_value=(updated_ticket, True),
@@ -1923,10 +1975,15 @@ class TestEditCategorySelect:
         select._values = ["cat-uuid-2"]
 
         updated_ticket = Ticket(
-            id="ticket-uuid-select", ticket_number=5, guild_id="123456789",
-            author_id="111111111", channel_id="888888888", status="open",
+            id="ticket-uuid-select",
+            ticket_number=5,
+            guild_id="123456789",
+            author_id="111111111",
+            channel_id="888888888",
+            status="open",
             created_at="2026-01-15T10:00:00+00:00",
-            last_activity="2026-01-15T10:00:00+00:00", category_id="cat-uuid-2",
+            last_activity="2026-01-15T10:00:00+00:00",
+            category_id="cat-uuid-2",
         )
         interaction.client.ticket_service.edit_ticket_category = AsyncMock(
             return_value=(updated_ticket, True),
@@ -1955,10 +2012,15 @@ class TestEditCategorySelect:
         select._values = ["cat-uuid-2"]
 
         updated_ticket = Ticket(
-            id="ticket-uuid-select", ticket_number=5, guild_id="123456789",
-            author_id="111111111", channel_id="888888888", status="open",
+            id="ticket-uuid-select",
+            ticket_number=5,
+            guild_id="123456789",
+            author_id="111111111",
+            channel_id="888888888",
+            status="open",
             created_at="2026-01-15T10:00:00+00:00",
-            last_activity="2026-01-15T10:00:00+00:00", category_id="cat-uuid-2",
+            last_activity="2026-01-15T10:00:00+00:00",
+            category_id="cat-uuid-2",
         )
         interaction.client.ticket_service.edit_ticket_category = AsyncMock(
             return_value=(updated_ticket, True),
@@ -1994,10 +2056,7 @@ class TestTicketViewDecoratorDefaults:
 
     def _get_button_by_id(self, view: discord.ui.View, custom_id: str) -> discord.ui.Button:
         """Find a button by custom_id."""
-        return next(
-            c for c in view.children
-            if isinstance(c, discord.ui.Button) and c.custom_id == custom_id
-        )
+        return next(c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == custom_id)
 
     def test_ticket_panel_open_button_default_is_spanish(self) -> None:
         """TicketPanelView decorator default for Open Ticket MUST be 'Abrir Ticket'."""

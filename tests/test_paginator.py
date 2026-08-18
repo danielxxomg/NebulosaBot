@@ -14,7 +14,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
-import pytest
 
 from bot.core.i18n import load_locales, set_guild_language
 from bot.utils.paginator import EmbedPaginator

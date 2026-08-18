@@ -140,9 +140,7 @@ class TestWarnAutoEscalation:
         target_member.timeout = AsyncMock()
 
         with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
-            await sentinel_cog.warn.callback(
-                sentinel_cog, sentinel_ctx, target_member, reason="repeated offense"
-            )
+            await sentinel_cog.warn.callback(sentinel_cog, sentinel_ctx, target_member, reason="repeated offense")
 
         target_member.timeout.assert_awaited_once()
         timeout_args = target_member.timeout.call_args

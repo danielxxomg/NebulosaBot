@@ -64,8 +64,7 @@ class TestConfirmAction:
 
         # Find the confirm button.
         confirm_button = next(
-            c for c in view.children
-            if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
+            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
         )
         await confirm_button.callback(interaction)
 
@@ -83,8 +82,7 @@ class TestConfirmAction:
         interaction = _make_interaction(user_id=111111111)
 
         confirm_button = next(
-            c for c in view.children
-            if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
+            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
         )
         await confirm_button.callback(interaction)
 
@@ -114,8 +112,7 @@ class TestCancelAction:
         interaction = _make_interaction(user_id=111111111)
 
         cancel_button = next(
-            c for c in view.children
-            if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:cancel"
+            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:cancel"
         )
         await cancel_button.callback(interaction)
 
@@ -134,8 +131,7 @@ class TestCancelAction:
         interaction = _make_interaction(user_id=111111111)
 
         cancel_button = next(
-            c for c in view.children
-            if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:cancel"
+            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:cancel"
         )
         await cancel_button.callback(interaction)
 
@@ -260,8 +256,7 @@ class TestOwnerOnlyGuard:
         interaction = _make_interaction(user_id=999999999)
 
         confirm_button = next(
-            c for c in view.children
-            if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
+            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
         )
         await confirm_button.callback(interaction)
 
@@ -282,8 +277,7 @@ class TestOwnerOnlyGuard:
         interaction = _make_interaction(user_id=999999999)
 
         cancel_button = next(
-            c for c in view.children
-            if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:cancel"
+            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:cancel"
         )
         await cancel_button.callback(interaction)
 
@@ -343,10 +337,7 @@ class TestLocalizedButtonLabels:
 
     def _get_button(self, view: ConfirmCancelView, custom_id: str) -> discord.ui.Button:
         """Find a button by custom_id."""
-        return next(
-            c for c in view.children
-            if isinstance(c, discord.ui.Button) and c.custom_id == custom_id
-        )
+        return next(c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == custom_id)
 
     def test_spanish_guild_shows_spanish_confirm_label(self) -> None:
         """Spanish guild MUST show Spanish Confirm button label."""
@@ -407,10 +398,7 @@ class TestDecoratorDefaults:
 
     def _get_button_by_id(self, view: discord.ui.View, custom_id: str) -> discord.ui.Button:
         """Find a button by custom_id."""
-        return next(
-            c for c in view.children
-            if isinstance(c, discord.ui.Button) and c.custom_id == custom_id
-        )
+        return next(c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == custom_id)
 
     def test_confirm_decorator_default_is_spanish(self) -> None:
         """The @discord.ui.button default label for Confirm MUST be 'Confirmar'."""

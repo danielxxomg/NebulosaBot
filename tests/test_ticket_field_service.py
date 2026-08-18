@@ -16,8 +16,8 @@ from __future__ import annotations
 import pytest
 
 from bot.services.ticket_field_service import (
-    validate_field_definitions,
     validate_custom_fields,
+    validate_field_definitions,
 )
 
 # ---------------------------------------------------------------------------
@@ -217,19 +217,25 @@ class TestValidateCustomFields:
 
     def test_valid_required_field_submitted(self) -> None:
         """A required field with a value MUST be accepted."""
-        defs = [{"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True, "max_length": 100}]
+        defs = [
+            {"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True, "max_length": 100}
+        ]
         result = validate_custom_fields({"player_nick": "DarkSlayer42"}, defs)
         assert result == {"player_nick": "DarkSlayer42"}
 
     def test_optional_field_blank_omitted(self) -> None:
         """A blank optional field MUST be omitted from the result."""
-        defs = [{"key": "evidence_url", "label": "Evidence URL", "style": "short", "required": False, "max_length": 100}]
+        defs = [
+            {"key": "evidence_url", "label": "Evidence URL", "style": "short", "required": False, "max_length": 100}
+        ]
         result = validate_custom_fields({"evidence_url": "  "}, defs)
         assert result == {}
 
     def test_optional_field_absent_ok(self) -> None:
         """An absent optional field MUST be accepted."""
-        defs = [{"key": "evidence_url", "label": "Evidence URL", "style": "short", "required": False, "max_length": 100}]
+        defs = [
+            {"key": "evidence_url", "label": "Evidence URL", "style": "short", "required": False, "max_length": 100}
+        ]
         result = validate_custom_fields({}, defs)
         assert result == {}
 
@@ -262,13 +268,17 @@ class TestValidateCustomFieldsRejection:
 
     def test_missing_required_field_rejected(self) -> None:
         """A missing required field MUST be rejected."""
-        defs = [{"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True, "max_length": 100}]
+        defs = [
+            {"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True, "max_length": 100}
+        ]
         with pytest.raises(ValueError, match="required"):
             validate_custom_fields({}, defs)
 
     def test_blank_required_field_rejected(self) -> None:
         """A blank required field MUST be rejected."""
-        defs = [{"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True, "max_length": 100}]
+        defs = [
+            {"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True, "max_length": 100}
+        ]
         with pytest.raises(ValueError, match="required"):
             validate_custom_fields({"player_nick": "  "}, defs)
 
