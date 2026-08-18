@@ -5,7 +5,7 @@ context: |
   Stack: Python (bot), Next.js (dashboard), Supabase/PostgreSQL (DB)
   Architecture: Cache-first with Supabase Realtime CDC invalidation, modular command system
   Modules: Core, Tickets, Moderation (Sentinel), Economy (Stellar), Utility
-  Status: Implemented — 7 cogs, 8 services, 2 listeners, 24 hybrid commands, 384 tests, 74.59% coverage
+   Status: Implemented — 7 cogs, 8 services, 2 listeners, 24 hybrid commands, 1812 tests, 88.62% coverage
   Diagrams: 4 Mermaid/PlantUML design docs in /Diagramas
   Language: Spanish (design docs), English (code artifacts)
 
@@ -22,7 +22,7 @@ testing:
   coverage:
     available: true
     command: "uv run pytest --cov=bot --cov-report=term"
-    current: 0.7459
+    current: 0.8862
   quality:
     linter: ruff
     type_checker: mypy
