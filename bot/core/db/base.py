@@ -77,6 +77,10 @@ class DatabaseBase:
         anon/publishable credentials never obtain a client. Uses
         ``acreate_client`` (async factory) so the underlying HTTP adapter is
         created without blocking the event loop.
+
+        Fail-closed: when the two-table RLS probe fails, the client is cleared
+        and a :exc:`ServiceRoleValidationError` is raised so no subsequent DB
+        operation can succeed with an unverified ``sb_secret_``.
         """
         validate_service_role_key(self._key)
         logger.info("Connecting to Supabase at %s ...", self._url)
@@ -87,9 +91,12 @@ class DatabaseBase:
         )
         healthy = await self.health_check()
         if not healthy:
-            logger.warning("Supabase health check failed — continuing anyway")
-        else:
-            logger.info("Supabase connection verified")
+            self._client = None
+            logger.error("Supabase health check failed — client cleared (fail-closed)")
+            raise ServiceRoleValidationError(
+                "Supabase health probe failed — sb_secret_ not verified via RLS SELECT on guild+ticket"
+            )
+        logger.info("Supabase connection verified")
 
     async def health_check(self) -> bool:
         """Ping the database and prove ``sb_secret_`` via RLS on guild+ticket.

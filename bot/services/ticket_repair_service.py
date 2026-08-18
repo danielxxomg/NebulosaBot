@@ -859,7 +859,9 @@ class TicketRepairService:
             except discord.HTTPException:
                 logger.exception("Transcript generation failed for ticket %s", ticket.id)
 
-        await self._lifecycle.close_ticket(ticket.id, closed_by=closed_by, transcript_url=transcript_url)
+        await self._lifecycle.close_ticket(
+            ticket.id, closed_by=closed_by, transcript_url=transcript_url, guild_id=ticket.guild_id
+        )
 
         if manual:
             await self._countdown_and_delete(channel, closed_by)

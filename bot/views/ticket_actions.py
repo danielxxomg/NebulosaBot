@@ -126,6 +126,7 @@ class TicketActionsView(discord.ui.View):
                         actor_id=staff_id,
                         guild=guild,
                         logging_service=getattr(bot, "logging_service", None),
+                        guild_id=str(guild.id) if guild else "",
                     )
                 except Exception:
                     logger.exception("Failed to transfer ticket %s", ticket_id)
@@ -181,9 +182,21 @@ class TicketActionsView(discord.ui.View):
             return
         ticket_id = ticket_row["id"]
         staff_id = str(interaction.user.id)
+        if guild_id is None:
+            await interaction.response.send_message(
+                embed=error_embed(
+                    _t(guild_id, "tickets.actions.claim_failed_title"),
+                    _t(guild_id, "tickets.actions.claim_generic_error_description"),
+                    guild_id=guild_id,
+                    bot=bot,
+                    guild=guild,
+                ),
+                ephemeral=True,
+            )
+            return
         assert bot.ticket_service is not None
         try:
-            ticket = await bot.ticket_service.claim_ticket(ticket_id, staff_id)
+            ticket = await bot.ticket_service.claim_ticket(ticket_id, staff_id, guild_id=guild_id)
         except Exception:
             logger.exception("Failed to claim ticket %s", ticket_id)
             await interaction.response.send_message(
