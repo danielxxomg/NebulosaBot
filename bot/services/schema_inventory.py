@@ -95,6 +95,100 @@ def is_guild_scope_gap(method: str) -> bool:
     return method in GUILD_SCOPE_GAPS
 
 
+def _unwrap_response(response: Any) -> list[Any]:
+    """Extract ``.data`` from a PostgREST response (supports FakeSupabase)."""
+    if response is None:
+        return []
+    data = getattr(response, "data", None)
+    if isinstance(data, list):
+        return data
+    if isinstance(response, list):
+        return response
+    return []
+
+
+async def fetch_live_metadata(supabase_client: Any) -> tuple[
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    list[str],
+    list[str],
+]:
+    """Credential-gated live metadata SELECT — no DDL, 4 read-only queries.
+
+    Executes 4 ``SELECT *`` reads against catalog/migration tables and
+    normalizes the rows into the shapes expected by
+    :meth:`SchemaInventory.bind_live_evidence`. When *supabase_client* is
+    ``None`` the caller should treat live evidence as unavailable
+    (``live_evidence_missing_creds_or_unavailable``).
+
+    Tables:
+
+    * ``pg_constraint`` — FK constraints (normalized to ``{child, parent, on_delete}``)
+    * ``pg_policies`` — RLS policies (zero rows = baseline).
+    * ``pg_publication_tables`` — CDC publication members.
+    * ``supabase_migrations`` — migration history.
+
+    Returns:
+        ``(live_fks, live_policies, live_publication, live_migrations)``
+        ready to pass to :meth:`SchemaInventory.bind_live_evidence`.
+
+    The function performs no INSERT/UPDATE/DELETE/DDL — SELECT-only.
+    """
+
+    def _norm(value: Any, keys: tuple[str, ...]) -> str:
+        if isinstance(value, dict):
+            for k in keys:
+                if k in value and value[k] is not None:
+                    return str(value[k])
+            return ""
+        return str(value)
+
+    fks_raw = _unwrap_response(await supabase_client.table("pg_constraint").select("*").execute())
+    policies_raw = _unwrap_response(await supabase_client.table("pg_policies").select("*").execute())
+    publication_raw = _unwrap_response(
+        await supabase_client.table("pg_publication_tables").select("*").execute()
+    )
+    migrations_raw = _unwrap_response(
+        await supabase_client.table("supabase_migrations").select("*").execute()
+    )
+
+    live_fks: list[dict[str, Any]] = []
+    for row in fks_raw:
+        if isinstance(row, dict) and "child" in row and "parent" in row:
+            live_fks.append(dict(row))
+        elif isinstance(row, dict):
+            child = _norm(row, ("child", "conrelid", "table_name", "tablename"))
+            parent = _norm(row, ("parent", "confrelid", "referenced_table", "ref_table"))
+            on_delete = _norm(row, ("on_delete", "confdeltype", "delete_rule"))
+            # Normalize confdeltype single-letter codes: c=CASCADE, a=NO ACTION, etc.
+            if on_delete == "c":
+                on_delete = "CASCADE"
+            if child or parent:
+                live_fks.append({"child": child, "parent": parent, "on_delete": on_delete})
+
+    live_policies: list[dict[str, Any]] = [dict(r) for r in policies_raw if isinstance(r, dict)]
+
+    live_publication: list[str] = []
+    for row in publication_raw:
+        if isinstance(row, str):
+            live_publication.append(row)
+        elif isinstance(row, dict):
+            name = _norm(row, ("tablename", "table_name", "table", "name", "pubname"))
+            if name:
+                live_publication.append(name)
+
+    live_migrations: list[str] = []
+    for row in migrations_raw:
+        if isinstance(row, str):
+            live_migrations.append(row)
+        elif isinstance(row, dict):
+            name = _norm(row, ("name", "id", "version", "migration", "filename"))
+            if name:
+                live_migrations.append(name)
+
+    return live_fks, live_policies, live_publication, live_migrations
+
+
 @dataclass(frozen=True, slots=True)
 class LiveEvidenceReport:
     """Read-only binder result for live evidence — no DDL, fail-closed on drift."""

@@ -1338,10 +1338,10 @@ class TicketService:
             count_fn=lambda _u, _c: count,
         )
 
-        # DB mutation.
-        await self._db.update_ticket(ticket_id, categoryId=new_category_id)
+        # DB mutation (guild-scoped; update_ticket is now fail-closed without guild_id).
+        await self._db.update_ticket(ticket_id, guild_id=guild_id, categoryId=new_category_id)
 
-        row = await self._db.get_ticket(ticket_id)
+        row = await self._db.get_ticket(ticket_id, guild_id=guild_id)
         if row is None:
             raise ValueError(f"Ticket {ticket_id} not found after edit_category")
         ticket = Ticket.from_db_row(row)
@@ -1628,12 +1628,13 @@ class TicketService:
 
         await self._db.update_ticket(
             ticket_id,
+            guild_id=guild_id,
             channelId=str(new_channel.id),
             status="open",
             closedAt=None,
         )
 
-        row = await self._db.get_ticket(ticket_id)
+        row = await self._db.get_ticket(ticket_id, guild_id=guild_id)
         if row is None:
             raise ValueError(f"Ticket {ticket_id} not found after reopen")
         ticket = Ticket.from_db_row(row)
