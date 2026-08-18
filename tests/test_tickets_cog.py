@@ -2850,7 +2850,9 @@ class TestUnclaimCommand:
     ) -> None:
         """/unclaim MUST NOT be gated by @is_mod() — claimer can unclaim without mod role."""
         cmd = tickets_cog.unclaim
-        has_is_mod = bool(cmd.checks) or (hasattr(cmd, "app_command") and bool(cmd.app_command.checks))
+        # guard: app_command may be None until command is added to tree
+        app = getattr(cmd, "app_command", None)
+        has_is_mod = bool(cmd.checks) or (app is not None and bool(app.checks))
         assert not has_is_mod, "/unclaim MUST NOT use @is_mod() — claimer can also unclaim"
 
 
@@ -3465,7 +3467,7 @@ class TestIntegritySweepOrchestration:
     preflight or authority is invented by the orchestrator.
     """
 
-    async def _startable_cog(self, ticket_bot: MagicMock) -> MagicMock:
+    async def _startable_cog(self, ticket_bot: MagicMock) -> TicketsCog:
         """Return a TicketsCog with real loop attrs mocked as startable."""
         cog = TicketsCog(bot=ticket_bot)
         # Replace the decorated loop with a controllable mock that records

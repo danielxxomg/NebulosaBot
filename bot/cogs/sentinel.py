@@ -19,6 +19,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from bot.core.context import NebulosaContext
 from bot.core.i18n import t
 from bot.utils.brand import INFO
 from bot.utils.checks import is_admin, is_mod
@@ -57,14 +58,14 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     # ==================================================================
 
     @staticmethod
-    def _guild_id(ctx: commands.Context[Any]) -> str:
+    def _guild_id(ctx: NebulosaContext) -> str:
         """Return the guild ID as a string for the current context."""
         assert ctx.guild is not None, "Guild-only command"
         return str(ctx.guild.id)
 
     async def _validate_target(
         self,
-        ctx: commands.Context[Any],
+        ctx: NebulosaContext,
         target: discord.Member,
         action: str,
     ) -> bool:
@@ -114,7 +115,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
 
     async def _handle_mod_error(
         self,
-        ctx: commands.Context[Any],
+        ctx: NebulosaContext,
         error: Exception,
         action: str,
         target: discord.Member,
@@ -162,7 +163,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     )
     @app_commands.default_permissions(moderate_members=True)
     @is_mod()
-    async def warn(self, ctx: commands.Context[Any], member: discord.Member, *, reason: str) -> None:
+    async def warn(self, ctx: NebulosaContext, member: discord.Member, *, reason: str) -> None:
         """Issue a warning and check for auto-escalation."""
         if not await self._validate_target(ctx, member, "warn"):
             return
@@ -298,7 +299,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     )
     @app_commands.default_permissions(moderate_members=True)
     @is_mod()
-    async def unwarn(self, ctx: commands.Context[Any], member: discord.Member) -> None:
+    async def unwarn(self, ctx: NebulosaContext, member: discord.Member) -> None:
         """Deactivate the most recent active warning."""
         if not await self._validate_target(ctx, member, "unwarn"):
             return
@@ -373,7 +374,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     @is_mod()
     async def mute(
         self,
-        ctx: commands.Context[Any],
+        ctx: NebulosaContext,
         member: discord.Member,
         duration: str = "1h",
         *,
@@ -448,7 +449,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     )
     @app_commands.default_permissions(moderate_members=True)
     @is_mod()
-    async def unmute(self, ctx: commands.Context[Any], member: discord.Member) -> None:
+    async def unmute(self, ctx: NebulosaContext, member: discord.Member) -> None:
         """Remove the timeout from *member*."""
         if not await self._validate_target(ctx, member, "unmute"):
             return
@@ -495,7 +496,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     )
     @app_commands.default_permissions(moderate_members=True)
     @is_mod()
-    async def kick(self, ctx: commands.Context[Any], member: discord.Member, *, reason: str) -> None:
+    async def kick(self, ctx: NebulosaContext, member: discord.Member, *, reason: str) -> None:
         """Kick *member* from the guild after confirmation."""
         if not await self._validate_target(ctx, member, "kick"):
             return
@@ -576,7 +577,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     @is_admin()
     async def ban(
         self,
-        ctx: commands.Context[Any],
+        ctx: NebulosaContext,
         member: discord.Member,
         *,
         reason: str,
@@ -673,7 +674,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     @is_mod()
     async def lock(
         self,
-        ctx: commands.Context[Any],
+        ctx: NebulosaContext,
         channel: discord.TextChannel | None = None,
     ) -> None:
         """Deny ``send_messages`` for @everyone in *channel*."""
@@ -744,7 +745,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     @is_mod()
     async def unlock(
         self,
-        ctx: commands.Context[Any],
+        ctx: NebulosaContext,
         channel: discord.TextChannel | None = None,
     ) -> None:
         """Allow ``send_messages`` for @everyone in *channel*."""
@@ -824,7 +825,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     @is_mod()
     async def modlogs(
         self,
-        ctx: commands.Context[Any],
+        ctx: NebulosaContext,
         member: discord.Member,
         type: str | None = None,
         after: str | None = None,

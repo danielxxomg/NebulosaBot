@@ -163,6 +163,7 @@ class TestValidateTargetBotDenial:
     ) -> None:
         """_validate_target → returns False when target is the bot user."""
         bot_as_target = MagicMock()
+        assert sentinel_cog.bot.user is not None
         bot_as_target.id = sentinel_cog.bot.user.id  # Same as bot.user.id
         bot_as_target.mention = "<@999999999>"
 
