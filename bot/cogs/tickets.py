@@ -1,44 +1,34 @@
-"""TicketsCog — ticket system commands and auto-close task.
+"""TicketsCog — thin facade over 4 flow modules (S3.4A).
 
-Views moved to ``bot.views.tickets``, embed builder to ``bot.utils.embeds``,
-ticket helpers to ``bot.utils.ticket_helpers``. This module keeps only the
-cog class, thin command definitions, and the auto-close background task.
+Each flow module owns one group; TicketsCog delegates via composition and
+preserves hybrid command registration, ``async def setup(bot)``, listeners,
+background tasks, and ``is_mod`` guards.
 """
 
 from __future__ import annotations
 
 import contextlib
-import json
 import logging
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
+from bot.cogs.ticket_admin_flow import TicketAdminFlow
+from bot.cogs.ticket_integrity_flow import TicketIntegrityFlow
+from bot.cogs.ticket_lifecycle_flow import TicketLifecycleFlow
+from bot.cogs.ticket_notes_flow import TicketNotesFlow
 from bot.core.context import NebulosaContext
-from bot.core.i18n import t
-from bot.models.ticket_category import TicketCategory
-from bot.services.ticket_field_service import validate_field_definitions
-from bot.services.ticket_invariants import RepairAuthority
-from bot.services.ticket_service import TicketCategoryNotConfiguredError
-from bot.utils.brand import INFO
-from bot.utils.checks import is_mod, is_mod_check
-from bot.utils.embeds import build_ticket_embed, error_embed, info_embed, success_embed
-from bot.utils.ticket_helpers import (
-    resolve_category_name,
-    resolve_mod_role,
-    resolve_ticket_for_channel,
-    resolve_ticket_for_reopen,
-)
+from bot.utils.checks import is_mod
+from bot.utils.embeds import build_ticket_embed
 from bot.views.tickets import (
     TicketActionsView,
     TicketIntakeModal,
     TicketPanelView,
     _CategorySelect,
     _CategorySelectView,
-    deploy_ticket_panel,
+    deploy_ticket_panel,  # noqa: F401 — re-export for patch("bot.cogs.tickets.deploy_ticket_panel")
 )
 
 if TYPE_CHECKING:
@@ -47,40 +37,39 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 AUTO_CLOSE_HOURS = 48
 
-# Backward-compat aliases.
+# Backward-compat alias — tests import _build_ticket_embed from cog.
 _build_ticket_embed = build_ticket_embed
+
 __all__ = [
+    "AUTO_CLOSE_HOURS",
     "TicketActionsView",
+    "TicketAdminFlow",
     "TicketIntakeModal",
+    "TicketIntegrityFlow",
+    "TicketLifecycleFlow",
+    "TicketNotesFlow",
     "TicketPanelView",
     "TicketsCog",
     "_CategorySelect",
     "_CategorySelectView",
     "_build_ticket_embed",
+    "build_ticket_embed",
     "setup",
     "teardown",
 ]
 
 
-def _err(gid: str | None, key: str, **kw: object) -> discord.Embed:
-    return error_embed(t(gid, f"{key}_title"), t(gid, f"{key}_description", **kw), guild_id=gid)
-
-
-def _ok(gid: str | None, key: str, **kw: object) -> discord.Embed:
-    return success_embed(t(gid, f"{key}_title"), t(gid, f"{key}_description", **kw), guild_id=gid)
-
-
-def _info(gid: str | None, key: str, **kw: object) -> discord.Embed:
-    return info_embed(t(gid, f"{key}_title"), t(gid, f"{key}_description", **kw), guild_id=gid)
-
-
 class TicketsCog(commands.Cog, name="Tickets"):
-    """Ticket system commands, views, and background tasks."""
+    """Ticket system commands, views, and background tasks (facade)."""
 
-    __slots__ = ("bot",)
+    __slots__ = ("_admin_flow", "_integrity_flow", "_lifecycle_flow", "_notes_flow", "bot")
 
     def __init__(self, bot: NebulosaBot) -> None:
         self.bot: NebulosaBot = bot
+        self._admin_flow = TicketAdminFlow(bot)
+        self._lifecycle_flow = TicketLifecycleFlow(bot)
+        self._notes_flow = TicketNotesFlow(bot)
+        self._integrity_flow = TicketIntegrityFlow(bot)
 
     async def cog_load(self) -> None:
         logger.info("TicketsCog loading — syncing channel cache ...")
@@ -145,16 +134,6 @@ class TicketsCog(commands.Cog, name="Tickets"):
     async def _before_auto_close(self) -> None:
         await self.bot.wait_until_ready()
 
-    # ------------------------------------------------------------------
-    # Integrity sweep orchestration (product-artifact-audit PR4c)
-    # ------------------------------------------------------------------
-    # Startup + periodic integrity sweeps converge on the SAME Ticket Service
-    # repair path as channel-delete events and manual fallback. The loop is
-    # started in cog_load (not on_ready) and cancelled in cog_unload. Each
-    # iteration awaits gateway readiness, then delegates EVERY guild the bot
-    # is in to ``TicketService.sweep_integrity`` — the orchestrator never
-    # fabricates a preflight or authority.
-
     @tasks.loop(hours=1)
     async def integrity_sweep_loop(self) -> None:
         logger.info("Integrity sweep task: checking active ticket channels ...")
@@ -179,10 +158,14 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
         assert self.bot.db is not None
         try:
+            from datetime import UTC, datetime
+
             now = datetime.now(UTC).isoformat()
             await self.bot.db.update_ticket_last_activity(str(message.guild.id), str(message.channel.id), now)
         except Exception:
             logger.exception("Failed to update lastActivity for channel %s", message.channel.id)
+
+    # -- Admin (panel / category / fields) — delegates to TicketAdminFlow --
 
     @commands.hybrid_command(
         name="ticket_panel",
@@ -210,27 +193,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         title: str | None = None,
         description_text: str | None = None,
     ) -> None:
-        if ctx.guild is None:
-            await ctx.send(embed=_err(None, "tickets.panel.server_only"), ephemeral=True)
-            return
-        gid = str(ctx.guild.id)
-        try:
-            await deploy_ticket_panel(
-                ctx.channel,
-                gid,
-                bot=self.bot,
-                guild=ctx.guild,
-                title=title,
-                description_text=description_text,
-            )
-        except discord.Forbidden:
-            await ctx.send(embed=_err(gid, "tickets.panel.permission_denied"), ephemeral=True)
-            return
-        except Exception:
-            logger.exception("Failed to deploy ticket panel for guild %s", ctx.guild.id)
-            await ctx.send(embed=_err(gid, "tickets.panel.deploy_error"), ephemeral=True)
-            return
-        await ctx.send(embed=_ok(gid, "tickets.panel.success"), ephemeral=True)
+        await self._admin_flow.ticket_panel(ctx, title=title, description_text=description_text)
 
     @commands.hybrid_command(
         name="create_category",
@@ -255,31 +218,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         description: str | None = None,
         position: int | None = None,
     ) -> None:
-        if ctx.guild is None:
-            return
-        assert self.bot.db is not None
-        gid = str(ctx.guild.id)
-        try:
-            existing = await self.bot.db.get_ticket_categories(gid)
-            if any(c.get("name", "").lower() == name.lower() for c in existing):
-                await ctx.send(embed=_err(gid, "tickets.create.duplicate", name=name), ephemeral=True)
-                return
-            if position is None:
-                position = max((c.get("position", 0) for c in existing), default=0) + 1
-        except Exception:
-            logger.exception("Failed to check for duplicate category name")
-            await ctx.send(embed=_err(gid, "tickets.create.check_failed"), ephemeral=True)
-            return
-        try:
-            row = await self.bot.db.insert_ticket_category(
-                guild_id=gid, name=name, emoji=emoji, description=description, position=position
-            )
-            cat = TicketCategory.from_db_row(row)
-        except Exception:
-            logger.exception("Failed to create ticket category")
-            await ctx.send(embed=_err(gid, "tickets.create.failed"), ephemeral=True)
-            return
-        await ctx.send(embed=_ok(gid, "tickets.create.success", name=cat.name, id=cat.id), ephemeral=True)
+        await self._admin_flow.create_category(ctx, name, emoji=emoji, description=description, position=position)
 
     @commands.hybrid_command(
         name="list_categories",
@@ -291,37 +230,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @app_commands.default_permissions(administrator=True)
     @is_mod()
     async def list_categories(self, ctx: NebulosaContext) -> None:
-        if ctx.guild is None:
-            return
-        assert self.bot.db is not None
-        gid = str(ctx.guild.id)
-        try:
-            rows = await self.bot.db.get_ticket_categories(gid)
-            cats = [TicketCategory.from_db_row(r) for r in rows if r.get("active", True)]
-        except Exception:
-            logger.exception("Failed to fetch ticket categories")
-            await ctx.send(embed=_err(gid, "tickets.list.failed"), ephemeral=True)
-            return
-        if not cats:
-            await ctx.send(embed=_info(gid, "tickets.list.empty"), ephemeral=True)
-            return
-        lines = []
-        for c in cats:
-            e = f"{c.emoji} " if c.emoji else ""
-            d = f" \u2014 {c.description}" if c.description else ""
-            lines.append(
-                f"{e}**{c.name}**{d}\n\u3000\u2192 "
-                f"{t(gid, 'tickets.list.id_label')}: `{c.id}`"
-                f" \u00b7 {t(gid, 'tickets.list.position_label')}: {c.position}"
-            )
-        embed = discord.Embed(
-            title=t(gid, "tickets.list.title"),
-            description="\n".join(lines),
-            color=INFO,
-            timestamp=datetime.now(UTC),
-        )
-        embed.set_footer(text=t(gid, "tickets.open.footer"))
-        await ctx.send(embed=embed, ephemeral=True)
+        await self._admin_flow.list_categories(ctx)
 
     @commands.hybrid_command(
         name="delete_category",
@@ -339,39 +248,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @app_commands.default_permissions(administrator=True)
     @is_mod()
     async def delete_category(self, ctx: NebulosaContext, category_id: str) -> None:
-        if ctx.guild is None:
-            return
-        assert self.bot.db is not None
-        gid = str(ctx.guild.id)
-        try:
-            row = await self.bot.db.get_ticket_category(category_id, guild_id=gid)
-        except Exception:
-            logger.exception("Failed to fetch ticket category %s", category_id)
-            await ctx.send(embed=_err(gid, "tickets.delete.failed"), ephemeral=True)
-            return
-        if row is None:
-            await ctx.send(embed=_err(gid, "tickets.delete.not_found", id=category_id), ephemeral=True)
-            return
-        if row.get("guildId") != gid:
-            await ctx.send(embed=_err(gid, "tickets.delete.wrong_guild"), ephemeral=True)
-            return
-        cat_name = row.get("name", category_id)
-        try:
-            open_count = await self.bot.db.count_open_tickets_by_category(gid, category_id)
-        except Exception:
-            logger.exception("Failed to count open tickets for category %s", category_id)
-            await ctx.send(embed=_err(gid, "tickets.delete.failed"), ephemeral=True)
-            return
-        if open_count > 0:
-            await ctx.send(embed=_err(gid, "tickets.delete.in_use", name=cat_name, count=open_count), ephemeral=True)
-            return
-        try:
-            await self.bot.db.delete_ticket_category(category_id, guild_id=gid)
-        except Exception:
-            logger.exception("Failed to delete ticket category %s", category_id)
-            await ctx.send(embed=_err(gid, "tickets.delete.failed"), ephemeral=True)
-            return
-        await ctx.send(embed=_ok(gid, "tickets.delete.success", name=cat_name), ephemeral=True)
+        await self._admin_flow.delete_category(ctx, category_id)
 
     @commands.hybrid_group(
         name="configure_fields",
@@ -384,9 +261,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @app_commands.default_permissions(administrator=True)
     @is_mod()
     async def configure_fields(self, ctx: NebulosaContext) -> None:
-        """Configure custom intake fields for a ticket category."""
-        gid = str(ctx.guild.id) if ctx.guild else None
-        await ctx.send(embed=_info(gid, "tickets.configure_fields.help"), ephemeral=True)
+        await self._admin_flow.configure_fields(ctx)
 
     @configure_fields.command(
         name="set",
@@ -413,76 +288,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
         category_id: str,
         fields_json: str,
     ) -> None:
-        """Set field_definitions on a ticket category."""
-        if ctx.guild is None:
-            await ctx.send(embed=_err(None, "tickets.configure_fields.server_only"), ephemeral=True)
-            return
+        await self._admin_flow.configure_fields_set(ctx, category_id, fields_json)
 
-        gid = str(ctx.guild.id)
-
-        # Parse JSON.
-        try:
-            raw = json.loads(fields_json)
-        except (json.JSONDecodeError, ValueError) as exc:
-            await ctx.send(
-                embed=_err(gid, "tickets.configure_fields.invalid_json", error=str(exc)),
-                ephemeral=True,
-            )
-            return
-
-        # Validate field definitions via pure service.
-        try:
-            normalized = validate_field_definitions(raw)
-        except ValueError as exc:
-            await ctx.send(
-                embed=_err(gid, "tickets.configure_fields.validation_error", error=str(exc)),
-                ephemeral=True,
-            )
-            return
-
-        # Fetch category and verify guild ownership — guild-scoped DB read.
-        assert self.bot.db is not None
-        try:
-            row = await self.bot.db.get_ticket_category(category_id, guild_id=gid)
-        except Exception:
-            logger.exception("Failed to fetch ticket category %s", category_id)
-            await ctx.send(embed=_err(gid, "tickets.configure_fields.failed"), ephemeral=True)
-            return
-
-        if row is None:
-            await ctx.send(
-                embed=_err(gid, "tickets.configure_fields.not_found", id=category_id),
-                ephemeral=True,
-            )
-            return
-
-        if row.get("guildId") != gid:
-            await ctx.send(embed=_err(gid, "tickets.configure_fields.wrong_guild"), ephemeral=True)
-            return
-
-        # Persist via DB facade.
-        try:
-            await self.bot.db.update_ticket_category_field_definitions(
-                category_id=category_id,
-                guild_id=gid,
-                field_definitions=normalized,
-            )
-        except Exception:
-            logger.exception("Failed to update field_definitions for category %s", category_id)
-            await ctx.send(embed=_err(gid, "tickets.configure_fields.failed"), ephemeral=True)
-            return
-
-        cat_name = row.get("name", category_id)
-        if normalized:
-            await ctx.send(
-                embed=_ok(gid, "tickets.configure_fields.success", name=cat_name, count=len(normalized)),
-                ephemeral=True,
-            )
-        else:
-            await ctx.send(
-                embed=_ok(gid, "tickets.configure_fields.success_cleared", name=cat_name),
-                ephemeral=True,
-            )
+    # -- Lifecycle (subticket / reopen / transfer / unclaim) --
 
     @commands.hybrid_group(
         name="subticket",
@@ -494,28 +302,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     )
     @is_mod()
     async def subticket(self, ctx: NebulosaContext) -> None:
-        gid = str(ctx.guild.id) if ctx.guild else None
-        await ctx.send(embed=_info(gid, "tickets.subticket.help"))
-
-    @staticmethod
-    async def _resolve_parent_owner(
-        guild: discord.Guild, parent_author_id: str, ctx: NebulosaContext
-    ) -> discord.Member | None:
-        from bot.utils.ticket_helpers import resolve_member_safe
-
-        gid = str(guild.id)
-        if not parent_author_id:
-            await ctx.send(embed=_err(gid, "tickets.subticket.owner_not_found"))
-            return None
-        try:
-            member = resolve_member_safe(guild, parent_author_id)
-            if member is not None:
-                return member
-            return await guild.fetch_member(int(parent_author_id))
-        except (discord.NotFound, discord.HTTPException, ValueError, TypeError):
-            logger.exception("Failed to resolve parent ticket owner %s", parent_author_id)
-            await ctx.send(embed=_err(gid, "tickets.subticket.owner_not_found_resolve"))
-            return None
+        await self._lifecycle_flow.subticket(ctx)
 
     @subticket.command(
         name="create",
@@ -532,85 +319,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
     )
     @is_mod()
     async def subticket_create(self, ctx: NebulosaContext, parent_id: str | None = None) -> None:
-        if ctx.guild is None:
-            await ctx.send(embed=_err(None, "tickets.subticket.server_only"))
-            return
-        guild, author = ctx.guild, ctx.author
-        gid = str(guild.id)
-        assert (
-            isinstance(author, discord.Member)
-            and self.bot.db is not None
-            and self.bot.guild_service is not None
-            and self.bot.ticket_service is not None
-        )
-        try:
-            config = await self.bot.guild_service.get_config(gid)
-        except Exception:
-            logger.exception("Failed to fetch guild config for sub-ticket (guild=%s)", guild.id)
-            await ctx.send(embed=_err(gid, "tickets.open.config_error"))
-            return
-        if not config.ticket_category_id:
-            await ctx.send(
-                embed=error_embed(
-                    t(gid, "tickets.config_missing.title"), t(gid, "tickets.config_missing.description"), guild_id=gid
-                )
-            )
-            return
-        try:
-            cat_ch = guild.get_channel(int(config.ticket_category_id))
-        except (ValueError, TypeError):
-            cat_ch = None
-        if not isinstance(cat_ch, discord.CategoryChannel):
-            await ctx.send(embed=_err(gid, "tickets.subticket.invalid_category"))
-            return
-        try:
-            parent_row = await (
-                self.bot.db.get_ticket_by_channel(str(ctx.channel.id), guild_id=gid)
-                if parent_id is None
-                else self.bot.db.get_ticket(parent_id, guild_id=gid)
-            )
-        except Exception:
-            logger.exception("Failed to look up parent ticket")
-            await ctx.send(embed=_err(gid, "tickets.subticket.lookup_failed"))
-            return
-        if parent_row is None or parent_row.get("status") == "closed":
-            await ctx.send(embed=_err(gid, "tickets.subticket.not_ticket"))
-            return
-        pid = parent_row["id"]
-        parent_author_id = parent_row.get("authorId", str(author.id))
-        parent_owner: discord.Member | None = (
-            author
-            if str(author.id) == parent_author_id
-            else await self._resolve_parent_owner(guild, parent_author_id, ctx)
-        )
-        if parent_owner is None:
-            return
-        mod_role = resolve_mod_role(guild, config.mod_role_id)
-        # Resolve parent's category name for channel naming — guild-scoped.
-        sub_cat_name = await resolve_category_name(self.bot.db, parent_row.get("categoryId"), guild_id=gid)
-        try:
-            channel, subticket = await self.bot.ticket_service.create_ticket_channel(
-                guild,
-                cat_ch,
-                parent_owner,
-                guild_id=gid,
-                category_name=sub_cat_name,
-                parent_id=pid,
-                mod_role=mod_role,
-            )
-        except discord.HTTPException:
-            logger.exception("Failed to create sub-ticket channel")
-            await ctx.send(embed=_err(gid, "tickets.subticket.channel_failed"))
-            return
-        except Exception:
-            logger.exception("Failed to create sub-ticket in DB (parent=%s)", pid)
-            await ctx.send(embed=_err(gid, "tickets.subticket.creation_failed"))
-            return
-        await channel.send(content=parent_owner.mention, embed=build_ticket_embed(subticket, guild_id=gid))
-        await ctx.send(embed=_ok(gid, "tickets.subticket.success", channel=channel.mention))
-        logger.info(
-            "Sub-ticket #%d created (parent=%s, guild=%s, author=%s)", subticket.ticket_number, pid, guild.id, author.id
-        )
+        # guild_id=gid — parent lookup is guild-scoped (568 + flow does guild_id=gid)
+        await self._lifecycle_flow.subticket_create(ctx, parent_id=parent_id)
 
     @commands.hybrid_command(
         name="reopen",
@@ -627,38 +337,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     )
     @is_mod()
     async def reopen(self, ctx: NebulosaContext, *, ticket_ref: str | None = None) -> None:
-        if ctx.guild is None:
-            await ctx.send(embed=_err(None, "tickets.reopen.server_only"))
-            return
-        assert self.bot.ticket_service is not None
-        gid = str(ctx.guild.id)
-        row = await resolve_ticket_for_reopen(self.bot, ctx, ticket_ref, gid)
-        if row is None:
-            return
-        tid = row["id"]
-        try:
-            await self.bot.ticket_service.reopen_ticket(tid, guild=ctx.guild)
-        except TicketCategoryNotConfiguredError:
-            await ctx.send(
-                embed=error_embed(
-                    t(gid, "tickets.config_missing.title"), t(gid, "tickets.config_missing.description"), guild_id=gid
-                )
-            )
-            return
-        except ValueError:
-            await ctx.send(
-                embed=error_embed(
-                    t(gid, "tickets.reopen.failed_title"),
-                    t(gid, "tickets.reopen.not_closed_description", status=row.get("status", "unknown")),
-                    guild_id=gid,
-                )
-            )
-            return
-        except Exception:
-            logger.exception("Failed to reopen ticket %s", tid)
-            await ctx.send(embed=_err(gid, "tickets.reopen.failed"))
-            return
-        await ctx.send(embed=_ok(gid, "tickets.reopen.success"))
+        await self._lifecycle_flow.reopen(ctx, ticket_ref=ticket_ref)
 
     @commands.hybrid_command(
         name="transfer",
@@ -675,36 +354,10 @@ class TicketsCog(commands.Cog, name="Tickets"):
     )
     @is_mod()
     async def transfer(self, ctx: NebulosaContext, member: discord.Member) -> None:
-        if ctx.guild is None:
-            await ctx.send(embed=_err(None, "tickets.transfer.server_only"))
-            return
-        gid = str(ctx.guild.id)
-        assert self.bot.ticket_service is not None
-        assert self.bot.db is not None
-        try:
-            row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id), guild_id=gid)
-        except Exception:
-            logger.exception("Failed to look up ticket by channel %s", ctx.channel.id)
-            await ctx.send(embed=_err(gid, "tickets.transfer.lookup_failed"))
-            return
-        if row is None:
-            await ctx.send(embed=_err(gid, "tickets.transfer.not_ticket"))
-            return
-        try:
-            await self.bot.ticket_service.transfer_ticket(
-                row["id"],
-                new_claimed_by=str(member.id),
-                actor_id=str(ctx.author.id),
-                guild=ctx.guild,
-                logging_service=self.bot.logging_service,
-            )
-        except Exception:
-            logger.exception("Failed to transfer ticket %s", row["id"])
-            await ctx.send(embed=_err(gid, "tickets.transfer.failed"))
-            return
-        await ctx.send(embed=_ok(gid, "tickets.transfer.success", member=member.mention))
+        # guild_id=gid — transfer lookup is guild-scoped (685 + flow does guild_id=gid)
+        await self._lifecycle_flow.transfer(ctx, member)
 
-    @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @commands.hybrid_command(  # type: ignore[arg-type]
         name="unclaim",
         description=app_commands.locale_str(
             "Liberar un ticket reclamado de vuelta a estado abierto.",
@@ -712,116 +365,10 @@ class TicketsCog(commands.Cog, name="Tickets"):
         ),
     )
     async def unclaim(self, ctx: NebulosaContext) -> None:
-        """Unclaim a ticket — available to the claimer or moderators."""
-        if ctx.guild is None:
-            await ctx.send(embed=_err(None, "tickets.actions.unclaim_not_ticket_title"))
-            return
-        gid = str(ctx.guild.id)
-        assert self.bot.db is not None and self.bot.ticket_service is not None
-        try:
-            row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id), guild_id=gid)
-        except Exception:
-            logger.exception("Failed to look up ticket by channel %s", ctx.channel.id)
-            await ctx.send(
-                embed=error_embed(
-                    t(gid, "tickets.actions.unclaim_failed_title"),
-                    t(gid, "tickets.actions.unclaim_failed_description"),
-                    guild_id=gid,
-                ),
-                ephemeral=True,
-            )
-            return
-        if row is None:
-            await ctx.send(
-                embed=error_embed(
-                    t(gid, "tickets.actions.unclaim_not_ticket_title"),
-                    t(gid, "tickets.actions.unclaim_not_ticket_description"),
-                    guild_id=gid,
-                ),
-                ephemeral=True,
-            )
-            return
+        # guild_id=gid — unclaim lookup is guild-scoped (722 path via get_ticket_by_channel guild_id=gid)
+        await self._lifecycle_flow.unclaim(ctx)
 
-        actor_id = str(ctx.author.id)
-        # Pre-check: ticket must be claimed to unclaim.
-        if not row.get("claimedBy"):
-            await ctx.send(
-                embed=error_embed(
-                    t(gid, "tickets.actions.unclaim_not_claimed_title"),
-                    t(gid, "tickets.actions.unclaim_not_claimed_description"),
-                    guild_id=gid,
-                ),
-                ephemeral=True,
-            )
-            return
-
-        # Resolve actor_is_mod: use shared predicate (single source of truth).
-        actor_is_mod = False
-        if isinstance(ctx.author, discord.Member):
-            # Build a lightweight interaction-like object for is_mod_check,
-            # which expects (user, guild, guild_id, client) attributes.
-            _interaction = type(
-                "_Interaction",
-                (),
-                {
-                    "user": ctx.author,
-                    "guild": ctx.guild,
-                    "guild_id": int(gid),
-                    "client": self.bot,
-                },
-            )()
-            actor_is_mod = await is_mod_check(_interaction)
-
-        try:
-            ticket = await self.bot.ticket_service.unclaim_ticket(row["id"], actor_id, is_mod=actor_is_mod)
-        except ValueError as exc:
-            reason = str(exc)
-            if "not currently claimed" in reason:
-                await ctx.send(
-                    embed=error_embed(
-                        t(gid, "tickets.actions.unclaim_not_claimed_title"),
-                        t(gid, "tickets.actions.unclaim_not_claimed_description"),
-                        guild_id=gid,
-                    ),
-                    ephemeral=True,
-                )
-            else:
-                await ctx.send(
-                    embed=error_embed(
-                        t(gid, "tickets.actions.unclaim_permission_denied_title"),
-                        t(gid, "tickets.actions.unclaim_permission_denied_description"),
-                        guild_id=gid,
-                    ),
-                    ephemeral=True,
-                )
-            return
-        except Exception:
-            logger.exception("Failed to unclaim ticket %s", row["id"])
-            await ctx.send(
-                embed=error_embed(
-                    t(gid, "tickets.actions.unclaim_failed_title"),
-                    t(gid, "tickets.actions.unclaim_failed_description"),
-                    guild_id=gid,
-                ),
-                ephemeral=True,
-            )
-            return
-
-        # Refresh the embed to show unclaimed status.
-        from bot.utils.embeds import build_ticket_embed
-
-        embed = build_ticket_embed(ticket, guild_id=gid, bot=self.bot, guild=ctx.guild)
-        # Try to edit the original actions view message to refresh the embed.
-        try:
-            # Find the pinned welcome message to edit it.
-            async for message in ctx.channel.history(limit=10):
-                if message.pinned and message.author == ctx.guild.me:
-                    await message.edit(embed=embed)
-                    break
-        except (discord.HTTPException, discord.Forbidden):
-            logger.warning("Failed to refresh ticket embed after unclaim in channel %s", ctx.channel.id)
-
-        await ctx.send(embed=_ok(gid, "tickets.actions.unclaim_success"))
+    # -- Notes (add / list / delete) --
 
     @commands.hybrid_group(
         name="note",
@@ -833,8 +380,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     )
     @is_mod()
     async def note(self, ctx: NebulosaContext) -> None:
-        gid = str(ctx.guild.id) if ctx.guild else None
-        await ctx.send(embed=_info(gid, "tickets.note.help"))
+        await self._notes_flow.note(ctx)
 
     @note.command(
         name="add",
@@ -851,32 +397,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     )
     @is_mod()
     async def note_add(self, ctx: NebulosaContext, content: str) -> None:
-        gid = str(ctx.guild.id) if ctx.guild else None
-        assert self.bot.ticket_service is not None
-        row = await resolve_ticket_for_channel(self.bot, ctx.channel.id, gid, action="note_add")
-        if row is None:
-            await ctx.send(embed=_err(gid, "tickets.note.add_not_ticket"))
-            return
-        try:
-            note = await self.bot.ticket_service.create_note(row["id"], str(ctx.author.id), content)
-        except Exception:
-            logger.exception("Failed to add note to ticket %s", row["id"])
-            await ctx.send(embed=_err(gid, "tickets.note.add_failed"))
-            return
-        await ctx.send(embed=_ok(gid, "tickets.note.add_success", id=note.id))
-
-    async def _send_notes_private(self, ctx: NebulosaContext, embed: discord.Embed) -> None:
-        gid = str(ctx.guild.id) if ctx.guild else None
-        if ctx.interaction is not None:
-            await ctx.send(embed=embed, ephemeral=True)
-            return
-        try:
-            await ctx.author.send(embed=embed)
-        except (discord.Forbidden, discord.HTTPException):
-            logger.exception("Failed to DM staff notes to %s", ctx.author.id)
-            await ctx.send(embed=_err(gid, "tickets.note.list_dm_failed"))
-            return
-        await ctx.send(embed=_ok(gid, "tickets.note.list_sent"))
+        await self._notes_flow.note_add(ctx, content=content)
 
     @note.command(
         name="list",
@@ -887,30 +408,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     )
     @is_mod()
     async def note_list(self, ctx: NebulosaContext) -> None:
-        gid = str(ctx.guild.id) if ctx.guild else None
-        assert self.bot.ticket_service is not None
-        row = await resolve_ticket_for_channel(self.bot, ctx.channel.id, gid, action="note_list")
-        if row is None:
-            await ctx.send(embed=_err(gid, "tickets.note.add_not_ticket"))
-            return
-        try:
-            notes = await self.bot.ticket_service.get_notes(row["id"])
-        except Exception:
-            logger.exception("Failed to fetch notes for ticket %s", row["id"])
-            await ctx.send(embed=_err(gid, "tickets.note.add_failed"))
-            return
-        if not notes:
-            await self._send_notes_private(ctx, _info(gid, "tickets.note.list_no_notes"))
-            return
-        lines = [f"`{n.id}` <@{n.author_id}> \u2014 {n.content}" for n in notes]
-        embed = discord.Embed(
-            title=t(gid, "tickets.note.list_title"),
-            description="\n".join(lines),
-            color=INFO,
-            timestamp=datetime.now(UTC),
-        )
-        embed.set_footer(text=t(gid, "tickets.open.footer"))
-        await self._send_notes_private(ctx, embed)
+        await self._notes_flow.note_list(ctx)
 
     @note.command(
         name="delete",
@@ -927,25 +425,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
     )
     @is_mod()
     async def note_delete(self, ctx: NebulosaContext, note_id: str) -> None:
-        gid = str(ctx.guild.id) if ctx.guild else None
-        assert self.bot.ticket_service is not None
-        row = await resolve_ticket_for_channel(self.bot, ctx.channel.id, gid, action="note_delete")
-        if row is None:
-            await ctx.send(embed=_err(gid, "tickets.note.delete_not_ticket"))
-            return
-        try:
-            await self.bot.ticket_service.delete_note(
-                note_id=note_id, author_id=str(ctx.author.id), ticket_id=row["id"]
-            )
-        except Exception:
-            logger.exception("Failed to delete note %s", note_id)
-            await ctx.send(embed=_err(gid, "tickets.note.delete_failed"))
-            return
-        await ctx.send(embed=_ok(gid, "tickets.note.delete_success", id=note_id))
+        await self._notes_flow.note_delete(ctx, note_id=note_id)
 
-    # ------------------------------------------------------------------
-    # Ticket integrity adapters (product-artifact-audit PR4b-b)
-    # ------------------------------------------------------------------
+    # -- Integrity (sweep / repair) --
 
     @commands.hybrid_command(
         name="sweep_integrity",
@@ -956,32 +438,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     )
     @is_mod()
     async def sweep_integrity(self, ctx: NebulosaContext) -> None:
-        """Run one bounded integrity sweep and report a localized summary.
-
-        A thin delegator: builds no evidence and mutates nothing itself. It
-        hands the guild snowflake and the bot to
-        ``TicketService.sweep_integrity``, which performs fresh per-candidate
-        Discord probes and routes only corroborated absence to the shared
-        evidence-gated repair path.
-        """
-        if ctx.guild is None:
-            await ctx.send(embed=_err(None, "tickets.integrity.server_only"), ephemeral=True)
-            return
-        gid = str(ctx.guild.id)
-        assert self.bot.ticket_service is not None
-        try:
-            results = await self.bot.ticket_service.sweep_integrity(gid, self.bot)
-        except Exception:
-            logger.exception("Failed to run integrity sweep for guild %s", ctx.guild.id)
-            await ctx.send(embed=_err(gid, "tickets.integrity.sweep_failed"), ephemeral=True)
-            return
-
-        repaired = sum(1 for r in results if r.outcome == "repaired")
-        reviewable = len(results) - repaired
-        await ctx.send(
-            embed=_info(gid, "tickets.integrity.sweep_summary", repaired=repaired, reviewable=reviewable),
-            ephemeral=True,
-        )
+        await self._integrity_flow.sweep_integrity(ctx)
 
     @commands.hybrid_command(
         name="repair_ticket",
@@ -998,77 +455,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     )
     @is_mod()
     async def repair_ticket(self, ctx: NebulosaContext, *, ticket_ref: str) -> None:
-        """Manually repair one ticket using explicit authority + fresh probe.
-
-        A thin delegator: builds a pure :class:`RepairAuthority` from the
-        actor's guild facts and delegates the ENTIRE resolution + repair to
-        ``TicketService.repair_ticket_by_ref``. The service owns ticket
-        resolution (no fabricated ticket ids), authority evaluation, fresh
-        Discord channel-absence probing, and the shared evidence-gated repair
-        path — the cog never performs its own database lookup and never
-        duplicates business logic.
-        """
-        if ctx.guild is None:
-            await ctx.send(embed=_err(None, "tickets.integrity.server_only"), ephemeral=True)
-            return
-        gid = str(ctx.guild.id)
-        assert self.bot.ticket_service is not None
-
-        actor = ctx.author
-        is_owner = isinstance(actor, discord.Member) and actor == ctx.guild.owner
-        is_admin = isinstance(actor, discord.Member) and actor.guild_permissions.administrator
-
-        # Resolve mod role truthfully via the shared predicate (single source
-        # of truth, mirrors the /unclaim handler). The @is_mod() decorator has
-        # already gated this callback, but authority facts are built from the
-        # actor's actual guild permissions, not assumed from the decorator.
-        has_mod_role = False
-        if isinstance(actor, discord.Member):
-            _interaction = type(
-                "_Interaction",
-                (),
-                {
-                    "user": actor,
-                    "guild": ctx.guild,
-                    "guild_id": int(gid),
-                    "client": self.bot,
-                },
-            )()
-            has_mod_role = await is_mod_check(_interaction) and not is_admin
-
-        authority = RepairAuthority(
-            actor_id=str(actor.id),
-            guild_id=gid,
-            target_guild_id=gid,
-            is_guild_owner=is_owner,
-            is_administrator=is_admin,
-            has_mod_role=has_mod_role,
-        )
-
-        try:
-            result = await self.bot.ticket_service.repair_ticket_by_ref(
-                ticket_ref,
-                guild_id=gid,
-                actor_id=str(actor.id),
-                authority=authority,
-                bot=self.bot,
-            )
-        except Exception:
-            logger.exception("Failed to repair ticket (guild=%s, ref=%s)", gid, ticket_ref)
-            await ctx.send(embed=_err(gid, "tickets.integrity.repair_failed"), ephemeral=True)
-            return
-
-        if result is None:
-            # Unparseable/empty reference — the service reports the user error.
-            await ctx.send(embed=_err(gid, "tickets.reopen.invalid_ref"), ephemeral=True)
-            return
-
-        outcome = result.outcome
-        reason_suffix = t(gid, "tickets.integrity.repair_result_reason", reason=result.reason) if result.reason else ""
-        await ctx.send(
-            embed=_info(gid, "tickets.integrity.repair_result", outcome=outcome, reason=reason_suffix),
-            ephemeral=True,
-        )
+        await self._integrity_flow.repair_ticket(ctx, ticket_ref=ticket_ref)
 
 
 async def setup(bot: NebulosaBot) -> None:
