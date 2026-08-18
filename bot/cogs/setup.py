@@ -10,12 +10,13 @@ Design: ``openspec/changes/ticket-category-id-null/design.md``
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
+from bot.core.context import NebulosaContext
 from bot.core.i18n import t
 from bot.utils.checks import is_admin
 from bot.utils.embeds import error_embed, success_embed
@@ -56,7 +57,7 @@ class SetupCog(commands.Cog, name="Setup"):
     @is_admin()
     async def setup_command(
         self,
-        ctx: commands.Context[Any],
+        ctx: NebulosaContext,
         ticket_category: discord.CategoryChannel,
         mod_role: discord.Role | None = None,
         log_channel: discord.TextChannel | None = None,

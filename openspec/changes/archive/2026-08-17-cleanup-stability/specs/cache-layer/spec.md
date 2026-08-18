@@ -1,10 +1,6 @@
-# Cache Layer Specification
+# Delta for cache-layer
 
-## Purpose
-
-Define the per-guild RAM cache with TTL expiry.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Per-guild TTL cache
 
@@ -39,23 +35,3 @@ The system MUST maintain a separate TTL cache entry for each guild with a defaul
 - GIVEN member coins or economy configuration changes
 - WHEN S1 cache guarantees are evaluated
 - THEN no immediate Realtime invalidation guarantee is required and the S2 deferral is explicit
-
-### Requirement: Cache operations
-
-The system MUST support get, set, and invalidate operations for guild-scoped data.
-
-#### Scenario: Cache hit
-
-- GIVEN a guild configuration is in cache
-- WHEN a read request arrives
-- THEN the cached value is returned without querying the database
-
-#### Scenario: Cache invalidation
-
-- GIVEN a guild configuration is cached
-- WHEN the configuration is updated
-- THEN the cached entry is invalidated
-
-<!-- BEGIN DELTA: cleanup-stability (cache-layer) -->
-<!-- Delta: cleanup-stability — Hygiene & Stability (S1 L3) — TTL contract 300s/30s + S2 deferral explicit -->
-<!-- END DELTA: cleanup-stability (cache-layer) -->

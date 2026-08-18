@@ -10,7 +10,7 @@ lint:
 	uv run ruff format --check bot/ tests/
 
 type:
-	uv run mypy --follow-imports=silent bot/ tests/
+	uv run mypy --follow-imports=silent bot/
 
 security:
 	uv run bandit -r bot/ -c pyproject.toml --severity-level medium

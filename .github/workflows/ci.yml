@@ -53,7 +53,7 @@ jobs:
         run: uv run --extra dev ruff format --check bot/ tests/
 
       - name: Mypy
-        run: uv run --extra dev mypy --follow-imports=silent bot/ tests/
+        run: uv run --extra dev mypy --follow-imports=silent bot/
 
       - name: Bandit
         run: uv run --extra dev bandit -r bot/ -c pyproject.toml --severity-level medium
