@@ -48,10 +48,10 @@ Chain strategy: stacked-to-main
 
 ## S2.4 Repair Seam (PR4→PR3)
 
-- [ ] 4.1 RED `tests/test_repair_eligibility.py`+`test_repair_convergence.py` for `evaluate_repair_eligibility(preflight_allows,corroborated)`→`skipped gate_unresolved|evidence_unresolved`, corroborated→one winner/second→`already_closed`.
-- [ ] 4.2 Extract adapters behind `TicketService` facade (`handle_channel_delete`,`sweep_integrity`,`repair_ticket_by_ref|from_evidence`→adapter); single seam; no duplicated gate/evidence, no direct mutate; race via `transition_ticket_to_closed(guild_id,ticket_id)`.
-- [ ] 4.3 Preserve `TicketService`,`TicketsCog`,`TicketPanelView`/`TicketActionsView`, IDs `ticket:open|claim|close|edit-category`,`timeout=None`+`bot.add_view()`, guild-scoped `get_ticket_by_number`.
-- [ ] 4.4 Gate `ruff` 0 · `mypy bot` 0 · `pytest -q` 1814 pass · `pre-commit` pass.
+- [x] 4.1 RED `tests/test_repair_eligibility.py`+`test_repair_convergence.py` for `evaluate_repair_eligibility(preflight_allows,corroborated)`→`skipped gate_unresolved|evidence_unresolved`, corroborated→one winner/second→`already_closed`.
+- [x] 4.2 Extract adapters behind `TicketService` facade (`handle_channel_delete`,`sweep_integrity`,`repair_ticket_by_ref|from_evidence`→adapter); single seam; no duplicated gate/evidence, no direct mutate; race via `transition_ticket_to_closed(guild_id,ticket_id)`.
+- [x] 4.3 Preserve `TicketService`,`TicketsCog`,`TicketPanelView`/`TicketActionsView`, IDs `ticket:open|claim|close|edit-category`,`timeout=None`+`bot.add_view()`, guild-scoped `get_ticket_by_number`.
+- [x] 4.4 Gate `ruff` 0 · `mypy bot` 0 · `pytest -q` 1814 pass · `pre-commit` pass.
 
 ## Out of Scope → S3
 

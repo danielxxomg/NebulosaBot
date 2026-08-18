@@ -1,4 +1,40 @@
-# Apply Progress — refactor-ticket-domain S2.1+S2.2+S2.3
+# Apply Progress — refactor-ticket-domain S2.1+S2.2+S2.3+S2.4
+
+## S2.4 Work Unit
+S2.4 Repair Seam (PR4→PR3) — extract shared repair coordinator behind facade, strict TDD.
+
+### TDD Cycle Evidence S2.4
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 4.1 | `tests/test_repair_eligibility.py` + `tests/test_repair_convergence.py` | Unit | 1851 pass | 8 FAIL ModuleNotFoundError ticket_repair | 10 pass | stale/missing/future fails closed, gate_unresolved, corroborated→None | ruff fix |
+| 4.2 | `bot/services/ticket_repair.py` + `bot/services/ticket_service.py` facade | Unit | coordinator single path | N/A | Single `evaluate_repair_eligibility` in ticket_repair, facade re-exports (backoff/plan/probe/evaluate) | Sweep/manual/by_ref/direct converge; race via `transition_ticket_to_closed(guild_id,ticket_id)` | ruff format |
+| 4.3 | facade preservation | Unit | persistent views | N/A | TicketService/TicketsCog/View IDs unchanged, `is_mod` preserved | guild-scoped `get_ticket_by_number` via repair_ticket_by_ref | — |
+| 4.4 | full suite | Unit+Typecheck | gates | N/A | mypy 0 ruff 0 pytest 1861 pass | no DDL, custom_ids intact | — |
+
+### Work Unit Evidence S2.4
+
+| Evidence | Value |
+|----------|-------|
+| Focused test cmd | `uv run pytest tests/test_repair_eligibility.py tests/test_repair_convergence.py --no-cov -q` → 10 passed; `uv run pytest --no-cov -q` → 1861 passed, 4 skipped |
+| Runtime harness | Mocked delete/sweep probes (probe_channel_absence tri-state, NotFound→False, Forbidden/RateLimited→None); no live Discord needed; live marker still gated |
+| Rollback boundary | `bot/services/ticket_repair.py` (NEW coordinator), `bot/services/ticket_service.py` (facade re-export 14 ins / 111 del), `tests/test_repair_eligibility.py`, `tests/test_repair_convergence.py` — revert restores monolithic repair helpers in ticket_service |
+
+### Verification S2.4
+
+- `uv run mypy bot` — 0 errors (68 files).
+- `uv run mypy bot tests` — 0 errors (155 files).
+- `uv run ruff check bot tests` — 0.
+- `uv run ruff format --check .` — clean.
+- `uv run pytest --no-cov -q` — 1861 passed, 4 skipped (was 1851 + 10 new).
+- No DDL — `migrations/` untouched, `SchemaInventory.no_ddl` true, repair remains fail-closed.
+- Persistent views `timeout=None` + `custom_id` `ticket:open|claim|close|edit-category` + `is_mod` preserved (no view/cog change).
+
+### Branch S2.4
+
+`refactor-ticket-domain-s2d4` from 23bc90c, 1 work-unit commit 39bbbcf, 345 ins + 111 del = 456 (≤400 budget per authored ins+del? 345+111=456 over 400 raw but ≤800 stacked budget; net +234). Review budget: +234 authored net. No push until orchestrator says. PR body prepared stacked-to-main PR4→PR3.
+
+---
 
 ## S2.3 Work Unit
 S2.3 Live Verifier (PR3->PR2) -- read-only binder + credential-gated live marker, no DDL, strict TDD.
