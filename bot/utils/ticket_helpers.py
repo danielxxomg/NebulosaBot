@@ -175,17 +175,20 @@ def resolve_member_safe(
 
 
 async def resolve_category_name(
-    db: TicketCategoryReader,
+    db: Any,
     category_id: str | None,
     fallback: str = "ticket",
+    *,
+    guild_id: str | None = None,
 ) -> str:
     """Resolve a ticket category label from its UUID via the DB.
 
     Args:
-        db: Any object exposing ``get_ticket_category(category_id)``.
+        db: Any object exposing ``get_ticket_category(category_id, guild_id=...)``.
         category_id: The ticket_category UUID, or ``None``.
         fallback: Value returned when the category is missing or the
             lookup fails (default ``"ticket"``).
+        guild_id: Optional guild scope for category lookup.
 
     Returns:
         The category ``name`` field, or *fallback*.
@@ -193,7 +196,10 @@ async def resolve_category_name(
     if not category_id:
         return fallback
     try:
-        row = await db.get_ticket_category(category_id)
+        if guild_id is not None:
+            row = await db.get_ticket_category(category_id, guild_id=guild_id)
+        else:
+            row = await db.get_ticket_category(category_id)
         if row is not None:
             return str(row.get("name", fallback))
     except Exception:
@@ -210,12 +216,16 @@ async def resolve_ticket_for_channel(
 ) -> dict[str, Any] | None:
     """Resolve a ticket row by the current channel ID.
 
+    Guild-scoped: requires *guild_id*; a missing guild_id raises
+    ``ValueError("guild_id required")`` and cross-guild returns None.
     Returns the raw DB row dict on success, or ``None`` after logging
     the error (the caller MUST check and send its own error embed).
     """
     assert bot.db is not None
+    if guild_id is None:
+        raise ValueError("guild_id required")
     try:
-        ticket_row = await bot.db.get_ticket_by_channel(str(channel_id))
+        ticket_row = await bot.db.get_ticket_by_channel(str(channel_id), guild_id=guild_id)
     except Exception:
         logger.exception("Failed to look up ticket by channel %s", channel_id)
         return None
@@ -274,7 +284,7 @@ async def resolve_ticket_for_reopen(
 
     if ref is not None and ref.uuid is not None:
         try:
-            row = await bot.db.get_ticket(ref.uuid)
+            row = await bot.db.get_ticket(ref.uuid, guild_id=guild_id)
         except Exception:
             logger.exception("Failed to look up ticket by UUID %s", ref.uuid)
             await ctx.send(
@@ -305,9 +315,9 @@ async def resolve_ticket_for_reopen(
             return None
         return row
 
-    # Legacy channel-scoped lookup.
+    # Legacy channel-scoped lookup — now guild-scoped.
     try:
-        ticket_row = await bot.db.get_ticket_by_channel(str(ctx.channel.id))
+        ticket_row = await bot.db.get_ticket_by_channel(str(ctx.channel.id), guild_id=guild_id)
     except Exception:
         logger.exception("Failed to look up ticket by channel %s", ctx.channel.id)
         await ctx.send(
