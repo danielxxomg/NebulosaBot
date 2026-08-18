@@ -3,13 +3,17 @@
 Provides mocked Database, real TTLCache, sample GuildConfig, and Discord
 mock objects that avoid hitting the real Discord API or Supabase.
 
-Also provides ``frozen_clock`` — a deterministic ``datetime.now()`` fixture
+Also provides ``frozen_clock`` -- a deterministic ``datetime.now()`` fixture
 using ``freezegun`` to eliminate date-time flake risk under ``pytest-randomly``.
+
+Also configures the ``live`` marker (S2.3): credential-gated live Supabase
+read-only verifier behind ``--run-live`` / ``LIVE_SUPABASE=1``.
 """
 
 from __future__ import annotations
 
 import asyncio
+import os
 import selectors
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
@@ -31,6 +35,27 @@ _FROZEN_NOW = datetime(2024, 6, 15, 12, 0, 0, tzinfo=UTC)
 # Individual i18n test modules override with their own marker locales and
 # restore the originals on teardown.
 # ---------------------------------------------------------------------------
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--run-live",
+        action="store_true",
+        default=False,
+        help="run live Supabase read-only tests (also gated by LIVE_SUPABASE=1 or SUPABASE_URL)",
+    )
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    run_live = bool(config.getoption("--run-live")) or os.getenv("LIVE_SUPABASE") == "1"
+    if run_live:
+        return
+    skip_live = pytest.mark.skip(
+        reason="live Supabase not enabled -- pass --run-live with LIVE_SUPABASE=1 + SUPABASE_URL"
+    )
+    for item in items:
+        if "live" in item.keywords:
+            item.add_marker(skip_live)
 
 
 @pytest.fixture(scope="session", autouse=True)

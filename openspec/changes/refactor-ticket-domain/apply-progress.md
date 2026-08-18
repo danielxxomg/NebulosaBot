@@ -1,3 +1,41 @@
+# Apply Progress — refactor-ticket-domain S2.1+S2.2+S2.3
+
+## S2.3 Work Unit
+S2.3 Live Verifier (PR3->PR2) -- read-only binder + credential-gated live marker, no DDL, strict TDD.
+
+### TDD Cycle Evidence S2.3
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 3.1 | `tests/test_schema_inventory_verifier.py` | Unit | 1842 pass | 9 FAIL AttributeError bind_live_evidence | 9 pass 1 skipped | 9 zero-policy / 6 FK / 4 CDC / 19 migrations / drift | ruff format |
+| 3.2 | `bot/services/schema_inventory.py` | Unit | bind_live_evidence | N/A | LiveEvidenceReport + verify_live_parity, no DDL, TEXT/UUID flag | category_id_type_mismatch triage | ruff fix |
+| 3.3 | `tests/conftest.py` + `pyproject.toml` | Integration | live marker | UnknownMark | live marker registered, --run-live gated skip | LIVE_SUPABASE=1 opt-in | -- |
+| 3.4 | full suite | Unit+Typecheck | gates | N/A | mypy 0 ruff 0 pytest 1851 pass | --run-live --collect-only | -- |
+
+### Work Unit Evidence S2.3
+
+| Evidence | Value |
+|----------|-------|
+| Focused test cmd | `uv run pytest tests/test_schema_inventory_verifier.py --no-cov -q` -> 9 passed, 1 skipped; `uv run pytest -m live --run-live --collect-only -q` -> 1 collected |
+| Runtime harness | `LIVE_SUPABASE=1 uv run pytest -m live --run-live -q` -- skipped without creds (default), gated live path would run read-only when SUPABASE_URL present; no DDL |
+| Rollback boundary | `bot/services/schema_inventory.py` (LiveEvidenceReport/verifyLiveParity), `tests/test_schema_inventory_verifier.py`, `tests/conftest.py` live gate, `pyproject.toml` marker -- revert restores no live binder |
+
+### Verification S2.3
+
+- `uv run mypy bot tests` -- 0 errors (152 files).
+- `uv run ruff check bot tests` -- 0.
+- `uv run ruff format --check .` -- clean.
+- `uv run pytest --no-cov -q` -- 1851 passed, 4 skipped (was 1842 + 9 new).
+- `uv run pytest -m live --run-live --collect-only -q` -- 1 collected (live gated).
+- Default pytest remains credential-independent (live skipped without LIVE_SUPABASE=1).
+- No DDL -- migrations untouched, SchemaInventory.LiveEvidenceReport.no_ddl true.
+
+### Branch S2.3
+
+`refactor-ticket-domain-s2d3` from 33026d2, 1 work-unit commit, 317 ins + 1 del = 318 (<=400, <=800). Base for S2.4 repair seam.
+
+---
+
 # Apply Progress — refactor-ticket-domain S2.1+S2.2
 
 ## S2.1 Work Unit
