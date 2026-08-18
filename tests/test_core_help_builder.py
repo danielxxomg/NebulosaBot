@@ -9,7 +9,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import discord
-from discord import app_commands
 from discord.ext import commands
 
 from bot.cogs.core import _build_cog_help_embed, _build_help_pages, _resolve_prefix
