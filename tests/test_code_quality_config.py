@@ -90,9 +90,7 @@ def test_code_quality_workflow_has_jscpd_step():
     # The workflow must be report-only (continue-on-error at step level)
     # We parse YAML structurally: find jscpd step and check continue-on-error
     # Simple heuristic: the string "continue-on-error: true" must appear
-    assert "continue-on-error: true" in content, (
-        "jscpd/vulture steps must have continue-on-error: true (report-only)"
-    )
+    assert "continue-on-error: true" in content, "jscpd/vulture steps must have continue-on-error: true (report-only)"
 
 
 def test_code_quality_workflow_has_vulture_step():
@@ -102,9 +100,7 @@ def test_code_quality_workflow_has_vulture_step():
     has_vulture = "vulture" in content
     assert has_vulture, "Workflow must reference vulture"
 
-    assert "continue-on-error: true" in content, (
-        "jscpd/vulture steps must have continue-on-error: true (report-only)"
-    )
+    assert "continue-on-error: true" in content, "jscpd/vulture steps must have continue-on-error: true (report-only)"
 
 
 def test_code_quality_workflow_triggers_on_pull_request():

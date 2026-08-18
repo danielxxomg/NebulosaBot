@@ -80,9 +80,13 @@ class EconomyDBMixin:
         result = rows[0]
         # If caller provides a level override, update it separately.
         if new_level is not None:
-            await self._client.table("member").update(
-                {"level": new_level}
-            ).eq("guildId", guild_id).eq("userId", user_id).execute()
+            await (
+                self._client.table("member")
+                .update({"level": new_level})
+                .eq("guildId", guild_id)
+                .eq("userId", user_id)
+                .execute()
+            )
             result["level"] = new_level
         return result
 

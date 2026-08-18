@@ -413,9 +413,7 @@ async def test_is_mod_prefix_non_member_raises_check_failure(mock_guild: MagicMo
 
 
 @pytest.mark.asyncio
-async def test_is_mod_prefix_malformed_cache_denies(
-    mock_guild: MagicMock, mock_member: MagicMock
-) -> None:
+async def test_is_mod_prefix_malformed_cache_denies(mock_guild: MagicMock, mock_member: MagicMock) -> None:
     """Malformed mod role cache values MUST deny-by-default (CheckFailure)."""
     prefix_predicate = is_mod().prefix_predicate
 
@@ -457,9 +455,7 @@ async def test_is_mod_prefix_mod_role_passes(mock_guild: MagicMock, mock_mod_mem
 
 
 @pytest.mark.asyncio
-async def test_is_mod_prefix_regular_user_raises_missing_role(
-    mock_guild: MagicMock, mock_member: MagicMock
-) -> None:
+async def test_is_mod_prefix_regular_user_raises_missing_role(mock_guild: MagicMock, mock_member: MagicMock) -> None:
     """A user without the mod role MUST raise commands.MissingRole when mod role is configured."""
     prefix_predicate = is_mod().prefix_predicate
 
@@ -489,9 +485,7 @@ async def test_is_mod_prefix_dm_raises_no_private_message() -> None:
 
 
 @pytest.mark.asyncio
-async def test_is_mod_prefix_unconfigured_raises_check_failure(
-    mock_guild: MagicMock, mock_member: MagicMock
-) -> None:
+async def test_is_mod_prefix_unconfigured_raises_check_failure(mock_guild: MagicMock, mock_member: MagicMock) -> None:
     """When no mod role is configured and user is not admin, MUST raise commands.CheckFailure."""
     prefix_predicate = is_mod().prefix_predicate
 

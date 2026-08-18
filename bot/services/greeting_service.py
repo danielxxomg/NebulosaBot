@@ -230,8 +230,7 @@ def _generate_greeting_card_compatibly(image_service: ImageService, **renderer_k
     except TypeError as exc:
         message = str(exc)
         if "unexpected keyword argument" not in message or not any(
-            keyword in message
-            for keyword in ("greeting_title", "member_count_text", "guild_icon_url")
+            keyword in message for keyword in ("greeting_title", "member_count_text", "guild_icon_url")
         ):
             raise
         renderer_kwargs.pop("greeting_title", None)

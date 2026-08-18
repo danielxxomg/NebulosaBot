@@ -53,9 +53,7 @@ def validate_field_definitions(raw: Any) -> list[dict[str, Any]]:
         if not key or not isinstance(key, str):
             raise ValueError(f"field_definitions[{i}].key is required and must be a non-empty string")
         if not _KEY_RE.match(key):
-            raise ValueError(
-                f"field_definitions[{i}].key must match ^[a-z][a-z0-9_]{{0,31}}$, got {key!r}"
-            )
+            raise ValueError(f"field_definitions[{i}].key must match ^[a-z][a-z0-9_]{{0,31}}$, got {key!r}")
         if key in seen_keys:
             raise ValueError(f"field_definitions has duplicate key: {key!r}")
         seen_keys.add(key)
@@ -82,9 +80,7 @@ def validate_field_definitions(raw: Any) -> list[dict[str, Any]]:
         hard_max = _MAX_MAX_LENGTH_SHORT if style == "short" else _MAX_MAX_LENGTH_PARAGRAPH
         max_length = item.get("max_length", default_max)
         if not isinstance(max_length, int) or max_length < 1 or max_length > hard_max:
-            raise ValueError(
-                f"field_definitions[{i}].max_length must be between 1 and {hard_max}, got {max_length!r}"
-            )
+            raise ValueError(f"field_definitions[{i}].max_length must be between 1 and {hard_max}, got {max_length!r}")
 
         # --- placeholder (optional) ---
         placeholder = item.get("placeholder")
