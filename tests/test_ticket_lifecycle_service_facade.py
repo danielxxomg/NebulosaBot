@@ -106,7 +106,9 @@ async def test_facade_delegates_close_ticket_once(mock_db: AsyncMock) -> None:
     mock_lc.close_ticket = AsyncMock(return_value=MagicMock(spec=Ticket))
     svc._lifecycle = mock_lc  # type: ignore[attr-defined]
     await svc.close_ticket("t1", closed_by="u1")
-    mock_lc.close_ticket.assert_awaited_once_with("t1", closed_by="u1", transcript_url=None, close_reason=None)
+    mock_lc.close_ticket.assert_awaited_once_with(
+        "t1", closed_by="u1", transcript_url=None, close_reason=None, guild_id=None
+    )
     mock_db.transition_ticket_to_closed.assert_not_awaited()
 
 
@@ -208,11 +210,11 @@ async def test_facade_delegates_note_ops_once(mock_db: AsyncMock) -> None:
     mock_lc.delete_note = AsyncMock(return_value=None)
     svc._lifecycle = mock_lc  # type: ignore[attr-defined]
     await svc.create_note("t1", author_id="u1", content="hi")
-    mock_lc.create_note.assert_awaited_once_with("t1", "u1", "hi")
+    mock_lc.create_note.assert_awaited_once_with("t1", "u1", "hi", guild_id=None)
     await svc.get_notes("t1")
-    mock_lc.get_notes.assert_awaited_once_with("t1")
+    mock_lc.get_notes.assert_awaited_once_with("t1", guild_id=None)
     await svc.delete_note("n1", author_id="u1", ticket_id="t1")
-    mock_lc.delete_note.assert_awaited_once_with("n1", "u1", ticket_id="t1")
+    mock_lc.delete_note.assert_awaited_once_with("n1", "u1", ticket_id="t1", guild_id=None)
     mock_db.insert_ticket_note.assert_not_awaited()
     mock_db.get_ticket_notes.assert_not_awaited()
 

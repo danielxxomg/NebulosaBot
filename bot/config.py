@@ -18,6 +18,12 @@ class ServiceRoleValidationError(RuntimeError):
 
 
 def _decode_jwt_role(key: str) -> str | None:
+    """Decode JWT role without verifying signature (structure check only).
+
+    Signature verification is attempted by :func:`_verify_jwt_signature` when
+    ``PyJWT`` and ``SUPABASE_JWT_SECRET`` are available; otherwise this payload-only
+    path is retained for posture compatibility and explicit TODO for S4 JWKS.
+    """
     key = key.strip()
     parts = key.split(".")
     if len(parts) != 3:
@@ -26,6 +32,33 @@ def _decode_jwt_role(key: str) -> str | None:
     pad = "=" * (-len(payload_b64) % 4)
     try:
         payload = json.loads(base64.urlsafe_b64decode(payload_b64 + pad).decode())
+    except Exception:
+        return None
+    role = payload.get("role")
+    return str(role) if isinstance(role, str) else None
+
+
+def _verify_jwt_signature(key: str) -> str | None:
+    """Attempt PyJWT HS256 verification with SUPABASE_JWT_SECRET.
+
+    Returns the ``role`` claim only when verification succeeds with algorithm
+    allowlist ``["HS256"]``. Returns ``None`` when verification cannot be
+    attempted (no library/secret) or fails (invalid signature/alg) — caller
+    MUST treat ``None`` as unverifiable and fail-closed for legacy JWT path.
+
+    TODO(S4): add JWKS/RS256 verification for Supabase JWTs signed with asymmetric
+    keys; HS256 allowlist remains required and any non-allowlisted alg MUST be
+    rejected. See plan.md cred rotation / JWKS follow-up.
+    """
+    secret = os.getenv("SUPABASE_JWT_SECRET", "").strip()
+    if not secret:
+        return None
+    try:
+        import jwt as pyjwt
+    except Exception:
+        return None
+    try:
+        payload: dict[str, object] = pyjwt.decode(key, secret, algorithms=["HS256"])
     except Exception:
         return None
     role = payload.get("role")
@@ -65,6 +98,21 @@ def validate_supabase_key(key: str) -> None:
     # Modern Supabase secret key — opaque, not a JWT; acceptance is proven
     # by a read-only SELECT probe on RLS-enabled tables in health_check.
     if key.startswith("sb_secret_"):
+        return
+    # Legacy JWT path: when SUPABASE_JWT_SECRET is configured, require PyJWT HS256
+    # signature verification (allowlisted alg). Fake signatures MUST fail closed
+    # when verification is enforceable; payload-only decode is retained as fallback
+    # only when verification cannot be attempted (no secret/library), with JWKS
+    # deferred to S4 (see _verify_jwt_signature TODO).
+    verified_role = _verify_jwt_signature(key)
+    has_secret = bool(os.getenv("SUPABASE_JWT_SECRET", "").strip())
+    if has_secret:
+        if verified_role is None:
+            raise ServiceRoleValidationError(
+                "Supabase JWT signature verification failed (HS256) — expected service_role JWT"
+            )
+        if verified_role != "service_role":
+            raise ServiceRoleValidationError(f"Supabase key role is {verified_role!r}, expected service_role")
         return
     role = _decode_jwt_role(key)
     if role is None:

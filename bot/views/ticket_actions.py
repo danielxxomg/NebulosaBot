@@ -330,7 +330,7 @@ class TicketActionsView(discord.ui.View):
             )
             return
         assert bot.db is not None
-        ticket_row = await bot.db.get_ticket_by_channel(str(channel_id))
+        ticket_row = await bot.db.get_ticket_by_channel(str(channel_id), guild_id=guild_id)
         if ticket_row is None:
             await interaction.response.send_message(
                 embed=error_embed(

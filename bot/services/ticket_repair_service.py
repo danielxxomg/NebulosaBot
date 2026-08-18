@@ -510,7 +510,7 @@ class TicketRepairService:
         else:
             assert ref.uuid is not None
             try:
-                row = await self._db.get_ticket(ref.uuid)
+                row = await self._db.get_ticket(ref.uuid, guild_id=guild_id)
             except Exception as exc:
                 logger.warning(
                     "repair_ticket_by_ref: uuid lookup failed (guild=%s, ref=%r): %s",
@@ -635,7 +635,7 @@ class TicketRepairService:
 
         row = None
         try:
-            row = await self._db.get_ticket(ticket_id)
+            row = await self._db.get_ticket(ticket_id, guild_id=guild_id)
         except Exception:
             logger.warning(
                 "Manual repair DB lookup failed for ticket %s (guild %s)",
