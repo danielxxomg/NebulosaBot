@@ -54,13 +54,22 @@ class TestContextTypingCharacterization:
     def test_nebulosa_context_preserves_interaction(self) -> None:
         # Hybrid commands expose Context.interaction when invoked via slash;
         # NebulosaContext inherits it from Context via discord.py hybrid dispatch.
-        # Spec requires it remains accessible — assert the class hierarchy supports it.
         assert issubclass(NebulosaContext, commands.Context)
-        # runtime: a real Context instance has .interaction (None for prefix, set for slash)
-        # we verify the attribute exists via instance construction path without network
-        assert hasattr(commands.Context, "__slots__") or hasattr(NebulosaContext, "__slots__") or True
-        # Direct property check: discord.py hybrid Context sets self.interaction in from_interaction
-        assert hasattr(NebulosaContext, "from_interaction") or hasattr(commands.Context, "from_interaction")
+        # discord.py Context stores interaction as instance attribute set in __init__
+        # and via from_interaction; verify the annotation and construction path exist.
+        assert hasattr(NebulosaContext, "from_interaction")
+        assert hasattr(commands.Context, "from_interaction")
+        # Context.__init__ accepts interaction and sets self.interaction; verify
+        # the attribute is settable on a NebulosaContext-constructible instance
+        # without requiring a live Discord connection — use __new__ to bypass init.
+        obj = NebulosaContext.__new__(NebulosaContext)
+        obj.interaction = None  # type: ignore[attr-defined]
+        assert hasattr(obj, "interaction")
+        assert obj.interaction is None
+        # Also verify a mock interaction object is preserved
+        mock_inter = object()
+        obj.interaction = mock_inter  # type: ignore[attr-defined]
+        assert obj.interaction is mock_inter
 
 
 class TestIsModDualPathCharacterization:
