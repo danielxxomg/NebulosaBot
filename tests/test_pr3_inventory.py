@@ -101,3 +101,29 @@ class TestReadOnlyInventoryContract:
         inv = SchemaInventory.build()
         assert inv.no_ddl is True
         assert inv.ddl_statements == ""
+
+    def test_schema_inventory_runtime_parity_binding(self) -> None:
+        """SchemaInventory MUST consume runtime parity facts and expose FK/RLS state."""
+        from bot.services.schema_inventory import SchemaInventory
+
+        inv = SchemaInventory.build()
+        assert hasattr(inv, "runtime_parity_reasons")
+        assert hasattr(inv, "fk_live_verified")
+        assert hasattr(inv, "rls_live_verified")
+        # Live FK/RLS require DB connection — deferred to S2
+        assert inv.fk_live_verified is False
+        assert inv.rls_live_verified is False
+        # Parity binding exposes explicit reasons for deferral
+        assert isinstance(inv.runtime_parity_reasons, tuple)
+
+    def test_guild_scope_cross_guild_detection(self) -> None:
+        """Listing MUST detect ID-only gaps that could cross guild boundaries."""
+        from bot.services.schema_inventory import GUILD_SCOPE_GAPS, is_guild_scope_gap
+
+        # Simulate cross-guild risk: ID-only method would return foreign guild's row
+        foreign_method = "get_ticket"
+        assert is_guild_scope_gap(foreign_method) is True
+        # Inventory-only (S2 enforcement deferred) — detection, not mutation
+        assert foreign_method in GUILD_SCOPE_GAPS
+        # Non-gap methods are not flagged
+        assert is_guild_scope_gap("get_tickets_by_guild") is False

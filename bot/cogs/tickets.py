@@ -11,12 +11,13 @@ import contextlib
 import json
 import logging
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
+from bot.core.context import NebulosaContext
 from bot.core.i18n import t
 from bot.models.ticket_category import TicketCategory
 from bot.services.ticket_field_service import validate_field_definitions
@@ -204,7 +205,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @is_mod()
     async def ticket_panel(
         self,
-        ctx: commands.Context[Any],
+        ctx: NebulosaContext,
         *,
         title: str | None = None,
         description_text: str | None = None,
@@ -248,7 +249,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @is_mod()
     async def create_category(
         self,
-        ctx: commands.Context[Any],
+        ctx: NebulosaContext,
         name: str,
         emoji: str | None = None,
         description: str | None = None,
@@ -289,7 +290,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     )
     @app_commands.default_permissions(administrator=True)
     @is_mod()
-    async def list_categories(self, ctx: commands.Context[Any]) -> None:
+    async def list_categories(self, ctx: NebulosaContext) -> None:
         if ctx.guild is None:
             return
         assert self.bot.db is not None
@@ -337,7 +338,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     )
     @app_commands.default_permissions(administrator=True)
     @is_mod()
-    async def delete_category(self, ctx: commands.Context[Any], category_id: str) -> None:
+    async def delete_category(self, ctx: NebulosaContext, category_id: str) -> None:
         if ctx.guild is None:
             return
         assert self.bot.db is not None
@@ -382,7 +383,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     )
     @app_commands.default_permissions(administrator=True)
     @is_mod()
-    async def configure_fields(self, ctx: commands.Context[Any]) -> None:
+    async def configure_fields(self, ctx: NebulosaContext) -> None:
         """Configure custom intake fields for a ticket category."""
         gid = str(ctx.guild.id) if ctx.guild else None
         await ctx.send(embed=_info(gid, "tickets.configure_fields.help"), ephemeral=True)
@@ -408,7 +409,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @is_mod()
     async def configure_fields_set(
         self,
-        ctx: commands.Context[Any],
+        ctx: NebulosaContext,
         category_id: str,
         fields_json: str,
     ) -> None:
@@ -492,13 +493,13 @@ class TicketsCog(commands.Cog, name="Tickets"):
         ),
     )
     @is_mod()
-    async def subticket(self, ctx: commands.Context[Any]) -> None:
+    async def subticket(self, ctx: NebulosaContext) -> None:
         gid = str(ctx.guild.id) if ctx.guild else None
         await ctx.send(embed=_info(gid, "tickets.subticket.help"))
 
     @staticmethod
     async def _resolve_parent_owner(
-        guild: discord.Guild, parent_author_id: str, ctx: commands.Context[Any]
+        guild: discord.Guild, parent_author_id: str, ctx: NebulosaContext
     ) -> discord.Member | None:
         from bot.utils.ticket_helpers import resolve_member_safe
 
@@ -530,7 +531,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         )
     )
     @is_mod()
-    async def subticket_create(self, ctx: commands.Context[Any], parent_id: str | None = None) -> None:
+    async def subticket_create(self, ctx: NebulosaContext, parent_id: str | None = None) -> None:
         if ctx.guild is None:
             await ctx.send(embed=_err(None, "tickets.subticket.server_only"))
             return
@@ -625,7 +626,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         )
     )
     @is_mod()
-    async def reopen(self, ctx: commands.Context[Any], *, ticket_ref: str | None = None) -> None:
+    async def reopen(self, ctx: NebulosaContext, *, ticket_ref: str | None = None) -> None:
         if ctx.guild is None:
             await ctx.send(embed=_err(None, "tickets.reopen.server_only"))
             return
@@ -673,7 +674,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         )
     )
     @is_mod()
-    async def transfer(self, ctx: commands.Context[Any], member: discord.Member) -> None:
+    async def transfer(self, ctx: NebulosaContext, member: discord.Member) -> None:
         if ctx.guild is None:
             await ctx.send(embed=_err(None, "tickets.transfer.server_only"))
             return
@@ -710,7 +711,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             key="slash.descriptions.unclaim",
         ),
     )
-    async def unclaim(self, ctx: commands.Context[Any]) -> None:
+    async def unclaim(self, ctx: NebulosaContext) -> None:
         """Unclaim a ticket — available to the claimer or moderators."""
         if ctx.guild is None:
             await ctx.send(embed=_err(None, "tickets.actions.unclaim_not_ticket_title"))
@@ -831,7 +832,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         ),
     )
     @is_mod()
-    async def note(self, ctx: commands.Context[Any]) -> None:
+    async def note(self, ctx: NebulosaContext) -> None:
         gid = str(ctx.guild.id) if ctx.guild else None
         await ctx.send(embed=_info(gid, "tickets.note.help"))
 
@@ -849,7 +850,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         )
     )
     @is_mod()
-    async def note_add(self, ctx: commands.Context[Any], content: str) -> None:
+    async def note_add(self, ctx: NebulosaContext, content: str) -> None:
         gid = str(ctx.guild.id) if ctx.guild else None
         assert self.bot.ticket_service is not None
         row = await resolve_ticket_for_channel(self.bot, ctx.channel.id, gid, action="note_add")
@@ -864,7 +865,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
         await ctx.send(embed=_ok(gid, "tickets.note.add_success", id=note.id))
 
-    async def _send_notes_private(self, ctx: commands.Context[Any], embed: discord.Embed) -> None:
+    async def _send_notes_private(self, ctx: NebulosaContext, embed: discord.Embed) -> None:
         gid = str(ctx.guild.id) if ctx.guild else None
         if ctx.interaction is not None:
             await ctx.send(embed=embed, ephemeral=True)
@@ -885,7 +886,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         ),
     )
     @is_mod()
-    async def note_list(self, ctx: commands.Context[Any]) -> None:
+    async def note_list(self, ctx: NebulosaContext) -> None:
         gid = str(ctx.guild.id) if ctx.guild else None
         assert self.bot.ticket_service is not None
         row = await resolve_ticket_for_channel(self.bot, ctx.channel.id, gid, action="note_list")
@@ -925,7 +926,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         )
     )
     @is_mod()
-    async def note_delete(self, ctx: commands.Context[Any], note_id: str) -> None:
+    async def note_delete(self, ctx: NebulosaContext, note_id: str) -> None:
         gid = str(ctx.guild.id) if ctx.guild else None
         assert self.bot.ticket_service is not None
         row = await resolve_ticket_for_channel(self.bot, ctx.channel.id, gid, action="note_delete")
@@ -954,7 +955,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         ),
     )
     @is_mod()
-    async def sweep_integrity(self, ctx: commands.Context[Any]) -> None:
+    async def sweep_integrity(self, ctx: NebulosaContext) -> None:
         """Run one bounded integrity sweep and report a localized summary.
 
         A thin delegator: builds no evidence and mutates nothing itself. It
@@ -996,7 +997,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         ),
     )
     @is_mod()
-    async def repair_ticket(self, ctx: commands.Context[Any], *, ticket_ref: str) -> None:
+    async def repair_ticket(self, ctx: NebulosaContext, *, ticket_ref: str) -> None:
         """Manually repair one ticket using explicit authority + fresh probe.
 
         A thin delegator: builds a pure :class:`RepairAuthority` from the
