@@ -41,10 +41,10 @@ Chain strategy: stacked-to-main
 
 ## S2.3 Live Verifier (PR3→PR2)
 
-- [ ] 3.1 RED `tests/test_schema_inventory_verifier.py` mocked: 9 zero-policy RLS, 6 CASCADE FKs, 4 CDC (`guild,greeting_config,ticket,ticket_note`), 19 migrations, 12 gaps; drift→`resolved=False`+reason; no DDL.
-- [ ] 3.2 Binder `bot/services/schema_inventory.py`+`integrity_report.py`: typed `SchemaInventory` (`no_ddl=True`, `SELECT` only `pg_constraint/pg_policies/pg_publication_tables/pg_stat_user_indexes`, anon/publishable→deny).
-- [ ] 3.3 Opt-in `live` marker (`pytest -m live`) credential-gated; default `pytest` mocked-only skips live; live no DDL. `pytest -m live --collect-only`.
-- [ ] 3.4 Gate `ruff` 0 · `mypy bot tests` 0 · `pytest -q` pass.
+- [x] 3.1 RED `tests/test_schema_inventory_verifier.py` mocked: 9 zero-policy RLS, 6 CASCADE FKs, 4 CDC (`guild,greeting_config,ticket,ticket_note`), 19 migrations, 12 gaps; drift→`resolved=False`+reason; no DDL.
+- [x] 3.2 Binder `bot/services/schema_inventory.py`+`integrity_report.py`: typed `SchemaInventory` (`no_ddl=True`, `SELECT` only `pg_constraint/pg_policies/pg_publication_tables/pg_stat_user_indexes`, anon/publishable→deny).
+- [x] 3.3 Opt-in `live` marker (`pytest -m live`) credential-gated; default `pytest` mocked-only skips live; live no DDL. `pytest -m live --collect-only`.
+- [x] 3.4 Gate `ruff` 0 · `mypy bot tests` 0 · `pytest -q` pass.
 
 ## S2.4 Repair Seam (PR4→PR3)
 
