@@ -77,13 +77,13 @@ TicketRepairService (repair/channel/transcript) single evaluate_repair_eligibili
 - [x] S3.4A.2 Create ticket_admin_flow.py(250)/ticket_lifecycle_flow.py(315)/ticket_notes_flow.py(115)/ticket_integrity_flow.py(105) + TicketsCog thin facade (464) delegates via composition, preserve hybrid names, is_mod, guild scoping
 - [x] S3.4A.3 GREEN: cog integration 1944/5 mypy 0 ruff 0 bot/tests, guild gaps empty (all get_ticket_by_channel guild_id=gid via flows), 16+8 decorators preserved, no view changes
 
-## S3.4B Views Panel/Persistent/Ephemeral
+## S3.4B Views Panel/Persistent/Ephemeral — DONE s3d4b-views @5084441 (views 3 seams behind facade, final S3 slice)
 
-3 seams via views/tickets.py 4 IDs ticket:open|claim|close|edit-category timeout=None+add_view() 300s+is_mod_check. Branch sdd/s3.4b-views base sdd/s3.4a-cog-flows. Verify `pytest -k view` full suite.
+3 seams behind views/tickets.py facade: panel/intake (TicketIntakeModal+TicketPanelView), persistent TicketActionsView (timeout=None), ephemeral 300s category selectors. Branch ticket-physical-split-s3d4b-views base b9d531d (ticket-physical-split-s3d4a-cog) stacked-to-main. Verify `uv run pytest -q && uv run mypy bot && uv run ruff check bot`.
 
-- [ ] S3.4B.1 RED: IDs/timeouts immutable stale mod/closed rejected t(guild_id)+deploy_ticket_panel(None) localized
-- [ ] S3.4B.2 Create ticket_panel.py/ticket_actions.py/ticket_category_select.py pass field_definitions to TicketIntakeModal
-- [ ] S3.4B.3 GREEN: panel/intake persistent startup ephemeral revalidation 1864/5
+- [x] S3.4B.1 RED: 4 IDs + 2 timeouts + revalidation + t(guild_id) + field_definitions — tests/test_ticket_views_split_facade.py 12 GREEN (was 5 RED pre-facade)
+- [x] S3.4B.2 Create ticket_panel.py(477)/ticket_actions.py(384)/ticket_category_select.py(295) + facade re-exports, preserve 4 custom_ids, timeout None + 300s, is_mod_check revalidation (stale mod/closed re-fetch), field_definitions via _CategorySelect
+- [x] S3.4B.3 GREEN: 1956/5 mypy bot 0 ruff bot 0, GGA PASSED, facade keeps bot.bot add_view() imports, no cog changes
 
 ## Out of Scope
 
