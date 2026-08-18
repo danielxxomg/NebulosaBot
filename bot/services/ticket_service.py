@@ -35,6 +35,7 @@ from bot.services.ticket_invariants import (
     is_duplicate_note,
     parse_ticket_ref,
 )
+from bot.services.ticket_query_service import TicketQueryService
 from bot.services.ticket_repair import (
     backoff_delay as _coordinator_backoff_delay,
 )
@@ -85,16 +86,17 @@ class TicketService:
     Args:
         db: The bot's :class:`~bot.core.database.Database` instance.
         cache: The bot's :class:`~bot.core.cache.TTLCache` instance.
+
+    Facade over the S3 decomposition: query/cache ownership lives in
+    :class:`TicketQueryService` (single cache-mutation owner).
     """
 
-    __slots__ = ("_cache", "_db", "_ticket_channel_cache")
+    __slots__ = ("_cache", "_db", "_query")
 
     def __init__(self, db: Database, cache: TTLCache) -> None:
-        self._db = db
-        self._cache = cache
-        # Channel IDs (int) of currently open tickets — used by the
-        # on_message listener for O(1) early-return check.
-        self._ticket_channel_cache: set[int] = set()
+        self._db: Database = db
+        self._cache: TTLCache = cache
+        self._query: TicketQueryService = TicketQueryService(db)
 
     # ----------------------------------------------------------------
     # Public API
@@ -167,7 +169,7 @@ class TicketService:
                     custom_fields=custom_fields,
                 )
                 ticket = Ticket.from_db_row(row)
-                self._ticket_channel_cache.add(int(channel_id))
+                self._query.add_channel(int(channel_id))
                 logger.info(
                     "Ticket #%d created (guild=%s, channel=%s)",
                     ticket_number,
@@ -258,8 +260,8 @@ class TicketService:
         is_zombie = close_reason is not None and close_reason.startswith("zombie:")
 
         if not is_zombie:
-            # Normal close: clean channel from cache.
-            self._ticket_channel_cache.discard(int(ticket.channel_id))
+            # Normal close: clean channel from cache (single owner).
+            self._query.discard_channel(int(ticket.channel_id))
 
         try:
             await self._db.insert_audit_row(guild_id, ticket_id, "close", closed_by, "success", None)
@@ -1404,50 +1406,28 @@ class TicketService:
         )
         return ticket, rename_succeeded
 
+    # -- Query/cache facade (S3.3A): single owner is TicketQueryService --
+
+    @property
+    def _ticket_channel_cache(self) -> set[int]:
+        """Alias to the single cache owner (backward compat for callers/tests)."""
+        return self._query._ticket_channel_cache
+
+    @_ticket_channel_cache.setter
+    def _ticket_channel_cache(self, value: set[int]) -> None:
+        self._query._ticket_channel_cache = value.copy() if isinstance(value, set) else set(value)
+
     async def get_stale_tickets(self, guild_id: str, hours: int = 48) -> list[Ticket]:
-        """Return open/claimed tickets with no activity for *hours*.
-
-        Args:
-            guild_id: Discord guild snowflake.
-            hours: Inactivity threshold in hours (default 48).
-
-        Returns:
-            List of :class:`Ticket` models that are stale.
-        """
-        rows = await self._db.get_stale_tickets(guild_id, hours=hours)
-        tickets = [Ticket.from_db_row(r) for r in rows]
-        logger.debug(
-            "get_stale_tickets(guild=%s, hours=%d): %d stale",
-            guild_id,
-            hours,
-            len(tickets),
-        )
-        return tickets
+        """Return open/claimed tickets with no activity for *hours* (delegates to query service)."""
+        return await self._query.get_stale_tickets(guild_id, hours=hours)
 
     def is_ticket_channel(self, channel_id: int) -> bool:
-        """Check whether *channel_id* belongs to an open/claimed ticket.
-
-        O(1) set lookup — safe to call on every ``on_message`` event.
-        """
-        return channel_id in self._ticket_channel_cache
+        """Check whether *channel_id* belongs to an open/claimed ticket (delegates to query service)."""
+        return self._query.is_ticket_channel(channel_id)
 
     def sync_channel_cache(self, channel_ids: set[int] | None = None) -> None:
-        """Rebuild the ticket channel cache.
-
-        If *channel_ids* is provided, replaces the cache with those IDs
-        (used by the cog after a startup DB scan).  If omitted, clears
-        the cache — the cog is expected to repopulate it afterwards.
-
-        Args:
-            channel_ids: Optional set of Discord channel IDs (int) for
-                all currently open or claimed tickets.
-        """
-        if channel_ids is not None:
-            self._ticket_channel_cache = channel_ids.copy()
-            logger.debug("ticket_channel_cache synced: %d channels", len(channel_ids))
-        else:
-            self._ticket_channel_cache.clear()
-            logger.debug("ticket_channel_cache cleared")
+        """Rebuild the ticket channel cache (delegates to query service)."""
+        self._query.sync_channel_cache(channel_ids)
 
     # ----------------------------------------------------------------
     # Sub-tickets, reopen, transfer (slice 2)
@@ -1559,7 +1539,7 @@ class TicketService:
                     parent_id=parent_id,
                 )
                 ticket = Ticket.from_db_row(row)
-                self._ticket_channel_cache.add(int(channel_id))
+                self._query.add_channel(int(channel_id))
                 await self._db.insert_audit_row(guild_id, ticket.id, "subticket_create", author_id, "success", None)
                 logger.info(
                     "Sub-ticket #%d created (parent=%s, guild=%s, channel=%s)",
@@ -1639,8 +1619,8 @@ class TicketService:
             raise ValueError(f"Ticket {ticket_id} not found after reopen")
         ticket = Ticket.from_db_row(row)
 
-        # New channel is now an active ticket channel — cache it.
-        self._ticket_channel_cache.add(int(ticket.channel_id))
+        # New channel is now an active ticket channel — cache it (single owner).
+        self._query.add_channel(int(ticket.channel_id))
 
         await self._db.insert_audit_row(guild_id, ticket_id, "reopen", None, "success", None)
         logger.info("Ticket %s reopened (new channel=%s)", ticket_id, ticket.channel_id)
