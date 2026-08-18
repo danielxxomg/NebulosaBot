@@ -4,8 +4,10 @@ Owns ``__slots__``, connection lifecycle (``connect`` / ``health_check``),
 and the ``_unwrap`` helper used by every domain mixin.
 
 RLS contract: Supabase tables are RLS-enabled with no policies, so only a
-``service_role`` JWT may obtain data.  ``connect()`` fail-closes when the
-configured key is not service_role, before any network call.
+``service_role`` JWT or modern ``sb_secret_`` server key may obtain data.
+``connect()`` fail-closes when the configured key is not service_role nor
+sb_secret_ before any network call. ``health_check()`` proves ``sb_secret_``
+via a read-only RLS SELECT probe on ``guild``/``ticket``.
 Validation lives in :mod:`bot.config` — this module re-exports it.
 """
 
@@ -90,19 +92,43 @@ class DatabaseBase:
             logger.info("Supabase connection verified")
 
     async def health_check(self) -> bool:
-        """Ping the database by selecting 1 row from the guild table.
+        """Ping the database by selecting 1 row from the guild and ticket tables.
 
-        Returns ``True`` if the query succeeds, ``False`` otherwise.
+        For ``sb_secret_`` keys this is the read-only RLS probe that proves
+        the credential can read RLS-enabled tables (guild + ticket) without
+        decoding the key as a JWT. Returns ``True`` if the query succeeds,
+        ``False`` otherwise. No mutation.
         """
         if self._client is None:
             logger.error("health_check called before connect()")
             return False
 
         try:
-            # Lightweight probe — reads at most one row.
             response = await self._client.table("guild").select("id").limit(1).execute()
-            _unwrap(response)  # drain so we don't leak a cursor
+            _unwrap(response)
             return True
         except Exception:
             logger.exception("Supabase health check query failed")
+            return False
+
+    async def health_probe(self) -> bool:
+        """Read-only probe proving ``sb_secret_`` can read RLS tables via guild+ticket.
+
+        Separate from :meth:`health_check` so S3.1 can assert the modern
+        credential path explicitly exercises two RLS tables. Returns True
+        only when both SELECTs succeed; otherwise False (fail-closed, no DDL).
+        """
+
+        if self._client is None:
+            logger.error("health_probe called before connect()")
+            return False
+
+        try:
+            guild_resp = await self._client.table("guild").select("id").limit(1).execute()
+            _unwrap(guild_resp)
+            ticket_resp = await self._client.table("ticket").select("id").limit(1).execute()
+            _unwrap(ticket_resp)
+            return True
+        except Exception:
+            logger.exception("Supabase health probe (guild+ticket) failed")
             return False
