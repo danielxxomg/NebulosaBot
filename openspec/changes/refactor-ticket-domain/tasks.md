@@ -27,10 +27,10 @@ Chain strategy: stacked-to-main
 
 ## S2.1 Typed Surface (PR1→main)
 
-- [ ] 1.1 RED `tests/test_context_typing_chars.py`+`tests/test_checks_is_mod.py` (23 decorator+21 inline, fail-closed). `pytest -k "is_mod or context"` fails.
-- [ ] 1.2 `bot/cogs/sentinel.py`,`utility.py`→`NebulosaContext`/`Context[NebulosaBot]`; keep `interaction`; no broad `Any`. `mypy bot` 0.
-- [ ] 1.3 Fix 28 `mypy tests` errors. `mypy bot tests` 0.
-- [ ] 1.4 Gate `ruff check bot tests` 0 · `pytest -q` 1814 pass · `pre-commit` pass.
+- [x] 1.1 RED `tests/test_context_typing_chars.py`+`tests/test_checks_is_mod.py` (23 decorator+21 inline, fail-closed). `pytest -k "is_mod or context"` fails.
+- [x] 1.2 `bot/cogs/sentinel.py`,`utility.py`→`NebulosaContext`/`Context[NebulosaBot]`; keep `interaction`; no broad `Any`. `mypy bot` 0.
+- [x] 1.3 Fix 28 `mypy tests` errors. `mypy bot tests` 0.
+- [x] 1.4 Gate `ruff check bot tests` 0 · `pytest -q` 1814 pass · `pre-commit` pass.
 
 ## S2.2 Guild DB (PR2→PR1)
 
