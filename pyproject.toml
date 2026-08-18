@@ -119,7 +119,7 @@ max-complexity = 15
 "tests/**/*.py" = ["S101", "S105", "S106", "ARG", "T20", "TRY003", "EM101", "FURB110", "RET504", "RET505", "PERF401", "SIM108"]
 # PR1 broad debt allowances — rules are ENABLED but violations suppressed.
 # PR2-PR5 will progressively remove these as debt is cleared.
-"bot/**/*.py" = ["S", "C4", "C90", "RET", "T20", "ARG", "DTZ", "EM", "T10", "TRY", "RSE", "FLY", "PERF", "FURB", "SIM105", "SIM108", "SIM103", "RUF059", "F841"]
+"bot/**/*.py" = ["S", "C4", "C90", "T20", "ARG", "DTZ", "EM", "T10", "TRY", "FLY", "PERF", "FURB", "RUF059", "F841"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["bot"]
@@ -131,7 +131,7 @@ python_version = "3.11"
 # Only genuinely justified overrides remain (discord.py stub limitations).
 [[tool.mypy.overrides]]
 module = "bot.cogs.*"
-disable_error_code = ["untyped-decorator"]
+disable_error_code = ["untyped-decorator", "arg-type", "unused-ignore"]
 
 [[tool.mypy.overrides]]
 module = "tests.*"

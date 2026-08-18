@@ -9,10 +9,12 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import discord
 
+from bot.core.cache import CACHE_TTL as CORE_GREETING_TTL
+from bot.core.cache import cache_key
 from bot.core.i18n import t
 from bot.models.greeting_config import GreetingConfig
 
@@ -24,7 +26,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 CACHE_KEY_TEMPLATE = "{guild_id}:greeting_config"
-CACHE_TTL = 300  # 5 minutes
+CACHE_TTL = CORE_GREETING_TTL  # re-export from bot.core.cache (DRY; canonical TTL=300)
 
 
 class GreetingService:
@@ -62,10 +64,10 @@ class GreetingService:
             3. If DB row exists → build config, populate cache, return.
             4. If DB row missing → return defaults.
         """
-        cache_key = CACHE_KEY_TEMPLATE.format(guild_id=guild_id)
+        ck = cache_key(guild_id, "greeting_config")
 
         # Cache hit.
-        cached = self._cache.get(cache_key)
+        cached = self._cache.get(ck)
         if cached is not None:
             logger.debug("GreetingService cache HIT for guild %s", guild_id)
             return cast(GreetingConfig, cached)
@@ -74,14 +76,10 @@ class GreetingService:
         logger.debug("GreetingService cache MISS for guild %s — fetching from DB", guild_id)
         row = await self._db.get_greeting_config(guild_id)
 
-        config: GreetingConfig
-        if row is not None:
-            config = GreetingConfig.from_db_row(row)
-        else:
-            config = GreetingConfig(guild_id=guild_id)
+        config = GreetingConfig.from_db_row(row) if row is not None else GreetingConfig(guild_id=guild_id)
 
         # Populate cache.
-        self._cache.set(cache_key, config, ttl=CACHE_TTL)
+        self._cache.set(ck, config, ttl=CACHE_TTL)
         return config
 
     async def save_config(self, config: GreetingConfig) -> None:
@@ -91,131 +89,109 @@ class GreetingService:
         """
         await self._db.upsert_greeting_config(config.guild_id, config)
 
-        cache_key = CACHE_KEY_TEMPLATE.format(guild_id=config.guild_id)
-        self._cache.invalidate(cache_key)
+        ck = cache_key(config.guild_id, "greeting_config")
+        self._cache.invalidate(ck)
+
+    async def dispatch_greeting(self, member: discord.Member, kind: Literal["welcome", "goodbye"]) -> None:
+        """Unified dispatch for welcome/goodbye — DRY for cache key + card flow.
+
+        Args:
+            member: The target member.
+            kind: ``"welcome"`` or ``"goodbye"``.
+        """
+        guild_id = str(member.guild.id)
+        config = await self.get_config(guild_id)
+
+        if kind == "welcome":
+            enabled = config.welcome_enabled
+            channel_id = config.welcome_channel_id
+            card_enabled = config.welcome_card_enabled
+            message: str | None = config.welcome_message
+            card_type: Literal["welcome", "goodbye"] = "welcome"
+            filename = "welcome.png"
+            title_key = "greetings.card.welcome_title"
+            log_prefix = "dispatch_welcome"
+        else:
+            enabled = config.goodbye_enabled
+            channel_id = config.goodbye_channel_id
+            card_enabled = config.goodbye_card_enabled
+            message = config.goodbye_message
+            card_type = "goodbye"
+            filename = "goodbye.png"
+            title_key = "greetings.card.goodbye_title"
+            log_prefix = "dispatch_goodbye"
+
+        if not enabled or not channel_id:
+            return
+
+        channel = _resolve_guild_channel(member.guild, channel_id)
+        if channel is None:
+            logger.warning(
+                "%s: channel %s not found for guild %s",
+                log_prefix,
+                channel_id,
+                guild_id,
+            )
+            return
+
+        if not card_enabled:
+            if kind == "welcome":
+                await _send_text_only_if_message(
+                    cast(discord.abc.Messageable, channel),
+                    message or "",
+                    member,
+                    onboarding_channel_id=config.onboarding_channel_id,
+                    normalize_whitespace=True,
+                )
+            else:
+                await _send_text_only_if_message(
+                    cast(discord.abc.Messageable, channel),
+                    message or "",
+                    member,
+                )
+            return
+
+        avatar_url = _resolve_avatar_url(member)
+        buffer: io.BytesIO = await asyncio.to_thread(
+            _generate_greeting_card_compatibly,
+            self._image_service,
+            username=member.display_name,
+            avatar_url=avatar_url,
+            guild_name=member.guild.name,
+            member_count=member.guild.member_count or 0,
+            guild_icon_url=_resolve_guild_icon_url(member.guild),
+            greeting_title=t(guild_id, title_key),
+            member_count_text=t(
+                guild_id,
+                "greetings.card.member_count",
+                count=member.guild.member_count or 0,
+            ),
+            card_type=card_type,
+        )
+
+        file = discord.File(buffer, filename=filename)
+        if kind == "welcome":
+            content = _compose_welcome_content(member, message, config.onboarding_channel_id)
+        else:
+            content = _format_template(message or "", member) if message else ""
+
+        await cast(discord.abc.Messageable, channel).send(content=content if content else None, file=file)
+
+        logger.info(
+            "%s: sent for guild %s, channel %s, member %s",
+            log_prefix,
+            guild_id,
+            channel_id,
+            member.name,
+        )
 
     async def dispatch_welcome(self, member: discord.Member) -> None:
-        """Send a welcome card/message for *member*, if configured.
-
-        Resolves the greeting config.  If welcome is enabled and a channel
-        is set, generates a greeting card via ``ImageService`` and sends it.
-        """
-        guild_id = str(member.guild.id)
-        config = await self.get_config(guild_id)
-
-        if not config.welcome_enabled:
-            return
-        if not config.welcome_channel_id:
-            return
-
-        channel = _resolve_guild_channel(member.guild, config.welcome_channel_id)
-        if channel is None:
-            logger.warning(
-                "dispatch_welcome: channel %s not found for guild %s",
-                config.welcome_channel_id,
-                guild_id,
-            )
-            return
-        if not config.welcome_card_enabled:
-            await _send_text_only_if_message(
-                cast(discord.abc.Messageable, channel),
-                config.welcome_message or "",
-                member,
-                onboarding_channel_id=config.onboarding_channel_id,
-                normalize_whitespace=True,
-            )
-            return
-
-        avatar_url = _resolve_avatar_url(member)
-        buffer: io.BytesIO = await asyncio.to_thread(
-            _generate_greeting_card_compatibly,
-            self._image_service,
-            username=member.display_name,
-            avatar_url=avatar_url,
-            guild_name=member.guild.name,
-            member_count=member.guild.member_count or 0,
-            guild_icon_url=_resolve_guild_icon_url(member.guild),
-            greeting_title=t(guild_id, "greetings.card.welcome_title"),
-            member_count_text=t(
-                guild_id,
-                "greetings.card.member_count",
-                count=member.guild.member_count or 0,
-            ),
-            card_type="welcome",
-        )
-
-        file = discord.File(buffer, filename="welcome.png")
-        content = _compose_welcome_content(member, config.welcome_message, config.onboarding_channel_id)
-
-        await cast(discord.abc.Messageable, channel).send(content=content if content else None, file=file)
-
-        logger.info(
-            "dispatch_welcome: sent for guild %s, channel %s, member %s",
-            guild_id,
-            config.welcome_channel_id,
-            member.name,
-        )
+        """Send a welcome card/message for *member*, if configured."""
+        await self.dispatch_greeting(member, "welcome")
 
     async def dispatch_goodbye(self, member: discord.Member) -> None:
-        """Send a goodbye card/message for *member*, if configured.
-
-        Resolves the greeting config.  If goodbye is enabled and a channel
-        is set, generates a goodbye card via ``ImageService`` and sends it.
-        """
-        guild_id = str(member.guild.id)
-        config = await self.get_config(guild_id)
-
-        if not config.goodbye_enabled:
-            return
-        if not config.goodbye_channel_id:
-            return
-
-        channel = _resolve_guild_channel(member.guild, config.goodbye_channel_id)
-        if channel is None:
-            logger.warning(
-                "dispatch_goodbye: channel %s not found for guild %s",
-                config.goodbye_channel_id,
-                guild_id,
-            )
-            return
-        if not config.goodbye_card_enabled:
-            await _send_text_only_if_message(
-                cast(discord.abc.Messageable, channel),
-                config.goodbye_message or "",
-                member,
-            )
-            return
-
-        avatar_url = _resolve_avatar_url(member)
-        buffer: io.BytesIO = await asyncio.to_thread(
-            _generate_greeting_card_compatibly,
-            self._image_service,
-            username=member.display_name,
-            avatar_url=avatar_url,
-            guild_name=member.guild.name,
-            member_count=member.guild.member_count or 0,
-            guild_icon_url=_resolve_guild_icon_url(member.guild),
-            greeting_title=t(guild_id, "greetings.card.goodbye_title"),
-            member_count_text=t(
-                guild_id,
-                "greetings.card.member_count",
-                count=member.guild.member_count or 0,
-            ),
-            card_type="goodbye",
-        )
-
-        file = discord.File(buffer, filename="goodbye.png")
-        message_template = config.goodbye_message or ""
-        content = _format_template(message_template, member) if message_template else ""
-
-        await cast(discord.abc.Messageable, channel).send(content=content if content else None, file=file)
-
-        logger.info(
-            "dispatch_goodbye: sent for guild %s, channel %s, member %s",
-            guild_id,
-            config.goodbye_channel_id,
-            member.name,
-        )
+        """Send a goodbye card/message for *member*, if configured."""
+        await self.dispatch_greeting(member, "goodbye")
 
 
 # ------------------------------------------------------------------

@@ -31,9 +31,8 @@ def test_nb_literal_only_in_constants():
 
     for py_file in sorted(BOT_ROOT.rglob("*.py")):
         content = py_file.read_text(encoding="utf-8")
-        if '"nb!"' in content or "'nb!'" in content:
-            if py_file.resolve() != allowed_file.resolve():
-                offenders.append(str(py_file.relative_to(BOT_ROOT.parent)))
+        if ('"nb!"' in content or "'nb!'" in content) and py_file.resolve() != allowed_file.resolve():
+            offenders.append(str(py_file.relative_to(BOT_ROOT.parent)))
 
     assert not offenders, (
         f'The literal "nb!" was found outside bot/constants.py in: {offenders}. '
@@ -58,9 +57,8 @@ def test_resolve_avatar_url_single_definition():
 
     for py_file in sorted(BOT_ROOT.rglob("*.py")):
         content = py_file.read_text(encoding="utf-8")
-        if definition_pattern.search(content):
-            if py_file.resolve() != canonical_file.resolve():
-                offenders.append(str(py_file.relative_to(BOT_ROOT.parent)))
+        if definition_pattern.search(content) and py_file.resolve() != canonical_file.resolve():
+            offenders.append(str(py_file.relative_to(BOT_ROOT.parent)))
 
     assert not offenders, (
         f"_resolve_avatar_url is defined in non-canonical files: {offenders}. "
