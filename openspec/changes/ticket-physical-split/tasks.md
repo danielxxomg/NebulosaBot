@@ -45,13 +45,21 @@ DDL 1 preflight(dup/UUID/depth/orphans/audit1/1) →2 TEXT→UUID USING cast →
 - [x] S3.2.2 Create migrations/018_ticket_integrity_fks.sql 8 steps+DOWN+LOCK_TIMEOUT+backup reconcile 17↔19 (+005 stub, 19 local)
 - [x] S3.2.3 GREEN: staging catalog pg_constraint/column/index asserts 1899/5 mypy0 ruff0
 
-## S3.3A Service Query/Lifecycle
+## S3.3A Service Query/Cache — DONE s3d3a-query @5aaf728 (≤400)
 
-TicketQueryService+TicketLifecycleService behind TicketService single cache/audit owner 31 callers. Branch sdd/s3.3a-service-query-lifecycle base sdd/s3.2-parity-ddl. Verify `pytest -k ticket_service` `mypy bot`.
+Query/cache ONLY behind facade — TicketQueryService single cache owner (get_stale_tickets + _ticket_channel_cache: is_ticket_channel/sync_channel_cache/add_channel/discard_channel). Lifecycle stays on facade for S3.3A2. Branch ticket-physical-split-s3d3a-query base 961123b stacked-to-main. Verify `pytest -k ticket_query` `mypy bot`.
 
-- [ ] S3.3A.1 RED: facade delegates once, single cache mutation
-- [ ] S3.3A.2 Extract ticket_query_service.py+ticket_lifecycle_service.py preserve callers
-- [ ] S3.3A.3 GREEN: cache invalidation transfer/reopen mypy0
+- [x] S3.3A.1 RED: facade delegates once, single cache mutation — tests/test_ticket_query_service_facade.py 8 GREEN (was 8 RED)
+- [x] S3.3A.2 Extract bot/services/ticket_query_service.py (63) + facade delegates once + add/discard wiring (create/subticket/reopen/close) — 328+379 ≤400
+- [x] S3.3A.3 GREEN: 1907/5 mypy 0 ruff 0 — single cache owner, copy-on-sync, no lifecycle extraction
+
+## S3.3A2 Service Lifecycle — NEXT SLICE (not in this PR)
+
+TicketLifecycleService behind TicketService (claim/unclaim/transfer/edit_category/notes). Branch s3d3a2-lifecycle base s3d3a-query. Verify `pytest -k ticket_service` cache invalidation transfer/reopen.
+
+- [ ] S3.3A2.1 RED: lifecycle delegates once, audit single owner
+- [ ] S3.3A2.2 Extract ticket_lifecycle_service.py preserve 31 callers
+- [ ] S3.3A2.3 GREEN: lifecycle invariants + mypy 0
 
 ## S3.3B Service Repair/Channel
 
