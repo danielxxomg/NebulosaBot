@@ -15,7 +15,27 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TTL = 300  # seconds
+DEFAULT_TTL = 300  # seconds — guild / greeting config window (design)
+CACHE_TTL = DEFAULT_TTL  # alias for backwards-compat imports
+GUILD_TTL = DEFAULT_TTL
+GUILD_CONFIG_TTL = DEFAULT_TTL
+GREETING_TTL = DEFAULT_TTL
+GREETING_CONFIG_TTL = DEFAULT_TTL
+LEADERBOARD_TTL = 30  # seconds — accepted staleness window (cache-layer spec)
+LEADERBOARD_CACHE_TTL = LEADERBOARD_TTL  # alias for economy_service compat
+
+
+def cache_key(guild_id: str | int, entity: str) -> str:
+    """Build a guild-scoped cache key ``{guild_id}:{entity}``.
+
+    Centralizes the ``{guild_id}:{entity}`` convention so callers (services,
+    realtime CDC, tests) remain DRY and guild isolation is auditable.
+
+    Examples:
+        cache_key("123", "config") -> "123:config"
+        cache_key(456, "greeting_config") -> "456:greeting_config"
+    """
+    return f"{guild_id}:{entity}"
 
 
 class TTLCache:

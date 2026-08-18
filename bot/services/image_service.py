@@ -179,10 +179,7 @@ class ImageService:
         )
 
         # Fill portion
-        if xp_for_next > 0:
-            fill_ratio = min(xp_for_current / xp_for_next, 1.0)
-        else:
-            fill_ratio = 1.0  # edge case: max level with no "next"
+        fill_ratio = min(xp_for_current / xp_for_next, 1.0) if xp_for_next > 0 else 1.0  # max level: no next
         fill_width = int(PROGRESS_BAR_WIDTH * fill_ratio)
 
         if fill_width > 0:

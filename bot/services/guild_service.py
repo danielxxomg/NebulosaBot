@@ -16,6 +16,8 @@ import logging
 from typing import TYPE_CHECKING, cast
 
 from bot.constants import FALLBACK_PREFIX
+from bot.core.cache import CACHE_TTL as CORE_GUILD_TTL
+from bot.core.cache import cache_key
 from bot.core.i18n import set_guild_language
 from bot.models.guild import GuildConfig
 
@@ -28,7 +30,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 CACHE_KEY_TEMPLATE = "{guild_id}:config"
-CACHE_TTL = 300  # 5 minutes — matches design
+CACHE_TTL = CORE_GUILD_TTL  # re-export from bot.core.cache (DRY; canonical TTL=300)
 
 
 class GuildService:
@@ -70,10 +72,10 @@ class GuildService:
             4. If DB row missing → return defaults (prefix=``nb!``,
                language=``es``) — row will be created lazily on first save.
         """
-        cache_key = CACHE_KEY_TEMPLATE.format(guild_id=guild_id)
+        ck = cache_key(guild_id, "config")
 
         # --- cache hit ---
-        cached = self._cache.get(cache_key)
+        cached = self._cache.get(ck)
         if cached is not None:
             logger.debug("GuildService cache HIT for guild %s", guild_id)
             config = cast(GuildConfig, cached)
@@ -92,7 +94,7 @@ class GuildService:
             config = GuildConfig(id=guild_id, prefix=FALLBACK_PREFIX, language="es")
 
         # Populate cache and mod-role lookup.
-        self._cache.set(cache_key, config, ttl=CACHE_TTL)
+        self._cache.set(ck, config, ttl=CACHE_TTL)
         self._sync_mod_role_cache(guild_id, config)
         set_guild_language(guild_id, config.language)
 
@@ -107,8 +109,8 @@ class GuildService:
         await self._db.upsert_guild(config)
 
         # Invalidate stale cache entry so the next read picks up the new row.
-        cache_key = CACHE_KEY_TEMPLATE.format(guild_id=config.id)
-        self._cache.invalidate(cache_key)
+        ck = cache_key(config.id, "config")
+        self._cache.invalidate(ck)
 
         # Re-read through cache-first path to ensure consistency.
         await self.get_config(config.id)
@@ -156,8 +158,8 @@ class GuildService:
 
         await self._db.upsert_guild(config)
 
-        cache_key = CACHE_KEY_TEMPLATE.format(guild_id=guild_id)
-        self._cache.set(cache_key, config, ttl=CACHE_TTL)
+        ck = cache_key(guild_id, "config")
+        self._cache.set(ck, config, ttl=CACHE_TTL)
         self._sync_mod_role_cache(guild_id, config)
         set_guild_language(guild_id, config.language)
 
@@ -193,8 +195,8 @@ class GuildService:
         successful DB write — a DB failure leaves the cache untouched.
         """
         await self._db.update_guild_panel(guild_id, message_id, channel_id)
-        cache_key = CACHE_KEY_TEMPLATE.format(guild_id=guild_id)
-        self._cache.invalidate(cache_key)
+        ck = cache_key(guild_id, "config")
+        self._cache.invalidate(ck)
         logger.debug(
             "GuildService.update_guild_panel: cache invalidated for guild %s",
             guild_id,

@@ -110,7 +110,8 @@ class TestLoadResilience:
 
         async def fake_load_extension(path: str) -> None:
             if path in ("bot.cogs.sentinel", "bot.cogs.ocio"):
-                raise ImportError(f"{path} broken")
+                msg = f"{path} broken"
+                raise ImportError(msg)
             loaded.append(path)
 
         mock_sync = AsyncMock()

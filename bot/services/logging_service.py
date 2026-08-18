@@ -430,9 +430,7 @@ class LoggingService:
         config = await self._bot.guild_service.get_config(guild_id)
         if not config.log_enabled:
             return False
-        if not config.log_channel_id:
-            return False
-        return True
+        return bool(config.log_channel_id)
 
     def can_log_in_channel(self, channel: discord.abc.GuildChannel) -> bool:
         """Return ``True`` if ``@everyone`` can read messages in *channel*.
@@ -444,10 +442,7 @@ class LoggingService:
             return False
 
         everyone_overwrites = channel.overwrites_for(channel.guild.default_role)
-        if everyone_overwrites.read_messages is False:
-            return False
-
-        return True
+        return everyone_overwrites.read_messages is not False
 
     async def _send_log(self, guild_id: str, embed: discord.Embed) -> None:
         """Resolve the log channel and send *embed*."""

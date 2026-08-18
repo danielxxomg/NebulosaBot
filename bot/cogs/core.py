@@ -6,9 +6,10 @@ database, cache, guild config, and the bot itself.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import discord
 from discord import app_commands
@@ -51,7 +52,7 @@ class CoreCog(commands.Cog, name="Core"):
             "Muestra la latencia WebSocket del bot.",
             key="slash.descriptions.ping",
         ),
-    )  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    )
     async def ping(self, ctx: NebulosaContext) -> None:
         """Reply with the current gateway latency in milliseconds."""
         guild_id = ctx.guild.id if ctx.guild else None
@@ -63,7 +64,7 @@ class CoreCog(commands.Cog, name="Core"):
         )
         await ctx.send(embed=embed, ephemeral=True)
 
-    @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @commands.hybrid_command(
         name="status",
         description=app_commands.locale_str(
             "Muestra el estado de la base de datos y la caché.",
@@ -83,10 +84,8 @@ class CoreCog(commands.Cog, name="Core"):
         # Cache stats
         cache_keys = 0
         if self.bot.cache is not None:
-            try:
+            with contextlib.suppress(Exception):
                 cache_keys = self.bot.cache.size
-            except Exception:
-                pass
 
         # Build embed
         embed = discord.Embed(
@@ -145,7 +144,7 @@ class CoreCog(commands.Cog, name="Core"):
         )
         await ctx.send(embed=embed, ephemeral=True)
 
-    @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @commands.hybrid_command(
         name="help",
         description=app_commands.locale_str(
             "Muestra los comandos disponibles agrupados por módulo.",
@@ -270,7 +269,7 @@ def _resolve_prefix(ctx: NebulosaContext) -> str:
 
 
 def _resolve_command_description(
-    cmd: commands.Command,
+    cmd: commands.Command[Any, Any, Any],
     guild_id: int | None,
 ) -> str:
     """Resolve a command's description in the guild's language.
