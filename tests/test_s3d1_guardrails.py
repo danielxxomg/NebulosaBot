@@ -130,8 +130,8 @@ class TestSbSecretProbe:
         with pytest.raises(ServiceRoleValidationError):
             validate_supabase_key("   ")
 
-    def test_legacy_jwt_still_validated_via_jwt_path(self) -> None:
-        """Legacy service_role JWT MUST still be accepted via JWT role path."""
+    def test_legacy_jwt_still_validated_via_jwt_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Legacy service_role JWT MUST be accepted only via verified signature (PyJWT HS256)."""
         import base64
         import json
 
@@ -142,9 +142,22 @@ class TestSbSecretProbe:
 
         from bot.config import ServiceRoleValidationError, validate_supabase_key
 
-        validate_supabase_key(_fake_jwt("service_role"))
+        # Payload-only without signing source must fail closed
+        monkeypatch.delenv("SUPABASE_JWT_SECRET", raising=False)
+        with pytest.raises(ServiceRoleValidationError):
+            validate_supabase_key(_fake_jwt("service_role"))
         with pytest.raises(ServiceRoleValidationError):
             validate_supabase_key(_fake_jwt("anon"))
+        # With real secret + real signature, service_role is accepted, anon still rejected
+        secret = "s3-guard-secret-32bytes-strong-123456"
+        monkeypatch.setenv("SUPABASE_JWT_SECRET", secret)
+        import jwt as pyjwt  # type: ignore[import-untyped]
+
+        real = pyjwt.encode({"role": "service_role"}, secret, algorithm="HS256")
+        anon_real = pyjwt.encode({"role": "anon"}, secret, algorithm="HS256")
+        validate_supabase_key(real)
+        with pytest.raises(ServiceRoleValidationError):
+            validate_supabase_key(anon_real)
 
     def test_legacy_jwt_fake_signature_rejected_when_secret_configured(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Fake signature MUST fail closed when SUPABASE_JWT_SECRET is set (PyJWT HS256)."""
@@ -158,13 +171,13 @@ class TestSbSecretProbe:
 
         from bot.config import ServiceRoleValidationError, validate_supabase_key
 
-        # When a real secret is configured, PyJWT verification is enforced and fake .sig fails.
         monkeypatch.setenv("SUPABASE_JWT_SECRET", "test-secret-for-verify-1234567890")
         with pytest.raises(ServiceRoleValidationError, match="signature"):
             validate_supabase_key(_fake_jwt("service_role"))
-        # Without secret, legacy payload-only path remains compatible (no enforcement).
+        # Without secret, payload-only must also fail closed (no signing source)
         monkeypatch.delenv("SUPABASE_JWT_SECRET", raising=False)
-        validate_supabase_key(_fake_jwt("service_role"))  # must not raise
+        with pytest.raises(ServiceRoleValidationError, match="signing source"):
+            validate_supabase_key(_fake_jwt("service_role"))
 
     def test_sb_secret_not_decoded_as_jwt(self) -> None:
         """sb_secret_ MUST NOT be decoded as JWT (opaque)."""
@@ -206,7 +219,8 @@ class TestSbSecretProbe:
 
     @pytest.mark.asyncio
     async def test_sb_secret_probe_fails_closed_when_cannot_read(self) -> None:
-        """When RLS SELECT fails (invalid secret), probe MUST fail-closed."""
+        """When RLS SELECT fails (invalid secret), connect MUST fail-closed and block queries."""
+        from bot.config import ServiceRoleValidationError
         from bot.core.database import Database
 
         db = Database(url="https://test.supabase.co", key="sb_secret_invalid")
@@ -217,15 +231,22 @@ class TestSbSecretProbe:
         mock_client = MagicMock()
         mock_client.table.return_value = fail_builder
         mock_client.table.side_effect = lambda _name: fail_builder
-        with patch("bot.core.db.base.acreate_client", return_value=mock_client):
+        with (
+            patch("bot.core.db.base.acreate_client", return_value=mock_client),
+            pytest.raises(ServiceRoleValidationError, match="health probe"),
+        ):
             await db.connect()
-        # health_check delegates to health_probe (guild+ticket) — must return False, not raise
-        assert await db.health_check() is False
+        assert db._client is None
+        with pytest.raises(RuntimeError, match="connect"):
+            await db.get_guild("123")
+        # direct probe pre-connect returns False
         assert await db.health_probe() is False
+        assert await db.health_check() is False
 
     @pytest.mark.asyncio
     async def test_health_probe_fails_when_only_guild_readable(self) -> None:
-        """Ticket table unreadable MUST make probe fail-closed even if guild is readable."""
+        """Ticket table unreadable MUST make connect fail-closed even if guild is readable."""
+        from bot.config import ServiceRoleValidationError
         from bot.core.database import Database
 
         db = Database(url="https://test.supabase.co", key="sb_secret_partial")
@@ -239,8 +260,12 @@ class TestSbSecretProbe:
         )
         mock_client = MagicMock()
         mock_client.table.side_effect = lambda name: guild_builder if name == "guild" else ticket_fail
-        with patch("bot.core.db.base.acreate_client", return_value=mock_client):
+        with (
+            patch("bot.core.db.base.acreate_client", return_value=mock_client),
+            pytest.raises(ServiceRoleValidationError, match="health probe"),
+        ):
             await db.connect()
+        assert db._client is None
         assert await db.health_probe() is False
         assert await db.health_check() is False
 

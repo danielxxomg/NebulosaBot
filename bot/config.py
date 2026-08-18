@@ -99,26 +99,20 @@ def validate_supabase_key(key: str) -> None:
     # by a read-only SELECT probe on RLS-enabled tables in health_check.
     if key.startswith("sb_secret_"):
         return
-    # Legacy JWT path: when SUPABASE_JWT_SECRET is configured, require PyJWT HS256
-    # signature verification (allowlisted alg). Fake signatures MUST fail closed
-    # when verification is enforceable; payload-only decode is retained as fallback
-    # only when verification cannot be attempted (no secret/library), with JWKS
-    # deferred to S4 (see _verify_jwt_signature TODO).
-    verified_role = _verify_jwt_signature(key)
-    has_secret = bool(os.getenv("SUPABASE_JWT_SECRET", "").strip())
-    if has_secret:
-        if verified_role is None:
-            raise ServiceRoleValidationError(
-                "Supabase JWT signature verification failed (HS256) — expected service_role JWT"
-            )
-        if verified_role != "service_role":
-            raise ServiceRoleValidationError(f"Supabase key role is {verified_role!r}, expected service_role")
-        return
-    role = _decode_jwt_role(key)
-    if role is None:
-        raise ServiceRoleValidationError("Supabase key is not a verifiable JWT — expected service_role JWT")
-    if role != "service_role":
-        raise ServiceRoleValidationError(f"Supabase key role is {role!r}, expected service_role")
+    # Legacy JWT path — fail-closed when signing source is absent. Only an sb_secret_
+    # (proven via health_probe) or a verified service_role JWT is accepted; payload-only
+    # without a signing source MUST NOT be accepted (prevents fake sig).
+    if key.count(".") == 2:
+        verified_role = _verify_jwt_signature(key)
+        if verified_role is not None:
+            if verified_role != "service_role":
+                raise ServiceRoleValidationError(f"Supabase key role is {verified_role!r}, expected service_role")
+            return
+        raise ServiceRoleValidationError(
+            "Supabase JWT signature verification failed or no signing source (SUPABASE_JWT_SECRET/JWKS) — "
+            "expected verifiable service_role JWT or modern sb_secret_"
+        )
+    raise ServiceRoleValidationError("Supabase key is not a verifiable service_role credential")
 
 
 INTEGRITY_BATCH_SIZE = 50

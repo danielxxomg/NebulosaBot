@@ -216,6 +216,7 @@ class _EditCategorySelect(discord.ui.Select[discord.ui.View]):
                 channel=channel,
                 actor_id=actor_id,
                 is_mod=True,
+                guild_id=guild_id,
             )
         except ValueError as exc:
             msg = str(exc).lower()

@@ -208,6 +208,7 @@ class TicketLifecycleFlow:
                 actor_id=str(ctx.author.id),
                 guild=ctx.guild,
                 logging_service=self.bot.logging_service,
+                guild_id=gid,
             )
         except Exception:
             logger.exception("Failed to transfer ticket %s", row["id"])
@@ -269,7 +270,9 @@ class TicketLifecycleFlow:
             )()
             actor_is_mod = await is_mod_check(_interaction)
         try:
-            ticket = await self.bot.ticket_service.unclaim_ticket(row["id"], actor_id, is_mod=actor_is_mod)
+            ticket = await self.bot.ticket_service.unclaim_ticket(
+                row["id"], actor_id, is_mod=actor_is_mod, guild_id=gid
+            )
         except ValueError as exc:
             reason = str(exc)
             if "not currently claimed" in reason:
