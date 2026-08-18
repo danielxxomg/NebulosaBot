@@ -53,13 +53,13 @@ Query/cache ONLY behind facade — TicketQueryService single cache owner (get_st
 - [x] S3.3A.2 Extract bot/services/ticket_query_service.py (63) + facade delegates once + add/discard wiring (create/subticket/reopen/close) — 328+379 ≤400
 - [x] S3.3A.3 GREEN: 1907/5 mypy 0 ruff 0 — single cache owner, copy-on-sync, no lifecycle extraction
 
-## S3.3A2 Service Lifecycle — NEXT SLICE (not in this PR)
+## S3.3A2 Service Lifecycle — DONE s3d3a2-lifecycle @2522d35 (lifecycle behind facade)
 
-TicketLifecycleService behind TicketService (claim/unclaim/transfer/edit_category/notes). Branch s3d3a2-lifecycle base s3d3a-query. Verify `pytest -k ticket_service` cache invalidation transfer/reopen.
+TicketLifecycleService behind TicketService (create/close/claim/unclaim/edit_category/create_subticket/reopen/transfer/notes). Branch ticket-physical-split-s3d3a2-lifecycle base 1cf60ba stacked-to-main. Verify `pytest -k ticket_lifecycle` + `pytest -k ticket_query` delegates once.
 
-- [ ] S3.3A2.1 RED: lifecycle delegates once, audit single owner
-- [ ] S3.3A2.2 Extract ticket_lifecycle_service.py preserve 31 callers
-- [ ] S3.3A2.3 GREEN: lifecycle invariants + mypy 0
+- [x] S3.3A2.1 RED: lifecycle delegates once, audit single owner — tests/test_ticket_lifecycle_service_facade.py 12 RED → 12 GREEN
+- [x] S3.3A2.2 Extract bot/services/ticket_lifecycle_service.py (487) + facade delegates once + cache via query add/discard — 774+817 gross (pure move ~766 body; net new 50 delegates + 237 tests), GGA pass, mypy 0, ruff 0 — commit 2522d35 (size:exception pure extraction, review is move-verification)
+- [x] S3.3A2.3 GREEN: lifecycle invariants single owner, cache via query, 31 callers preserved, 1919/5 mypy 0 ruff 0
 
 ## S3.3B Service Repair/Channel
 
