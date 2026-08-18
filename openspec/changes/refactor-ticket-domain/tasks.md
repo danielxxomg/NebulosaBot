@@ -34,10 +34,10 @@ Chain strategy: stacked-to-main
 
 ## S2.2 Guild DB (PR2→PR1)
 
-- [ ] 2.1 RED `tests/test_guild_scope_gaps.py` denial for 12 gaps (`get_ticket`,`get_ticket_by_channel`,`update_ticket`,`get_tickets_by_parent`,`get_ticket_category`,`delete_ticket_category`,`insert_ticket_note`,`get_ticket_notes`,`delete_ticket_note`,`get_recent_notes_for_dedup`,`insert_audit_row`,`get_audit_rows`). `pytest -k guild_scope` fails.
-- [ ] 2.2 Guild-aware entry points `bot/core/db/ticket_db.py`,`ticket_category_db.py`,`ticket_note_db.py`,`ticket_audit_db.py` (`WHERE guildId=:gid AND id=:id`, ownership before mutate).
-- [ ] 2.3 Migrate one vertical `bot/cogs/tickets.py`+`bot/services/ticket_service.py` facade; keep old only if non-mutating/non-disclosive; note/audit denial reason non-empty. `pytest -k "guild or audit"` pass.
-- [ ] 2.4 No DDL/migration. `mypy bot` 0 · `pytest -q` pass.
+- [x] 2.1 RED `tests/test_guild_scope_gaps.py` denial for 12 gaps (`get_ticket`,`get_ticket_by_channel`,`update_ticket`,`get_tickets_by_parent`,`get_ticket_category`,`delete_ticket_category`,`insert_ticket_note`,`get_ticket_notes`,`delete_ticket_note`,`get_recent_notes_for_dedup`,`insert_audit_row`,`get_audit_rows`). `pytest -k guild_scope` fails.
+- [x] 2.2 Guild-aware entry points `bot/core/db/ticket_db.py`,`ticket_category_db.py`,`ticket_note_db.py`,`ticket_audit_db.py` (`WHERE guildId=:gid AND id=:id`, ownership before mutate).
+- [x] 2.3 Migrate one vertical `bot/cogs/tickets.py`+`bot/services/ticket_service.py` facade; keep old only if non-mutating/non-disclosive; note/audit denial reason non-empty. `pytest -k "guild or audit"` pass.
+- [x] 2.4 No DDL/migration. `mypy bot` 0 · `pytest -q` pass.
 
 ## S2.3 Live Verifier (PR3→PR2)
 
