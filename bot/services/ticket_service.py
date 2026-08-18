@@ -1,4 +1,4 @@
-"""TicketService — ticket lifecycle management with sequential numbering.
+"""TicketService — thin facade over TicketQuery/Lifecycle/Repair services (S3).
 
 Implements the ticket business layer: create, close, claim, stale detection,
 sub-ticket derivation, reopen, transfer, staff notes, and a cached set of
@@ -8,22 +8,16 @@ ticket channel IDs for fast O(1) ``on_message`` queries.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import discord
 
-from bot.config import INTEGRITY_BATCH_SIZE
 from bot.models.ticket import IntegrityEvidence, RepairResult, Ticket
 from bot.models.ticket_note import TicketNote
 from bot.services.ticket_invariants import (
     GlobalMutationGrant,
     RepairAuthority,
-    check_one_ticket_per_user_per_category,
-    evaluate_repair_authority,
-    parse_ticket_ref,
 )
 from bot.services.ticket_lifecycle_service import (
     NOTE_CAP as _LC_NOTE_CAP,  # noqa: F401 — re-export for backward compat
@@ -41,16 +35,13 @@ from bot.services.ticket_repair import (
 from bot.services.ticket_repair import evaluate_repair_eligibility as _coordinator_evaluate
 from bot.services.ticket_repair import plan_sweep_batch as _coordinator_plan_sweep_batch
 from bot.services.ticket_repair import probe_channel_absence as _coordinator_probe
-from bot.utils.ticket_helpers import (
-    build_ticket_overwrites,
-    sanitize_channel_name,
-)
 
 if TYPE_CHECKING:
     from bot.bot import NebulosaBot
     from bot.core.cache import TTLCache
     from bot.core.database import Database
     from bot.services.logging_service import LoggingService
+    from bot.services.ticket_repair_service import TicketRepairService
 
 logger = logging.getLogger(__name__)
 
@@ -80,19 +71,24 @@ class TicketService:
         cache: The bot's :class:`~bot.core.cache.TTLCache` instance.
 
     Facade over the S3 decomposition: query/cache ownership lives in
-    :class:`TicketQueryService` (single cache-mutation owner).
+    :class:`TicketQueryService` (single cache-mutation owner),
+    lifecycle in :class:`TicketLifecycleService`, and repair/channel/
+    transcript in :class:`TicketRepairService`.
     """
 
-    __slots__ = ("_cache", "_db", "_lifecycle", "_query")
+    __slots__ = ("_cache", "_db", "_lifecycle", "_query", "_repair")
 
     def __init__(self, db: Database, cache: TTLCache) -> None:
         self._db: Database = db
         self._cache: TTLCache = cache
         self._query: TicketQueryService = TicketQueryService(db)
         self._lifecycle: TicketLifecycleService = TicketLifecycleService(db, self._query)
+        from bot.services.ticket_repair_service import TicketRepairService as RepairService
+
+        self._repair: TicketRepairService = RepairService(db, self._query, self._lifecycle)
 
     # ----------------------------------------------------------------
-    # Public API
+    # Public API — lifecycle (delegates to lifecycle service)
     # ----------------------------------------------------------------
 
     async def create_ticket(
@@ -130,6 +126,10 @@ class TicketService:
             ticket_id, closed_by=closed_by, transcript_url=transcript_url, close_reason=close_reason
         )
 
+    # ----------------------------------------------------------------
+    # Repair coordinator — single seam delegates to repair service
+    # ----------------------------------------------------------------
+
     async def repair_ticket_from_evidence(
         self,
         evidence: IntegrityEvidence,
@@ -138,198 +138,13 @@ class TicketService:
         close_reason: str = "zombie:repair",
         actor_id: str | None = "system",
     ) -> RepairResult:
-        """Repair a ticket from immutable, guild-matched :class:`IntegrityEvidence`.
-
-        This is the ONE evidence-gated repair coordinator shared by the
-        channel-delete listener, integrity sweeps, and manual fallback.
-        Adapters never mutate tickets — every mutation flows through this
-        path and the guild-scoped conditional DB transition.
-
-        Fail-closed gates, in order:
-        1. Preflight unresolved (``repair_activation_allowed`` is False):
-           skipped/no-op (``gate_unresolved``), no mutation, no success audit.
-        2. Evidence not corroborated: ``None`` (unknown or stale) →
-           ``skipped``/``evidence_unresolved``; ``False`` (channel exists or non-active) →
-           ``skipped``/``not_corroborated``. Neither mutates. Spec allows only
-           ``repaired/already_closed/skipped/error``.
-        3. Conditional transition: one winner; a duplicate/loser returns
-           ``already_closed`` with no second mutation.
-
-        On a successful close a best-effort audit row is written; an audit
-        write failure is logged at WARNING and never blocks the repair.
-
-        Args:
-            evidence: The immutable integrity evidence for the ticket.
-            preflight: A read-only preflight result exposing
-                ``repair_activation_allowed`` (defaults to ``None`` = fail
-                closed). Live schema/deployment preflight must be resolved
-                before automatic mutation.
-            close_reason: The reason string to persist on close.
-            actor_id: The initiating actor recorded on the audit row
-                (``"system"`` for automatic paths, a user snowflake for
-                manual fallback).
-
-        Returns:
-            A :class:`RepairResult` describing the outcome.
-        """
-        now = datetime.now(UTC)
-        ticket_id = evidence.ticket_id
-        guild_id = evidence.guild_id
-
-        preflight_allows = getattr(preflight, "repair_activation_allowed", None) is True
-        denial = evaluate_repair_eligibility(
-            preflight_allows=preflight_allows,
-            corroborated=evidence.corroborated,
+        """Repair a ticket from immutable, guild-matched :class:`IntegrityEvidence` (delegates to repair service)."""
+        return await self._repair.repair_ticket_from_evidence(
+            evidence,
+            preflight=preflight,
+            close_reason=close_reason,
+            actor_id=actor_id,
         )
-        if denial is not None:
-            outcome, reason = denial
-            # Best-effort structured audit evidence for every denied/quarantined/
-            # skipped outcome. The audit action stays "repair" with a
-            # non-mutating "denied" outcome so a reviewable trail exists even
-            # when no mutation is attempted. An audit-write failure is logged
-            # and never converted into a mutation claim.
-            try:
-                await self._db.insert_audit_row(
-                    guild_id,
-                    ticket_id,
-                    "repair",
-                    actor_id,
-                    "denied",
-                    reason,
-                )
-            except Exception:
-                logger.warning(
-                    "Failed to write repair denied audit row for ticket %s",
-                    ticket_id,
-                    exc_info=True,
-                )
-            return RepairResult(
-                ticket_id=ticket_id,
-                guild_id=guild_id,
-                action="no_op",
-                outcome=outcome,
-                reason=reason,
-                evidence_id=None,
-                timestamp=now,
-            )
-
-        # Attempt conditional close (guild-scoped; one-winner at the DB).
-        try:
-            closed_row = await self._db.transition_ticket_to_closed(
-                guild_id,
-                ticket_id,
-                expected_statuses=("open", "claimed"),
-                close_reason=close_reason,
-            )
-        except Exception as exc:
-            logger.warning(
-                "Repair transition failed for ticket %s: %s",
-                ticket_id,
-                exc,
-                exc_info=True,
-            )
-            try:
-                await self._db.insert_audit_row(
-                    guild_id,
-                    ticket_id,
-                    "repair",
-                    actor_id,
-                    "error",
-                    type(exc).__name__,
-                )
-            except Exception:
-                logger.warning(
-                    "Failed to write repair error audit row for ticket %s",
-                    ticket_id,
-                    exc_info=True,
-                )
-            return RepairResult(
-                ticket_id=ticket_id,
-                guild_id=guild_id,
-                action="no_op",
-                outcome="error",
-                reason=type(exc).__name__,
-                evidence_id=None,
-                timestamp=now,
-            )
-
-        if closed_row is None:
-            try:
-                await self._db.insert_audit_row(
-                    guild_id,
-                    ticket_id,
-                    "repair",
-                    actor_id,
-                    "denied",
-                    "already_closed",
-                )
-            except Exception:
-                logger.warning(
-                    "Failed to write repair already-closed audit row for ticket %s",
-                    ticket_id,
-                    exc_info=True,
-                )
-            return RepairResult(
-                ticket_id=ticket_id,
-                guild_id=guild_id,
-                action="no_op",
-                outcome="already_closed",
-                reason=None,
-                evidence_id=None,
-                timestamp=now,
-            )
-
-        # Successful transition. A repair whose audit cannot be persisted
-        # MUST NOT be reported as success: the smallest safe semantics is
-        # ``close/error`` with a non-empty reason and no evidence success claim.
-        audit_persisted = True
-        try:
-            # Spec SERVICE-5.2/5.3: successful repair must persist outcome=repaired
-            is_manual = actor_id != "system" or close_reason == "zombie:manual_repair"
-            action_name = "manual_repair" if is_manual else "repair"
-            await self._db.insert_audit_row(
-                guild_id,
-                ticket_id,
-                action_name,
-                actor_id,
-                "repaired",
-                None,
-            )
-        except Exception:
-            audit_persisted = False
-            logger.warning(
-                "Failed to write repair audit row for ticket %s",
-                ticket_id,
-                exc_info=True,
-            )
-        if not audit_persisted:
-            return RepairResult(
-                ticket_id=ticket_id,
-                guild_id=guild_id,
-                action="close",
-                outcome="error",
-                reason="audit_persistence_failed",
-                evidence_id=None,
-                timestamp=now,
-            )
-        return RepairResult(
-            ticket_id=ticket_id,
-            guild_id=guild_id,
-            action="close",
-            outcome="repaired",
-            reason=None,
-            evidence_id=evidence.evidence_id,
-            timestamp=now,
-            corroborated=True,
-        )
-
-    # ----------------------------------------------------------------
-    # Adapter entry point (PR4a): exact channel-delete event evidence
-    # ----------------------------------------------------------------
-    # The listener builds single-use event evidence for the exact deleted
-    # channel only; it NEVER mutates ticket state and NEVER fabricates an
-    # authorizing actor. This is the ONLY PR4a adapter entry point — sweep and
-    # manual fallback are deferred to PR4b.
 
     async def handle_channel_delete(
         self,
@@ -338,85 +153,12 @@ class TicketService:
         *,
         preflight: object | None = None,
     ) -> RepairResult | None:
-        """Route an exact channel-delete event to the shared repair path.
-
-        Builds single-use event evidence for the active ticket mapping to
-        ``(guild_id, channel_id)``. The exact delete event already proves the
-        channel is gone for that event only, so NO fresh Discord probe is
-        made. A non-ticket deletion returns ``None`` (deletion logging already
-        handled by the listener) and never mutates.
-
-        *preflight* is the read-only live schema/deployment gate. It defaults
-        to ``None`` (fail-closed) so automatic repair stays disabled until a
-        resolved preflight is supplied by the caller; when it is resolved the
-        corroborated event evidence reaches the conditional close.
-
-        The deletion actor is NOT known at this layer (gateway events carry no
-        audit-log actor); the coordinator records ``actor_id="system"`` and
-        treats attribution as informational.
-
-        Args:
-            guild_id: Guild snowflake of the deleted channel.
-            channel_id: The deleted channel snowflake.
-            preflight: Read-only preflight result (default fail-closed).
-
-        Returns:
-            A :class:`RepairResult`, or ``None`` when no active ticket matches.
-        """
-        try:
-            row = await self._db.get_active_ticket_by_channel(guild_id, channel_id)
-        except Exception as exc:
-            # A DB failure during the active-ticket lookup must fail closed
-            # (no mutation, no raw escape) and emit truthful structured
-            # evidence carrying the available guild/channel context. No ticket
-            # id is fabricated — the audit records the empty id truthfully.
-            logger.warning(
-                "Channel-delete lookup failed (guild=%s, channel=%s, reason=lookup_error): %s",
-                guild_id,
-                channel_id,
-                exc,
-                exc_info=True,
-            )
-            await self._audit_denied(
-                guild_id,
-                "",
-                "lookup_error",
-                "system",
-            )
-            return RepairResult(
-                ticket_id="",
-                guild_id=guild_id,
-                action="no_op",
-                outcome="skipped",
-                reason="lookup_error",
-                evidence_id=None,
-                timestamp=datetime.now(UTC),
-            )
-        if row is None:
-            return None
-        evidence = IntegrityEvidence(
-            ticket_id=row["id"],
+        """Route an exact channel-delete event to the shared repair path (delegates to repair service)."""
+        return await self._repair.handle_channel_delete(
             guild_id=guild_id,
-            channel_id=row.get("channelId"),
-            status=row["status"],
-            channel_exists=False,
-            source="channel_delete",
-        )
-        # The exact delete event is corroborating by construction. The
-        # coordinator still applies the preflight gate fail-closed.
-        return await self.repair_ticket_from_evidence(
-            evidence,
+            channel_id=channel_id,
             preflight=preflight,
-            close_reason="zombie:channel_deleted",
-            actor_id="system",
         )
-
-    # ----------------------------------------------------------------
-    # Adapter entry points (PR4b): bounded sweep + manual fallback
-    # ----------------------------------------------------------------
-    # Both adapters perform a FRESH Discord probe per candidate/attempt and
-    # delegate candidate evaluation to the SAME shared repair path
-    # (repair_ticket_from_evidence). Adapters never mutate ticket state.
 
     async def sweep_integrity(
         self,
@@ -424,215 +166,15 @@ class TicketService:
         bot: Any,
         *,
         preflight: object | None = None,
-        batch_size: int = INTEGRITY_BATCH_SIZE,
+        batch_size: int = 50,
     ) -> list[RepairResult]:
-        """Run one bounded integrity sweep for *guild_id*.
-
-        Discovers active ticket channels via ``get_open_ticket_channel_ids``,
-        selects the next deduplicated batch, and performs a FRESH
-        ``fetch_channel`` probe per candidate. Only an explicit ``NotFound``
-        corroborates absence and reaches the shared repair path; a present
-        channel is a no-op ``skipped`` with no repair audit, and a
-        transient/uncertain probe is reported as a reviewable ``skipped``
-        result with a bounded backoff sleep and NO mutation. Evidence is never
-        reused across candidates. When G.2 is unresolved the sweep is a
-        dry-run: candidates with corroborated evidence are returned with
-        evidence preserved and no audit rows.
-
-        Preflight defaults to ``None`` (fail-closed): automatic repair stays
-        disabled until a resolved live preflight is supplied. Dry-run still
-        returns evidence-bearing results.
-
-        Args:
-            guild_id: Guild snowflake to sweep.
-            bot: The bot (provides ``get_guild`` for channel probing).
-            preflight: Read-only preflight result (default fail-closed).
-            batch_size: Max candidates to probe this sweep.
-
-        Returns:
-            One :class:`RepairResult` per candidate evaluated (or empty).
-        """
-        try:
-            channel_ids = await self._db.get_open_ticket_channel_ids(guild_id)
-        except Exception as exc:
-            # A DB failure while discovering the sweep candidate LIST must not
-            # escape raw: it is converted into truthful structured evidence
-            # (guild + retryable classification) with NO fabricated ticket id,
-            # and no mutation is attempted.
-            logger.warning(
-                "Integrity sweep failed to discover candidate channels (guild=%s, reason=sweep_discovery_error): %s",
-                guild_id,
-                exc,
-                exc_info=True,
-            )
-            await self._audit_denied(
-                guild_id,
-                "",
-                "sweep_discovery_error",
-                "system",
-            )
-            return [
-                RepairResult(
-                    ticket_id="",
-                    guild_id=guild_id,
-                    action="no_op",
-                    outcome="skipped",
-                    reason="sweep_discovery_error",
-                    evidence_id=None,
-                    timestamp=datetime.now(UTC),
-                )
-            ]
-        candidates: list[dict[str, Any]] = []
-        results: list[RepairResult] = []
-        for channel_id in channel_ids:
-            try:
-                row = await self._db.get_active_ticket_by_channel(guild_id, channel_id)
-            except Exception as exc:
-                # A DB failure resolving ONE candidate must not escape raw nor
-                # abort the sweep: that candidate is reported with structured
-                # evidence carrying the available channel id (never a
-                # fabricated ticket id) and safe candidates continue.
-                logger.warning(
-                    "Integrity sweep failed to resolve candidate "
-                    "(guild=%s, channel=%s, reason=sweep_discovery_error): %s",
-                    guild_id,
-                    channel_id,
-                    exc,
-                    exc_info=True,
-                )
-                await self._audit_denied(
-                    guild_id,
-                    "",
-                    "sweep_discovery_error",
-                    "system",
-                )
-                results.append(
-                    RepairResult(
-                        ticket_id="",
-                        guild_id=guild_id,
-                        action="no_op",
-                        outcome="skipped",
-                        reason="sweep_discovery_error",
-                        evidence_id=None,
-                        timestamp=datetime.now(UTC),
-                    )
-                )
-                continue
-            if row is not None:
-                candidates.append(row)
-
-        batch = plan_sweep_batch(candidates, batch_size=batch_size)
-        attempt = 0
-        for candidate in batch:
-            raw_channel_id = candidate.get("channelId")
-            channel_exists = await probe_channel_absence(bot, guild_id, str(raw_channel_id))
-            if channel_exists is None:
-                # Transient/uncertain: backoff + reviewable skip, no mutation.
-                await asyncio.sleep(backoff_delay(attempt))
-                attempt += 1
-                # Preserve evidence with evidence_id for dry-run/reporting, but
-                # skip still. For probe_unresolved we create evidence with None
-                # channel_exists so corroborated is None -> skipped path.
-                evidence_unresolved = IntegrityEvidence(
-                    ticket_id=candidate["id"],
-                    guild_id=guild_id,
-                    channel_id=raw_channel_id,
-                    status=candidate["status"],
-                    channel_exists=None,
-                    observed_at=datetime.now(UTC),
-                    source="sweep",
-                )
-                # If live channel (True) -> not corroborated skipped, also no audit per spec no-op
-                # Probe unresolved falls through to skipped; we already slept.
-                # Dry-run: when G.2 unresolved we preserve evidence_id and don't write audit
-                preflight_allows = getattr(preflight, "repair_activation_allowed", None) is True
-                if not preflight_allows:
-                    results.append(
-                        RepairResult(
-                            ticket_id=candidate["id"],
-                            guild_id=guild_id,
-                            action="no_op",
-                            outcome="skipped",
-                            reason="gate_unresolved",
-                            evidence_id=evidence_unresolved.evidence_id,
-                            timestamp=datetime.now(UTC),
-                            corroborated=evidence_unresolved.corroborated,
-                        )
-                    )
-                else:
-                    results.append(
-                        RepairResult(
-                            ticket_id=candidate["id"],
-                            guild_id=guild_id,
-                            action="no_op",
-                            outcome="skipped",
-                            reason="probe_unresolved",
-                            evidence_id=evidence_unresolved.evidence_id,
-                            timestamp=datetime.now(UTC),
-                            corroborated=evidence_unresolved.corroborated,
-                        )
-                    )
-                continue
-
-            # Live channel is a no-op skipped with no repair audit (spec SERVICE-7.3)
-            if channel_exists is True:
-                evidence_live = IntegrityEvidence(
-                    ticket_id=candidate["id"],
-                    guild_id=guild_id,
-                    channel_id=raw_channel_id,
-                    status=candidate["status"],
-                    channel_exists=True,
-                    observed_at=datetime.now(UTC),
-                    source="sweep",
-                )
-                results.append(
-                    RepairResult(
-                        ticket_id=candidate["id"],
-                        guild_id=guild_id,
-                        action="no_op",
-                        outcome="skipped",
-                        reason="not_corroborated",
-                        evidence_id=evidence_live.evidence_id,
-                        timestamp=datetime.now(UTC),
-                        corroborated=evidence_live.corroborated,
-                    )
-                )
-                continue
-
-            evidence = IntegrityEvidence(
-                ticket_id=candidate["id"],
-                guild_id=guild_id,
-                channel_id=raw_channel_id,
-                status=candidate["status"],
-                channel_exists=channel_exists,
-                observed_at=datetime.now(UTC),
-                source="sweep",
-            )
-            # G.2 unresolved dry-run: return candidate report with corroborated evidence, no mutation/audit
-            preflight_allows = getattr(preflight, "repair_activation_allowed", None) is True
-            if not preflight_allows:
-                results.append(
-                    RepairResult(
-                        ticket_id=candidate["id"],
-                        guild_id=guild_id,
-                        action="no_op",
-                        outcome="skipped",
-                        reason="gate_unresolved",
-                        evidence_id=evidence.evidence_id,
-                        timestamp=datetime.now(UTC),
-                        corroborated=evidence.corroborated,
-                    )
-                )
-                continue
-            results.append(
-                await self.repair_ticket_from_evidence(
-                    evidence,
-                    preflight=preflight,
-                    close_reason="zombie:sweep",
-                    actor_id="system",
-                )
-            )
-        return results
+        """Run one bounded integrity sweep for *guild_id* (delegates to repair service)."""
+        return await self._repair.sweep_integrity(
+            guild_id=guild_id,
+            bot=bot,
+            preflight=preflight,
+            batch_size=batch_size,
+        )
 
     async def repair_ticket_by_ref(
         self,
@@ -645,153 +187,9 @@ class TicketService:
         preflight: object | None = None,
         global_grant: GlobalMutationGrant | None = None,
     ) -> RepairResult | None:
-        """Resolve *ticket_ref* and repair the ticket through the shared path.
-
-        This is the SERVICE-OWNED resolution boundary for ``/repair_ticket``:
-        the cog is a thin delegator that never performs its own ticket lookup.
-        A malformed/empty reference, a not-found row, and a DB lookup failure
-        all produce truthful structured evidence (best-effort audit + log)
-        with the AVAILABLE context — guild id, the raw reference, source, and
-        reason. No canonical ticket UUID exists on those paths, so the audit
-        records an empty ticket id rather than fabricating one.
-
-        *preflight* defaults to ``None`` (fail-closed) and *global_grant* is
-        the optional explicit operator mutation grant — both are forwarded to
-        the shared repair path unchanged.
-
-        Returns:
-            A :class:`RepairResult` for the repair outcome, or ``None`` when
-            the reference is malformed/empty (the cog reports the user error).
-        """
-        ref = parse_ticket_ref(ticket_ref)
-        if ref is None or (ref.number is None and ref.uuid is None):
-            logger.warning(
-                "repair_ticket_by_ref: unparseable reference (guild=%s, ref=%r)",
-                guild_id,
-                ticket_ref,
-            )
-            return None
-
-        row: dict[str, Any] | None = None
-        if ref.number is not None:
-            try:
-                row = await self._db.get_ticket_by_number(guild_id, ref.number)
-            except Exception as exc:
-                logger.warning(
-                    "repair_ticket_by_ref: number lookup failed (guild=%s, ref=%r): %s",
-                    guild_id,
-                    ticket_ref,
-                    exc,
-                    exc_info=True,
-                )
-                logger.warning(
-                    "repair_ticket_by_ref: audit skipped for database_error without ticketId (guild=%s, ref=%r)",
-                    guild_id,
-                    ticket_ref,
-                )
-                return RepairResult(
-                    ticket_id="",
-                    guild_id=guild_id,
-                    action="no_op",
-                    outcome="error",
-                    reason="database_error",
-                    evidence_id=None,
-                    timestamp=datetime.now(UTC),
-                )
-            if row is None:
-                logger.warning(
-                    "repair_ticket_by_ref: number not found (guild=%s, ref=%r)",
-                    guild_id,
-                    ticket_ref,
-                )
-                logger.warning(
-                    "repair_ticket_by_ref: audit skipped for ticket_not_found without ticketId (guild=%s, ref=%r)",
-                    guild_id,
-                    ticket_ref,
-                )
-                return RepairResult(
-                    ticket_id="",
-                    guild_id=guild_id,
-                    action="no_op",
-                    outcome="error",
-                    reason="ticket_not_found",
-                    evidence_id=None,
-                    timestamp=datetime.now(UTC),
-                )
-        else:
-            assert ref.uuid is not None
-            try:
-                row = await self._db.get_ticket(ref.uuid)
-            except Exception as exc:
-                logger.warning(
-                    "repair_ticket_by_ref: uuid lookup failed (guild=%s, ref=%r): %s",
-                    guild_id,
-                    ticket_ref,
-                    exc,
-                    exc_info=True,
-                )
-                logger.warning(
-                    "repair_ticket_by_ref: audit skipped for database_error without ticketId (guild=%s, ref=%r)",
-                    guild_id,
-                    ticket_ref,
-                )
-                return RepairResult(
-                    ticket_id="",
-                    guild_id=guild_id,
-                    action="no_op",
-                    outcome="error",
-                    reason="database_error",
-                    evidence_id=None,
-                    timestamp=datetime.now(UTC),
-                )
-            if row is None:
-                logger.warning(
-                    "repair_ticket_by_ref: uuid not found (guild=%s, ref=%r)",
-                    guild_id,
-                    ticket_ref,
-                )
-                logger.warning(
-                    "repair_ticket_by_ref: audit skipped for ticket_not_found without ticketId (guild=%s, ref=%r)",
-                    guild_id,
-                    ticket_ref,
-                )
-                return RepairResult(
-                    ticket_id="",
-                    guild_id=guild_id,
-                    action="no_op",
-                    outcome="error",
-                    reason="ticket_not_found",
-                    evidence_id=None,
-                    timestamp=datetime.now(UTC),
-                )
-
-        if row.get("guildId") != guild_id:
-            # Defense-in-depth row-guild validation: a foreign-guild row must
-            # never be probed or mutated through this path.
-            logger.warning(
-                "repair_ticket_by_ref: row guild mismatch (requested=%s, row=%s, ref=%r)",
-                guild_id,
-                row.get("guildId"),
-                ticket_ref,
-            )
-            await self._audit_denied(
-                guild_id,
-                row.get("id") or "",
-                "cross_guild_denied",
-                actor_id,
-            )
-            return RepairResult(
-                ticket_id=row.get("id") or "",
-                guild_id=guild_id,
-                action="no_op",
-                outcome="skipped",
-                reason="cross_guild_denied",
-                evidence_id=None,
-                timestamp=datetime.now(UTC),
-            )
-
-        return await self.repair_ticket_manual(
-            row["id"],
+        """Resolve *ticket_ref* and repair the ticket through the shared path (delegates to repair service)."""
+        return await self._repair.repair_ticket_by_ref(
+            ticket_ref,
             guild_id=guild_id,
             actor_id=actor_id,
             authority=authority,
@@ -811,160 +209,18 @@ class TicketService:
         preflight: object | None = None,
         global_grant: GlobalMutationGrant | None = None,
     ) -> RepairResult:
-        """Manually repair one ticket using explicit authority + fresh probe.
-
-        Authority is evaluated FIRST (pure, no I/O): an unauthorized or
-        cross-guild request is denied without any probe or mutation. A
-        bot-owner operator requires an explicit, confirmed, actor/target
-        matching :class:`GlobalMutationGrant` (threaded via *global_grant*) —
-        without it the operator is read-only and denied. An authorized request
-        then performs a FRESH channel probe and delegates to the shared repair
-        path. The initiating actor is recorded as the audit actor.
-
-        Preflight defaults to ``None`` (fail-closed): manual repair is a
-        dry-run unless a resolved live preflight is supplied.
-
-        Args:
-            ticket_id: UUID of the ticket to repair.
-            guild_id: The target guild (must match the actor's own guild).
-            actor_id: The initiating actor (audit attribution).
-            authority: Pure :class:`RepairAuthority` facts for the actor.
-            bot: The bot (provides ``get_guild`` for channel probing).
-            preflight: Read-only preflight result (default fail-closed).
-            global_grant: Optional explicit operator mutation grant.
-
-        Returns:
-            A :class:`RepairResult` (``denied`` for authority failures).
-        """
-        decision = evaluate_repair_authority(authority, global_grant=global_grant)
-        # Defense-in-depth: an authority evaluated for guild X must never
-        # authorize a mutation targeting guild Y, even if the caller
-        # supplies a mismatched target id. The denial is audited best-effort,
-        # scoped to the CALLER's guild (the operation origin), so a foreign
-        # target guild's audit trail is never polluted (guild isolation).
-        if authority.target_guild_id != guild_id:
-            await self._audit_denied(
-                authority.guild_id or guild_id,
-                ticket_id,
-                "cross_guild_denied",
-                actor_id,
-            )
-            return RepairResult(
-                ticket_id=ticket_id,
-                guild_id=guild_id,
-                action="no_op",
-                outcome="skipped",
-                reason="cross_guild_denied",
-                evidence_id=None,
-                timestamp=datetime.now(UTC),
-            )
-        if not decision.allowed:
-            await self._audit_denied(
-                guild_id,
-                ticket_id,
-                decision.reason or "insufficient_authority",
-                actor_id,
-            )
-            return RepairResult(
-                ticket_id=ticket_id,
-                guild_id=guild_id,
-                action="no_op",
-                outcome="skipped",
-                reason=decision.reason or "insufficient_authority",
-                evidence_id=None,
-                timestamp=datetime.now(UTC),
-            )
-
-        row = None
-        try:
-            row = await self._db.get_ticket(ticket_id)
-        except Exception:
-            # A transient database failure must NOT escape raw to the caller:
-            # it is converted into a truthful non-success result with
-            # best-effort structured failure audit evidence (repair/error,
-            # guild-scoped, retryable classification in the reason). An
-            # audit-write failure is logged and never turns this into success.
-            logger.warning(
-                "Manual repair DB lookup failed for ticket %s (guild %s)",
-                ticket_id,
-                guild_id,
-                exc_info=True,
-            )
-            await self._audit_denied(
-                guild_id,
-                ticket_id,
-                "database_error",
-                actor_id,
-                outcome="error",
-            )
-            return RepairResult(
-                ticket_id=ticket_id,
-                guild_id=guild_id,
-                action="no_op",
-                outcome="error",
-                reason="database_error",
-                evidence_id=None,
-                timestamp=datetime.now(UTC),
-            )
-        if row is None:
-            # Authorized request for a missing ticket: truthful error result
-            # plus best-effort structured non-mutating audit evidence so the
-            # failed outcome is reviewable (guild/ticket/outcome/reason).
-            await self._audit_denied(
-                guild_id,
-                ticket_id,
-                "ticket_not_found",
-                actor_id,
-                outcome="error",
-            )
-            return RepairResult(
-                ticket_id=ticket_id,
-                guild_id=guild_id,
-                action="no_op",
-                outcome="error",
-                reason="ticket_not_found",
-                evidence_id=None,
-                timestamp=datetime.now(UTC),
-            )
-
-        channel_id = row.get("channelId")
-        channel_exists = await probe_channel_absence(bot, guild_id, str(channel_id)) if channel_id else None
-
-        evidence = IntegrityEvidence(
+        """Manually repair one ticket using explicit authority + fresh probe (delegates to repair service)."""
+        return await self._repair.repair_ticket_manual(
             ticket_id=ticket_id,
             guild_id=guild_id,
-            channel_id=channel_id,
-            status=row.get("status", ""),
-            channel_exists=channel_exists,
-            observed_at=datetime.now(UTC),
-            source="manual",
-        )
-
-        # Manual repair is NOT G.2-gated: bypass preflight, keep corroboration gate.
-        # Use a synthetic resolved preflight so unknown evidence still maps to
-        # skipped/evidence_unresolved and live channel maps to skipped, but
-        # gate_unresolved never blocks manual.
-        from bot.services.integrity_report import evaluate_live_preflight
-
-        manual_preflight = evaluate_live_preflight(
-            project_status="ACTIVE_HEALTHY",
-            migration_015_applied=True,
-            close_reason_nullable=True,
-            required_indexes_present=True,
-            realtime_publication_covers=["guild", "greeting_config", "ticket", "ticket_note"],
-            observed_at=datetime.now(UTC).isoformat(),
-        )
-        # Manual: use synthetic resolved preflight so corroboration gates
-        # but G.2 never blocks manual. repair_ticket_from_evidence now
-        # persists the correct action (manual_repair) and outcome (repaired)
-        # directly, so no compensating row is needed.
-        return await self.repair_ticket_from_evidence(
-            evidence,
-            preflight=manual_preflight,
-            close_reason="zombie:manual_repair",
             actor_id=actor_id,
+            authority=authority,
+            bot=bot,
+            preflight=preflight,
+            global_grant=global_grant,
         )
 
+    # Delegated audit helper — kept for backward compat, delegates to repair service.
     async def _audit_denied(
         self,
         guild_id: str,
@@ -974,32 +230,10 @@ class TicketService:
         *,
         outcome: str = "denied",
     ) -> None:
-        """Persist best-effort structured audit evidence for a failed repair.
-
-        A failure must never be silently dropped from the audit trail, and an
-        audit-write failure must never be converted into a mutation claim: the
-        failure is logged at WARNING and the (already non-success) outcome
-        stands. *outcome* defaults to ``"denied"``; the authorized manual
-        not-found and DB-error paths pass ``"error"`` so their structured
-        evidence carries the truthful non-mutating outcome.
-        """
-        try:
-            await self._db.insert_audit_row(
-                guild_id,
-                ticket_id,
-                "repair",
-                actor_id,
-                outcome,
-                reason,
-            )
-        except Exception:
-            logger.warning(
-                "Failed to write repair %s audit row for ticket %s (guild %s)",
-                outcome,
-                ticket_id,
-                guild_id,
-                exc_info=True,
-            )
+        """Persist best-effort structured audit evidence for a failed repair (delegates to repair service)."""
+        return await self._repair._audit_denied(
+            guild_id, ticket_id, reason, actor_id, outcome=outcome
+        )
 
     async def claim_ticket(self, ticket_id: str, claimed_by: str, *, guild_id: str | None = None) -> Ticket:
         """Claim a ticket (delegates to lifecycle service)."""
@@ -1107,7 +341,7 @@ class TicketService:
         return await self._lifecycle.delete_note(note_id, author_id, ticket_id=ticket_id)
 
     # ----------------------------------------------------------------
-    # Orchestration helpers (PR4 extraction)
+    # Orchestration helpers — delegate to repair service (S3.3B)
     # ----------------------------------------------------------------
 
     async def create_ticket_channel(
@@ -1125,85 +359,20 @@ class TicketService:
         description: str | None = None,
         custom_fields: dict[str, str] | None = None,
     ) -> tuple[discord.TextChannel, Ticket]:
-        """Create a ticket Discord channel, insert the ticket row, and rename if needed.
-
-        When *parent_id* is set, uses :meth:`create_subticket` to enforce
-        parentId invariants.  On row-insert failure the channel is deleted
-        before re-raising.
-
-        The one-open-ticket-per-category invariant is checked **before** creating
-        the Discord channel so failed opens do not thrash channel create/delete.
-        """
-        # Fail fast: do not create a Discord channel if the user already has an
-        # open ticket in this category (subtickets are exempt via parent_id).
-        if parent_id is None and category_id is not None:
-            count = await self._db.count_user_open_tickets_in_category(
-                guild_id,
-                str(author.id),
-                category_id,
-            )
-            check_one_ticket_per_user_per_category(
-                str(author.id),
-                category_id,
-                parent_id=None,
-                count_fn=lambda _u, _c: count,
-            )
-
-        # Compute tentative channel name from DB max + 1.
-        tentative_max = await self._db.get_max_ticket_number(guild_id)
-        tentative_name = sanitize_channel_name(
-            category_name,
-            author.display_name,
-            tentative_max + 1,
-        )
-
-        overwrites = build_ticket_overwrites(guild, author, mod_role)
-
-        channel = await guild.create_text_channel(
-            name=tentative_name,
+        """Create a ticket Discord channel, insert row, and rename if needed (delegates to repair service)."""
+        return await self._repair.create_ticket_channel(
+            guild=guild,
             category=category,
-            overwrites=overwrites,
-            reason=f"Ticket opened by {author}",
+            author=author,
+            guild_id=guild_id,
+            category_name=category_name,
+            category_id=category_id,
+            mod_role=mod_role,
+            parent_id=parent_id,
+            subject=subject,
+            description=description,
+            custom_fields=custom_fields,
         )
-        logger.info("Ticket channel created: %s (guild=%s, author=%s)", channel.id, guild.id, author.id)
-
-        try:
-            if parent_id is not None:
-                ticket = await self.create_subticket(
-                    parent_id=parent_id,
-                    author_id=str(author.id),
-                    category_id=category_id,
-                    channel_id=str(channel.id),
-                    guild_id=guild_id,
-                )
-            else:
-                ticket = await self.create_ticket(
-                    guild_id=guild_id,
-                    author_id=str(author.id),
-                    category_id=category_id,
-                    channel_id=str(channel.id),
-                    subject=subject,
-                    description=description,
-                    custom_fields=custom_fields,
-                )
-        except Exception:
-            logger.exception("Ticket row creation failed — cleaning up channel %s", channel.id)
-            with contextlib.suppress(discord.HTTPException):
-                await channel.delete(reason="Ticket row creation failed")
-            raise
-
-        actual_name = sanitize_channel_name(
-            category_name,
-            author.display_name,
-            ticket.ticket_number,
-        )
-        if channel.name != actual_name:
-            try:
-                await channel.edit(name=actual_name)
-            except discord.HTTPException:
-                logger.warning("Failed to rename ticket channel %s to %s", channel.id, actual_name)
-
-        return channel, ticket
 
     async def close_ticket_full(
         self,
@@ -1214,69 +383,21 @@ class TicketService:
         bot: NebulosaBot,
         manual: bool = True,
     ) -> str | None:
-        """Close a single ticket end-to-end: transcript -> upload -> DB -> delete.
-
-        When *manual* is ``True``, a visual countdown edits a message
-        from 5 to 1 before deletion.  When ``False``, the channel is
-        deleted silently after a short delay.
-
-        Returns:
-            The transcript URL if uploaded, ``None`` otherwise.
-        """
-        guild = channel.guild
-        transcript_url: str | None = None
-        transcript_service = bot.transcript_service
-        if transcript_service is not None:
-            try:
-                transcript_file = await transcript_service.generate(channel)
-                log_channel: discord.TextChannel | None = None
-                guild_service = bot.guild_service
-                if guild_service is not None:
-                    try:
-                        config = await guild_service.get_config(str(guild.id))
-                        if config.log_channel_id:
-                            ch = guild.get_channel(int(config.log_channel_id))
-                            if isinstance(ch, discord.TextChannel):
-                                log_channel = ch
-                    except (ValueError, TypeError):
-                        logger.warning(
-                            "Invalid log_channel_id %r in guild %s config",
-                            config.log_channel_id,
-                            guild.id,
-                        )
-                if log_channel is not None:
-                    transcript_url = await transcript_service.upload(transcript_file, log_channel)
-                else:
-                    logger.warning("No log channel configured for guild %s — skipping transcript upload", guild.id)
-            except discord.HTTPException:
-                logger.exception("Transcript generation failed for ticket %s", ticket.id)
-
-        await self.close_ticket(ticket.id, closed_by=closed_by, transcript_url=transcript_url)
-
-        if manual:
-            await self._countdown_and_delete(channel, closed_by)
-        else:
-            await asyncio.sleep(CHANNEL_DELETE_DELAY)
-            try:
-                await channel.delete(reason=f"Ticket closed by {closed_by}")
-            except discord.NotFound:
-                logger.info("Ticket channel %s already deleted on silent close", channel.id)
-            except discord.HTTPException:
-                logger.exception("Failed to delete ticket channel %s", channel.id)
-
-        return transcript_url
+        """Close a single ticket end-to-end: transcript -> upload -> DB -> delete (delegates to repair service)."""
+        return await self._repair.close_ticket_full(
+            channel=channel,
+            ticket=ticket,
+            closed_by=closed_by,
+            bot=bot,
+            manual=manual,
+        )
 
     @staticmethod
     async def _countdown_and_delete(
         channel: discord.TextChannel,
         closed_by: str,
     ) -> None:
-        """Count down from 5 to 1, then delete the channel.
-
-        ``CancelledError`` is logged and re-raised so a cancelled task
-        never deletes the channel.  ``discord.HTTPException`` during the
-        countdown falls back to a silent delete.
-        """
+        """Count down from 5 to 1, then delete the channel (kept here so test patches/loggers match)."""
         try:
             msg = await channel.send("5")
             for i in range(4, 0, -1):
@@ -1291,9 +412,6 @@ class TicketService:
             )
             raise
         except discord.NotFound:
-            # NotFound during the countdown could mean the message was deleted
-            # (msg.edit) while the channel is still alive.  Attempt one final
-            # channel.delete before concluding the channel is gone.
             logger.info(
                 "Resource disappeared during countdown for channel %s — attempting final delete",
                 channel.id,

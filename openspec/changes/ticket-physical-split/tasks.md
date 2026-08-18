@@ -61,13 +61,13 @@ TicketLifecycleService behind TicketService (create/close/claim/unclaim/edit_cat
 - [x] S3.3A2.2 Extract bot/services/ticket_lifecycle_service.py (487) + facade delegates once + cache via query add/discard — 774+817 gross (pure move ~766 body; net new 50 delegates + 237 tests), GGA pass, mypy 0, ruff 0 — commit 2522d35 (size:exception pure extraction, review is move-verification)
 - [x] S3.3A2.3 GREEN: lifecycle invariants single owner, cache via query, 31 callers preserved, 1919/5 mypy 0 ruff 0
 
-## S3.3B Service Repair/Channel
+## S3.3B Service Repair/Channel — DONE s3d3b-repair @ticket-physical-split-s3d3b-repair (repair/channel behind facade)
 
-TicketRepairService+channel/transcript one evaluate_repair_eligibility. Branch sdd/s3.3b-service-repair-channel base sdd/s3.3a-service-query-lifecycle. Verify `pytest -k repair` `mypy`.
+TicketRepairService (repair/channel/transcript) single evaluate_repair_eligibility owner behind facade. Branch ticket-physical-split-s3d3b-repair base 4883f18 (ticket-physical-split-s3d3a2-lifecycle) stacked-to-main. Verify `pytest -k repair` `mypy bot` `ruff`.
 
-- [ ] S3.3B.1 RED: shared eligibility event/sweep/manual race→no-op unresolved→skip
-- [ ] S3.3B.2 Extract ticket_repair_service.py+helpers wire on_channel_delete/sweep_integrity/repair_ticket_*
-- [ ] S3.3B.3 GREEN: race/idempotency listener transcript fakes
+- [x] S3.3B.1 RED: shared eligibility event/sweep/manual race→no-op unresolved→skip — tests/test_ticket_repair_service_facade.py 11 RED → 11 GREEN
+- [x] S3.3B.2 Extract bot/services/ticket_repair_service.py (921) + facade delegates once (repair_ticket_from_evidence/handle_channel_delete/sweep_integrity/repair_ticket_by_ref/repair_ticket_manual + create_ticket_channel/close_ticket_full via lifecycle) — countdown kept on facade for patch logger compat — 1217+949 gross (pure move ~949 body; net new 67 delegates + 229 tests), mypy 0, ruff 0
+- [x] S3.3B.3 GREEN: race/idempotency listener transcript fakes 1930/5 mypy 0 ruff 0 — single evaluate_repair_eligibility seam preserved
 
 ## S3.4A Cog Admin/Lifecycle/Notes/Integrity
 
