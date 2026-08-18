@@ -64,23 +64,37 @@ class TicketCategoryDBMixin:
         )
         return _unwrap(response)
 
-    async def get_ticket_category(self: Any, category_id: str) -> dict[str, Any] | None:
-        """Fetch a ticket category by its UUID primary key."""
+    async def get_ticket_category(self: Any, category_id: str, *, guild_id: str | None = None) -> dict[str, Any] | None:
+        """Fetch a ticket category by its UUID primary key.
+
+        When *guild_id* is provided the query includes ``WHERE guildId=:gid
+        AND id=:cid`` so cross-guild reads return ``None``.
+        """
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
 
-        logger.debug("DB get_ticket_category(%r)", category_id)
-        response = await self._client.table("ticket_category").select("*").eq("id", category_id).execute()
+        logger.debug("DB get_ticket_category(%r, guild=%s)", category_id, guild_id)
+        query = self._client.table("ticket_category").select("*").eq("id", category_id)
+        if guild_id is not None:
+            query = query.eq("guildId", guild_id)
+        response = await query.execute()
         rows = _unwrap(response)
         return rows[0] if rows else None
 
-    async def delete_ticket_category(self: Any, category_id: str) -> None:
-        """Delete a ticket category by its UUID primary key."""
+    async def delete_ticket_category(self: Any, category_id: str, *, guild_id: str | None = None) -> None:
+        """Delete a ticket category by its UUID primary key.
+
+        When *guild_id* is provided the delete is scoped as ``WHERE
+        guildId=:gid AND id=:cid`` so a foreign guild's category is untouched.
+        """
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
 
-        logger.debug("DB delete_ticket_category(%s)", category_id)
-        await self._client.table("ticket_category").delete().eq("id", category_id).execute()
+        logger.debug("DB delete_ticket_category(%s, guild=%s)", category_id, guild_id)
+        query = self._client.table("ticket_category").delete().eq("id", category_id)
+        if guild_id is not None:
+            query = query.eq("guildId", guild_id)
+        await query.execute()
 
     async def count_open_tickets_by_category(self: Any, guild_id: str, category_id: str) -> int:
         """Return the number of open/claimed tickets referencing *category_id*.

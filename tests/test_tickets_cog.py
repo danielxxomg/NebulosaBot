@@ -2849,7 +2849,7 @@ class TestUnclaimCommand:
         tickets_cog: TicketsCog,
     ) -> None:
         """/unclaim MUST NOT be gated by @is_mod() — claimer can unclaim without mod role."""
-        cmd = tickets_cog.unclaim
+        cmd: object = tickets_cog.unclaim
         # guard: app_command may be None until command is added to tree
         app = getattr(cmd, "app_command", None)
         has_is_mod = bool(cmd.checks) or (app is not None and bool(app.checks))

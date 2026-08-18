@@ -439,7 +439,7 @@ class TicketActionsView(discord.ui.View):
         bot: NebulosaBot, channel_id: int, guild_id: str | None = None, *, action: str = "claim"
     ) -> tuple[dict[str, Any] | None, str | None]:
         assert bot.db is not None
-        row = await bot.db.get_ticket_by_channel(str(channel_id))
+        row = await bot.db.get_ticket_by_channel(str(channel_id), guild_id=guild_id)
         if row is None:
             return None, t(guild_id, f"tickets.actions.{action}_not_ticket_description")
         if row["status"] == "closed":
