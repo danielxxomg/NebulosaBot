@@ -28,22 +28,20 @@ class TicketNoteDBMixin:
     ) -> dict[str, Any]:
         """Insert a staff note on a ticket and return the persisted row.
 
-        Generates a v4 UUID for the primary key. The ``createdAt`` timestamp
-        is set by the database default clause (``NOW()``) — it is not set
-        client-side. Notes are staff-only (not visible to the ticket opener).
-
-        When *guild_id* is provided the ticket's ownership is validated before
-        insert: the ticket must exist and have ``guildId==guild_id``, otherwise
+        Guild-scoped: the ticket's ownership is validated before insert — the
+        ticket must exist and have ``guildId==guild_id``, otherwise
         ``ValueError("cross_guild_denied")`` is raised and no row is inserted.
+        A missing ``guild_id`` raises ``ValueError("guild_id required")``.
         """
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
+        if guild_id is None:
+            raise ValueError("guild_id required")
 
-        if guild_id is not None:
-            ticket_rows = await self._client.table("ticket").select("guildId").eq("id", ticket_id).execute()
-            ticket_data = _unwrap(ticket_rows)
-            if not ticket_data or ticket_data[0].get("guildId") != guild_id:
-                raise ValueError("cross_guild_denied")
+        ticket_rows = await self._client.table("ticket").select("guildId").eq("id", ticket_id).execute()
+        ticket_data = _unwrap(ticket_rows)
+        if not ticket_data or ticket_data[0].get("guildId") != guild_id:
+            raise ValueError("cross_guild_denied")
 
         note_id = str(uuid.uuid4())
         row = {
@@ -64,19 +62,19 @@ class TicketNoteDBMixin:
     ) -> list[dict[str, Any]]:
         """Return notes for a ticket, newest-first, capped by *limit*.
 
-        The caller controls the cap (default 50, the v1 per-ticket note limit
-        enforced in the service layer). Results are ordered by ``createdAt``
-        descending. When *guild_id* is provided ownership is validated first:
-        a mismatched guild returns ``[]`` without leaking notes.
+        Guild-scoped: ownership is validated first — a mismatched guild returns
+        ``[]`` without leaking notes. A missing ``guild_id`` raises
+        ``ValueError("guild_id required")``.
         """
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
+        if guild_id is None:
+            raise ValueError("guild_id required")
 
-        if guild_id is not None:
-            ticket_rows = await self._client.table("ticket").select("guildId").eq("id", ticket_id).execute()
-            ticket_data = _unwrap(ticket_rows)
-            if not ticket_data or ticket_data[0].get("guildId") != guild_id:
-                return []
+        ticket_rows = await self._client.table("ticket").select("guildId").eq("id", ticket_id).execute()
+        ticket_data = _unwrap(ticket_rows)
+        if not ticket_data or ticket_data[0].get("guildId") != guild_id:
+            return []
 
         logger.debug("DB get_ticket_notes(ticket=%s, limit=%d, guild=%s)", ticket_id, limit, guild_id)
         response = await (
@@ -94,23 +92,24 @@ class TicketNoteDBMixin:
     ) -> None:
         """Delete a staff note by its UUID primary key.
 
-        When *guild_id* and *ticket_id* are provided the ticket ownership is
-        validated before delete; a cross-guild request raises
-        ``ValueError("cross_guild_denied")`` and performs no delete.
+        Guild-scoped: ticket ownership is validated before delete; a missing
+        ``guild_id``/``ticket_id`` raises ``ValueError("guild_id required")``,
+        and a cross-guild request raises ``ValueError("cross_guild_denied")``.
         """
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
+        if guild_id is None or ticket_id is None:
+            raise ValueError("guild_id required")
 
-        if guild_id is not None and ticket_id is not None:
-            ticket_rows = await self._client.table("ticket").select("guildId").eq("id", ticket_id).execute()
-            ticket_data = _unwrap(ticket_rows)
-            if not ticket_data or ticket_data[0].get("guildId") != guild_id:
-                raise ValueError("cross_guild_denied")
-            # Also ensure the note belongs to the claimed ticket
-            note_rows = await self._client.table("ticket_note").select("ticketId").eq("id", note_id).execute()
-            note_data = _unwrap(note_rows)
-            if not note_data or note_data[0].get("ticketId") != ticket_id:
-                raise ValueError("cross_guild_denied")
+        ticket_rows = await self._client.table("ticket").select("guildId").eq("id", ticket_id).execute()
+        ticket_data = _unwrap(ticket_rows)
+        if not ticket_data or ticket_data[0].get("guildId") != guild_id:
+            raise ValueError("cross_guild_denied")
+        # Also ensure the note belongs to the claimed ticket
+        note_rows = await self._client.table("ticket_note").select("ticketId").eq("id", note_id).execute()
+        note_data = _unwrap(note_rows)
+        if not note_data or note_data[0].get("ticketId") != ticket_id:
+            raise ValueError("cross_guild_denied")
 
         logger.debug("DB delete_ticket_note(%s, guild=%s)", note_id, guild_id)
         await self._client.table("ticket_note").delete().eq("id", note_id).execute()
@@ -120,21 +119,18 @@ class TicketNoteDBMixin:
     ) -> list[dict[str, Any]]:
         """Return notes by *author_id* on *ticket_id* created in the dedup window.
 
-        Computes a cutoff of ``now() - window_seconds`` client-side and pushes
-        it down as a ``createdAt >= cutoff`` filter, then returns the matching
-        rows (``content`` is selected so callers can compare normalized hashes).
-        The composite index ``idx_ticket_note_ticket_author_created`` backs this
-        query. When *guild_id* is provided ownership is validated first; a
-        mismatched guild returns ``[]`` without leaking content.
+        Guild-scoped: ownership validated first; missing ``guild_id`` raises
+        ``ValueError("guild_id required")``, mismatched guild returns ``[]``.
         """
         if self._client is None:
             raise RuntimeError("Database.connect() must be called first")
+        if guild_id is None:
+            raise ValueError("guild_id required")
 
-        if guild_id is not None:
-            ticket_rows = await self._client.table("ticket").select("guildId").eq("id", ticket_id).execute()
-            ticket_data = _unwrap(ticket_rows)
-            if not ticket_data or ticket_data[0].get("guildId") != guild_id:
-                return []
+        ticket_rows = await self._client.table("ticket").select("guildId").eq("id", ticket_id).execute()
+        ticket_data = _unwrap(ticket_rows)
+        if not ticket_data or ticket_data[0].get("guildId") != guild_id:
+            return []
 
         cutoff = datetime.now(UTC) - timedelta(seconds=window_seconds)
         logger.debug(
