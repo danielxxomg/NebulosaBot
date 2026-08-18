@@ -9,6 +9,11 @@ Covers Phase 2 of the ticket-category-fields change:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from bot.views.tickets import TicketIntakeModal
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -374,6 +379,7 @@ class TestBuildTicketEmbedCustomFields:
         ]
         embed = build_ticket_embed(ticket, guild_id="123", field_definitions=definitions)
         evidence_field = next(f for f in embed.fields if f.name == "Evidence")
+        assert evidence_field.value is not None
         assert len(evidence_field.value) <= 1024
         assert evidence_field.value.endswith("...")
 
@@ -427,7 +433,7 @@ class TestTicketIntakeModalDynamicFields:
     def _make_modal(
         self,
         field_definitions: list[dict] | None = None,
-    ) -> tuple[MagicMock, MagicMock]:
+    ) -> tuple[TicketIntakeModal, MagicMock]:
         """Build a TicketIntakeModal with mocked dependencies.
 
         Returns (modal, guild) where guild.id = 123456789.
@@ -536,7 +542,7 @@ class TestTicketIntakeModalSubmit:
         title_value: str = "Help me",
         desc_value: str = "",
         custom_values: list[str] | None = None,
-    ) -> tuple[MagicMock, MagicMock]:
+    ) -> tuple[TicketIntakeModal, MagicMock]:
         """Build a TicketIntakeModal and replace its inputs with settable mocks."""
         from bot.views.tickets import TicketIntakeModal
 

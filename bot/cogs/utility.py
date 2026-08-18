@@ -7,12 +7,13 @@ No service layer — embed construction only, no DB or cache I/O.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
+from bot.core.context import NebulosaContext
 from bot.core.i18n import t
 from bot.utils.brand import INFO
 from bot.utils.embeds import error_embed
@@ -51,7 +52,7 @@ class UtilityCog(commands.Cog, name="Utility"):
     )
     async def avatar(
         self,
-        ctx: commands.Context[Any],
+        ctx: NebulosaContext,
         member: discord.Member | None = None,
     ) -> None:
         """Reply with an embed showing the targeted member's avatar."""
@@ -71,7 +72,7 @@ class UtilityCog(commands.Cog, name="Utility"):
         name="serverinfo",
         description=app_commands.locale_str("Mostrar información del servidor.", key="slash.descriptions.serverinfo"),
     )
-    async def serverinfo(self, ctx: commands.Context[Any]) -> None:
+    async def serverinfo(self, ctx: NebulosaContext) -> None:
         """Reply with a guild summary embed or error if invoked in DMs."""
         guild_id = ctx.guild.id if ctx.guild else None
 
@@ -130,7 +131,7 @@ class UtilityCog(commands.Cog, name="Utility"):
     )
     async def userinfo(
         self,
-        ctx: commands.Context[Any],
+        ctx: NebulosaContext,
         member: discord.Member | None = None,
     ) -> None:
         """Reply with a member summary embed."""

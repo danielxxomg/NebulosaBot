@@ -221,9 +221,9 @@ async def test_listener_duplicate_race_yields_repaired_then_already_closed():
         svc.handle_channel_delete("123", "555", preflight=_resolved()),
         svc.handle_channel_delete("123", "555", preflight=_resolved()),
     )
-    assert {r.outcome for r in results} == {"repaired", "already_closed"}
-    assert sum(1 for r in results if r.action == "close" and r.outcome == "repaired") == 1
-    assert sum(1 for r in results if r.action == "no_op" and r.outcome == "already_closed") == 1
+    assert {r.outcome for r in results if r is not None} == {"repaired", "already_closed"}
+    assert sum(1 for r in results if r is not None and r.action == "close" and r.outcome == "repaired") == 1  # type: ignore[assert-type]
+    assert sum(1 for r in results if r is not None and r.action == "no_op" and r.outcome == "already_closed") == 1  # type: ignore[assert-type]
 
 
 @pytest.mark.asyncio

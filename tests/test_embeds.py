@@ -113,6 +113,7 @@ class TestMakeEmbed:
         from bot.utils.embeds import _make_embed
 
         embed = _make_embed("Title", "Desc", PRIMARY)
+        assert embed.color is not None
         assert embed.color.value == PRIMARY
 
     def test_accepts_bot_for_footer_icon(self, mock_bot: MagicMock) -> None:
@@ -158,6 +159,7 @@ class TestFactoryFunctions:
         from bot.utils.embeds import error_embed
 
         embed = error_embed("Err", "desc")
+        assert embed.color is not None
         assert embed.color.value == ERROR
 
     def test_success_embed_uses_success_token(self) -> None:
@@ -165,6 +167,7 @@ class TestFactoryFunctions:
         from bot.utils.embeds import success_embed
 
         embed = success_embed("OK", "desc")
+        assert embed.color is not None
         assert embed.color.value == SUCCESS
 
     def test_info_embed_uses_info_token(self) -> None:
@@ -172,6 +175,7 @@ class TestFactoryFunctions:
         from bot.utils.embeds import info_embed
 
         embed = info_embed("Info", "desc")
+        assert embed.color is not None
         assert embed.color.value == INFO
 
     def test_warning_embed_uses_warning_token(self) -> None:
@@ -179,6 +183,7 @@ class TestFactoryFunctions:
         from bot.utils.embeds import warning_embed
 
         embed = warning_embed("Warn", "desc")
+        assert embed.color is not None
         assert embed.color.value == WARNING
 
 
@@ -196,6 +201,7 @@ class TestBuildTicketEmbed:
 
         ticket = {"ticketNumber": 1, "status": "open", "authorId": "123"}
         embed = build_ticket_embed(ticket)
+        assert embed.color is not None
         assert embed.color.value == SUCCESS
 
     def test_claimed_ticket_uses_info_token(self) -> None:
@@ -204,6 +210,7 @@ class TestBuildTicketEmbed:
 
         ticket = {"ticketNumber": 1, "status": "claimed", "authorId": "123"}
         embed = build_ticket_embed(ticket)
+        assert embed.color is not None
         assert embed.color.value == INFO
 
     def test_accepts_bot_for_footer_icon(self, mock_bot: MagicMock) -> None:
