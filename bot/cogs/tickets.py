@@ -344,7 +344,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         assert self.bot.db is not None
         gid = str(ctx.guild.id)
         try:
-            row = await self.bot.db.get_ticket_category(category_id)
+            row = await self.bot.db.get_ticket_category(category_id, guild_id=gid)
         except Exception:
             logger.exception("Failed to fetch ticket category %s", category_id)
             await ctx.send(embed=_err(gid, "tickets.delete.failed"), ephemeral=True)
@@ -366,7 +366,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             await ctx.send(embed=_err(gid, "tickets.delete.in_use", name=cat_name, count=open_count), ephemeral=True)
             return
         try:
-            await self.bot.db.delete_ticket_category(category_id)
+            await self.bot.db.delete_ticket_category(category_id, guild_id=gid)
         except Exception:
             logger.exception("Failed to delete ticket category %s", category_id)
             await ctx.send(embed=_err(gid, "tickets.delete.failed"), ephemeral=True)
@@ -440,10 +440,10 @@ class TicketsCog(commands.Cog, name="Tickets"):
             )
             return
 
-        # Fetch category and verify guild ownership.
+        # Fetch category and verify guild ownership — guild-scoped DB read.
         assert self.bot.db is not None
         try:
-            row = await self.bot.db.get_ticket_category(category_id)
+            row = await self.bot.db.get_ticket_category(category_id, guild_id=gid)
         except Exception:
             logger.exception("Failed to fetch ticket category %s", category_id)
             await ctx.send(embed=_err(gid, "tickets.configure_fields.failed"), ephemeral=True)
@@ -565,9 +565,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
             return
         try:
             parent_row = await (
-                self.bot.db.get_ticket_by_channel(str(ctx.channel.id))
+                self.bot.db.get_ticket_by_channel(str(ctx.channel.id), guild_id=gid)
                 if parent_id is None
-                else self.bot.db.get_ticket(parent_id)
+                else self.bot.db.get_ticket(parent_id, guild_id=gid)
             )
         except Exception:
             logger.exception("Failed to look up parent ticket")
@@ -586,8 +586,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
         if parent_owner is None:
             return
         mod_role = resolve_mod_role(guild, config.mod_role_id)
-        # Resolve parent's category name for channel naming.
-        sub_cat_name = await resolve_category_name(self.bot.db, parent_row.get("categoryId"))
+        # Resolve parent's category name for channel naming — guild-scoped.
+        sub_cat_name = await resolve_category_name(self.bot.db, parent_row.get("categoryId"), guild_id=gid)
         try:
             channel, subticket = await self.bot.ticket_service.create_ticket_channel(
                 guild,
@@ -682,7 +682,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         assert self.bot.ticket_service is not None
         assert self.bot.db is not None
         try:
-            row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id))
+            row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id), guild_id=gid)
         except Exception:
             logger.exception("Failed to look up ticket by channel %s", ctx.channel.id)
             await ctx.send(embed=_err(gid, "tickets.transfer.lookup_failed"))
@@ -719,7 +719,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         gid = str(ctx.guild.id)
         assert self.bot.db is not None and self.bot.ticket_service is not None
         try:
-            row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id))
+            row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id), guild_id=gid)
         except Exception:
             logger.exception("Failed to look up ticket by channel %s", ctx.channel.id)
             await ctx.send(

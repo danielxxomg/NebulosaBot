@@ -1,9 +1,11 @@
-"""Read-only schema inventory (PR3) — no DDL.
+"""Read-only schema inventory (PR3 / S3.1) — no DDL.
 
 Documents: RLS no-policy 9 tables, FK retention (CASCADE / SET NULL), CDC
 4 tables, TTL 300s/30s, 12 unused indexes for review, 015 parity, and
-guild-scope ID-only gaps.  Every attribute is in-memory / on-disk reading;
-``ddl_statements`` stays empty and ``no_ddl`` is True.
+guild-scope ID-only gaps. S3.1 adds the sb_secret_ opaque probe note and
+the PGRST205 catalog disclaimer (PostgREST pg_constraint not in schema cache;
+use DB/RPC staging path per exploration.md). Every attribute is in-memory /
+on-disk reading; ``ddl_statements`` stays empty and ``no_ddl`` is True.
 """
 
 from __future__ import annotations
@@ -123,9 +125,16 @@ async def fetch_live_metadata(
     ``None`` the caller should treat live evidence as unavailable
     (``live_evidence_missing_creds_or_unavailable``).
 
+    Catalog disclaimer (S3.1): PostgREST returns ``PGRST205`` for
+    ``public.pg_constraint`` because system catalogs are not in the API
+    schema cache; the application verifier MUST use a read-only DB/RPC
+    staging path for real FK/RLS/publication/migration parity
+    (S3.2, see exploration.md). This function remains the mocked-evidence
+    path; real parity also requires ``health_probe`` via RLS SELECT.
+
     Tables:
 
-    * ``pg_constraint`` — FK constraints (normalized to ``{child, parent, on_delete}``)
+    * ``pg_constraint`` — FK constraints (normalized to ``{child, parent, on_delete}``).
     * ``pg_policies`` — RLS policies (zero rows = baseline).
     * ``pg_publication_tables`` — CDC publication members.
     * ``supabase_migrations`` — migration history.

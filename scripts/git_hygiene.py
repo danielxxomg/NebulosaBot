@@ -15,6 +15,14 @@ _MIN_SHA_LEN = 7
 _HEX_RE = re.compile(r"^[0-9a-fA-F]+$")
 
 
+class OriginValidationError(ValueError):
+    """Git remote origin is not the expected explicit 'origin'."""
+
+
+class ShaValidationError(ValueError):
+    """SHA/ref is ambiguous or malformed."""
+
+
 def assert_explicit_origin(origin: str) -> str:
     """Validate that the git remote is explicitly ``origin``.
 
@@ -23,7 +31,8 @@ def assert_explicit_origin(origin: str) -> str:
     canonical ``origin`` on success.
     """
     if origin != "origin":
-        raise ValueError(f"origin must be explicit 'origin', got {origin!r}")
+        msg = f"origin must be explicit 'origin', got {origin!r}"
+        raise OriginValidationError(msg)
     return origin
 
 
@@ -34,11 +43,14 @@ def assert_explicit_sha(sha: str) -> str:
     Returns the lower-cased SHA on success so callers use a canonical form.
     """
     if not sha or sha != sha.strip():
-        raise ValueError(f"SHA/ref must be explicit non-empty without surrounding whitespace, got {sha!r}")
+        msg = f"SHA/ref must be explicit non-empty without surrounding whitespace, got {sha!r}"
+        raise ShaValidationError(msg)
     if len(sha) < _MIN_SHA_LEN:
-        raise ValueError(f"SHA/ref too short (<{_MIN_SHA_LEN}) and therefore ambiguous, got {sha!r}")
+        msg = f"SHA/ref too short (<{_MIN_SHA_LEN}) and therefore ambiguous, got {sha!r}"
+        raise ShaValidationError(msg)
     if not _HEX_RE.match(sha):
-        raise ValueError(f"SHA/ref must be hex, got {sha!r}")
+        msg = f"SHA/ref must be hex, got {sha!r}"
+        raise ShaValidationError(msg)
     return sha.lower()
 
 

@@ -2199,7 +2199,7 @@ class TestReopenByTicketRef:
 
         await tickets_cog.reopen.callback(tickets_cog, slash_ctx, ticket_ref=uuid_str)
 
-        mock_db.get_ticket.assert_awaited_once_with(uuid_str)
+        mock_db.get_ticket.assert_awaited_once_with(uuid_str, guild_id="123456789")
         mock_db.get_ticket_by_number.assert_not_awaited()
         ticket_bot.ticket_service.reopen_ticket.assert_awaited_once()
 
@@ -2400,7 +2400,7 @@ class TestConfigureFieldsCommand:
             tickets_cog, slash_ctx, category_id="cat-uuid-001", fields_json=self.VALID_FIELDS_JSON
         )
 
-        mock_db.get_ticket_category.assert_awaited_once_with("cat-uuid-001")
+        mock_db.get_ticket_category.assert_awaited_once_with("cat-uuid-001", guild_id="123456789")
         mock_db.update_ticket_category_field_definitions.assert_awaited_once()
         call_kwargs = mock_db.update_ticket_category_field_definitions.call_args.kwargs
         assert call_kwargs["category_id"] == "cat-uuid-001"
