@@ -12,7 +12,6 @@ Strict TDD: RED phase — tests written BEFORE the implementation.
 from __future__ import annotations
 
 import importlib
-import inspect
 import pkgutil
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -22,7 +21,7 @@ import pytest
 from discord import app_commands
 from discord.ext import commands
 
-from bot.core.i18n import SLASH_DESCRIPTIONS, SLASH_DESCRIBES
+from bot.core.i18n import SLASH_DESCRIPTIONS
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -124,14 +123,9 @@ class TestCogDescriptionsLocaleStr:
                 )
             elif not key.startswith("slash.descriptions."):
                 qualified = getattr(cmd, "qualified_name", cmd_name)
-                failures.append(
-                    f"{cog_name}.{qualified}: key '{key}' does not start with 'slash.descriptions.'"
-                )
+                failures.append(f"{cog_name}.{qualified}: key '{key}' does not start with 'slash.descriptions.'")
 
-        assert not failures, (
-            f"Commands missing locale_str descriptions:\n"
-            + "\n".join(f"  - {f}" for f in failures)
-        )
+        assert not failures, "Commands missing locale_str descriptions:\n" + "\n".join(f"  - {f}" for f in failures)
 
     def test_all_describe_params_use_locale_str(self) -> None:
         """Every @app_commands.describe param MUST use locale_str with a slash.describes.* key.
@@ -169,23 +163,18 @@ class TestCogDescriptionsLocaleStr:
                     if key is None:
                         seen.add(report_key)
                         failures.append(
-                            f"{cog_name}.{qualified}.{param_name}: locale_str has no extras['key'] — needs key='slash.describes.*'"
+                            f"{cog_name}.{qualified}.{param_name}: "
+                            "locale_str has no extras['key'] — "
+                            "needs key='slash.describes.*'"
                         )
                     elif not key.startswith("slash.describes."):
                         seen.add(report_key)
-                        failures.append(
-                            f"{cog_name}.{qualified}.{param_name}: key '{key}' wrong prefix"
-                        )
+                        failures.append(f"{cog_name}.{qualified}.{param_name}: key '{key}' wrong prefix")
                 elif desc and isinstance(desc, str):
                     seen.add(report_key)
-                    failures.append(
-                        f"{cog_name}.{qualified}.{param_name}: description is plain string, not locale_str"
-                    )
+                    failures.append(f"{cog_name}.{qualified}.{param_name}: description is plain string, not locale_str")
 
-        assert not failures, (
-            f"Parameters missing locale_str keys:\n"
-            + "\n".join(f"  - {f}" for f in failures)
-        )
+        assert not failures, "Parameters missing locale_str keys:\n" + "\n".join(f"  - {f}" for f in failures)
 
     def test_registry_keys_match_cog_decorators(self) -> None:
         """SLASH_DESCRIPTIONS registry MUST contain keys for all commands with locale_str."""
@@ -201,14 +190,9 @@ class TestCogDescriptionsLocaleStr:
             if registry_key is None:
                 registry_key = SLASH_DESCRIPTIONS.get(cmd_name)
             if registry_key is None:
-                failures.append(
-                    f"{cog_name}.{qualified}: locale_str key '{key}' not in SLASH_DESCRIPTIONS registry"
-                )
+                failures.append(f"{cog_name}.{qualified}: locale_str key '{key}' not in SLASH_DESCRIPTIONS registry")
 
-        assert not failures, (
-            f"Commands with locale_str not in registry:\n"
-            + "\n".join(f"  - {f}" for f in failures)
-        )
+        assert not failures, "Commands with locale_str not in registry:\n" + "\n".join(f"  - {f}" for f in failures)
 
 
 # ---------------------------------------------------------------------------
@@ -247,6 +231,7 @@ class TestErrorHandlerLocalization:
         assert embed is not None
         # Title should be Spanish localized (not hardcoded "Unexpected Error")
         from bot.core.i18n import t
+
         expected_title = t("111", "common.error.unexpected_title")
         assert embed.title == expected_title
         assert embed.title != "Unexpected Error"  # Not the hardcoded English
@@ -305,9 +290,7 @@ class TestErrorHandlerLocalization:
         # t() must be called with guild_id=333 (or str(333))
         call_args = mock_t.call_args_list
         guild_ids_used = [str(call.args[0]) for call in call_args if call.args]
-        assert "333" in guild_ids_used, (
-            f"Expected t() called with guild_id 333, got calls: {call_args}"
-        )
+        assert "333" in guild_ids_used, f"Expected t() called with guild_id 333, got calls: {call_args}"
 
     @pytest.mark.asyncio
     async def test_error_handler_no_guild_uses_none(self) -> None:
@@ -332,9 +315,7 @@ class TestErrorHandlerLocalization:
         # t() must be called with guild_id=None
         call_args = mock_t.call_args_list
         guild_ids_used = [call.args[0] for call in call_args if call.args]
-        assert None in guild_ids_used, (
-            f"Expected t() called with guild_id=None, got calls: {call_args}"
-        )
+        assert None in guild_ids_used, f"Expected t() called with guild_id=None, got calls: {call_args}"
 
 
 # ---------------------------------------------------------------------------
@@ -356,9 +337,7 @@ class TestManualDefaultLanguage:
         assert "por defecto: `en`" not in lower, "Manual incorrectly states default language is 'en'"
         assert "default: `en`" not in lower, "Manual incorrectly states default language is 'en'"
         # Must mention es as default somewhere in the language section
-        assert "por defecto: `es`" in lower or "default: `es`" in lower, (
-            "Manual must state default language is 'es'"
-        )
+        assert "por defecto: `es`" in lower or "default: `es`" in lower, "Manual must state default language is 'es'"
 
     def test_manual_documents_localized_slash_descriptions(self) -> None:
         """Manual MUST document that slash descriptions are client-localized."""
@@ -378,6 +357,4 @@ class TestManualDefaultLanguage:
                 "client locale",
             ]
         )
-        assert has_localization_note, (
-            "Manual must document that slash descriptions are client-localized"
-        )
+        assert has_localization_note, "Manual must document that slash descriptions are client-localized"

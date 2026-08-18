@@ -71,9 +71,7 @@ class TestUpsertGreetingConfig:
         assert upsert_calls[0][1]["onboardingChannelId"] == "onboarding-1"
 
     @pytest.mark.asyncio
-    async def test_clears_onboarding_channel_to_null(
-        self, db: Database, fake_client: FakeSupabaseClient
-    ) -> None:
+    async def test_clears_onboarding_channel_to_null(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """upsert_greeting_config() MUST persist clearing the channel as NULL."""
         config = GreetingConfig(guild_id="g1", onboarding_channel_id=None)
 
