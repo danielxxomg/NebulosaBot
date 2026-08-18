@@ -41,9 +41,9 @@ Scope 25 is_mod(17+8), 568/685/722+14 db, sb_secret probe guild/ticket+DB/RPC, 1
 
 DDL 1 preflight(dup/UUID/depth/orphans/audit1/1) →2 TEXT→UUID USING cast →3 indexes →4 parentId RESTRICT+depth1 →5 categoryId SET NULL →6 note CASCADE →7 audit SET NULL →8 validate drop idx_ticket_guild_number only (keep idx_ticket_channel). Gates RLS9/7/0 pub4 17vs19 repaired. Branch sdd/s3.2-parity-ddl base sdd/s3.1-guardrails. Verify `pytest -k preflight` `mypy` `ruff`.
 
-- [ ] S3.2.1 RED: preflight abort + 8-step order + reject drops
-- [ ] S3.2.2 Create migrations/018_ticket_integrity_fks.sql 8 steps+DOWN+LOCK_TIMEOUT+backup reconcile 17↔19
-- [ ] S3.2.3 GREEN: staging catalog pg_constraint/column/index asserts 1864/5
+- [x] S3.2.1 RED: preflight abort + 8-step order + reject drops — 18 GREEN 1899/5
+- [x] S3.2.2 Create migrations/018_ticket_integrity_fks.sql 8 steps+DOWN+LOCK_TIMEOUT+backup reconcile 17↔19 (+005 stub, 19 local)
+- [x] S3.2.3 GREEN: staging catalog pg_constraint/column/index asserts 1899/5 mypy0 ruff0
 
 ## S3.3A Service Query/Lifecycle
 
