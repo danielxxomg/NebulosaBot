@@ -230,14 +230,14 @@ class TestOnReadyConcurrentBackfill:
         guild_c = MagicMock()
         guild_c.id = 333
 
-        with patch.object(type(bot), "guilds", new_callable=lambda: property(lambda _self: [guild_a, guild_b, guild_c])):
+        with patch.object(
+            type(bot), "guilds", new_callable=lambda: property(lambda _self: [guild_a, guild_b, guild_c])
+        ):
             await bot.on_ready()
 
         assert bot.guild_service.ensure_guild_exists.await_count == 3
         # Verify each guild_id was passed.
-        called_ids = {
-            call.args[0] for call in bot.guild_service.ensure_guild_exists.call_args_list
-        }
+        called_ids = {call.args[0] for call in bot.guild_service.ensure_guild_exists.call_args_list}
         assert called_ids == {"111", "222", "333"}
 
     @pytest.mark.asyncio
@@ -422,7 +422,10 @@ class TestValidatePanels:
             await bot._validate_panels()
 
         mock_deploy.assert_awaited_once_with(
-            channel, "111", bot=bot, guild=guild,
+            channel,
+            "111",
+            bot=bot,
+            guild=guild,
         )
 
     @pytest.mark.asyncio
@@ -517,9 +520,12 @@ class TestValidatePanels:
         bot = _make_bot()
         bot.guild_service = MagicMock()
         bot.guild_service.ensure_guild_exists = AsyncMock()
-        bot.guild_service.get_config = AsyncMock(return_value=MagicMock(
-            ticket_panel_message_id=None, ticket_panel_channel_id=None,
-        ))
+        bot.guild_service.get_config = AsyncMock(
+            return_value=MagicMock(
+                ticket_panel_message_id=None,
+                ticket_panel_channel_id=None,
+            )
+        )
 
         call_order: list[str] = []
 

@@ -32,6 +32,7 @@ class TicketCategoryReader(Protocol):
 
     async def get_ticket_category(self, category_id: str) -> dict[str, Any] | None: ...
 
+
 logger = logging.getLogger(__name__)
 
 # Discord channel name limit is 100 characters.
