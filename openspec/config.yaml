@@ -43,8 +43,9 @@ rules:
     - Group by phase, use hierarchical numbering
     - Keep tasks completable in one session
   apply:
-    - Follow existing code patterns
-    - Strict TDD: write tests FIRST, then implement
+    guidelines:
+      - Follow existing code patterns
+      - "Strict TDD: write tests FIRST, then implement"
     tdd: true
     test_command: "uv run pytest"
   verify:
