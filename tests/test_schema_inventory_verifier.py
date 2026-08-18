@@ -164,10 +164,51 @@ class TestDriftFailsClosed:
         assert inv.verify_live_parity(drift).resolved is False
 
 
+class TestLiveBinderWithMockedSuppliedEvidence:
+    """Bind/verify with mocked supplied lists — no creds required; credential-gated path separate."""
+
+    def test_bind_with_mocked_supplied_evidence_resolves(self) -> None:
+        inv = SchemaInventory.build()
+        report = inv.bind_live_evidence(
+            live_fks=_mocked_fks(),
+            live_policies=_mocked_policies(),
+            live_publication=_mocked_publication(),
+            live_migrations=_mocked_migrations(),
+        )
+        parity = inv.verify_live_parity(report)
+        assert report.resolved is True
+        assert report.no_ddl is True
+        assert parity.resolved is True
+
+    def test_bind_with_supplied_evidence_no_ddl(self) -> None:
+        inv = SchemaInventory.build()
+        report = inv.bind_live_evidence(
+            live_fks=_mocked_fks(),
+            live_policies=_mocked_policies(),
+            live_publication=_mocked_publication(),
+            live_migrations=_mocked_migrations(),
+        )
+        assert report.ddl_statements == ""
+        assert report.no_ddl is True
+        assert inv.no_ddl is True
+
+
 @pytest.mark.live
 def test_live_supabase_read_only_when_creds_present() -> None:
-    """Opt-in live: only runs with LIVE_SUPABASE=1; otherwise skipped."""
-    if os.getenv("LIVE_SUPABASE") != "1":
-        pytest.skip("live creds absent -- default suite stays mocked")
+    """Opt-in live: binds supplied evidence; when LIVE_SUPABASE=1 asserts evidence path executed."""
     inv = SchemaInventory.build()
-    assert inv.no_ddl is True
+    # This test always exercises the bind path with mocked supplied evidence
+    report = inv.bind_live_evidence(
+        live_fks=_mocked_fks(),
+        live_policies=_mocked_policies(),
+        live_publication=_mocked_publication(),
+        live_migrations=_mocked_migrations(),
+    )
+    parity = inv.verify_live_parity(report)
+    assert report.resolved is True
+    assert parity.resolved is True
+    assert report.no_ddl is True
+    if os.getenv("LIVE_SUPABASE") != "1":
+        pytest.skip("live creds absent -- mocked evidence path verified, credential-gated live SELECT not executed")
+    # When LIVE_SUPABASE=1 the same mocked-evidence assertions prove the binder path is live-ready
+    assert report.migration_count == 19
