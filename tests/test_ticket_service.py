@@ -658,8 +658,8 @@ async def test_create_subticket_success(
         guild_id=guild_id,
     )
 
-    # parentId validated then passed through to insert.
-    mock_db.get_ticket.assert_awaited_once_with(parent_id)
+    # parentId validated then passed through to insert (guild-scoped).
+    mock_db.get_ticket.assert_awaited_once_with(parent_id, guild_id=guild_id)
     insert_kwargs = mock_db.insert_ticket.call_args.kwargs
     assert insert_kwargs["parent_id"] == parent_id
     assert insert_kwargs["ticket_number"] == 6  # MAX+1
@@ -1139,6 +1139,7 @@ async def test_create_note_inserts(
     """create_note MUST insert a row and return a TicketNote model."""
     mock_db.get_ticket_notes.return_value = []  # under cap
     mock_db.insert_ticket_note.return_value = _note_row()
+    mock_db.get_ticket.return_value = {"id": "ticket-uuid-003", "guildId": "123456789"}
 
     note = await service.create_note(
         "ticket-uuid-003",
@@ -1146,7 +1147,11 @@ async def test_create_note_inserts(
         content="Customer escalated",
     )
 
-    mock_db.insert_ticket_note.assert_awaited_once_with("ticket-uuid-003", "999999999", "Customer escalated")
+    # Guild-scoped note insert now requires guild_id.
+    assert mock_db.insert_ticket_note.await_count == 1
+    call = mock_db.insert_ticket_note.call_args
+    assert call.args == ("ticket-uuid-003", "999999999", "Customer escalated")
+    assert call.kwargs.get("guild_id") == "123456789"
     assert isinstance(note, TicketNote)
     assert note.content == "Customer escalated"
     assert note.author_id == "999999999"
@@ -1241,11 +1246,14 @@ async def test_delete_note_own(
     mock_db: AsyncMock,
 ) -> None:
     """The note author MUST be able to delete their own note."""
+    mock_db.get_ticket.return_value = {"id": "ticket-uuid-003", "guildId": "123456789"}
     mock_db.get_ticket_notes.return_value = [_note_row(author_id="999999999")]
 
     await service.delete_note("note-uuid-001", author_id="999999999", ticket_id="ticket-uuid-003")
 
-    mock_db.delete_ticket_note.assert_awaited_once_with("note-uuid-001")
+    mock_db.delete_ticket_note.assert_awaited_once_with(
+        "note-uuid-001", guild_id="123456789", ticket_id="ticket-uuid-003"
+    )
 
 
 @pytest.mark.asyncio
@@ -1515,7 +1523,7 @@ async def test_note_delete_author_audited_success(service: TicketService, mock_d
 
     await service.delete_note("note-uuid-001", author_id=author, ticket_id=ticket_id)
 
-    mock_db.delete_ticket_note.assert_awaited_once_with("note-uuid-001")
+    mock_db.delete_ticket_note.assert_awaited_once_with("note-uuid-001", guild_id="123456789", ticket_id=ticket_id)
     kwargs = _audit_kwargs(mock_db)
     assert kwargs["action"] == "note_delete"
     assert kwargs["outcome"] == "success"

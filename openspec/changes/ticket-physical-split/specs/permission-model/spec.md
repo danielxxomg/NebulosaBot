@@ -4,9 +4,9 @@
 
 ### Requirement: `is_mod` dual-path characterization
 
-The system MUST preserve the existing `is_mod` decorator path and `is_mod_check` inline path without changing permission decisions. Characterization coverage MUST account for 25 `@is_mod()` decorator applications (17 in `tickets.py` and 8 in `sentinel.py`) and every inline `is_mod_check` call, including persistent and ephemeral ticket view callbacks. The behavior MUST remain a single decision point in `bot/utils/checks.py`.
+The system MUST preserve the existing `is_mod` decorator path and `is_mod_check` inline path without changing permission decisions. Characterization coverage MUST account for 24 `@is_mod()` decorator applications (16 in `tickets.py` and 8 in `sentinel.py`) and every inline `is_mod_check` call, including persistent and ephemeral ticket view callbacks. The `unclaim` command intentionally has no `@is_mod()` decorator and is gated by an inline `is_mod_check` (claimer-or-mod) — it is not counted as a decorator. The behavior MUST remain a single decision point in `bot/utils/checks.py`.
 
-(Previously: characterization counted 23 decorator callers and 21 inline callers.)
+(Previously: characterization counted 23 decorator callers and 21 inline callers; corrected from 25 to 24 to reflect the intentional unclaim undecorated design.)
 
 #### Scenario: Both hybrid paths remain registered
 
@@ -22,6 +22,6 @@ The system MUST preserve the existing `is_mod` decorator path and `is_mod_check`
 
 #### Scenario: Caller characterization passes
 
-- GIVEN the 25 decorator applications and all inline call sites are exercised
+- GIVEN the 24 decorator applications (unclaim excluded as claimer-or-mod) and all inline call sites are exercised
 - WHEN the S3 permission test suite runs
 - THEN all existing administrator, moderator, regular-user, and DM outcomes remain unchanged

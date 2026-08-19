@@ -129,9 +129,7 @@ async def test_facade_delegates_repair_by_ref_once(mock_db: AsyncMock) -> None:
     svc._repair = mock_repair  # type: ignore[attr-defined]
     authority = RepairAuthority(actor_id="u1", guild_id="g1", target_guild_id="g1", has_mod_role=True)
     bot = MagicMock()
-    await svc.repair_ticket_by_ref(
-        "42", guild_id="g1", actor_id="u1", authority=authority, bot=bot, preflight=None
-    )
+    await svc.repair_ticket_by_ref("42", guild_id="g1", actor_id="u1", authority=authority, bot=bot, preflight=None)
     mock_repair.repair_ticket_by_ref.assert_awaited_once()
     mock_db.get_ticket.assert_not_awaited()
     mock_db.get_ticket_by_number.assert_not_awaited()

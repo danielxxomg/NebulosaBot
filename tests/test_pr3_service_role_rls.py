@@ -60,9 +60,16 @@ class TestServiceRoleConnect:
         mock_client.table.return_value.select.return_value.limit.return_value.execute = AsyncMock(
             return_value=mock_response
         )
-        with patch("bot.core.db.base.acreate_client", return_value=mock_client):
-            await db.connect()
-        assert db._client is mock_client
+        secret = "s3-guard-secret-32bytes-strong-123456"
+        with patch.dict("os.environ", {"SUPABASE_JWT_SECRET": secret}):
+            import jwt as pyjwt  # type: ignore[import-untyped]
+
+            # Re-sign with the same secret so PyJWT verification passes
+            signed = pyjwt.encode({"role": "service_role"}, secret, algorithm="HS256")
+            db._key = signed  # type: ignore[attr-defined]
+            with patch("bot.core.db.base.acreate_client", return_value=mock_client):
+                await db.connect()
+            assert db._client is mock_client
 
     @pytest.mark.asyncio
     async def test_service_role_connect_fails_closed_with_anon_key(self) -> None:
@@ -112,11 +119,20 @@ class TestServiceRoleConnect:
             validate_service_role_key(ANON_JWT)
 
     def test_service_role_validation_accepts_service_role_jwt(self) -> None:
-        """validate_service_role_key helper MUST accept service_role JWT."""
+        """validate_service_role_key helper MUST accept verified service_role JWT."""
         from bot.core.db.base import validate_service_role_key
 
-        # Should not raise
-        validate_service_role_key(SERVICE_ROLE_JWT)
+        secret = "s3-guard-secret-32bytes-strong-123456"
+        import os
+
+        os.environ["SUPABASE_JWT_SECRET"] = secret
+        try:
+            import jwt as pyjwt  # type: ignore[import-untyped]
+
+            signed = pyjwt.encode({"role": "service_role"}, secret, algorithm="HS256")
+            validate_service_role_key(signed)
+        finally:
+            os.environ.pop("SUPABASE_JWT_SECRET", None)
 
     def test_service_role_validation_helper_via_config(self) -> None:
         """BotConfig layer MUST also validate service_role via helper."""
@@ -125,8 +141,17 @@ class TestServiceRoleConnect:
 
         with pytest.raises(ConfigError):
             validate_supabase_key(ANON_JWT)
-        # Valid key should not raise
-        validate_supabase_key(SERVICE_ROLE_JWT)
+        secret = "s3-guard-secret-32bytes-strong-123456"
+        import os
+
+        os.environ["SUPABASE_JWT_SECRET"] = secret
+        try:
+            import jwt as pyjwt  # type: ignore[import-untyped]
+
+            signed = pyjwt.encode({"role": "service_role"}, secret, algorithm="HS256")
+            validate_supabase_key(signed)
+        finally:
+            os.environ.pop("SUPABASE_JWT_SECRET", None)
 
 
 # ---------------------------------------------------------------------------

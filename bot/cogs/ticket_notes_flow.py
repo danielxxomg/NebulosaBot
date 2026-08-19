@@ -50,8 +50,11 @@ class TicketNotesFlow:
         if row is None:
             await ctx.send(embed=_err(gid, "tickets.note.add_not_ticket"))
             return
+        if gid is None:
+            await ctx.send(embed=_err(gid, "tickets.note.add_failed"))
+            return
         try:
-            note = await self.bot.ticket_service.create_note(row["id"], str(ctx.author.id), content)
+            note = await self.bot.ticket_service.create_note(row["id"], str(ctx.author.id), content, guild_id=gid)
         except Exception:
             logger.exception("Failed to add note to ticket %s", row["id"])
             await ctx.send(embed=_err(gid, "tickets.note.add_failed"))
@@ -79,7 +82,9 @@ class TicketNotesFlow:
             await ctx.send(embed=_err(gid, "tickets.note.add_not_ticket"))
             return
         try:
-            notes = await self.bot.ticket_service.get_notes(row["id"])
+            if gid is None:
+                raise ValueError("guild_id required")
+            notes = await self.bot.ticket_service.get_notes(row["id"], guild_id=gid)
         except Exception:
             logger.exception("Failed to fetch notes for ticket %s", row["id"])
             await ctx.send(embed=_err(gid, "tickets.note.add_failed"))
@@ -105,8 +110,10 @@ class TicketNotesFlow:
             await ctx.send(embed=_err(gid, "tickets.note.delete_not_ticket"))
             return
         try:
+            if gid is None:
+                raise ValueError("guild_id required")
             await self.bot.ticket_service.delete_note(
-                note_id=note_id, author_id=str(ctx.author.id), ticket_id=row["id"]
+                note_id=note_id, author_id=str(ctx.author.id), ticket_id=row["id"], guild_id=gid
             )
         except Exception:
             logger.exception("Failed to delete note %s", note_id)

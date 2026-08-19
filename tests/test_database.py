@@ -243,7 +243,9 @@ class TestConnect:
 
     @pytest.mark.asyncio
     async def test_connect_logs_warning_on_health_failure(self) -> None:
-        """connect() MUST log a warning if health check fails but still set client."""
+        """connect() MUST fail-closed when health check fails — client cleared and error raised."""
+        from bot.config import ServiceRoleValidationError
+
         database = Database(url="https://test.supabase.co", key="test-key")
 
         mock_client = MagicMock()
@@ -253,11 +255,16 @@ class TestConnect:
 
         mock_client.table.return_value.select.return_value.limit.return_value.execute = mock_execute_fail
 
-        with patch("bot.core.db.base.acreate_client", return_value=mock_client):
+        with (
+            patch("bot.core.db.base.acreate_client", return_value=mock_client),
+            pytest.raises(ServiceRoleValidationError, match="health probe"),
+        ):
             await database.connect()
 
-        # Client is still set even if health check fails.
-        assert database._client is mock_client
+        assert database._client is None
+        # Subsequent DB operation must fail closed (no active client).
+        with pytest.raises(RuntimeError, match="connect"):
+            await database.get_guild("123")
 
 
 # ---------------------------------------------------------------------------
