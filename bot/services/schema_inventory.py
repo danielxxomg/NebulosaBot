@@ -83,6 +83,7 @@ GUILD_SCOPE_GAP_HISTORY: tuple[str, ...] = (
 
 GUILD_SCOPE_GAPS: tuple[str, ...] = GUILD_SCOPE_GAP_HISTORY
 
+
 # Provide a deprecation signal when legacy name is accessed via module attribute.
 class _GuildScopeGapsDeprecation:
     def __repr__(self) -> str:
@@ -368,9 +369,24 @@ class SchemaInventory:
         # Publication: 4 CDC
         if frozenset(live_publication) != frozenset(CDC_TABLES):
             reasons.append("publication_mismatch")
-        # Migrations: 19
+        # Migrations: 19 exact version/name pairs (not count-only).
+        from bot.services.live_catalog import get_local_migration_names as _local_names
+
+        local_stems = set(_local_names())
+        # Normalize live entries to stems: strip .sql and path, compare stems.
+        normalized_live = set()
+        for m in live_migrations:
+            s = str(m).strip()
+            if s.endswith(".sql"):
+                s = s[:-4]
+            # keep only basename if path
+            if "/" in s:
+                s = s.rsplit("/", 1)[-1]
+            normalized_live.add(s)
         if len(live_migrations) != 19 or not any("015" in str(m) for m in live_migrations):
             reasons.append("migration_count_mismatch")
+        if normalized_live != local_stems:
+            reasons.append("migration_identity_mismatch")
         # TEXT vs UUID mismatch: ticket.categoryId TEXT but ticket_category.id UUID — documented flag
         category_id_type_mismatch = True
         return LiveEvidenceReport(
