@@ -1045,6 +1045,7 @@ source = { editable = "." }
 dependencies = [
     { name = "discord-py" },
     { name = "pillow" },
+    { name = "pyjwt", extra = ["crypto"] },
     { name = "python-dotenv" },
     { name = "supabase" },
 ]
@@ -1070,6 +1071,7 @@ requires-dist = [
     { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.100" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13" },
     { name = "pillow", specifier = ">=11.0" },
+    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
