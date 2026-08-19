@@ -62,8 +62,7 @@ class TestUvLockCheck:
         )
         # --dry-run still validates lock; exit 0 means lock fresh
         assert result.returncode == 0, (
-            f"uv sync --locked --dry-run failed (exit {result.returncode}). "
-            f"stderr: {result.stderr[:800]}"
+            f"uv sync --locked --dry-run failed (exit {result.returncode}). stderr: {result.stderr[:800]}"
         )
 
 
@@ -234,7 +233,9 @@ class TestCiAudit:
     def test_ci_no_pip_audit_references(self) -> None:
         """ci.yml MUST NOT contain any 'pip-audit' string after PR1."""
         content = _read_ci()
-        assert "pip-audit" not in content, f"ci.yml still contains pip-audit: {[l for l in content.splitlines() if 'pip-audit' in l]}"
+        assert "pip-audit" not in content, (
+            f"ci.yml still contains pip-audit: {[l for l in content.splitlines() if 'pip-audit' in l]}"
+        )
 
     def test_ci_has_uv_audit(self) -> None:
         """ci.yml quality job MUST run 'uv audit'."""
@@ -259,7 +260,9 @@ class TestMakefileAudit:
         # Find audit target block
         assert "uv audit" in content, "Makefile missing 'uv audit' in audit target"
         # Purge legacy pip-audit pattern
-        assert "pip-audit" not in content, f"Makefile still contains pip-audit: {[l for l in content.splitlines() if 'pip-audit' in l]}"
+        assert "pip-audit" not in content, (
+            f"Makefile still contains pip-audit: {[l for l in content.splitlines() if 'pip-audit' in l]}"
+        )
 
     def test_makefile_audit_target_exists(self) -> None:
         """Makefile MUST define an 'audit:' target."""

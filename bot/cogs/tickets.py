@@ -357,7 +357,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         # guild_id=gid — transfer lookup is guild-scoped (685 + flow does guild_id=gid)
         await self._lifecycle_flow.transfer(ctx, member)
 
-    @commands.hybrid_command(  # type: ignore[arg-type]
+    @commands.hybrid_command(
         name="unclaim",
         description=app_commands.locale_str(
             "Liberar un ticket reclamado de vuelta a estado abierto.",

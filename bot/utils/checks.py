@@ -39,7 +39,7 @@ def is_admin() -> Any:
 
         return True
 
-    async def _prefix_predicate(ctx: _commands.Context) -> bool:  # type: ignore[type-arg]
+    async def _prefix_predicate(ctx: _commands.Context) -> bool:
         if not ctx.guild:
             raise _commands.NoPrivateMessage("This command can only be used in a server.")
 
@@ -137,7 +137,7 @@ def is_mod() -> Any:
 
         raise app_commands.MissingRole(mod_role_id)
 
-    async def _prefix_predicate(ctx: _commands.Context) -> bool:  # type: ignore[type-arg]
+    async def _prefix_predicate(ctx: _commands.Context) -> bool:
         if not ctx.guild:
             raise _commands.NoPrivateMessage("This command can only be used in a server.")
 

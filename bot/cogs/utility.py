@@ -40,7 +40,7 @@ class UtilityCog(commands.Cog, name="Utility"):
     # Commands
     # ==================================================================
 
-    @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @commands.hybrid_command(
         name="avatar",
         description=app_commands.locale_str("Mostrar el avatar de un miembro.", key="slash.descriptions.avatar"),
     )
@@ -68,7 +68,7 @@ class UtilityCog(commands.Cog, name="Utility"):
         embed.set_image(url=f"{avatar_url}?size=1024")
         await ctx.send(embed=embed)
 
-    @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @commands.hybrid_command(
         name="serverinfo",
         description=app_commands.locale_str("Mostrar información del servidor.", key="slash.descriptions.serverinfo"),
     )
@@ -119,7 +119,7 @@ class UtilityCog(commands.Cog, name="Utility"):
 
         await ctx.send(embed=embed)
 
-    @commands.hybrid_command(  # type: ignore[arg-type]  # discord.py hybrid_command stub limitation
+    @commands.hybrid_command(
         name="userinfo",
         description=app_commands.locale_str("Mostrar información de un usuario.", key="slash.descriptions.userinfo"),
     )

@@ -1,11 +1,7 @@
-"""Validate pyproject.toml mypy configuration for tooling-rigor change.
+"""Validate pyproject.toml mypy → ty migration (PR2 qa-modernization).
 
-Covers the pyproject-toml-qa-config spec scenarios:
-    - strict = true enabled
-    - No global disable_error_code
-    - Only tech-debt overrides remain (bot.cogs.*, tests.*)
-    - No override for bot.core.*, bot.listeners.*, or bot.bot
-    - No wildcard override for bot.services.* (type-strict-services)
+mypy was replaced by ty in PR2. When [tool.mypy] is absent, these tests skip
+(PR2 2.3). See tests/test_pr2_ty_replaces_mypy.py for the new ty assertions.
 """
 
 from __future__ import annotations
@@ -28,14 +24,20 @@ def pyproject() -> dict:
 
 @pytest.fixture()
 def mypy_config(pyproject: dict) -> dict:
-    """Extract [tool.mypy] section."""
-    return pyproject["tool"]["mypy"]
+    """Extract [tool.mypy] section — skip when mypy removed (PR2 ty replaces mypy)."""
+    tool = pyproject.get("tool", {})
+    if "mypy" not in tool:
+        pytest.skip("mypy removed — ty replaces mypy (PR2 qa-modernization 2.3)")
+    return tool["mypy"]
 
 
 @pytest.fixture()
 def mypy_overrides(pyproject: dict) -> list[dict]:
-    """Extract [[tool.mypy.overrides]] list."""
-    return pyproject["tool"]["mypy"].get("overrides", [])
+    """Extract [[tool.mypy.overrides]] list — skip when mypy removed."""
+    tool = pyproject.get("tool", {})
+    if "mypy" not in tool:
+        pytest.skip("mypy removed — ty replaces mypy (PR2 qa-modernization 2.3)")
+    return tool["mypy"].get("overrides", [])
 
 
 # ---------------------------------------------------------------------------
