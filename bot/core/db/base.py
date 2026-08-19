@@ -17,9 +17,8 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from supabase import AsyncClientOptions, acreate_client
-
 from bot.config import ServiceRoleValidationError, validate_supabase_key
+from supabase import AsyncClientOptions, acreate_client
 
 logger = logging.getLogger(__name__)
 
