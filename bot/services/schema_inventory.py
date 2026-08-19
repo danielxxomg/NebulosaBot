@@ -108,8 +108,15 @@ def is_guild_scope_gap(method: str) -> bool:
     return method in GUILD_SCOPE_GAP_HISTORY
 
 
-# Runtime closure fact — 12/12 entry points enforce guild ownership.
+# Runtime closure — computed from registry, not hardcoded claim.
+# Must equal len(GUILD_SCOPE_GAP_HISTORY); tests fail if constant drifts from computed.
 GUILD_SCOPE_RUNTIME_CLOSED: int = 12
+GUILD_SCOPE_RUNTIME_CLOSED_COMPUTED: int = len(GUILD_SCOPE_GAP_HISTORY)
+
+# Fail fast if constant drifts from registry (import-time guard for tests)
+assert GUILD_SCOPE_RUNTIME_CLOSED == GUILD_SCOPE_RUNTIME_CLOSED_COMPUTED, (
+    f"GUILD_SCOPE_RUNTIME_CLOSED={GUILD_SCOPE_RUNTIME_CLOSED} != len(HISTORY)={GUILD_SCOPE_RUNTIME_CLOSED_COMPUTED}"
+)
 
 
 def _unwrap_response(response: Any) -> list[Any]:

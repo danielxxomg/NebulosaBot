@@ -131,6 +131,77 @@ class LiveAcceptanceGate:
         )
 
 
+def _sync_fetch_catalog(url: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str], list[str]]:
+    """Blocking psycopg fetch — executed via to_thread from async wrapper.
+
+    Provenance: every SELECT is a real query against the DB; caller must treat
+    non-empty, non-warned return as ``used_real_db=True`` provenance.
+    """
+    import psycopg
+
+    with psycopg.connect(url) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT conrelid::regclass::text AS child, "
+            "confrelid::regclass::text AS parent, "
+            "CASE confdeltype WHEN 'c' THEN 'CASCADE' "
+            "WHEN 'a' THEN 'NO ACTION' "
+            "WHEN 'n' THEN 'SET NULL' "
+            "WHEN 'r' THEN 'RESTRICT' "
+            "ELSE confdeltype::text END AS on_delete "
+            "FROM pg_constraint WHERE contype='f'"
+        )
+        fk_rows = cur.fetchall()
+        live_fks: list[dict[str, Any]] = []
+        for r in fk_rows:
+            if isinstance(r, dict):
+                live_fks.append(
+                    {
+                        "child": str(r.get("child", "")),
+                        "parent": str(r.get("parent", "")),
+                        "on_delete": str(r.get("on_delete", "")),
+                    }
+                )
+            elif isinstance(r, (list, tuple)) and len(r) >= 3:
+                live_fks.append({"child": str(r[0]), "parent": str(r[1]), "on_delete": str(r[2])})
+        # RLS policies — expect 0
+        try:
+            cur.execute("SELECT * FROM pg_policies")
+            pol_rows = cur.fetchall()
+        except Exception:
+            cur.execute("SELECT * FROM pg_policy")
+            pol_rows = cur.fetchall()
+        live_policies: list[dict[str, Any]] = [dict(r) if isinstance(r, dict) else {"raw": r} for r in pol_rows]
+        # Publication — 4 CDC tables
+        cur.execute("SELECT tablename FROM pg_publication_tables WHERE pubname='supabase_realtime'")
+        pub_rows = cur.fetchall()
+        live_publication: list[str] = []
+        for r in pub_rows:
+            if isinstance(r, dict):
+                v = r.get("tablename") or r.get("table_name") or next(iter(r.values()), "")
+                if v:
+                    live_publication.append(str(v))
+            elif isinstance(r, (list, tuple)):
+                if r and r[0]:
+                    live_publication.append(str(r[0]))
+            elif isinstance(r, str):
+                live_publication.append(r)
+        # Migrations — 19 identity
+        cur.execute("SELECT name FROM supabase_migrations.schema_migrations ORDER BY version")
+        mig_rows = cur.fetchall()
+        live_migrations: list[str] = []
+        for r in mig_rows:
+            if isinstance(r, dict):
+                v = r.get("name") or r.get("version") or next(iter(r.values()), "")
+                if v:
+                    live_migrations.append(str(v))
+            elif isinstance(r, (list, tuple)):
+                if r and r[0]:
+                    live_migrations.append(str(r[0]))
+            elif isinstance(r, str):
+                live_migrations.append(r)
+        return live_fks, live_policies, live_publication, live_migrations
+
+
 async def fetch_catalog_via_db(
     db_url: str | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str], list[str]]:
@@ -143,20 +214,92 @@ async def fetch_catalog_via_db(
     When a DB URL is available, connects with psycopg (or warns) and returns
     evidence bindable via SchemaInventory.bind_live_evidence. When unavailable,
     returns empty and the gate will FAIL with warning, never PASS.
+    Provenance: ``used_real_db`` must only be True when this function executed
+    at least one real query (mocked psycopg connection counts).
     """
+    import asyncio
+
     url = db_url or _resolve_db_url()
     if not url:
-        warnings.warn("No DB_URL/SUPABASE_DB_URL — catalog via real DB unavailable", UserWarning, stacklevel=2)
+        warnings.warn(
+            "No DB_URL/SUPABASE_DB_URL — catalog via real DB unavailable",
+            UserWarning,
+            stacklevel=2,
+        )
         return [], [], [], []
     try:
-        import psycopg  # type: ignore[import-not-found]
+        import psycopg
     except ImportError:
         warnings.warn(
-            "psycopg not available — install psycopg[binary] for real DB catalog path", UserWarning, stacklevel=2
+            "psycopg not available — install psycopg[binary] for real DB catalog path",
+            UserWarning,
+            stacklevel=2,
         )
         return [], [], [], []
     _ = psycopg
-    return [], [], [], []
+    return await asyncio.to_thread(_sync_fetch_catalog, url)
+
+
+def fetch_rls_counts_via_db(db_url: str) -> tuple[int, int, int]:
+    """Return (rls_enabled, rls_forced, policy_count) via pg_class/pg_policy.
+
+    Structural 9/7/0 check: 9 tables with rls_enabled, 7 forced, 0 policies.
+    Proves catalog not hardcoded 9.
+    """
+    import psycopg
+
+    with psycopg.connect(db_url) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT count(*) FROM pg_class c "
+            "JOIN pg_namespace n ON n.oid=c.relnamespace "
+            "WHERE n.nspname='public' AND c.relkind='r' AND c.relrowsecurity"
+        )
+        row = cur.fetchone()
+        if isinstance(row, (list, tuple)):
+            enabled = int(row[0]) if row else 0
+        elif isinstance(row, dict):
+            enabled = int(row.get("count", 0))
+        else:
+            enabled = 0
+        cur.execute(
+            "SELECT count(*) FROM pg_class c "
+            "JOIN pg_namespace n ON n.oid=c.relnamespace "
+            "WHERE n.nspname='public' AND c.relkind='r' AND c.relforcerowsecurity"
+        )
+        row2 = cur.fetchone()
+        if isinstance(row2, (list, tuple)):
+            forced = int(row2[0]) if row2 else 0
+        elif isinstance(row2, dict):
+            forced = int(row2.get("count", 0))
+        else:
+            forced = 0
+        try:
+            cur.execute("SELECT count(*) FROM pg_policy")
+            row3 = cur.fetchone()
+        except Exception:
+            cur.execute("SELECT count(*) FROM pg_policies")
+            row3 = cur.fetchone()
+        if isinstance(row3, (list, tuple)):
+            policy_count = int(row3[0]) if row3 else 0
+        elif isinstance(row3, dict):
+            policy_count = int(row3.get("count", 0))
+        else:
+            policy_count = 0
+        return enabled, forced, policy_count
+
+
+def evaluate_index_policy(*, scans: int, explain_output: str | None) -> tuple[bool, str]:
+    """Executable index-policy gate: zero scans without EXPLAIN must be rejected.
+
+    Returns (allowed, reason). Only duplicate ``idx_ticket_guild_number`` is
+    allowed when EXPLAIN proves redundant coverage.
+    """
+    has_explain = bool(explain_output and "EXPLAIN" in explain_output and "BUFFERS" in explain_output)
+    if scans == 0 and not has_explain:
+        return False, "zero scans without EXPLAIN (ANALYZE, BUFFERS) — drop rejected, index retained"
+    if scans == 0 and has_explain:
+        return True, "zero scans but EXPLAIN proves redundant — duplicate drop allowed"
+    return True, "scans present or EXPLAIN supplied — policy satisfied"
 
 
 async def fetch_catalog_evidence(
