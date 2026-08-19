@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("bot.cogs.tickets")
 
-INFO = discord.Color.from_str("#5865F2") if hasattr(discord.Color, "from_str") else discord.Color.blurple()  # type: ignore[attr-defined]
+INFO = discord.Color.from_str("#5865F2") if hasattr(discord.Color, "from_str") else discord.Color.blurple()
 
 
 def _err(gid: str | None, key: str, **kw: object) -> discord.Embed:

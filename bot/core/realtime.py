@@ -805,7 +805,8 @@ def _row_value(row: object, key: str) -> str | None:
     """Safely extract a stringifiable value from a CDC/poll row."""
     if not isinstance(row, dict):
         return None
-    value = row.get(key)
+    typed_row: dict[str, object] = row  # type: ignore[assignment]  # narrow object→dict after isinstance check
+    value = typed_row.get(key)
     if value is None:
         return None
     return str(value)

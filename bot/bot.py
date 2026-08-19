@@ -375,7 +375,7 @@ class NebulosaBot(commands.Bot):
 
     async def on_command_error(
         self,
-        ctx: commands.Context[NebulosaBot],  # type: ignore[override]  # supertype uses Context[BotT]
+        ctx: commands.Context[NebulosaBot],
         error: commands.CommandError,
     ) -> None:
         """Global prefix-command error handler — DM-first with channel fallback.
@@ -576,7 +576,7 @@ class NebulosaBot(commands.Bot):
         has_ticket_button = False
         for component in message.components:
             if hasattr(component, "children"):
-                for child in component.children:
+                for child in component.children:  # ty: ignore[not-iterable]  # discord.py MessageComponent.children is Any at runtime; guarded by hasattr above
                     if getattr(child, "custom_id", None) == "ticket:open":
                         has_ticket_button = True
                         break

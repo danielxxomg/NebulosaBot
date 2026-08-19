@@ -10,7 +10,7 @@ lint:
 	uv run ruff format --check bot/ tests/
 
 type:
-	uv run mypy --follow-imports=silent bot/
+	uv run ty check bot/ tests/
 
 security:
 	uv run bandit -r bot/ -c pyproject.toml --severity-level medium
@@ -21,7 +21,7 @@ lint-full:
 	uv run ruff format --check bot/ tests/
 
 type-full:
-	uv run mypy bot/ tests/
+	uv run ty check bot/ tests/
 
 test:
 	uv run pytest --cov-fail-under=75

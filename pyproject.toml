@@ -131,18 +131,32 @@ max-complexity = 15
 [tool.ruff.lint.isort]
 known-first-party = ["bot"]
 
-[tool.mypy]
-strict = true
-python_version = "3.11"
-# Per-file overrides — narrowed in tooling-rigor PR3 (Phase 4-6).
-# Only genuinely justified overrides remain (discord.py stub limitations).
-[[tool.mypy.overrides]]
-module = "bot.cogs.*"
-disable_error_code = ["untyped-decorator", "arg-type", "unused-ignore"]
+[tool.ty.environment]
+python-version = "3.11"
 
-[[tool.mypy.overrides]]
-module = "tests.*"
-disable_error_code = ["attr-defined", "no-any-return", "no-untyped-def", "assignment", "arg-type", "type-arg", "untyped-decorator", "no-untyped-call", "unused-ignore"]
+[tool.ty.rules]
+possibly-unresolved-reference = "warn"
+unused-ignore-comment = "error"
+
+[[tool.ty.overrides]]
+include = ["bot/cogs/**"]
+
+[tool.ty.overrides.rules]
+invalid-argument-type = "warn"
+possibly-missing-import = "warn"
+possibly-unresolved-reference = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/**"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
 
 [tool.bandit]
 exclude_dirs = ["tests", "dashboard"]

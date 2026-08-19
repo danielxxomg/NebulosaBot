@@ -40,8 +40,8 @@ jobs:
       - name: Ruff format check
         run: uv run ruff format --check bot/ tests/
 
-      - name: Mypy
-        run: uv run mypy --follow-imports=silent bot/
+      - name: Ty
+        run: uv run ty check bot/ tests/
 
       - name: Bandit
         run: uv run bandit -r bot/ -c pyproject.toml --severity-level medium
