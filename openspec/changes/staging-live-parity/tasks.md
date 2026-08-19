@@ -39,10 +39,10 @@ Chain strategy: stacked-to-main
 
 ## S4.2B 018 Live 8-Step (~400 ≤800)
 
-- [ ] 3.1 RED preflight: DO raises before `TEXT→UUID USING` on dup/invalid UUID/orphan/depth; `apply_staging_migration.py` fixed-argv `psql` `shell=False` `ON_ERROR_STOP`
-- [ ] 3.2 GREEN `018_ticket_integrity_fks.sql` order (1) preflight (2) TEXT→UUID USING (3) indexes (4) parent RESTRICT (5) category SET NULL (6) note CASCADE (7) audit SET NULL (8) VALIDATE→drop `idx_ticket_guild_number` only
-- [ ] 3.3 GREEN `apply_staging_migration.py` tracked exec before/after capture backup/timeouts
-- [ ] 3.4 Verify & PR: `LIVE_SUPABASE=1 DB_URL=... uv run pytest -m live --run-live -q` proves uuid 6+4 FKs only dupe dropped; `s4.2b-018-live` from S4.2A→`main`
+- [x] 3.1 RED preflight: DO raises before `TEXT→UUID USING` on dup/invalid UUID/orphan/depth; `apply_staging_migration.py` fixed-argv `psql` `shell=False` `ON_ERROR_STOP`
+- [x] 3.2 GREEN `018_ticket_integrity_fks.sql` order (1) preflight (2) TEXT→UUID USING (3) indexes (4) parent RESTRICT (5) category SET NULL (6) note CASCADE (7) audit SET NULL (8) VALIDATE→drop `idx_ticket_guild_number` only
+- [x] 3.3 GREEN `apply_staging_migration.py` tracked exec before/after capture backup/timeouts
+- [x] 3.4 Verify & PR: `LIVE_SUPABASE=1 DB_URL=... uv run pytest -m live --run-live -q` proves uuid 6+4 FKs only dupe dropped; `s4.2b-018-live` from S4.2A→`main`
 
 ## S4.3 Runbook + EXPLAIN (~200 ≤800)
 
