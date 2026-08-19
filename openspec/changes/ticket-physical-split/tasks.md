@@ -69,13 +69,13 @@ TicketRepairService (repair/channel/transcript) single evaluate_repair_eligibili
 - [x] S3.3B.2 Extract bot/services/ticket_repair_service.py (921) + facade delegates once (repair_ticket_from_evidence/handle_channel_delete/sweep_integrity/repair_ticket_by_ref/repair_ticket_manual + create_ticket_channel/close_ticket_full via lifecycle) — countdown kept on facade for patch logger compat — 1217+949 gross (pure move ~949 body; net new 67 delegates + 229 tests), mypy 0, ruff 0
 - [x] S3.3B.3 GREEN: race/idempotency listener transcript fakes 1930/5 mypy 0 ruff 0 — single evaluate_repair_eligibility seam preserved
 
-## S3.4A Cog Admin/Lifecycle/Notes/Integrity
+## S3.4A Cog Admin/Lifecycle/Notes/Integrity — DONE s3d4a-cog @301a5aa (cog 4 flows behind facade, 14 RED→GREEN)
 
-4 flows behind TicketsCog async def setup(bot) hybrid. Branch sdd/s3.4a-cog-flows base sdd/s3.3b-service-repair-channel. Verify `pytest -k cog` `mypy` `ruff`.
+4 flows behind TicketsCog async def setup(bot) hybrid, branch ticket-physical-split-s3d4a-cog base ticket-physical-split-s3d3b-repair stacked-to-main. Verify `uv run pytest -q && uv run mypy bot tests && uv run ruff check bot tests`.
 
-- [ ] S3.4A.1 RED: setup() once 568/685/722 cross-guild denial
-- [ ] S3.4A.2 Create ticket_admin_flow.py/ticket_lifecycle_flow.py/ticket_notes_flow.py/ticket_integrity_flow.py wrappers
-- [ ] S3.4A.3 GREEN: cog integration 25 decorators GUILD_SCOPE_GAPS empty
+- [x] S3.4A.1 RED: setup() once 568/685/722 guild_id=gid, facade delegates once — tests/test_tickets_cog_facade.py 14 RED → 14 GREEN
+- [x] S3.4A.2 Create ticket_admin_flow.py(250)/ticket_lifecycle_flow.py(315)/ticket_notes_flow.py(115)/ticket_integrity_flow.py(105) + TicketsCog thin facade (464) delegates via composition, preserve hybrid names, is_mod, guild scoping
+- [x] S3.4A.3 GREEN: cog integration 1944/5 mypy 0 ruff 0 bot/tests, guild gaps empty (all get_ticket_by_channel guild_id=gid via flows), 16+8 decorators preserved, no view changes
 
 ## S3.4B Views Panel/Persistent/Ephemeral
 
