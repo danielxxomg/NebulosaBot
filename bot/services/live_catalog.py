@@ -182,7 +182,10 @@ def _sync_fetch_catalog(
             "WHEN 'n' THEN 'SET NULL' "
             "WHEN 'r' THEN 'RESTRICT' "
             "ELSE confdeltype::text END AS on_delete "
-            "FROM pg_constraint WHERE contype='f'"
+            "FROM pg_constraint c "
+            "JOIN pg_class cc ON cc.oid=c.conrelid "
+            "JOIN pg_namespace n ON n.oid=cc.relnamespace "
+            "WHERE c.contype='f' AND n.nspname='public'"
         )
         fk_rows = cur.fetchall()
         live_fks: list[dict[str, Any]] = []
@@ -309,10 +312,20 @@ def fetch_rls_counts_via_db(db_url: str) -> tuple[int, int, int]:
         else:
             forced = 0
         try:
-            cur.execute("SELECT count(*) FROM pg_policy")
+            cur.execute(
+                "SELECT count(*) FROM pg_policy p "
+                "JOIN pg_class c ON c.oid=p.polrelid "
+                "JOIN pg_namespace n ON n.oid=c.relnamespace "
+                "WHERE n.nspname='public'"
+            )
             row3 = cur.fetchone()
         except Exception:
-            cur.execute("SELECT count(*) FROM pg_policies")
+            cur.execute(
+                "SELECT count(*) FROM pg_policy p "
+                "JOIN pg_class c ON c.oid=p.polrelid "
+                "JOIN pg_namespace n ON n.oid=c.relnamespace "
+                "WHERE n.nspname='public'"
+            )
             row3 = cur.fetchone()
         if isinstance(row3, (list, tuple)):
             policy_count = int(row3[0]) if row3 else 0

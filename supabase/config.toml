@@ -1,0 +1,76 @@
+# Supabase CLI — tracked migration linkage for NebulosaBot.
+# S5 production-live-close: links ../migrations via symlink for `supabase migration up --linked`.
+# Ledger reconciliation: supabase migration repair --status applied for 3 desync names (016/017 + 2 realtime pubs).
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+api_url = "http://localhost:54321"
+
+[auth]
+enabled = true
+port = 54324
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["https://localhost:3000"]
+jwt_expiry = 3600
+enable_signup = true
+enable_confirmations = false
+enable_manual_linking = true
+enable_double_confirm_changes = true
+enable_mobile_signup = true
+enable_mobile_confirmations = true
+[auth.email.auth]
+enable_signup = true
+enable_confirmations = false
+[auth.external.apple]
+enabled = false
+[auth.external.azure]
+enabled = false
+[auth.external.bitbucket]
+enabled = false
+[auth.external.discord]
+enabled = false
+[auth.external.facebook]
+enabled = false
+[auth.external.figma]
+enabled = false
+[auth.external.github]
+enabled = false
+[auth.external.gitlab]
+enabled = false
+[auth.external.google]
+enabled = false
+[auth.external.kakao]
+enabled = false
+[auth.external.keycloak]
+enabled = false
+[auth.external.linkedin]
+enabled = false
+[auth.external.notion]
+enabled = false
+[auth.external.twitch]
+enabled = false
+[auth.external.twitter]
+enabled = false
+[auth.external.slack]
+enabled = false
+[auth.external.spotify]
+enabled = false
+[auth.external.workos]
+enabled = false
+[auth.external.zoom]
+enabled = false
+[auth.email]
+enable_signup = true
+enable_confirmations = false
