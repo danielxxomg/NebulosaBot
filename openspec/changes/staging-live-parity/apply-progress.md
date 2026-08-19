@@ -55,5 +55,40 @@
 ### Rollback S4.2B
 `git revert` of 018 helper + tasks/apply-progress; revokes DB_URL; if 018 already applied live: DOWN restores TEXT via backup ticket_backup_categoryid_text_20260818; `git revert` of migration commit.
 
+## S4.3 Runbook + EXPLAIN (docs-only, ≤200)
+
+- [x] 4.1–4.3 RED tests/test_s4d3_runbook.py 26 failed → 26 passed (credential window/revocation, EXPLAIN BUFFERS, JWT JWKS/RS256/HS256, 8-step + lock_timeout, GUILD_SCOPE_GAP_HISTORY)
+- [x] 4.1 GREEN docs/runbooks/staging-live-parity.md — creds S4.2 window + revocation, backup ticket_backup_categoryid_text_20260818/DOWN/restore, tracked psql checklist, mypy0 ruff0 gates
+- [x] 4.2 GREEN EXPLAIN (ANALYZE, BUFFERS) receipt for duplicate idx_ticket_guild_number only; zero pg_stat_user_indexes scans alone not drop; idx_ticket_channel retained; 12 unused noted
+- [x] 4.3 GREEN JWT rotation docs — jwks_uri bounded kid 3-refresh, iss/aud/exp/role, HS256 legacy SUPABASE_JWT_SECRET allowlist, alg confusion blocked, rotation procedure
+- [x] 4.4 Verify — mypy 0, ruff 0, ruff format clean, python -m py_compile bot/__main__.py ok, full 2056 passed 7 skipped (88.12%)
+
+### Evidence S4.3
+
+| Evidence | Result |
+|---|---|
+| Focused | `uv run pytest tests/test_s4d3_runbook.py --no-cov -q` → 26 passed |
+| Full | `uv run pytest -q` → 2056 passed 7 skipped; `uv run pytest --no-cov -q` → 2056 passed 7 skipped |
+| Types | `uv run mypy bot tests` → 0 |
+| Lint | `uv run ruff check bot tests scripts` → 0 (hidden TRY400 fix applied) |
+| Format | `uv run ruff format --check bot tests scripts` → 183 files formatted |
+| Compile | `python -m py_compile bot/__main__.py` → ok |
+| Live docs | runbook documents `LIVE_SUPABASE=1 DB_URL=… uv run pytest -m live --run-live -q` real path |
+
+### TDD Cycle S4.3
+
+| Task | RED | GREEN | REFACTOR |
+|---|---|---|---|
+| 4.1–4.3 Runbook | tests/test_s4d3_runbook.py 26 failed (runbook absent) | docs/runbooks/staging-live-parity.md (≈175 lines, no code/DDL) | ruff TRY400 narrow fix; mypy0; full suite 2056 passed |
+
+### Rollback S4.3
+
+`git revert` of docs/runbooks/staging-live-parity.md + tests/test_s4d3_runbook.py + tasks/apply-progress; no runtime/schema effect (docs-only).
+
 ## Remaining
-- [ ] S4.3 runbook + EXPLAIN
+
+- [x] S4.3 runbook + EXPLAIN — all S4 slices complete (S4.1 → S4.2A → S4.2B → S4.3)
+
+### S4.3 Branch
+
+`staging-live-parity-s4d3-runbook` from `29f946a` → `master`, ≤200 authored, docs-only, stacked-to-main final slice. PR prepared before push: `gh pr create --base master` (not pushed).
