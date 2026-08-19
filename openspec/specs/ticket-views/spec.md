@@ -8,9 +8,9 @@ Define persistent Discord UI components for ticket panels and per-ticket actions
 
 ### Requirement: Ticket panel view
 
-The system MUST provide a persistent panel view with an open button. `TicketPanelView`, `TicketActionsView`, and `_CategorySelectView` MUST reside in `bot/views/tickets.py`. Panel design: the open button triggers an ephemeral category dropdown after click. Button labels MUST be resolved dynamically via `t()` at interaction time using `interaction.guild_id`, not only at construction time. On category selection, the system SHALL respond with a `TicketIntakeModal` that receives the selected category's `field_definitions` for dynamic TextInput construction. Default panel title and description MUST be resolved via `t()` keys, not hardcoded English strings. The `/ticket_panel` command MUST default `title` and `description_text` to `None` (not English strings); when `None`, `deploy_ticket_panel` resolves the localized default via `t(guild_id, ...)`. Explicit admin-provided values override the localized defaults. The self-heal panel deploy flow MUST pass `guild_id` to resolve default strings via `t()`.
+The system MUST preserve a public panel-view facade while allowing `TicketPanelView`, `TicketActionsView`, and `_CategorySelectView` implementations to be split into focused modules under `bot/views/`. Their public names MUST remain importable from `bot/views/tickets.py`. Panel design: the open button triggers an ephemeral category dropdown after click. Button labels MUST be resolved dynamically via `t()` at interaction time using `interaction.guild_id`, not only at construction time. On category selection, the system SHALL respond with a `TicketIntakeModal` that receives the selected category's `field_definitions` for dynamic TextInput construction. Default panel title and description MUST be resolved via `t()` keys, not hardcoded English strings. The `/ticket_panel` command MUST default `title` and `description_text` to `None` (not English strings); when `None`, `deploy_ticket_panel` resolves the localized default via `t(guild_id, ...)`. Explicit admin-provided values override the localized defaults. The self-heal panel deploy flow MUST pass `guild_id` to resolve default strings via `t()`.
 
-(Previously: decorator defaults were hardcoded English; panel defaults used hardcoded English constants)
+(Previously: the three view classes were required to remain physically in one module rather than behind a split-compatible facade.)
 
 #### Scenario: Panel render
 
@@ -30,11 +30,11 @@ The system MUST provide a persistent panel view with an open button. `TicketPane
 - WHEN a user clicks the open button
 - THEN an ephemeral error message indicates no categories are configured
 
-#### Scenario: Views importable from new location
+#### Scenario: Views importable from the facade
 
-- GIVEN views are extracted to `bot/views/tickets.py`
-- WHEN `bot/bot.py` imports `TicketPanelView` and `TicketActionsView`
-- THEN the import succeeds from the new path
+- GIVEN implementations are extracted to focused view modules
+- WHEN `bot/bot.py` imports `TicketPanelView` and `TicketActionsView` from `bot/views/tickets.py`
+- THEN the import succeeds without changing callers
 
 #### Scenario: Localized labels after restart
 
@@ -345,3 +345,30 @@ The "Edit Category" button label MUST be resolved via `t('tickets.actions.edit_c
 - GIVEN a Spanish guild with an active ticket
 - WHEN the bot restarts and a mod views the ticket actions
 - THEN the edit category button label is resolved via `t()` at interaction time
+
+<!-- BEGIN DELTA: ticket-physical-split S3 -->
+
+### Requirement: Stable action and selector lifecycle contracts
+
+`TicketActionsView` MUST retain `timeout=None` and the four static custom IDs `ticket:open`, `ticket:claim`, `ticket:close`, and `ticket:edit-category`; startup MUST register the persistent view with `add_view()`. Ephemeral category selectors MUST use a 300-second timeout. Their callbacks MUST re-run `is_mod_check`, re-fetch ticket state, and reject closed or unauthorized requests before mutation.
+
+#### Scenario: Persistent IDs survive extraction
+
+- GIVEN the bot restarts after the view split
+- WHEN `setup_hook()` registers persistent views
+- THEN all four IDs remain unchanged and the buttons continue working
+
+#### Scenario: Stale ephemeral authorization is rejected
+
+- GIVEN a selector was opened by a mod 200 seconds ago
+- WHEN a now-non-mod submits it
+- THEN `is_mod_check` denies the request and no edit occurs
+
+#### Scenario: Stale ticket state is rejected
+
+- GIVEN a ticket becomes closed while a selector remains open
+- WHEN a mod submits a category selection
+- THEN the callback rejects it after re-fetching state and performs no mutation
+
+<!-- END DELTA: ticket-physical-split S3 -->
+
