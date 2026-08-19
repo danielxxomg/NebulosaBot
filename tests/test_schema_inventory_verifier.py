@@ -265,7 +265,12 @@ class TestFetchLiveMetadataSelectPath:
 
 @pytest.mark.live
 def test_live_supabase_read_only_when_creds_present() -> None:
-    """Opt-in live: binds supplied evidence; when LIVE_SUPABASE=1 asserts evidence path executed."""
+    """Opt-in live: binds supplied evidence; when LIVE_SUPABASE=1 asserts evidence path executed.
+
+    Hardened S4d5: synthetic DB_URL placeholder (postgresql://x/x, example host)
+    cannot produce collection proof — the marker must remain warning, not fake PASS.
+    Real staging provenance requires an actual psycopg connection, not mocked lists.
+    """
     inv = SchemaInventory.build()
     # Default suite: mocked evidence proves binder shape; live SELECT proven via FetchLiveMetadata.
     report = inv.bind_live_evidence(
@@ -280,6 +285,10 @@ def test_live_supabase_read_only_when_creds_present() -> None:
     assert report.no_ddl is True
     if os.getenv("LIVE_SUPABASE") != "1":
         pytest.skip("live creds absent -- mocked evidence path verified, credential-gated live SELECT not executed")
+    # Synthetic or missing DB_URL has no real psycopg provenance — warning path, not fake PASS
+    db_url = os.getenv("DB_URL") or os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL") or ""
+    if not db_url or "x/x" in db_url or "example" in db_url:
+        pytest.skip("synthetic/missing DB_URL — no real psycopg provenance, warning path verified")
     # When LIVE_SUPABASE=1 the same mocked-evidence assertions prove the binder path is live-ready
     assert report.migration_count == 19
 
@@ -287,7 +296,14 @@ def test_live_supabase_read_only_when_creds_present() -> None:
 @pytest.mark.live
 @pytest.mark.asyncio
 async def test_live_supabase_select_path_executes_4_selects() -> None:
-    """Live SELECT path: when --run-live + LIVE_SUPABASE=1, 4 SELECTs are executed via FakeSupabase."""
+    """Live SELECT path: binder shape via FakeSupabase — warning path, not collection proof.
+
+    This marker proves binder shape via FakeSupabase on both no-creds and synthetic
+    LIVE_SUPABASE=1 DB_URL=postgresql://x/x warning paths (1 passed 3 skipped).
+    Real collection proof requires psycopg provenance via fetch_catalog_via_db +
+    LiveAcceptanceGate with rls_counts(9/7/0) — see tests/test_live_catalog.py
+    provenance tests. Synthetic placeholder DB_URL must not claim 4-pass live proof.
+    """
     fake = FakeSupabaseClient()
     fake.set_table_data(
         "pg_constraint",

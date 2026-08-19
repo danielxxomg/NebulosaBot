@@ -242,11 +242,19 @@ class TestLiveGateStrict:
 
 @pytest.mark.live
 def test_live_marker_asserts_db_path_real_with_creds() -> None:
-    """Live marker: with LIVE_SUPABASE=1 + DB_URL, helper must assert DB path real."""
+    """Live marker: with LIVE_SUPABASE=1 + DB_URL, helper must assert DB path real.
+
+    Hardened S4d5: synthetic DB_URL placeholder (postgresql://x/x, example host)
+    cannot produce collection proof — the marker must remain warning, not fake PASS.
+    Real staging provenance requires an actual psycopg connection, not a bool.
+    """
     from scripts.apply_staging_migration import check_live_gate
 
     if os.getenv("LIVE_SUPABASE") != "1" or not (os.getenv("DB_URL") or os.getenv("SUPABASE_DB_URL")):
         pytest.skip("live creds absent -- warning path verified, real DB path not executed")
+    db_url = os.getenv("DB_URL") or os.getenv("SUPABASE_DB_URL") or ""
+    if "x/x" in db_url or "example" in db_url:
+        pytest.skip("synthetic DB_URL placeholder — no real psycopg provenance, warning path verified")
     result = check_live_gate(used_real_db=True)
     assert result.passed is True
     assert result.used_real_db is True
