@@ -65,9 +65,10 @@ def _verify_jwt_rs256(key: str) -> str | None:
     """Verify RS256 JWT via JWKS PyJWKClient with bounded kid refresh.
 
     Uses ``SUPABASE_JWKS_URL`` (or ``SUPABASE_JWKS_URI``), requires
-    ``role``, ``iss``, ``aud``, ``exp``. Unknown ``kid`` triggers a bounded
-    refresh of at most 3 attempts; otherwise fails closed without HS256
-    fallback. Returns ``role`` on success, ``None`` on any failure.
+    ``role``, ``iss``, ``aud``, ``exp``. Unknown ``kid`` triggers one
+    bounded refresh (initial attempt + 1 refresh = 2 total attempts);
+    otherwise fails closed without HS256 fallback. Returns ``role`` on
+    success, ``None`` on any failure.
     """
     jwks_url = (
         os.getenv("SUPABASE_JWKS_URL", "").strip()
@@ -90,8 +91,11 @@ def _verify_jwt_rs256(key: str) -> str | None:
     # RS256 requires issuer/audience configured to avoid accepting arbitrary tokens.
     if not issuer or not audience:
         return None
+    max_kid_refreshes = 1
+    attempts = 0
     last_exc: Exception | None = None
-    for _ in range(3):
+    while attempts < 1 + max_kid_refreshes:
+        attempts += 1
         try:
             client = pyjwt.PyJWKClient(jwks_url)
             signing_key = client.get_signing_key_from_jwt(key)
@@ -108,24 +112,13 @@ def _verify_jwt_rs256(key: str) -> str | None:
                 return None
             return role
         except Exception as exc:
-            # Bounded kid refresh: retry only on JWK client kid-not-found errors.
-            try:
-                import jwt as _jwt
-
-                jwk_err = getattr(_jwt, "exceptions", None)
-                is_jwk_error = False
-                if jwk_err is not None and hasattr(jwk_err, "PyJWKClientError"):
-                    is_jwk_error = isinstance(exc, jwk_err.PyJWKClientError)
-                # Fallback: message contains kid
-                if "kid" in str(exc).lower() or "not found" in str(exc).lower():
-                    is_jwk_error = True
-            except Exception:
-                is_jwk_error = False
             last_exc = exc
-            # Only retry on JWK kid miss; otherwise fail closed immediately.
+            # Bounded kid refresh: retry only on JWK client kid-not-found errors.
             msg = str(exc).lower()
             if "kid" in msg or "jwk" in msg or "not found" in msg or "unable to find" in msg:
-                continue
+                if attempts <= max_kid_refreshes:
+                    continue
+                break
             return None
     # Exhausted retries
     _ = last_exc

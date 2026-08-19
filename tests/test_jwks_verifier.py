@@ -128,7 +128,7 @@ class TestJwksRs256Verifier:
         mc.get_signing_key_from_jwt.side_effect = pyjwt.exceptions.PyJWKClientError("kid not found")
         with patch("jwt.PyJWKClient", return_value=mc):
             assert _verify_jwt_rs256(token) is None
-            assert mc.get_signing_key_from_jwt.call_count <= 3
+            assert mc.get_signing_key_from_jwt.call_count <= 2
 
     @pytest.mark.parametrize("missing", ["iss", "aud", "exp", "role"])
     def test_rs256_missing_claims_fail(self, monkeypatch: pytest.MonkeyPatch, missing: str) -> None:

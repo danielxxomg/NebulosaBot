@@ -110,12 +110,15 @@ def is_guild_scope_gap(method: str) -> bool:
 
 # Runtime closure — computed from registry, not hardcoded claim.
 # Must equal len(GUILD_SCOPE_GAP_HISTORY); tests fail if constant drifts from computed.
-GUILD_SCOPE_RUNTIME_CLOSED: int = 12
+GUILD_SCOPE_RUNTIME_CLOSED: int = len(GUILD_SCOPE_GAP_HISTORY)
 GUILD_SCOPE_RUNTIME_CLOSED_COMPUTED: int = len(GUILD_SCOPE_GAP_HISTORY)
 
 # Fail fast if constant drifts from registry (import-time guard for tests)
 assert GUILD_SCOPE_RUNTIME_CLOSED == GUILD_SCOPE_RUNTIME_CLOSED_COMPUTED, (
     f"GUILD_SCOPE_RUNTIME_CLOSED={GUILD_SCOPE_RUNTIME_CLOSED} != len(HISTORY)={GUILD_SCOPE_RUNTIME_CLOSED_COMPUTED}"
+)
+assert GUILD_SCOPE_RUNTIME_CLOSED == 12, (
+    f"GUILD_SCOPE_RUNTIME_CLOSED={GUILD_SCOPE_RUNTIME_CLOSED} expected 12 — update ledger and tests if history changes"
 )
 
 
@@ -228,6 +231,15 @@ async def fetch_live_metadata(
 
 
 @dataclass(frozen=True, slots=True)
+class RlsCounts:
+    """RLS 9/7/0 provenance — returned via pg_class/pg_policy counts."""
+
+    rls_enabled: int
+    rls_forced: int
+    policy_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class LiveEvidenceReport:
     """Read-only binder result for live evidence — no DDL, fail-closed on drift."""
 
@@ -242,6 +254,7 @@ class LiveEvidenceReport:
     category_id_type_mismatch: bool
     ddl_statements: str
     no_ddl: bool
+    rls_counts: RlsCounts | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -336,6 +349,8 @@ class SchemaInventory:
         live_policies: list[dict[str, Any]] | None,
         live_publication: list[str] | None,
         live_migrations: list[str] | None,
+        *,
+        rls_counts: tuple[int, int, int] | RlsCounts | None = None,
     ) -> LiveEvidenceReport:
         """Bind read-only live evidence; fail-closed with documented reasons.
 
@@ -394,6 +409,17 @@ class SchemaInventory:
             reasons.append("migration_count_mismatch")
         if normalized_live != local_stems:
             reasons.append("migration_identity_mismatch")
+        # RLS 9/7/0 provenance — bound into report, not caller-asserted.
+        rls_counts_obj: RlsCounts | None = None
+        if rls_counts is not None:
+            if isinstance(rls_counts, RlsCounts):
+                rls_counts_obj = rls_counts
+            else:
+                rls_counts_obj = RlsCounts(
+                    rls_enabled=rls_counts[0], rls_forced=rls_counts[1], policy_count=rls_counts[2]
+                )
+            if rls_counts_obj.rls_enabled != 9 or rls_counts_obj.rls_forced != 7 or rls_counts_obj.policy_count != 0:
+                reasons.append("rls_970_mismatch")
         # TEXT vs UUID mismatch: ticket.categoryId TEXT but ticket_category.id UUID — documented flag
         category_id_type_mismatch = True
         return LiveEvidenceReport(
@@ -412,6 +438,7 @@ class SchemaInventory:
             category_id_type_mismatch=category_id_type_mismatch,
             ddl_statements="",
             no_ddl=True,
+            rls_counts=rls_counts_obj,
         )
 
     def verify_live_parity(self, report: LiveEvidenceReport) -> LiveParityResult:

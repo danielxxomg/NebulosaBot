@@ -1,6 +1,6 @@
 # Staging Live Parity — S4 Runbook
 
-Staging proof for deferred S3 evidence: real credential gate, direct catalog, tracked 018 8-step DDL, EXPLAIN index policy, and RS256/HW256 JWT rotation. Stacked-to-main final slice (S4.3) — **docs-only**, no DDL or code moves.
+Staging proof for deferred S3 evidence: real credential gate, direct catalog, tracked 018 8-step DDL, EXPLAIN index policy, and RS256/HS256 JWT rotation. Stacked-to-main final slice (S4.3) — **docs-only**, no DDL or code moves.
 
 > **S4 gates** — every change MUST stay `mypy 0 · ruff 0 · 2030+ passed` and live `LIVE_SUPABASE=1 DB_URL=… uv run pytest -m live --run-live -q` must prove a **real DB path**, not a fake. Mocked `PASS_WITH_WARNINGS` is rejected.
 
@@ -110,7 +110,7 @@ psql "$DB_URL" -c "EXPLAIN (ANALYZE, BUFFERS) SELECT …"
 
 ### Modes
 
-- **RS256 via JWKS (`jwks_uri`)** — modern path. `bot/config.py::_verify_jwt_rs256` uses `PyJWKClient(jwks_uri)` with `algorithms=["RS256"]`, required `role`, `iss`, `aud`, `exp`, and a **bounded `kid` refresh of at most 3 attempts**.
+- **RS256 via JWKS (`jwks_uri`)** — modern path. `bot/config.py::_verify_jwt_rs256` uses `PyJWKClient(jwks_uri)` with `algorithms=["RS256"]`, required `role`, `iss`, `aud`, `exp`, and a **bounded `kid` refresh of at most 1 refresh** (`max_kid_refreshes=1`, 2 total attempts).
 - **HS256 legacy allowlist** — `PyJWT` with `SUPABASE_JWT_SECRET` and `algorithms=["HS256"]`, required `role/iss/aud/exp`. Preserved for legacy `service_role` JWTs; does NOT accept RS256 tokens without JWKS.
 
 ### Required env and claims
@@ -126,7 +126,7 @@ Required claims in every verified token: **`iss`, `aud`, `exp`, `role`**. Missin
 
 ### Rotation — bounded `kid` refresh
 
-When a token's `kid` header is unknown to the current JWKS cache, the RS256 verifier may retry **once per refresh cycle up to 3 bounded attempts**, each constructing a fresh `PyJWKClient(jwks_uri).get_signing_key_from_jwt(token)` — intended to pick up a newly published rotation key. If the `kid` is still unresolved, verification **fails closed without HS256 or payload-only fallback**. Non-`kid` errors (e.g. bad signature, wrong `alg`, bad `iss`/`aud`/`exp`) fail immediately without retry.
+When a token's `kid` header is unknown to the current JWKS cache, the RS256 verifier may retry **one bounded refresh** (initial attempt + 1 refresh = 2 total attempts), each constructing a fresh `PyJWKClient(jwks_uri).get_signing_key_from_jwt(token)` — intended to pick up a newly published rotation key. If the `kid` is still unresolved, verification **fails closed without HS256 or payload-only fallback**. Non-`kid` errors (e.g. bad signature, wrong `alg`, bad `iss`/`aud`/`exp`) fail immediately without retry.
 
 JWKS discovery/client caches can lag rotation; Supabase rotation can trust current and previously used keys and discovery may delay visibility — operators should wait for JWKS propagation or trigger a fresh `PyJWKClient` refresh on the next request.
 
