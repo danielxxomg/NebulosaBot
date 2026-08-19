@@ -61,14 +61,18 @@ def _verify_jwt_signature(key: str) -> str | None:
     return str(role) if isinstance(role, str) else None
 
 
-def _verify_jwt_rs256(key: str) -> str | None:
-    """Verify RS256 JWT via JWKS PyJWKClient with bounded kid refresh.
+_JWKS_ALGS: list[str] = ["RS256", "ES256"]
+
+
+def _verify_jwt_jwks(key: str) -> str | None:
+    """Verify RS256/ES256 JWT via JWKS PyJWKClient with bounded kid refresh.
 
     Uses ``SUPABASE_JWKS_URL`` (or ``SUPABASE_JWKS_URI``), requires
-    ``role``, ``iss``, ``aud``, ``exp``. Unknown ``kid`` triggers one
-    bounded refresh (initial attempt + 1 refresh = 2 total attempts);
-    otherwise fails closed without HS256 fallback. Returns ``role`` on
-    success, ``None`` on any failure.
+    ``role``, ``iss``, ``aud``, ``exp``. Allowlist ``["RS256","ES256"]``;
+    unknown ``kid`` triggers one bounded refresh (initial attempt + 1 refresh = 2
+    total attempts); otherwise fails closed without HS256 fallback. EC P-256
+    (ES256) and RSA (RS256) both via ``PyJWKClient`` ``kid``-bound selection.
+    Returns ``role`` on success, ``None`` on any failure.
     """
     jwks_url = (
         os.getenv("SUPABASE_JWKS_URL", "").strip()
@@ -77,18 +81,19 @@ def _verify_jwt_rs256(key: str) -> str | None:
     )
     if not jwks_url:
         return None
-    # Reject non-RS256 algs explicitly to block alg confusion.
+    # Reject algs not in allowlist to block alg confusion (no HS256 fallback).
     try:
         import jwt as pyjwt
 
         header = pyjwt.get_unverified_header(key)
     except Exception:
         return None
-    if header.get("alg") != "RS256":
+    alg = str(header.get("alg") or "")
+    if alg not in _JWKS_ALGS:
         return None
     issuer = os.getenv("SUPABASE_JWT_ISSUER", "").strip()
     audience = os.getenv("SUPABASE_JWT_AUDIENCE", "").strip()
-    # RS256 requires issuer/audience configured to avoid accepting arbitrary tokens.
+    # JWKS requires issuer/audience configured to avoid accepting arbitrary tokens.
     if not issuer or not audience:
         return None
     max_kid_refreshes = 1
@@ -102,7 +107,7 @@ def _verify_jwt_rs256(key: str) -> str | None:
             payload: dict[str, object] = pyjwt.decode(
                 key,
                 signing_key.key,
-                algorithms=["RS256"],
+                algorithms=_JWKS_ALGS,
                 issuer=issuer,
                 audience=audience,
                 options={"require": ["exp", "iss", "aud"]},
@@ -123,6 +128,11 @@ def _verify_jwt_rs256(key: str) -> str | None:
     # Exhausted retries
     _ = last_exc
     return None
+
+
+def _verify_jwt_rs256(key: str) -> str | None:
+    """Backward-compat alias — delegates to :func:`_verify_jwt_jwks`."""
+    return _verify_jwt_jwks(key)
 
 
 def _is_test_env() -> bool:
@@ -164,19 +174,19 @@ def validate_supabase_key(key: str) -> None:
     # without a signing source MUST NOT be accepted (prevents fake sig).
     # RS256 via JWKS is the modern path; HS256 allowlist retained for legacy.
     if key.count(".") == 2:
-        # Try RS256 first when header says RS256 and JWKS configured.
+        # Try JWKS (RS256+ES256) first when header says RS256/ES256 and JWKS configured.
         try:
             import jwt as _pyjwt
 
             hdr = _pyjwt.get_unverified_header(key)
-            if hdr.get("alg") == "RS256":
-                rs_role = _verify_jwt_rs256(key)
-                if rs_role is not None:
-                    if rs_role != "service_role":
-                        raise ServiceRoleValidationError(f"Supabase key role is {rs_role!r}, expected service_role")
+            if hdr.get("alg") in _JWKS_ALGS:
+                jwks_role = _verify_jwt_jwks(key)
+                if jwks_role is not None:
+                    if jwks_role != "service_role":
+                        raise ServiceRoleValidationError(f"Supabase key role is {jwks_role!r}, expected service_role")
                     return
                 raise ServiceRoleValidationError(
-                    "Supabase JWT RS256/JWKS verification failed (kid/iss/aud/exp/role) — "
+                    "Supabase JWT JWKS verification failed (kid/iss/aud/exp/role) — "
                     "expected verifiable service_role JWT or modern sb_secret_"
                 )
         except ServiceRoleValidationError:
