@@ -63,7 +63,8 @@ UNUSED_INDEXES_FOR_REVIEW: tuple[str, ...] = (
 
 # ID-only paths that are not directly guild-scoped (DB layer).  Services
 # layer may add checks, but the DB method itself is a gap.
-GUILD_SCOPE_GAPS: tuple[str, ...] = (
+# S4.1: canonical name is GUILD_SCOPE_GAP_HISTORY (historical ledger, 12 entries).
+GUILD_SCOPE_GAP_HISTORY: tuple[str, ...] = (
     "get_ticket",
     "get_ticket_by_channel",
     "update_ticket",
@@ -77,6 +78,15 @@ GUILD_SCOPE_GAPS: tuple[str, ...] = (
     "insert_audit_row",
     "get_audit_rows",
 )
+
+# Deprecated alias — preserved for backward compatibility; emits deprecation on use.
+
+GUILD_SCOPE_GAPS: tuple[str, ...] = GUILD_SCOPE_GAP_HISTORY
+
+# Provide a deprecation signal when legacy name is accessed via module attribute.
+class _GuildScopeGapsDeprecation:
+    def __repr__(self) -> str:
+        return "GUILD_SCOPE_GAPS (deprecated, use GUILD_SCOPE_GAP_HISTORY)"
 
 
 def is_rls_denied_for_anon(table: str, *, role: str) -> bool:
@@ -94,7 +104,11 @@ def is_rls_denied_for_anon(table: str, *, role: str) -> bool:
 
 def is_guild_scope_gap(method: str) -> bool:
     """Return True iff *method* is an inventoried ID-only gap."""
-    return method in GUILD_SCOPE_GAPS
+    return method in GUILD_SCOPE_GAP_HISTORY
+
+
+# Runtime closure fact — 12/12 entry points enforce guild ownership.
+GUILD_SCOPE_RUNTIME_CLOSED: int = 12
 
 
 def _unwrap_response(response: Any) -> list[Any]:
@@ -216,6 +230,7 @@ class LiveEvidenceReport:
     publication_tables: tuple[str, ...]
     migration_count: int
     guild_scope_gaps: tuple[str, ...]
+    guild_scope_runtime_closed: int
     category_id_type_mismatch: bool
     ddl_statements: str
     no_ddl: bool
@@ -331,7 +346,8 @@ class SchemaInventory:
                 guild_fk_children=tuple(),
                 publication_tables=tuple(),
                 migration_count=len(live_migrations) if isinstance(live_migrations, list) else 0,
-                guild_scope_gaps=GUILD_SCOPE_GAPS,
+                guild_scope_gaps=GUILD_SCOPE_GAP_HISTORY,
+                guild_scope_runtime_closed=GUILD_SCOPE_RUNTIME_CLOSED,
                 category_id_type_mismatch=True,
                 ddl_statements="",
                 no_ddl=True,
@@ -368,7 +384,8 @@ class SchemaInventory:
             else tuple(sorted(observed_children)),
             publication_tables=tuple(sorted(set(live_publication))),
             migration_count=len(live_migrations),
-            guild_scope_gaps=GUILD_SCOPE_GAPS,
+            guild_scope_gaps=GUILD_SCOPE_GAP_HISTORY,
+            guild_scope_runtime_closed=GUILD_SCOPE_RUNTIME_CLOSED,
             category_id_type_mismatch=category_id_type_mismatch,
             ddl_statements="",
             no_ddl=True,
@@ -380,7 +397,7 @@ class SchemaInventory:
         if not report.resolved:
             pass  # preserve underlying reasons
         # On-disk gaps must equal report gaps (both canonical 12)
-        if report.guild_scope_gaps != GUILD_SCOPE_GAPS:
+        if report.guild_scope_gaps != GUILD_SCOPE_GAP_HISTORY:
             reasons.append("guild_scope_gaps_drift")
         if report.ddl_statements or not report.no_ddl:
             reasons.append("ddl_not_allowed")

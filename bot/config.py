@@ -45,10 +45,6 @@ def _verify_jwt_signature(key: str) -> str | None:
     allowlist ``["HS256"]``. Returns ``None`` when verification cannot be
     attempted (no library/secret) or fails (invalid signature/alg) — caller
     MUST treat ``None`` as unverifiable and fail-closed for legacy JWT path.
-
-    TODO(S4): add JWKS/RS256 verification for Supabase JWTs signed with asymmetric
-    keys; HS256 allowlist remains required and any non-allowlisted alg MUST be
-    rejected. See plan.md cred rotation / JWKS follow-up.
     """
     secret = os.getenv("SUPABASE_JWT_SECRET", "").strip()
     if not secret:
@@ -63,6 +59,77 @@ def _verify_jwt_signature(key: str) -> str | None:
         return None
     role = payload.get("role")
     return str(role) if isinstance(role, str) else None
+
+
+def _verify_jwt_rs256(key: str) -> str | None:
+    """Verify RS256 JWT via JWKS PyJWKClient with bounded kid refresh.
+
+    Uses ``SUPABASE_JWKS_URL`` (or ``SUPABASE_JWKS_URI``), requires
+    ``role``, ``iss``, ``aud``, ``exp``. Unknown ``kid`` triggers a bounded
+    refresh of at most 3 attempts; otherwise fails closed without HS256
+    fallback. Returns ``role`` on success, ``None`` on any failure.
+    """
+    jwks_url = (
+        os.getenv("SUPABASE_JWKS_URL", "").strip()
+        or os.getenv("SUPABASE_JWKS_URI", "").strip()
+        or os.getenv("JWKS_URL", "").strip()
+    )
+    if not jwks_url:
+        return None
+    # Reject non-RS256 algs explicitly to block alg confusion.
+    try:
+        import jwt as pyjwt
+
+        header = pyjwt.get_unverified_header(key)
+    except Exception:
+        return None
+    if header.get("alg") != "RS256":
+        return None
+    issuer = os.getenv("SUPABASE_JWT_ISSUER", "").strip()
+    audience = os.getenv("SUPABASE_JWT_AUDIENCE", "").strip()
+    # RS256 requires issuer/audience configured to avoid accepting arbitrary tokens.
+    if not issuer or not audience:
+        return None
+    last_exc: Exception | None = None
+    for _ in range(3):
+        try:
+            client = pyjwt.PyJWKClient(jwks_url)
+            signing_key = client.get_signing_key_from_jwt(key)
+            payload: dict[str, object] = pyjwt.decode(
+                key,
+                signing_key.key,
+                algorithms=["RS256"],
+                issuer=issuer,
+                audience=audience,
+                options={"require": ["exp", "iss", "aud"]},
+            )
+            role = payload.get("role")
+            if not isinstance(role, str) or not role:
+                return None
+            return role
+        except Exception as exc:
+            # Bounded kid refresh: retry only on JWK client kid-not-found errors.
+            try:
+                import jwt as _jwt
+
+                jwk_err = getattr(_jwt, "exceptions", None)
+                is_jwk_error = False
+                if jwk_err is not None and hasattr(jwk_err, "PyJWKClientError"):
+                    is_jwk_error = isinstance(exc, jwk_err.PyJWKClientError)
+                # Fallback: message contains kid
+                if "kid" in str(exc).lower() or "not found" in str(exc).lower():
+                    is_jwk_error = True
+            except Exception:
+                is_jwk_error = False
+            last_exc = exc
+            # Only retry on JWK kid miss; otherwise fail closed immediately.
+            msg = str(exc).lower()
+            if "kid" in msg or "jwk" in msg or "not found" in msg or "unable to find" in msg:
+                continue
+            return None
+    # Exhausted retries
+    _ = last_exc
+    return None
 
 
 def _is_test_env() -> bool:
@@ -102,7 +169,27 @@ def validate_supabase_key(key: str) -> None:
     # Legacy JWT path — fail-closed when signing source is absent. Only an sb_secret_
     # (proven via health_probe) or a verified service_role JWT is accepted; payload-only
     # without a signing source MUST NOT be accepted (prevents fake sig).
+    # RS256 via JWKS is the modern path; HS256 allowlist retained for legacy.
     if key.count(".") == 2:
+        # Try RS256 first when header says RS256 and JWKS configured.
+        try:
+            import jwt as _pyjwt
+
+            hdr = _pyjwt.get_unverified_header(key)
+            if hdr.get("alg") == "RS256":
+                rs_role = _verify_jwt_rs256(key)
+                if rs_role is not None:
+                    if rs_role != "service_role":
+                        raise ServiceRoleValidationError(f"Supabase key role is {rs_role!r}, expected service_role")
+                    return
+                raise ServiceRoleValidationError(
+                    "Supabase JWT RS256/JWKS verification failed (kid/iss/aud/exp/role) — "
+                    "expected verifiable service_role JWT or modern sb_secret_"
+                )
+        except ServiceRoleValidationError:
+            raise
+        except Exception:
+            pass
         verified_role = _verify_jwt_signature(key)
         if verified_role is not None:
             if verified_role != "service_role":
