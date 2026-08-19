@@ -86,6 +86,18 @@ class LiveGateResult:
 
 
 @dataclass(frozen=True, slots=True)
+class ProvenanceToken:
+    """Provenance minted inside _sync_fetch_catalog — 4 psycopg queries.
+
+    Cannot be caller-forged with used_real_db=True; caller-supplied bool
+    without matching provenance is treated as synthetic FakeSupabase.
+    """
+
+    query_count: int
+    catalog_hash: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class LiveAcceptanceGate:
     """S4.2A acceptance gate — real DB/RPC only.
 
@@ -97,8 +109,13 @@ class LiveAcceptanceGate:
     """
 
     report: LiveEvidenceReport
-    used_real_db: bool
+    used_real_db: bool | ProvenanceToken = False
     _remote_names: tuple[str, ...] | None = None
+
+    def _has_provenance(self) -> bool:
+        if isinstance(self.used_real_db, ProvenanceToken):
+            return self.used_real_db.query_count == 4
+        return False
 
     def evaluate(self) -> LiveGateResult:
         reasons: list[str] = list(self.report.reasons)
@@ -108,20 +125,35 @@ class LiveAcceptanceGate:
         db_url = _resolve_db_url()
         if not db_url:
             reasons.append("missing DB_URL / SUPABASE_DB_URL for real DB/RPC path")
-        if not self.used_real_db:
-            reasons.append("real DB/RPC path not used — FakeSupabase/PostgREST PGRST205 cannot PASS (use DB_URL)")
+        if not self._has_provenance():
+            if isinstance(self.used_real_db, bool) and self.used_real_db is True:
+                reasons.append("synthetic live FakeSupabase — real provenance token required (4 psycopg queries)")
+            else:
+                reasons.append("real DB/RPC path not used — FakeSupabase/PostgREST PGRST205 cannot PASS (use DB_URL)")
             warnings.warn(
                 "Catalog parity not from real DB/RPC — failing closed (FakeSupabase never PASS)",
                 UserWarning,
                 stacklevel=2,
             )
+        # 9/7/0 binding — report must carry proven RLS counts
+        rc = getattr(self.report, "rls_counts", None)
+        if rc is None:
+            reasons.append("rls_970_not_bound — fetch_rls_counts_via_db provenance missing")
+        elif hasattr(rc, "rls_enabled"):
+            if rc.rls_enabled != 9 or rc.rls_forced != 7 or rc.policy_count != 0:
+                reasons.append("rls_970_mismatch")
+        elif isinstance(rc, tuple) and len(rc) == 3:
+            if rc[0] != 9 or rc[1] != 7 or rc[2] != 0:
+                reasons.append("rls_970_mismatch")
+        else:
+            reasons.append("rls_970_not_bound — invalid provenance shape")
         if not self.report.resolved:
             reasons.append(f"live evidence unresolved: {', '.join(self.report.reasons) or 'unknown'}")
         remote_names = self._remote_names
         if remote_names is not None and set(remote_names) != set(local):
             reasons.append("migration_identity_mismatch: remote names != local 19 stems (not count-only)")
         passed = not reasons
-        return LiveGateResult(passed=passed, reasons=tuple(reasons), used_real_db=self.used_real_db)
+        return LiveGateResult(passed=passed, reasons=tuple(reasons), used_real_db=self._has_provenance())
 
     def with_remote_names(self, remote_names: list[str]) -> LiveAcceptanceGate:
         return LiveAcceptanceGate(
@@ -131,11 +163,13 @@ class LiveAcceptanceGate:
         )
 
 
-def _sync_fetch_catalog(url: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str], list[str]]:
+def _sync_fetch_catalog(
+    url: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str], list[str], ProvenanceToken]:
     """Blocking psycopg fetch — executed via to_thread from async wrapper.
 
-    Provenance: every SELECT is a real query against the DB; caller must treat
-    non-empty, non-warned return as ``used_real_db=True`` provenance.
+    Provenance: every SELECT is a real query against the DB; returns a
+    ProvenanceToken with query_count==4 — the only valid used_real_db.
     """
     import psycopg
 
@@ -199,12 +233,13 @@ def _sync_fetch_catalog(url: str) -> tuple[list[dict[str, Any]], list[dict[str, 
                     live_migrations.append(str(r[0]))
             elif isinstance(r, str):
                 live_migrations.append(r)
-        return live_fks, live_policies, live_publication, live_migrations
+        # 4 provenance queries — mints token
+        return live_fks, live_policies, live_publication, live_migrations, ProvenanceToken(query_count=4)
 
 
 async def fetch_catalog_via_db(
     db_url: str | None = None,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str], list[str]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str], list[str], ProvenanceToken]:
     """Read-only catalog fetch via direct DB URL — no PostgREST.
 
     Queries pg_constraint, pg_policies, pg_publication_tables,
@@ -226,7 +261,7 @@ async def fetch_catalog_via_db(
             UserWarning,
             stacklevel=2,
         )
-        return [], [], [], []
+        return [], [], [], [], ProvenanceToken(query_count=0)
     try:
         import psycopg
     except ImportError:
@@ -235,7 +270,7 @@ async def fetch_catalog_via_db(
             UserWarning,
             stacklevel=2,
         )
-        return [], [], [], []
+        return [], [], [], [], ProvenanceToken(query_count=0)
     _ = psycopg
     return await asyncio.to_thread(_sync_fetch_catalog, url)
 
@@ -314,7 +349,8 @@ async def fetch_catalog_evidence(
     for pg_constraint — caller must treat that as unresolved, never PASS.
     """
     if _resolve_db_url() or db_url:
-        return await fetch_catalog_via_db(db_url)
+        fks, pols, pubs, migs, _tok = await fetch_catalog_via_db(db_url)
+        return fks, pols, pubs, migs
     if supabase_client is not None:
         from bot.services.schema_inventory import fetch_live_metadata
 

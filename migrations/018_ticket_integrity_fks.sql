@@ -296,7 +296,9 @@ ALTER TABLE public.ticket VALIDATE CONSTRAINT fk_ticket_category_set_null;
 ALTER TABLE public.ticket_note VALIDATE CONSTRAINT fk_ticket_note_cascade;
 ALTER TABLE public.ticket_audit VALIDATE CONSTRAINT fk_ticket_audit_set_null;
 
--- Drop ONLY the shadowed non-unique duplicate (0 scans). Keep idx_ticket_channel.
+-- Drop ONLY the shadowed non-unique duplicate — gate: EXPLAIN (ANALYZE, BUFFERS) receipt required.
+-- evaluate_index_policy(scans=0, explain_output) must return allowed before DROP.
+-- Zero pg_stat_user_indexes scans alone MUST NOT authorize drop (see runbook §EXPLAIN).
 DROP INDEX IF EXISTS public.idx_ticket_guild_number;
 
 RESET lock_timeout;

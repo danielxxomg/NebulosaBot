@@ -83,18 +83,20 @@ class TestRedLiveCatalogModuleExists:
 
 class TestCatalogParityMeasurableRealDB:
     def test_9_7_0_6_4_19_exact_passes_with_real_db(self) -> None:
-        from bot.services.live_catalog import LiveAcceptanceGate, get_local_migration_names
+        from bot.services.live_catalog import LiveAcceptanceGate, ProvenanceToken, get_local_migration_names
+        from bot.services.schema_inventory import RlsCounts
 
         local = get_local_migration_names()
-        # Build via real-DB evidence path
+        # Build via real-DB evidence path — include 9/7/0 binding
         inv = SchemaInventory.build()
         report = inv.bind_live_evidence(
             live_fks=_mocked_fks(),
             live_policies=[],
             live_publication=list(CDC_TABLES),
             live_migrations=list(local),
+            rls_counts=RlsCounts(rls_enabled=9, rls_forced=7, policy_count=0),
         )
-        # Gate requires LIVE_SUPABASE=1 + DB_URL + real_db flag
+        # Gate requires LIVE_SUPABASE=1 + DB_URL + ProvenanceToken(4)
         with patch.dict(
             os.environ,
             {
@@ -105,13 +107,16 @@ class TestCatalogParityMeasurableRealDB:
             },
             clear=False,
         ):
-            gate = LiveAcceptanceGate(report=report, used_real_db=True).with_remote_names(list(local))
+            gate = LiveAcceptanceGate(report=report, used_real_db=ProvenanceToken(query_count=4)).with_remote_names(
+                list(local)
+            )
             result = gate.evaluate()
             assert result.passed is True, result.reasons
             assert result.used_real_db is True
 
     def test_count_only_fails_when_names_differ(self) -> None:
-        from bot.services.live_catalog import LiveAcceptanceGate
+        from bot.services.live_catalog import LiveAcceptanceGate, ProvenanceToken
+        from bot.services.schema_inventory import RlsCounts
 
         # 19 count but wrong names (placeholder 001..019)
         fake_19 = [f"{i:03d}_migration_{i}" for i in range(1, 20)]
@@ -122,8 +127,9 @@ class TestCatalogParityMeasurableRealDB:
             live_policies=[],
             live_publication=list(CDC_TABLES),
             live_migrations=fake_19,
+            rls_counts=RlsCounts(rls_enabled=9, rls_forced=7, policy_count=0),
         )
-        # Even with real_db flag, migration identity mismatch must FAIL (exact 19 names, not count-only)
+        # Even with provenance token, migration identity mismatch must FAIL
         with patch.dict(
             os.environ,
             {
@@ -133,7 +139,7 @@ class TestCatalogParityMeasurableRealDB:
             },
             clear=False,
         ):
-            gate = LiveAcceptanceGate(report=report, used_real_db=True)
+            gate = LiveAcceptanceGate(report=report, used_real_db=ProvenanceToken(query_count=4))
             gate = gate.with_remote_names(fake_19)
             result = gate.evaluate()
             # Must be unresolved due to migration identity drift
@@ -219,8 +225,9 @@ class TestCatalogParityMeasurableRealDB:
 
 @pytest.mark.live
 def test_live_marker_asserts_db_path_used_when_creds_present() -> None:
-    """Live marker: with LIVE_SUPABASE=1 + DB_URL, must assert DB path was used."""
-    from bot.services.live_catalog import LiveAcceptanceGate, get_local_migration_names
+    """Live marker: with LIVE_SUPABASE=1 + DB_URL, must assert DB path was used via ProvenanceToken."""
+    from bot.services.live_catalog import LiveAcceptanceGate, ProvenanceToken, get_local_migration_names
+    from bot.services.schema_inventory import RlsCounts
 
     local = get_local_migration_names()
     inv = SchemaInventory.build()
@@ -229,11 +236,12 @@ def test_live_marker_asserts_db_path_used_when_creds_present() -> None:
         live_policies=[],
         live_publication=list(CDC_TABLES),
         live_migrations=list(local),
+        rls_counts=RlsCounts(rls_enabled=9, rls_forced=7, policy_count=0),
     )
     if os.getenv("LIVE_SUPABASE") != "1" or not (os.getenv("DB_URL") or os.getenv("SUPABASE_DB_URL")):
         pytest.skip("live creds absent -- real DB path not executed, warning path verified")
-    # When creds present, DB path must be marked used
-    gate = LiveAcceptanceGate(report=report, used_real_db=True)
+    # When creds present, DB path must be marked used via ProvenanceToken(4)
+    gate = LiveAcceptanceGate(report=report, used_real_db=ProvenanceToken(query_count=4))
     result = gate.evaluate()
     assert result.used_real_db is True
     assert result.passed is True
@@ -286,25 +294,29 @@ class TestFetchCatalogViaDbProvenance:
 
         fake_connect = MagicMock(return_value=FakeConn())
         with patch("psycopg.connect", fake_connect):
-            from bot.services.live_catalog import fetch_catalog_via_db
+            from bot.services.live_catalog import ProvenanceToken, fetch_catalog_via_db
 
-            fks, _pols, _pubs, _migs = await fetch_catalog_via_db("postgresql://user:pass@localhost/db")
-            # Provenance: psycopg.connect was called — used_real_db proven by query execution
+            fks, _pols, _pubs, _migs, tok = await fetch_catalog_via_db("postgresql://user:pass@localhost/db")
+            # Provenance: psycopg.connect was called — token proves query execution
             assert fake_connect.called
             assert any("pg_constraint" in s for s in executed), "must query pg_constraint"
             assert isinstance(fks, list)
+            assert isinstance(tok, ProvenanceToken)
+            assert tok.query_count == 4
 
     @pytest.mark.asyncio
     async def test_fetch_catalog_without_db_url_warns_and_empty(self) -> None:
         import warnings as _w
 
-        from bot.services.live_catalog import fetch_catalog_via_db
+        from bot.services.live_catalog import ProvenanceToken, fetch_catalog_via_db
 
         with _w.catch_warnings(record=True) as w:
             _w.simplefilter("always")
-            fks, pols, pubs, migs = await fetch_catalog_via_db(None)
+            fks, pols, pubs, migs, tok = await fetch_catalog_via_db(None)
             # No DB_URL → warns and empty; gate will fail (never PASS)
             assert fks == [] and pols == [] and pubs == [] and migs == []
+            assert isinstance(tok, ProvenanceToken)
+            assert tok.query_count == 0
             assert any(issubclass(x.category, UserWarning) for x in w)
 
     def test_fake_supabase_cannot_produce_used_real_db(self) -> None:
@@ -316,6 +328,75 @@ class TestFetchCatalogViaDbProvenance:
         assert "FakeSupabase never PASS" in text
         assert "psycopg.connect" in text
         assert "_sync_fetch_catalog" in text
+        # ProvenanceToken enforces 4 queries; synthetic bool True must be rejected.
+        assert "ProvenanceToken" in text
+        assert "query_count" in text
+
+    def test_synthetic_bool_true_rejected_without_token(self) -> None:
+        """Caller-supplied used_real_db=True without ProvenanceToken must be synthetic FakeSupabase."""
+        import warnings as _w
+
+        from bot.services.live_catalog import LiveAcceptanceGate, get_local_migration_names
+        from bot.services.schema_inventory import RlsCounts
+
+        inv = SchemaInventory.build()
+        report = inv.bind_live_evidence(
+            live_fks=_mocked_fks(),
+            live_policies=[],
+            live_publication=list(CDC_TABLES),
+            live_migrations=get_local_migration_names(),
+            rls_counts=RlsCounts(rls_enabled=9, rls_forced=7, policy_count=0),
+        )
+        import os as _os
+
+        with (
+            patch.dict(_os.environ, {"LIVE_SUPABASE": "1", "DB_URL": "postgresql://x/x"}, clear=False),
+            _w.catch_warnings(record=True),
+        ):
+            _w.simplefilter("always")
+            gate = LiveAcceptanceGate(report=report, used_real_db=True)  # type: ignore[arg-type]
+            result = gate.evaluate()
+            assert result.passed is False
+            assert any("synthetic" in r.lower() or "provenance" in r.lower() for r in result.reasons)
+
+    def test_provenance_token_with_970_bound_passes(self) -> None:
+        """ProvenanceToken(4) + 9/7/0 bound report must PASS via evaluate."""
+        from bot.services.live_catalog import LiveAcceptanceGate, ProvenanceToken, get_local_migration_names
+        from bot.services.schema_inventory import RlsCounts
+
+        inv = SchemaInventory.build()
+        report = inv.bind_live_evidence(
+            live_fks=_mocked_fks(),
+            live_policies=[],
+            live_publication=list(CDC_TABLES),
+            live_migrations=get_local_migration_names(),
+            rls_counts=RlsCounts(rls_enabled=9, rls_forced=7, policy_count=0),
+        )
+        with patch.dict(os.environ, {"LIVE_SUPABASE": "1", "DB_URL": "postgresql://x/x"}, clear=False):
+            gate = LiveAcceptanceGate(report=report, used_real_db=ProvenanceToken(query_count=4)).with_remote_names(
+                get_local_migration_names()
+            )
+            result = gate.evaluate()
+            assert result.passed is True, result.reasons
+
+    def test_970_not_bound_fails_even_with_token(self) -> None:
+        """Missing 9/7/0 binding must FAIL even with provenance token."""
+        from bot.services.live_catalog import LiveAcceptanceGate, ProvenanceToken, get_local_migration_names
+
+        inv = SchemaInventory.build()
+        report = inv.bind_live_evidence(
+            live_fks=_mocked_fks(),
+            live_policies=[],
+            live_publication=list(CDC_TABLES),
+            live_migrations=get_local_migration_names(),
+        )  # no rls_counts — unbound
+        with patch.dict(os.environ, {"LIVE_SUPABASE": "1", "DB_URL": "postgresql://x/x"}, clear=False):
+            gate = LiveAcceptanceGate(report=report, used_real_db=ProvenanceToken(query_count=4)).with_remote_names(
+                get_local_migration_names()
+            )
+            result = gate.evaluate()
+            assert result.passed is False
+            assert any("970" in r.lower() or "rls" in r.lower() for r in result.reasons)
 
 
 class TestRls970StructuralViaDb:
