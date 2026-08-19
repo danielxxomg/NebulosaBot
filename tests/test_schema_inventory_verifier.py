@@ -36,10 +36,9 @@ def _mocked_publication() -> list[str]:
 
 
 def _mocked_migrations() -> list[str]:
-    base = [f"{i:03d}_migration_{i}" for i in range(1, 20)]
-    # ensure 015 present
-    assert any("015" in m for m in base)
-    return base[:19]
+    from bot.services.live_catalog import get_local_migration_names
+
+    return get_local_migration_names()
 
 
 class TestMockedBaselineBinds:
