@@ -46,10 +46,10 @@ Chain strategy: stacked-to-main
 
 ## S4.3 Runbook + EXPLAIN (~200 ≤800)
 
-- [ ] 4.1 `docs/runbooks/staging-live-parity.md`: credential window/revocation backup/DOWN/restore tracked `psql` checklist (mypy0 ruff0 1968+ live 1 passed 1 passed real)
-- [ ] 4.2 `EXPLAIN (ANALYZE, BUFFERS)` receipt for dupe; zero `pg_stat_user_indexes` scans alone not drop `idx_ticket_channel` retained
-- [ ] 4.3 JWT rotation docs: `jwks_uri` bounded kid refresh iss/aud HS256 retained
-- [ ] 4.4 Verify & PR: `uv run pytest -q` + `python -m py_compile bot/__main__.py`; `s4.3-runbook` from S4.2B→`main`
+- [x] 4.1 `docs/runbooks/staging-live-parity.md`: credential window/revocation backup/DOWN/restore tracked `psql` checklist (mypy0 ruff0 2056 live warning+real) — RED tests/test_s4d3_runbook.py 26 failed→26 passed
+- [x] 4.2 `EXPLAIN (ANALYZE, BUFFERS)` receipt for dupe; zero `pg_stat_user_indexes` scans alone not drop `idx_ticket_channel` retained — doc'd in runbook §EXPLAIN
+- [x] 4.3 JWT rotation docs: `jwks_uri` bounded kid refresh iss/aud HS256 retained — doc'd in runbook §JWT rotation (RS256+HS256+alg confusion)
+- [x] 4.4 Verify & PR: `uv run pytest -q` 2056 passed 7 skipped + `python -m py_compile bot/__main__.py` + live warning path; `s4.3-runbook` from `29f946a`→`master` ≤200 docs-only
 
 ## Gates
 
