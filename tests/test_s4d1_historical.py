@@ -46,6 +46,19 @@ def test_runtime_closed_12() -> None:
     )
 
 
+def test_runtime_closed_computed_matches_constant() -> None:
+    """GUILD_SCOPE_RUNTIME_CLOSED must be derived from registry len, not hardcoded drift."""
+    from bot.services.schema_inventory import (
+        GUILD_SCOPE_GAP_HISTORY,
+        GUILD_SCOPE_RUNTIME_CLOSED,
+        GUILD_SCOPE_RUNTIME_CLOSED_COMPUTED,
+    )
+
+    assert len(GUILD_SCOPE_GAP_HISTORY) == GUILD_SCOPE_RUNTIME_CLOSED
+    assert len(GUILD_SCOPE_GAP_HISTORY) == GUILD_SCOPE_RUNTIME_CLOSED_COMPUTED
+    assert GUILD_SCOPE_RUNTIME_CLOSED == GUILD_SCOPE_RUNTIME_CLOSED_COMPUTED
+
+
 def test_inventory_len_12_still_passes() -> None:
     from bot.services.schema_inventory import GUILD_SCOPE_GAP_HISTORY, GUILD_SCOPE_GAPS
 

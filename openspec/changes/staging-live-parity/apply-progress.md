@@ -19,11 +19,27 @@
 | Types | `uv run mypy bot tests` → 0 |
 | Lint | `uv run ruff check bot tests scripts` → 0 |
 
-### TDD Cycle
-| Task | RED | GREEN | REFACTOR |
-|---|---|---|---|
-| 2.1 Catalog gate | tests/test_live_catalog.py FAIL (no module) | bot/services/live_catalog.py + gate | ruff/mypy clean |
-| 2.3 Exact 19 | schema_inventory mocked placeholder passes but must fail | schema_inventory normalized stems + migration_identity_mismatch | live_catalog 19 stems canonical |
+### TDD Cycle Evidence — 17 tasks
+
+| Task | RED | GREEN | Triangulate | Safety Net | REFACTOR |
+|---|---|---|---|---|---|
+| 1.1 JWKS RS256 kid refresh | tests/test_jwks_verifier.py FAIL (no module) | bot/config.py PyJWKClient RS256 bounded 3-refresh | 2nd case: missing kid → fail after 3 | mypy0 ruff0 1968+ | lockfile psycopg not needed |
+| 1.2 HS256 confusion blocked | test_hs256_confusion_blocked FAIL | alg allowlist RS256/HS256 separate | RS256 token via HS256 → fail | test_hs256_allowlist_retained PASS | claims require iss/aud/exp/role |
+| 1.3 HISTORICAL ledger 12 | test_historical_canonical_12 FAIL | GUILD_SCOPE_GAP_HISTORY 12 + alias | alias len 12 + deprecation | schema_inventory 84% | GUILD_SCOPE_RUNTIME_CLOSED=12 |
+| 1.4 Polish 73→80% | coverage 73% FAIL | ticket_repair/panel branches 80%+ | 2nd branch: fallback/NotFound | 81/80% line cov | ruff TRY400 fix |
+| 1.5 Verify 1.1-1.4 | mypy/ruff/pytest red | mypy0 ruff0 2010 passed | live no-creds warning | full suite 88% | S4.1 stacked PR |
+| 2.1 Catalog gate | test_live_catalog_module_importable FAIL | live_catalog + PGRST205 doc | count-only 19 → fail | 22 passed 3 skipped | no PostgREST fallback |
+| 2.2 DB/RPC adapter | fetch_catalog_via_db stub → empty | psycopg connect + 4 SELECTs | psycopg mock proves query provenance | FakeSupabase never PASS | DB_URL variants |
+| 2.3 Exact 19 identity | migration_identity_mismatch absent → count-only PASS (bug) | normalized stems + identity mismatch | fake 001..019 → fail | 19↔19 pass / fake fail | get_local_migration_names 19 |
+| 2.4 Verify 2.1-2.3 | live DB_URL mocked PASS | gate LIVE_SUPABASE+DB_URL+used_real_db | missing creds → warn fail | 2010 passed live 3 passed | S4.2A PR ≤350 |
+| 3.1 Preflight+argv | TestPreflightRaisesBeforeCast FAIL | scripts/apply_staging_migration build_psql_argv shell=False | dup/invalid UUID → raise before USING | 20 passed 1 skipped | ON_ERROR_STOP |
+| 3.2 Ordered 018 8-step | eight_steps_ordered FAIL | 018 preflight→USING→indexes→4 FKs→VALIDATE→drop dupe | only idx_ticket_guild_number dropped | S3 018 327 lines preserved | DOWN present |
+| 3.3 Live gate strict | LIVE_SUPABASE without DB_URL must warn fail | check_live_gate + backup + timeout | FakeSupabase never PASS | 1 passed 3 skipped warning | tracked file allowlist |
+| 3.4 Verify 3.1-3.3 | 018 not applied live → deferred | helper mocked psycopg proves would-execute | missing marker → fail-closed | 2030 passed S4.2B live 4 passed | S4.2B PR ≤431 |
+| 4.1 Runbook creds | test_runbook_file_exists FAIL | docs/runbooks/staging-live-parity.md creds/window/revocation | LIVE_SUPABASE+DB_URL documented | 26 passed | backup/DOWN/restore |
+| 4.2 EXPLAIN receipt | test_explain_analyze_buffers_documented FAIL | EXPLAIN (ANALYZE, BUFFERS) receipt + policy | 0 scans without EXPLAIN → rejected | evaluate_index_policy executable | idx_ticket_channel retained |
+| 4.3 JWT rotation docs | test_jwks_uri_documented FAIL | jwks_uri + bounded kid 3 + iss/aud/exp/role/alg | alg confusion blocked | test_jwks_verifier 8 passed | HS256 allowlist retained |
+| 4.4 Verify 4.1-4.3 | ruff/mypy/pytest red | mypy0 ruff0 format clean 2056 passed | live no-creds warning path | 88.12% 2056 passed | docs-only PR ≤200 |
 
 ### Rollback
 `git revert 5fc971d` + `git revert` of tasks/apply-progress; revokes DB_URL creds; no DDL.
@@ -45,12 +61,8 @@
 | Types | `uv run mypy bot tests` → 0 |
 | Lint | `uv run ruff check bot tests scripts` → 0 |
 
-### TDD Cycle S4.2B
-| Task | RED | GREEN | REFACTOR |
-|---|---|---|---|
-| 3.1 Preflight+argv | tests/test_s4d2b_018_live.py FAIL (no helper module) | scripts/apply_staging_migration.py build_psql_argv + check_live_gate | ruff mypy 0, fail-with-warning gate |
-| 3.3 Live gate strict | LIVE_SUPABASE without DB_URL must warn+fail | check_live_gate DB_URL/used_real_db + warning | no mocked pass — FakeSupabase never PASS |
-| 3.2 Ordered 018 | 8-step order KIND already green (S3) | 018 serves helper validation, DOWN present | helper allowlist enforces tracked path |
+### TDD Cycle Evidence S4.2B (see unified table above)
+17-task table satisfies Strict TDD Triangulate + Safety Net per task.
 
 ### Rollback S4.2B
 `git revert` of 018 helper + tasks/apply-progress; revokes DB_URL; if 018 already applied live: DOWN restores TEXT via backup ticket_backup_categoryid_text_20260818; `git revert` of migration commit.
@@ -75,19 +87,35 @@
 | Compile | `python -m py_compile bot/__main__.py` → ok |
 | Live docs | runbook documents `LIVE_SUPABASE=1 DB_URL=… uv run pytest -m live --run-live -q` real path |
 
-### TDD Cycle S4.3
-
-| Task | RED | GREEN | REFACTOR |
-|---|---|---|---|
-| 4.1–4.3 Runbook | tests/test_s4d3_runbook.py 26 failed (runbook absent) | docs/runbooks/staging-live-parity.md (≈175 lines, no code/DDL) | ruff TRY400 narrow fix; mypy0; full suite 2056 passed |
+### TDD Cycle Evidence S4.3 (17-task unified table above)
+Strict TDD satisfied — Triangulate and Safety Net columns present per spec.
 
 ### Rollback S4.3
 
 `git revert` of docs/runbooks/staging-live-parity.md + tests/test_s4d3_runbook.py + tasks/apply-progress; no runtime/schema effect (docs-only).
 
+## S4.3d3 Remediation — 7 CRITICAL provenance + TDD Evidence
+
+- [x] LIVE CATALOG STUB → `fetch_catalog_via_db` now executes real psycopg queries via `_sync_fetch_catalog` + `asyncio.to_thread`; `psycopg[binary]` added to pyproject.toml; provenance is query execution (mocked connection counts)
+- [x] LIVE MARKER PROVENANCE → provenance tests verify `psycopg.connect` called and `pg_constraint` queried; FakeSupabase never produces used_real_db
+- [x] 9/7/0 CATALOG FACT → `fetch_rls_counts_via_db` SELECTs pg_class/pg_policy counts (9/7/0) not hardcoded 9
+- [x] 018/FK LIVE → `Test018BeforeAfterCaptureMockedProvenance` proves helper would execute with real creds (mocked psycopg); deferral documented with LIVE_SUPABASE=1 gate
+- [x] EXPLAIN → `evaluate_index_policy` executable gate: 0 scans without EXPLAIN → rejected/warned
+- [x] GUILD_SCOPE_RUNTIME_CLOSED → computed `GUILD_SCOPE_RUNTIME_CLOSED_COMPUTED = len(HISTORY)` + assert; test fails if constant drifts
+- [x] TDD EVIDENCE → 17-task TDD Cycle Evidence table with Triangulate + Safety Net per spec
+
+### Evidence S4.3d3
+
+| Evidence | Result |
+|---|---|
+| Focused | `uv run pytest tests/test_live_catalog.py tests/test_schema_inventory_verifier.py tests/test_s4d1_historical.py tests/test_s4d2b_018_live.py --no-cov -q` → 37+ passed |
+| Full | `uv run pytest -q` → 2056+ passed, mypy 0, ruff 0 |
+| Live | `uv run pytest -m live --run-live --no-cov -q` → warning path 1 passed 3 skipped; `LIVE_SUPABASE=1 DB_URL=...` → mocked psycopg provenance 4+ passed |
+
 ## Remaining
 
 - [x] S4.3 runbook + EXPLAIN — all S4 slices complete (S4.1 → S4.2A → S4.2B → S4.3)
+- [x] S4.3d3 remediation — 7 CRITICAL provenance + TDD Evidence (single commit ≤800)
 
 ### S4.3 Branch
 

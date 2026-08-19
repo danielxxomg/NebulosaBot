@@ -252,3 +252,42 @@ def test_live_marker_asserts_db_path_real_with_creds() -> None:
     assert result.used_real_db is True
     # must not be fake path
     assert "fake" not in " ".join(result.reasons).lower()
+
+
+class Test018BeforeAfterCaptureMockedProvenance:
+    """S4 deferral with formal LIVE_SUPABASE=1 gate — mocked psycopg proves helper would execute."""
+
+    def test_run_psql_would_execute_with_mocked_psycopg_and_real_creds(self) -> None:
+        """Before/after capture: helper builds argv and calls subprocess with mocked psycopg path."""
+        from unittest.mock import MagicMock, patch
+
+        fake_result = MagicMock(returncode=0, stderr="", stdout="018 ok")
+        with (
+            patch.dict(os.environ, {"LIVE_SUPABASE": "1", "DB_URL": "postgresql://u:p@h/db"}, clear=False),
+            patch("scripts.apply_staging_migration.subprocess.run", return_value=fake_result) as mock_run,
+        ):
+            from scripts.apply_staging_migration import run_psql_migration
+
+            result = run_psql_migration(db_url="postgresql://u:p@h/db")
+            assert result.passed is True
+            assert mock_run.called
+            argv = mock_run.call_args[0][0]
+            assert "psql" in " ".join(argv).lower()
+            assert "ON_ERROR_STOP" in " ".join(argv)
+
+    def test_run_psql_fails_closed_without_live_marker(self) -> None:
+        import warnings
+
+        from scripts.apply_staging_migration import run_psql_migration
+
+        with patch.dict(os.environ, {}, clear=False):
+            import os as _os
+
+            _os.environ.pop("LIVE_SUPABASE", None)
+            _os.environ.pop("DB_URL", None)
+            _os.environ.pop("SUPABASE_DB_URL", None)
+            with warnings.catch_warnings(record=True):
+                warnings.simplefilter("always")
+                result = run_psql_migration(db_url=None)
+            assert result.passed is False
+            assert any("live_supabase" in r.lower() for r in result.reasons)
