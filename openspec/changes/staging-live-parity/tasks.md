@@ -32,10 +32,10 @@ Chain strategy: stacked-to-main
 
 ## S4.2A Catalog DB/RPC (~350 ≤800)
 
-- [ ] 2.1 RED `tests/test_live_catalog.py`: 9/7/0 6 CASCADE 4 pubs 19 exact version/name; count-only fails PGRST205 unresolved FakeSupabase never PASS
-- [ ] 2.2 GREEN `live_catalog.py` RO `DB_URL` adapter `pg_constraint/pg_policy/pg_publication_tables/pg_stat_user_indexes/schema_migrations`; no PostgREST fallback
-- [ ] 2.3 GREEN `schema_inventory.py` exact 19 reconcil. + `LiveAcceptanceGate` needs `LIVE_SUPABASE=1`+`DB_URL`+Supabase/JWKS
-- [ ] 2.4 Verify & PR: `LIVE_SUPABASE=1 DB_URL=... uv run pytest -m live --run-live --no-cov -q` 1 passed 1 passed real; `s4.2a-catalog` from S4.1→`main`
+- [x] 2.1 RED `tests/test_live_catalog.py`: 9/7/0 6 CASCADE 4 pubs 19 exact version/name; count-only fails PGRST205 unresolved FakeSupabase never PASS
+- [x] 2.2 GREEN `live_catalog.py` RO `DB_URL` adapter `pg_constraint/pg_policy/pg_publication_tables/pg_stat_user_indexes/schema_migrations`; no PostgREST fallback
+- [x] 2.3 GREEN `schema_inventory.py` exact 19 reconcil. + `LiveAcceptanceGate` needs `LIVE_SUPABASE=1`+`DB_URL`+Supabase/JWKS
+- [x] 2.4 Verify & PR: `LIVE_SUPABASE=1 DB_URL=... uv run pytest -m live --run-live --no-cov -q` 1 passed 1 passed real; `s4.2a-catalog` from S4.1→`main`
 
 ## S4.2B 018 Live 8-Step (~400 ≤800)
 
