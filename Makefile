@@ -32,4 +32,4 @@ cov:
 ci: lint type security test cov
 
 audit:
-	uv run --with pip-audit pip-audit -l --strict
+	uv audit
