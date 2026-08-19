@@ -13,8 +13,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from supabase import AsyncClientOptions, acreate_client
-
 from bot.core.db.base import DatabaseBase
 from bot.core.db.economy_db import EconomyDBMixin
 from bot.core.db.greeting_db import GreetingDBMixin
@@ -25,6 +23,7 @@ from bot.core.db.ticket_audit_db import TicketAuditDBMixin
 from bot.core.db.ticket_category_db import TicketCategoryDBMixin
 from bot.core.db.ticket_db import TicketDBMixin
 from bot.core.db.ticket_note_db import TicketNoteDBMixin
+from supabase import AsyncClientOptions, acreate_client
 
 
 async def create_realtime_client(supabase_url: str, supabase_key: str) -> Any:
