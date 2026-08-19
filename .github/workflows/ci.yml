@@ -28,41 +28,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Cache uv
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/uv
-          key: uv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            uv-${{ runner.os }}-${{ matrix.python-version }}-
+      - name: Install uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
 
       - name: Install dependencies
-        run: |
-          pip install uv
-          uv sync --extra dev
+        run: uv sync --locked
 
       - name: Ruff check
-        run: uv run --extra dev ruff check bot/ tests/
+        run: uv run ruff check bot/ tests/
 
       - name: Ruff format check
-        run: uv run --extra dev ruff format --check bot/ tests/
+        run: uv run ruff format --check bot/ tests/
 
       - name: Mypy
-        run: uv run --extra dev mypy --follow-imports=silent bot/
+        run: uv run mypy --follow-imports=silent bot/
 
       - name: Bandit
-        run: uv run --extra dev bandit -r bot/ -c pyproject.toml --severity-level medium
+        run: uv run bandit -r bot/ -c pyproject.toml --severity-level medium
 
-      - name: pip-audit
-        run: uv run --extra dev --with pip-audit pip-audit -l --strict
+      - name: uv audit
+        run: uv audit
 
       - name: Tests with coverage
-        run: uv run --extra dev pytest --cov-fail-under=75
+        run: uv run pytest --cov-fail-under=75
 
       - name: Upload coverage
         if: matrix.python-version == '3.12'
@@ -91,14 +79,3 @@ jobs:
 
       - name: Tests
         run: cd dashboard && npx vitest run
-
-  pip-audit-weekly:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'schedule'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install uv && uv sync --extra dev
-      - run: uv run --extra dev --with pip-audit pip-audit -l --strict
