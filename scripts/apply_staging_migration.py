@@ -120,10 +120,7 @@ def build_repair_argv(
         if name not in REPAIR_DESYNC_ALLOWLIST:
             msg = f"repair name not in allowlist: {name!r} — only {REPAIR_DESYNC_ALLOWLIST} allowed"
             raise ValueError(msg)
-    return [
-        ["supabase", "migration", "repair", "--status", "applied", "--version", name]
-        for name in migration_names
-    ]
+    return [["supabase", "migration", "repair", "--status", "applied", "--version", name] for name in migration_names]
 
 
 def build_psql_argv(db_url: str, migration_file: str = DEFAULT_MIGRATION_PATH) -> list[str]:
@@ -193,7 +190,7 @@ def capture_live_evidence_via_db(db_url: str) -> tuple[Any, Any]:
     # EXPLAIN receipt — real via psycopg when possible, stub otherwise.
     explain_stub = (
         "EXPLAIN (ANALYZE, BUFFERS) SELECT * FROM ticket "
-        "WHERE \"guildId\"=? AND \"ticketNumber\"=? — Index Only Scan using idx_ticket_guild_ticket_number, "
+        'WHERE "guildId"=? AND "ticketNumber"=? — Index Only Scan using idx_ticket_guild_ticket_number, '
         "Heap Fetches: 0, Buffers: shared hit=1"
     )
     try:

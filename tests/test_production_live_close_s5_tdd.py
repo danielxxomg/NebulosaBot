@@ -113,9 +113,7 @@ def _ec_pair():
     priv_pem = priv.private_bytes(
         serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()
     ).decode()
-    pub_pem = pub.public_bytes(
-        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
-    ).decode()
+    pub_pem = pub.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode()
     return priv_pem, pub_pem
 
 
@@ -128,9 +126,7 @@ def _rsa_pair():
     priv_pem = priv.private_bytes(
         serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()
     ).decode()
-    pub_pem = pub.public_bytes(
-        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
-    ).decode()
+    pub_pem = pub.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode()
     return priv_pem, pub_pem
 
 
@@ -186,8 +182,12 @@ class TestJwksDualRed:
         monkeypatch.setenv("SUPABASE_JWT_ISSUER", "https://proj.supabase.co/auth/v1")
         monkeypatch.setenv("SUPABASE_JWT_AUDIENCE", "authenticated")
         token = pyjwt.encode(
-            {"role": "service_role", "iss": "https://proj.supabase.co/auth/v1",
-             "aud": "authenticated", "exp": int(time.time()) + 600},
+            {
+                "role": "service_role",
+                "iss": "https://proj.supabase.co/auth/v1",
+                "aud": "authenticated",
+                "exp": int(time.time()) + 600,
+            },
             "strong-secret-32bytes-for-hs256-test-x",
             algorithm="HS256",
         )
@@ -203,8 +203,12 @@ class TestJwksDualRed:
         monkeypatch.setenv("SUPABASE_JWT_ISSUER", "https://proj.supabase.co/auth/v1")
         monkeypatch.setenv("SUPABASE_JWT_AUDIENCE", "authenticated")
         token = pyjwt.encode(
-            {"role": "service_role", "iss": "https://proj.supabase.co/auth/v1",
-             "aud": "authenticated", "exp": int(time.time()) + 600},
+            {
+                "role": "service_role",
+                "iss": "https://proj.supabase.co/auth/v1",
+                "aud": "authenticated",
+                "exp": int(time.time()) + 600,
+            },
             priv_pem,
             algorithm="ES256",
             headers={"kid": "unknown"},

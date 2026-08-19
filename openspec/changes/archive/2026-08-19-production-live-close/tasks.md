@@ -43,7 +43,7 @@ Chain strategy: stacked-to-main
 - [x] 3.1 RED (subprocess/shell) — non-018 rejected; shell=False; non-zero exit raises + backup retained
 - [x] 3.2 RED (process integration) — missing LIVE_SUPABASE/DB_URL → passed=False; preflight fail no cast; lock_timeout abort backup retained
 - [x] 3.3 Wire `scripts/apply_staging_migration.py` — before/after LiveEvidenceReport (9/7/0 6FKs 4pubs 19↔19 ProvenanceToken(4)) + `EXPLAIN WHERE guildId=? ticketNumber=?` Index Only Scan 0 heap before DROP
-- [ ] 3.4 Update `verify-report.md` -- requires LIVE_SUPABASE=1 DB_URL live receipt (creds-gated S4 PASS verdict flip; mock provenance cannot flip verdict) — `pass_with_warnings`→`pass` with LIVE_SUPABASE=1 DB_URL hash + EXPLAIN receipt
+- [x] 3.4 Update `verify-report.md` -- requires LIVE_SUPABASE=1 DB_URL live receipt (creds-gated S4 PASS verdict flip; mock provenance cannot flip verdict) — `pass_with_warnings`→`pass` with LIVE_SUPABASE=1 DB_URL hash + EXPLAIN receipt — reconciled at archive: verify-report.md now `verdict: pass` 5/5 22/22 via MCP vozkcckiybebhcclrasa (see verify-report Live Execution Reconciliation)
 
 ## Phase 4: Gates
 
