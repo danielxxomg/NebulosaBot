@@ -120,10 +120,15 @@ class TicketService:
         *,
         transcript_url: str | None = None,
         close_reason: str | None = None,
+        guild_id: str | None = None,
     ) -> Ticket:
         """Close a ticket (delegates to lifecycle service)."""
         return await self._lifecycle.close_ticket(
-            ticket_id, closed_by=closed_by, transcript_url=transcript_url, close_reason=close_reason
+            ticket_id,
+            closed_by=closed_by,
+            transcript_url=transcript_url,
+            close_reason=close_reason,
+            guild_id=guild_id,
         )
 
     # ----------------------------------------------------------------
@@ -231,9 +236,7 @@ class TicketService:
         outcome: str = "denied",
     ) -> None:
         """Persist best-effort structured audit evidence for a failed repair (delegates to repair service)."""
-        return await self._repair._audit_denied(
-            guild_id, ticket_id, reason, actor_id, outcome=outcome
-        )
+        return await self._repair._audit_denied(guild_id, ticket_id, reason, actor_id, outcome=outcome)
 
     async def claim_ticket(self, ticket_id: str, claimed_by: str, *, guild_id: str | None = None) -> Ticket:
         """Claim a ticket (delegates to lifecycle service)."""
@@ -258,10 +261,16 @@ class TicketService:
         channel: discord.TextChannel,
         actor_id: str,
         is_mod: bool = False,
+        guild_id: str | None = None,
     ) -> tuple[Ticket, bool]:
         """Edit a ticket's category (delegates to lifecycle service)."""
         return await self._lifecycle.edit_ticket_category(
-            ticket_id, new_category_id, channel=channel, actor_id=actor_id, is_mod=is_mod
+            ticket_id,
+            new_category_id,
+            channel=channel,
+            actor_id=actor_id,
+            is_mod=is_mod,
+            guild_id=guild_id,
         )
 
     # -- Query/cache facade (S3.3A): single owner is TicketQueryService --
@@ -328,17 +337,19 @@ class TicketService:
     # Staff notes (slice 2)
     # ----------------------------------------------------------------
 
-    async def create_note(self, ticket_id: str, author_id: str, content: str) -> TicketNote:
+    async def create_note(
+        self, ticket_id: str, author_id: str, content: str, *, guild_id: str | None = None
+    ) -> TicketNote:
         """Add a staff note (delegates to lifecycle service)."""
-        return await self._lifecycle.create_note(ticket_id, author_id, content)
+        return await self._lifecycle.create_note(ticket_id, author_id, content, guild_id=guild_id)
 
-    async def get_notes(self, ticket_id: str) -> list[TicketNote]:
+    async def get_notes(self, ticket_id: str, *, guild_id: str | None = None) -> list[TicketNote]:
         """Return staff notes (delegates to lifecycle service)."""
-        return await self._lifecycle.get_notes(ticket_id)
+        return await self._lifecycle.get_notes(ticket_id, guild_id=guild_id)
 
-    async def delete_note(self, note_id: str, author_id: str, *, ticket_id: str) -> None:
+    async def delete_note(self, note_id: str, author_id: str, *, ticket_id: str, guild_id: str | None = None) -> None:
         """Delete a staff note (delegates to lifecycle service)."""
-        return await self._lifecycle.delete_note(note_id, author_id, ticket_id=ticket_id)
+        return await self._lifecycle.delete_note(note_id, author_id, ticket_id=ticket_id, guild_id=guild_id)
 
     # ----------------------------------------------------------------
     # Orchestration helpers — delegate to repair service (S3.3B)

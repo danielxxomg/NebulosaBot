@@ -77,6 +77,10 @@ class DatabaseBase:
         anon/publishable credentials never obtain a client. Uses
         ``acreate_client`` (async factory) so the underlying HTTP adapter is
         created without blocking the event loop.
+
+        Fail-closed: when the two-table RLS probe fails, the client is cleared
+        and a :exc:`ServiceRoleValidationError` is raised so no subsequent DB
+        operation can succeed with an unverified ``sb_secret_``.
         """
         validate_service_role_key(self._key)
         logger.info("Connecting to Supabase at %s ...", self._url)
@@ -87,29 +91,20 @@ class DatabaseBase:
         )
         healthy = await self.health_check()
         if not healthy:
-            logger.warning("Supabase health check failed — continuing anyway")
-        else:
-            logger.info("Supabase connection verified")
+            self._client = None
+            logger.error("Supabase health check failed — client cleared (fail-closed)")
+            raise ServiceRoleValidationError(
+                "Supabase health probe failed — sb_secret_ not verified via RLS SELECT on guild+ticket"
+            )
+        logger.info("Supabase connection verified")
 
     async def health_check(self) -> bool:
-        """Ping the database by selecting 1 row from the guild and ticket tables.
+        """Ping the database and prove ``sb_secret_`` via RLS on guild+ticket.
 
-        For ``sb_secret_`` keys this is the read-only RLS probe that proves
-        the credential can read RLS-enabled tables (guild + ticket) without
-        decoding the key as a JWT. Returns ``True`` if the query succeeds,
-        ``False`` otherwise. No mutation.
+        Delegates to :meth:`health_probe` so both ``guild`` and ``ticket`` are
+        read — a credential that can only read one table fails closed. No mutation.
         """
-        if self._client is None:
-            logger.error("health_check called before connect()")
-            return False
-
-        try:
-            response = await self._client.table("guild").select("id").limit(1).execute()
-            _unwrap(response)
-            return True
-        except Exception:
-            logger.exception("Supabase health check query failed")
-            return False
+        return await self.health_probe()
 
     async def health_probe(self) -> bool:
         """Read-only probe proving ``sb_secret_`` can read RLS tables via guild+ticket.

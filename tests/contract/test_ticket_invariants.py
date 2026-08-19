@@ -858,7 +858,7 @@ async def test_ti035_author_delete_own() -> None:
 
     await service.delete_note("note-uuid-001", author_id="userA", ticket_id=ticket_id)
 
-    db.delete_ticket_note.assert_awaited_once_with("note-uuid-001")
+    db.delete_ticket_note.assert_awaited_once_with("note-uuid-001", guild_id="123456789", ticket_id=ticket_id)
     del_calls = [c for c in _audit_calls(db) if c["action"] == "note_delete"]
     assert len(del_calls) == 1
     assert del_calls[0]["outcome"] == "success"

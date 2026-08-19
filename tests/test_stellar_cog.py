@@ -95,6 +95,7 @@ class TestDailyCommand:
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
+        assert embed.color is not None
         assert embed.color.value == SUCCESS
         assert "130" in embed.description  # type: ignore[operator]
         # Economy commands must be permanent (NOT ephemeral)
@@ -117,6 +118,7 @@ class TestDailyCommand:
         ctx.send.assert_called_once()
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
+        assert embed.color is not None
         assert embed.color.value == WARNING
         # Must contain formatted remaining time
         assert "22h 0m" in embed.description  # type: ignore[operator]
@@ -136,6 +138,7 @@ class TestDailyCommand:
         ctx.send.assert_called_once()
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
+        assert embed.color is not None
         assert embed.color.value == ERROR
 
 
@@ -163,6 +166,7 @@ class TestCoinsCommand:
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         assert "500" in embed.description
+        assert embed.color is not None
         assert embed.color.value == INFO
 
     @pytest.mark.asyncio
@@ -215,6 +219,7 @@ class TestCoinsCommand:
 
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
+        assert embed.color is not None
         assert embed.color.value == ERROR
 
 
@@ -279,7 +284,8 @@ class TestLeaderboardCommand:
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
-        assert embed.color.value == ERROR  # type: ignore[union-attr]
+        assert embed.color is not None
+        assert embed.color.value == ERROR
 
     @pytest.mark.asyncio
     async def test_leaderboard_error_handling(
@@ -295,6 +301,7 @@ class TestLeaderboardCommand:
 
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
+        assert embed.color is not None
         assert embed.color.value == ERROR
 
     @pytest.mark.asyncio
@@ -428,7 +435,8 @@ class TestRankCommand:
         import discord
 
         assert isinstance(embed, discord.Embed)
-        assert embed.color.value == ERROR  # type: ignore[union-attr]
+        assert embed.color is not None
+        assert embed.color.value == ERROR
 
     @pytest.mark.asyncio
     async def test_rank_error_handling(
@@ -450,4 +458,5 @@ class TestRankCommand:
         call_kwargs = ctx.send.call_args[1]
         embed = call_kwargs.get("embed")
         assert embed is not None
+        assert embed.color is not None
         assert embed.color.value == ERROR
