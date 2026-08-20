@@ -2,129 +2,104 @@
 
 ## Purpose
 
-Define `.pre-commit-config.yaml` as the single source of truth for pre-commit hooks, listing ruff, mypy, bandit, and the GGA shell hook in deterministic execution order.
+Define `prek.toml` as the single source of truth for pre-commit hooks, listing builtin hygiene hooks, ruff check/format, ty, the GGA shell hook, and pre-push uv-check/tach gates in deterministic execution order. Legacy `.pre-commit-config.yaml` is deleted.
 
 ## Requirements
 
 ### Requirement: Hook list includes ruff check and ruff format
 
-The pre-commit config MUST define `ruff check` and `ruff format --check` as separate hooks, running in that order. Each hook's `files` pattern MUST be `^(bot/|tests/)` instead of a hardcoded file allowlist.
+`prek.toml` MUST define `ruff check` (`--fix`) and `ruff format` (`--check`) as separate hooks in that order. Each hook's `files` MUST be `^(bot/|tests/)`. Ruff pinned `0.15.20` via dev group (prek uses `language = "system"`).
 
-#### Scenario: Ruff check runs first
+#### Scenario: Hooks scope to bot and tests, skip others
 
-- GIVEN `.pre-commit-config.yaml` lists `ruff check` before `ruff format`
-- WHEN pre-commit executes
+- GIVEN ruff hooks use `files: "^(bot/|tests/)"`
+- WHEN a developer commits `bot/cogs/tickets.py` or `README.md`
+- THEN both ruff hooks run for `bot/` files and are skipped for `README.md`
+
+#### Scenario: Ruff check runs before format
+
+- GIVEN `prek.toml` lists `ruff check` before `ruff format`
+- WHEN prek executes
 - THEN `ruff check` runs before `ruff format --check`
-
-#### Scenario: Hooks scope to bot and tests directories
-
-- GIVEN ruff hooks use `files: "^(bot/|tests/)"`
-- WHEN a developer commits a change to `bot/cogs/tickets.py`
-- THEN ruff check and ruff format run against that file
-
-#### Scenario: Non-target files skipped
-
-- GIVEN ruff hooks use `files: "^(bot/|tests/)"`
-- WHEN a developer commits a change to `README.md`
-- THEN ruff hooks are skipped for that commit
-
-### Requirement: Hook list includes mypy
-
-The pre-commit config MUST define a mypy hook that runs after ruff hooks. The mypy hook's `files` pattern MUST be `^(bot/|tests/)`.
-
-#### Scenario: Mypy runs after ruff
-
-- GIVEN mypy is listed after ruff in the config
-- WHEN pre-commit executes
-- THEN mypy runs only after ruff check and ruff format pass
-
-#### Scenario: Mypy scopes to bot and tests
-
-- GIVEN mypy hook uses `files: "^(bot/|tests/)"`
-- WHEN a developer commits a change to `bot/services/guild_service.py`
-- THEN mypy type-checks that file
-
-### Requirement: Hook list includes bandit
-
-The pre-commit config MUST define a bandit hook that runs after mypy.
-
-#### Scenario: Bandit runs after mypy
-
-- GIVEN bandit is listed after mypy in the config
-- WHEN pre-commit executes
-- THEN bandit runs only after mypy passes
-
-### Requirement: GGA shell hook as script entry
-
-The pre-commit config MUST include the existing `.gga` hook as a `language: script` entry, running last in the hook chain.
-
-#### Scenario: GGA runs last
-
-- GIVEN `.gga` is configured as the final hook with `language: script`
-- WHEN pre-commit executes
-- THEN `.gga` runs after ruff, mypy, and bandit all pass
-
-#### Scenario: GGA failure blocks commit
-
-- GIVEN `.gga` exits with a non-zero status
-- WHEN pre-commit executes
-- THEN the commit is aborted and the GGA output is displayed
-
-### Requirement: Deterministic hook ordering
-
-The hooks MUST execute in the order: ruff check → ruff format → mypy → bandit → GGA. This order is specified by the file's hook list sequence.
-
-#### Scenario: Hooks execute in listed order
-
-- GIVEN the pre-commit config defines hooks in the specified order
-- WHEN a developer commits
-- THEN hooks execute sequentially in that exact order
-
-<!-- BEGIN DELTA: cleanup-stability (pre-commit-config-file) -->
-<!-- Delta: cleanup-stability — Hygiene & Stability (S1 L3) — pin Ruff 0.15.20 + executable all-files gate -->
-
-### Requirement: Hook list includes ruff check and ruff format
-
-The pre-commit config MUST define `ruff check` and `ruff format --check` as separate hooks in that order. Each hook MUST use `files: "^(bot/|tests/)"` instead of a hardcoded file allowlist, and the Ruff hook revision MUST be pinned to `0.15.20` so local and CI checks use the same formatter.
-
-#### Scenario: Ruff check runs first
-
-- GIVEN `.pre-commit-config.yaml` lists `ruff check` before `ruff format`
-- WHEN pre-commit executes
-- THEN `ruff check` runs before `ruff format --check`
-
-#### Scenario: Hooks scope to bot and tests directories
-
-- GIVEN ruff hooks use `files: "^(bot/|tests/)"`
-- WHEN a developer commits `bot/cogs/tickets.py`
-- THEN both Ruff hooks run against that file
-
-#### Scenario: Non-target files skipped
-
-- GIVEN ruff hooks use `files: "^(bot/|tests/)"`
-- WHEN a developer commits `README.md`
-- THEN Ruff hooks are skipped for that commit
-
-#### Scenario: Ruff revision is reproducible
-
-- GIVEN the hook revision is pinned to `0.15.20`
-- WHEN pre-commit creates its environment
-- THEN it installs the pinned Ruff release rather than a floating version
 
 ### Requirement: Full QA gate is executable
 
-The configured hooks MUST support `pre-commit run --all-files` as a blocking repository gate. That invocation MUST evaluate every `bot/` and `tests/` file through the configured Ruff, mypy, Bandit, and GGA hooks and MUST return non-zero when any required hook fails.
+Hooks MUST support `prek run --all-files` as a blocking gate over `bot/` and `tests/`, returning non-zero on any failure.
 
-#### Scenario: Baseline all-files run passes
+#### Scenario: Baseline passes; failure blocks
 
-- GIVEN the cleanup baseline has no blocking findings
-- WHEN `pre-commit run --all-files` executes
-- THEN all configured hooks complete successfully
+- GIVEN baseline has no blocking findings, or a file introduces one
+- WHEN `prek run --all-files` executes
+- THEN it passes on a clean baseline and exits non-zero on a finding
 
-#### Scenario: A hook failure blocks the gate
+### Requirement: prek.toml is the single source of truth
 
-- GIVEN a targeted source or test file introduces a blocking finding
-- WHEN `pre-commit run --all-files` executes
-- THEN the command exits non-zero and identifies the failing hook
+A `prek.toml` in repo root MUST be the hook source of truth. Legacy `.pre-commit-config.yaml` MUST be deleted. Config MUST use `[[repos]]` TOML with `repo = "builtin"` and `repo = "local"`.
 
-<!-- END DELTA: cleanup-stability (pre-commit-config-file) -->
+#### Scenario: prek.toml exists and YAML is deleted
+
+- GIVEN migration is complete
+- WHEN the repo root is inspected
+- THEN `prek.toml` exists and `.pre-commit-config.yaml` does not
+
+### Requirement: Built-in hooks from prek
+
+`prek.toml` MUST include `repo = "builtin"` with `trailing-whitespace`, `end-of-file-fixer`, `check-yaml`, `check-added-large-files`. Archive/markdown/json/css/js/ts exclusions preserved.
+
+#### Scenario: Builtin hooks run without remote fetch
+
+- GIVEN `prek.toml` lists the four builtin hooks
+- WHEN `prek run --all-files` executes
+- THEN all four checks run without fetching a remote repo
+
+### Requirement: ty local hook
+
+`prek.toml` MUST include a local hook `entry: uv run ty check bot/ tests/`, `language: "system"`, `stages = ["pre-commit"]`, after ruff.
+
+#### Scenario: ty runs after ruff
+
+- GIVEN ty hook is listed after ruff hooks
+- WHEN prek executes on commit
+- THEN ty runs only after ruff passes
+
+#### Scenario: ty error blocks commit
+
+- GIVEN a staged file introduces a ty error diagnostic
+- WHEN `git commit` runs
+- THEN the ty hook fails and the commit is aborted
+
+### Requirement: GGA local hook preserved
+
+`prek.toml` MUST include GGA as `repo = "local"`, `entry: bash .gga`, `language: "system"`, `always_run: true`, `pass_filenames: false`, `stages = ["pre-commit"]`.
+
+#### Scenario: GGA runs after ruff and ty, failure blocks
+
+- GIVEN GGA is configured as a local hook
+- WHEN the developer commits staged files
+- THEN `.gga` executes after ruff and ty, and a non-zero exit aborts the commit
+
+### Requirement: Pre-push stage runs uv check and tach
+
+`prek.toml` MUST include pre-push hooks: `uv check`, `tach check`, `tach check-external`, with `stages = ["pre-push"]`. Tests MUST NOT run per-commit.
+
+#### Scenario: Pre-push runs uv check and tach
+
+- GIVEN pre-push hooks run `uv check`, `tach check`, `tach check-external`
+- WHEN `git push` runs
+- THEN uv validates the environment and module boundaries are enforced
+
+#### Scenario: Tests not run per-commit
+
+- GIVEN no pytest hook exists in pre-commit stage
+- WHEN the developer commits
+- THEN the test suite is not invoked
+
+### Requirement: Hook priorities and ordering
+
+`prek.toml` MAY define `[priorities]`. Effective order: builtin → ruff check → ruff format → ty → GGA (pre-commit); uv check → tach check → tach check-external (pre-push).
+
+#### Scenario: Hooks execute in priority order
+
+- GIVEN `prek.toml` defines priorities or relies on list order
+- WHEN prek runs the pre-commit stage
+- THEN hooks execute in the specified order

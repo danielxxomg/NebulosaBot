@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Define the `.github/workflows/ci.yml` GitHub Actions workflow file that enforces the full QA pipeline on push and pull request, with a weekly scheduled dependency audit.
+Define the `.github/workflows/ci.yml` GitHub Actions workflow file that enforces the full QA pipeline on push and pull request, with a weekly scheduled dependency audit, a blocking `workflow-security` (zizmor) gate, and minimal permissions.
 
 ## Requirements
 
 ### Requirement: Workflow triggers on push and PR
 
-The CI workflow file MUST trigger on `push` (any branch) and `pull_request` (targeting `master`). It MUST also trigger on a weekly `schedule` cron for dependency auditing.
+ci.yml MUST trigger on `push` (any branch), `pull_request` (targeting `master`), and weekly `schedule` cron (for `uv audit`). `concurrency.cancel-in-progress` MUST be true.
 
 #### Scenario: Push event triggers workflow
 
@@ -24,81 +24,88 @@ The CI workflow file MUST trigger on `push` (any branch) and `pull_request` (tar
 
 #### Scenario: Weekly schedule triggers audit
 
-- GIVEN the workflow has `on: schedule` with a weekly cron
+- GIVEN the workflow has `on: schedule` with weekly cron
 - WHEN the scheduled time arrives
-- THEN the workflow executes including `pip-audit`
+- THEN the workflow runs `uv audit`
 
-### Requirement: Matrix with Python 3.11, 3.12, 3.13, 3.14
+### Requirement: Matrix with Python 3.11–3.14
 
-The workflow MUST define a strategy matrix with Python versions 3.11, 3.12, 3.13, and 3.14. Fail-fast MUST be disabled.
-
-#### Scenario: Four Python versions in matrix
-
-- GIVEN the matrix is defined with `[3.11, 3.12, 3.13, 3.14]`
-- WHEN the workflow runs
-- THEN four parallel jobs are created, one per Python version
+The tests job MUST define a matrix with `["3.11", "3.12", "3.13", "3.14"]` and `fail-fast: false`.
 
 #### Scenario: One failure does not cancel others
 
 - GIVEN fail-fast is disabled
-- WHEN the Python 3.11 job fails
-- THEN the Python 3.12, 3.13, and 3.14 jobs continue to completion
+- WHEN the Python 3.11 test job fails
+- THEN 3.12, 3.13, 3.14 jobs continue
 
-### Requirement: Coverage gate enforced in workflow
+### Requirement: Coverage gate enforced
 
-The workflow MUST enforce a coverage floor of 75% via `--cov-fail-under=75` passed to pytest. The gate value MUST match `pyproject.toml` `addopts`.
+The tests job MUST enforce `--cov-fail-under=75` (matching pyproject `addopts`). Coverage artifact upload MUST run on Python 3.12.
 
 #### Scenario: Coverage gate blocks CI
 
-- GIVEN `--cov-fail-under=75` is passed to pytest in the workflow
+- GIVEN `--cov-fail-under=75` is passed to pytest
 - WHEN total `bot/` coverage is below 75%
-- THEN the job fails with a coverage shortfall message
+- THEN the tests job fails
 
 ### Requirement: PYTHONASYNCIODEBUG=1 in environment
 
-The workflow MUST set `PYTHONASYNCIODEBUG=1` in the job environment for all matrix cells.
+The tests job MUST set `PYTHONASYNCIODEBUG=1` for all matrix cells.
 
 #### Scenario: Asyncio debug active in CI
 
-- GIVEN `PYTHONASYNCIODEBUG=1` is set in the workflow env
-- WHEN pytest runs in CI
-- THEN asyncio debug mode is active and coroutine bugs surface
+- GIVEN `PYTHONASYNCIODEBUG=1` is set
+- WHEN pytest runs
+- THEN asyncio debug mode is active
 
-### Requirement: Dependency caching
+### Requirement: setup-uv action SHA-pinned replaces setup-python
 
-The workflow SHOULD cache Python dependencies (e.g., via `actions/cache` or `uv` cache) to reduce job duration.
+The workflow MUST use `astral-sh/setup-uv@<40-char-sha>` (SHA-pinned). MUST NOT use `actions/setup-python` or manual `actions/cache`. Dependencies installed via `uv sync --locked` (not `pip install uv && uv sync --extra dev`).
 
-#### Scenario: Cache restores dependencies
+#### Scenario: setup-uv installs uv
 
-- GIVEN a previous CI run cached the dependency set
-- WHEN a new CI run starts with identical `uv.lock`
-- THEN the cached dependencies are restored instead of re-downloading
+- GIVEN quality and tests jobs use `astral-sh/setup-uv@<sha>`
+- WHEN the job starts
+- THEN uv is available without a `pip install uv` step
 
-<!-- BEGIN DELTA: cleanup-stability (ci-workflow-file) -->
-<!-- Delta: cleanup-stability — Hygiene & Stability (S1 L3) — Deferred to S2: ci-workflow-file delta proposed `mypy bot tests` full scope but S1 ships `mypy bot/` only (28 tests.* errors deferred). This delta is preserved as the S2 target; archive reports S1 as PASS_WITH_WARNINGS with S2 deferral. Live alignment deferred to S2 `refactor-ticket-domain`. -->
+#### Scenario: uv sync uses lock
 
-### Requirement: Blocking QA job covers bot and tests
+- GIVEN dependencies installed via `uv sync --locked`
+- WHEN the lockfile is current
+- THEN `uv sync --locked` succeeds
 
-The blocking job in `.github/workflows/ci.yml` MUST run QA against the complete `bot/` and `tests/` scope rather than curated file lists. It MUST run `ruff check bot tests`, `ruff format --check bot tests`, `mypy bot tests`, the configured medium-or-higher Bandit scan for `bot/`, and `pytest --cov=bot --cov-fail-under=75`. A failure in any gate MUST fail the job. Files under `scripts/` MAY remain outside this blocking scope unless explicitly added.
+### Requirement: Three-job structure (quality, tests, workflow-security)
 
-#### Scenario: Full source scope is checked
+ci.yml MUST define three jobs: (1) `quality` — `uv sync --locked`, `ruff check`, `ruff format --check`, `uv check`, `tach check`, `tach check-external`, `uv audit`; (2) `tests` — matrix pytest `--cov-fail-under=75`; (3) `workflow-security` — zizmor blocking.
 
-- GIVEN a push or pull request reaches the blocking QA job
-- WHEN the job runs its quality steps
-- THEN all five commands inspect the required bot/test scope
+#### Scenario: Quality job runs all static gates
 
-#### Scenario: Curated-list drift cannot pass
+- GIVEN the quality job is defined
+- WHEN it runs
+- THEN ruff, uv check, tach check, tach check-external, and uv audit each block on failure
 
-- GIVEN a violation exists in an otherwise omitted `bot/` or `tests/` file
-- WHEN the workflow runs
-- THEN the corresponding full-scope gate reports it and the job fails
+#### Scenario: Workflow-security job is blocking
 
-#### Scenario: Baseline verification remains green
+- GIVEN the workflow-security job runs zizmor
+- WHEN zizmor reports findings
+- THEN the job fails
 
-- GIVEN revision `f83e767` and its dependencies are used
-- WHEN the blocking job runs
-- THEN Ruff, mypy, Bandit, and pytest meet their configured gates
+### Requirement: Minimal GitHub permissions
 
-*S1 note: `mypy bot tests` is the S2 target; S1 ships `mypy bot/` with `tests.*` deferred (28 errors). The S1 pipeline is PASS_WITH_WARNINGS pending S2. See `verify-report.md` CRITICAL CI-1 and S2 follow-up.*
+ci.yml MUST declare `permissions: contents: read` top-level. Jobs MAY elevate only needed scopes (e.g., `security-events: write` for SARIF). No `permissions: write-all`.
 
-<!-- END DELTA: cleanup-stability (ci-workflow-file) -->
+#### Scenario: Top-level read-only permissions
+
+- GIVEN ci.yml sets `permissions: contents: read`
+- WHEN a job without explicit permissions runs
+- THEN it inherits read-only contents
+
+### Requirement: pip-audit-weekly job removed
+
+The `pip-audit-weekly` scheduled job MUST be deleted. Auditing handled by `uv audit` in the quality job and weekly schedule.
+
+#### Scenario: pip-audit-weekly absent
+
+- GIVEN migration is complete
+- WHEN ci.yml is inspected
+- THEN no `pip-audit-weekly` job exists
