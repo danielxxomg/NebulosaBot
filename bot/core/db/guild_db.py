@@ -62,7 +62,8 @@ class GuildDBMixin:
 
         logger.debug("DB ensure_guild_exists(%r)", guild_id)
         await (
-            self._client.table("guild")
+            self._client
+            .table("guild")
             .upsert(
                 {"id": guild_id, "prefix": FALLBACK_PREFIX, "language": "es", "active": True},
                 on_conflict="id",
@@ -88,13 +89,12 @@ class GuildDBMixin:
             channel_id,
         )
         await (
-            self._client.table("guild")
-            .update(
-                {
-                    "ticketPanelMessageId": message_id,
-                    "ticketPanelChannelId": channel_id,
-                }
-            )
+            self._client
+            .table("guild")
+            .update({
+                "ticketPanelMessageId": message_id,
+                "ticketPanelChannelId": channel_id,
+            })
             .eq("id", guild_id)
             .execute()
         )

@@ -23,23 +23,23 @@ logger = logging.getLogger(__name__)
 def _get_t() -> Any:
     try:
         import bot.views.tickets as _facade
-
-        return _facade.t
     except Exception:
         from bot.core.i18n import t as _direct
 
         return _direct
+    else:
+        return _facade.t
 
 
 def _get_is_mod_check() -> Any:
     try:
         import bot.views.tickets as _facade
-
-        return _facade.is_mod_check
     except Exception:
         from bot.utils.checks import is_mod_check as _direct
 
         return _direct
+    else:
+        return _facade.is_mod_check
 
 
 class _CategorySelectView(discord.ui.View):
@@ -80,7 +80,6 @@ class _CategorySelect(discord.ui.Select[discord.ui.View]):
         _t = _get_t()
         category_id = self.values[0]
         guild = self._guild
-        guild_id = str(guild.id)
 
         category_name = next(
             (opt.label for opt in self.options if opt.value == category_id),

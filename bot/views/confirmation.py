@@ -91,7 +91,7 @@ class ConfirmCancelView(discord.ui.View):
     async def confirm_button(
         self,
         interaction: discord.Interaction,
-        button: discord.ui.Button[discord.ui.View],
+        _button: discord.ui.Button[discord.ui.View],
     ) -> None:
         """Execute the confirm callback and disable buttons."""
         if not await self._check_owner(interaction):
@@ -108,7 +108,7 @@ class ConfirmCancelView(discord.ui.View):
     async def cancel_button(
         self,
         interaction: discord.Interaction,
-        button: discord.ui.Button[discord.ui.View],
+        _button: discord.ui.Button[discord.ui.View],
     ) -> None:
         """Disable buttons and send a cancellation message."""
         if not await self._check_owner(interaction):

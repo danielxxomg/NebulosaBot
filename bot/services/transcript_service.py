@@ -122,9 +122,10 @@ class TranscriptService:
                 "Transcript upload to #%s succeeded but no attachment found",
                 log_channel.name,
             )
-            return None
         except discord.HTTPException:
             logger.exception("Failed to upload transcript to #%s", log_channel.name)
+            return None
+        else:
             return None
 
     # ----------------------------------------------------------------

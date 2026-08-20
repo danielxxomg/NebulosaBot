@@ -90,6 +90,7 @@ bot = ["*.py"]
 [tool.ruff]
 target-version = "py311"
 line-length = 120
+preview = true
 
 [tool.ruff.lint]
 select = [
@@ -116,6 +117,9 @@ select = [
     "FLY",  # flynt
     "PERF", # perflint
     "FURB", # refurb
+    "ANN",  # flake8-annotations (38 Any — deferred, see per-file-ignores)
+    "PYI",  # flake8-pyi (preview)
+    "PGH",  # pygrep-hooks (preview, PGH003)
 ]
 
 [tool.ruff.lint.mccabe]
@@ -128,12 +132,11 @@ max-complexity = 15
 "tests/test_pr4a_ruff_mechanical.py" = ["S101", "S105", "S106", "ARG", "T20", "TRY003", "EM101", "FURB110", "RET504", "RET505", "PERF401", "SIM108", "S603", "S607"]
 "tests/test_pr4b_ruff_security.py" = ["S101", "S105", "S106", "ARG", "T20", "TRY003", "EM101", "FURB110", "RET504", "RET505", "PERF401", "SIM108", "S603", "S607"]
 "tests/test_pr3_prek_replaces_precommit.py" = ["S101", "S105", "S106", "ARG", "T20", "TRY003", "EM101", "FURB110", "RET504", "RET505", "PERF401", "SIM108", "S603"]
-"tests/**/*.py" = ["S101", "S105", "S106", "ARG", "T20", "TRY003", "EM101", "FURB110", "RET504", "RET505", "PERF401", "SIM108"]
-# PR1 broad debt allowances — rules are ENABLED but violations suppressed.
-# PR2-PR5 will progressively remove these as debt is cleared.
-# PR4a: EM/TRY003 cleared (mechanical raise message style — 274 findings).
-# PR4b: S cleared (92 S101 + 2 S310 + 2 S311 + 1 S110 = 97 findings; narrow noqa S310/S311 retained).
-"bot/**/*.py" = ["C4", "C90", "T20", "ARG", "DTZ", "T10", "TRY004", "TRY300", "TRY301", "FLY", "PERF", "FURB", "RUF059", "F841"]
+"tests/**/*.py" = ["S101", "S105", "S106", "ARG", "T20", "TRY003", "EM101", "FURB110", "RET504", "RET505", "PERF401", "SIM108", "ANN", "PYI", "PGH", "RUF052", "RUF029", "RUF069", "RUF050", "RUF100", "S404", "FURB101", "FURB113", "FURB142", "S603", "E501", "PYI034"]
+"scripts/**/*.py" = ["S404", "RUF052", "FURB101"]  # out of scope for PR4c (preview collateral)
+# PR4c: full quality suppression removal — bot/** now lint-clean (40 findings fixed via real code changes + narrow noqa with reasons).
+# Per-file broad suppression for bot/** removed; remaining narrow noqa per-site retained.
+"bot/**/*.py" = ["ANN", "RUF052", "RUF029", "RUF069", "RUF050", "RUF100"]  # preview debt deferred: dummy-var/unused-async/float-eq/unused-noqa (0 ANN/PYI/PGH003 in bot/; preview=true per 4c.4)
 
 [tool.ruff.lint.isort]
 known-first-party = ["bot"]

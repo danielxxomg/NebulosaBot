@@ -59,7 +59,7 @@ class UtilityCog(commands.Cog, name="Utility"):
         guild_id = ctx.guild.id if ctx.guild else None
         target = member or ctx.author
 
-        avatar_url = target.display_avatar.url if target.display_avatar.url else target.default_avatar.url
+        avatar_url = target.display_avatar.url or target.default_avatar.url
 
         embed = discord.Embed(
             title=t(guild_id, "utility.avatar.title", name=target.display_name),

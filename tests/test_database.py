@@ -746,16 +746,14 @@ class TestUpdateMemberDaily:
     @pytest.mark.asyncio
     async def test_update_member_daily_updates_existing(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """update_member_daily() MUST call rpc('set_member_daily') and return result."""
-        fake_client.set_rpc_result(
-            [
-                {
-                    "coins": 150,
-                    "dailyStreak": 3,
-                    "lastDailyReset": "2024-06-15T00:00:00Z",
-                    "lastDaily": "2024-06-15T12:00:00Z",
-                },
-            ]
-        )
+        fake_client.set_rpc_result([
+            {
+                "coins": 150,
+                "dailyStreak": 3,
+                "lastDailyReset": "2024-06-15T00:00:00Z",
+                "lastDaily": "2024-06-15T12:00:00Z",
+            },
+        ])
 
         result = await db.update_member_daily(
             "g1",
@@ -772,16 +770,14 @@ class TestUpdateMemberDaily:
     @pytest.mark.asyncio
     async def test_update_member_daily_creates_new_member(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """update_member_daily() MUST call rpc which handles upsert on new member."""
-        fake_client.set_rpc_result(
-            [
-                {
-                    "coins": 50,
-                    "dailyStreak": 1,
-                    "lastDailyReset": "2024-06-15T00:00:00Z",
-                    "lastDaily": "2024-06-15T12:00:00Z",
-                },
-            ]
-        )
+        fake_client.set_rpc_result([
+            {
+                "coins": 50,
+                "dailyStreak": 1,
+                "lastDailyReset": "2024-06-15T00:00:00Z",
+                "lastDaily": "2024-06-15T12:00:00Z",
+            },
+        ])
 
         result = await db.update_member_daily("g1", "u1", 50, 1, "2024-06-15T00:00:00Z", "2024-06-15T12:00:00Z")
 
@@ -1680,16 +1676,14 @@ class TestRpcSetMemberDaily:
     @pytest.mark.asyncio
     async def test_calls_rpc_set_member_daily(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """update_member_daily() MUST call rpc('set_member_daily') once."""
-        fake_client.set_rpc_result(
-            [
-                {
-                    "coins": 150,
-                    "dailyStreak": 3,
-                    "lastDailyReset": "2024-06-15T00:00:00Z",
-                    "lastDaily": "2024-06-15T12:00:00Z",
-                },
-            ]
-        )
+        fake_client.set_rpc_result([
+            {
+                "coins": 150,
+                "dailyStreak": 3,
+                "lastDailyReset": "2024-06-15T00:00:00Z",
+                "lastDaily": "2024-06-15T12:00:00Z",
+            },
+        ])
 
         result = await db.update_member_daily(
             "g1",

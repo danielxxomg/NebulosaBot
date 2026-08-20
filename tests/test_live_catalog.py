@@ -18,29 +18,27 @@ from bot.services.schema_inventory import CDC_TABLES, SchemaInventory
 # Helpers — must mirror exact local migration identity (19 stems)
 # ---------------------------------------------------------------------------
 
-EXPECTED_LOCAL_MIGRATIONS = sorted(
-    [
-        "001_initial_schema",
-        "002_ticket_categories",
-        "003_economy_config",
-        "003_subtickets_notes",
-        "004_greeting_config",
-        "005_rls_secure_default",
-        "006_drop_user_table",
-        "007_realtime_publication",
-        "008_ticket_note_rls",
-        "009_member_increment_rpc",
-        "010_rpc_revoke_grants",
-        "011_ticket_channel_index",
-        "012_ticket_audit",
-        "013_ticket_intake_metadata",
-        "014_ticket_category_fields",
-        "015_ticket_lifecycle_reliability",
-        "016_greeting_onboarding_channel",
-        "017_ticket_audit_repaired_outcome",
-        "018_ticket_integrity_fks",
-    ]
-)
+EXPECTED_LOCAL_MIGRATIONS = sorted([
+    "001_initial_schema",
+    "002_ticket_categories",
+    "003_economy_config",
+    "003_subtickets_notes",
+    "004_greeting_config",
+    "005_rls_secure_default",
+    "006_drop_user_table",
+    "007_realtime_publication",
+    "008_ticket_note_rls",
+    "009_member_increment_rpc",
+    "010_rpc_revoke_grants",
+    "011_ticket_channel_index",
+    "012_ticket_audit",
+    "013_ticket_intake_metadata",
+    "014_ticket_category_fields",
+    "015_ticket_lifecycle_reliability",
+    "016_greeting_onboarding_channel",
+    "017_ticket_audit_repaired_outcome",
+    "018_ticket_integrity_fks",
+])
 
 
 def _mocked_fks() -> list[dict[str, str]]:

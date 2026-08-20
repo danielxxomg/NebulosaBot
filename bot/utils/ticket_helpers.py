@@ -221,6 +221,7 @@ async def resolve_ticket_for_channel(
     Returns the raw DB row dict on success, or ``None`` after logging
     the error (the caller MUST check and send its own error embed).
     """
+    _ = action
     if bot.db is None:
         msg = "db not initialised"
         raise RuntimeError(msg)

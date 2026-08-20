@@ -163,7 +163,7 @@ class LiveAcceptanceGate:
         )
 
 
-def _sync_fetch_catalog(
+def _sync_fetch_catalog(  # noqa: C901 -- 4-query provenance fetch; splitting would obscure atomic token mint
     url: str,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str], list[str], ProvenanceToken]:
     """Blocking psycopg fetch — executed via to_thread from async wrapper.
@@ -191,13 +191,11 @@ def _sync_fetch_catalog(
         live_fks: list[dict[str, Any]] = []
         for r in fk_rows:
             if isinstance(r, dict):
-                live_fks.append(
-                    {
-                        "child": str(r.get("child", "")),
-                        "parent": str(r.get("parent", "")),
-                        "on_delete": str(r.get("on_delete", "")),
-                    }
-                )
+                live_fks.append({
+                    "child": str(r.get("child", "")),
+                    "parent": str(r.get("parent", "")),
+                    "on_delete": str(r.get("on_delete", "")),
+                })
             elif isinstance(r, (list, tuple)) and len(r) >= 3:
                 live_fks.append({"child": str(r[0]), "parent": str(r[1]), "on_delete": str(r[2])})
         # RLS policies — expect 0

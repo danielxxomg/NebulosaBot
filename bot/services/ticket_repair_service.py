@@ -601,6 +601,7 @@ class TicketRepairService:
         global_grant: GlobalMutationGrant | None = None,
     ) -> RepairResult:
         """Manually repair one ticket using explicit authority + fresh probe."""
+        _ = preflight
         decision = evaluate_repair_authority(authority, global_grant=global_grant)
         if authority.target_guild_id != guild_id:
             await self._audit_denied(

@@ -175,7 +175,7 @@ class GreetingService:
         else:
             content = _format_template(message or "", member) if message else ""
 
-        await cast(discord.abc.Messageable, channel).send(content=content if content else None, file=file)
+        await cast(discord.abc.Messageable, channel).send(content=content or None, file=file)
 
         logger.info(
             "%s: sent for guild %s, channel %s, member %s",

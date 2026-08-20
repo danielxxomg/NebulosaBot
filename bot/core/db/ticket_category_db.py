@@ -57,7 +57,8 @@ class TicketCategoryDBMixin:
 
         logger.debug("DB get_ticket_categories(guild=%s)", guild_id)
         response = await (
-            self._client.table("ticket_category")
+            self._client
+            .table("ticket_category")
             .select("*")
             .eq("guildId", guild_id)
             .eq("active", True)
@@ -120,7 +121,8 @@ class TicketCategoryDBMixin:
 
         logger.debug("DB count_open_tickets_by_category(%s, %s)", guild_id, category_id)
         response = await (
-            self._client.table("ticket")
+            self._client
+            .table("ticket")
             .select("id", count="exact")
             .eq("guildId", guild_id)
             .eq("categoryId", category_id)
@@ -146,7 +148,8 @@ class TicketCategoryDBMixin:
 
         logger.debug("DB update_ticket_category_field_definitions(guild=%s, cat=%s)", guild_id, category_id)
         await (
-            self._client.table("ticket_category")
+            self._client
+            .table("ticket_category")
             .update({"fieldDefinitions": field_definitions})
             .eq("id", category_id)
             .eq("guildId", guild_id)

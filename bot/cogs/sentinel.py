@@ -176,11 +176,11 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         target_id = str(member.id)
         moderator_id = str(ctx.author.id)
 
+        if self.bot.infraction_service is None:
+            msg = "InfractionService initialised in setup_hook"
+            raise RuntimeError(msg)
         try:
-            if self.bot.infraction_service is None:
-                msg = "InfractionService initialised in setup_hook"
-                raise RuntimeError(msg)
-            infraction, escalation = await self.bot.infraction_service.warn(
+            _infraction, escalation = await self.bot.infraction_service.warn(
                 guild_id,
                 target_id,
                 moderator_id,
@@ -325,10 +325,10 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         guild_id = self._guild_id(ctx)
         target_id = str(member.id)
 
+        if self.bot.infraction_service is None:
+            msg = "InfractionService initialised in setup_hook"
+            raise RuntimeError(msg)
         try:
-            if self.bot.infraction_service is None:
-                msg = "InfractionService initialised in setup_hook"
-                raise RuntimeError(msg)
             result = await self.bot.infraction_service.unwarn(guild_id, target_id)
         except Exception:
             logger.exception("InfractionService.unwarn() failed")
@@ -423,10 +423,10 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             return
 
         # Create MUTE infraction for audit trail.
+        if self.bot.db is None:
+            msg = "Database initialised in setup_hook"
+            raise RuntimeError(msg)
         try:
-            if self.bot.db is None:
-                msg = "Database initialised in setup_hook"
-                raise RuntimeError(msg)
             await self.bot.db.insert_infraction(
                 guild_id=guild_id,
                 target_id=target_id,
@@ -546,10 +546,10 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                 await self._handle_mod_error(ctx, exc, "kick", member)
                 return
 
+            if self.bot.db is None:
+                msg = "Database initialised in setup_hook"
+                raise RuntimeError(msg)
             try:
-                if self.bot.db is None:
-                    msg = "Database initialised in setup_hook"
-                    raise RuntimeError(msg)
                 await self.bot.db.insert_infraction(
                     guild_id=guild_id,
                     target_id=target_id,
@@ -641,10 +641,10 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                 await self._handle_mod_error(ctx, exc, "ban", member)
                 return
 
+            if self.bot.db is None:
+                msg = "Database initialised in setup_hook"
+                raise RuntimeError(msg)
             try:
-                if self.bot.db is None:
-                    msg = "Database initialised in setup_hook"
-                    raise RuntimeError(msg)
                 await self.bot.db.insert_infraction(
                     guild_id=guild_id,
                     target_id=target_id,
@@ -888,10 +888,10 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         guild_id = self._guild_id(ctx)
         target_id = str(member.id)
 
+        if self.bot.infraction_service is None:
+            msg = "InfractionService initialised in setup_hook"
+            raise RuntimeError(msg)
         try:
-            if self.bot.infraction_service is None:
-                msg = "InfractionService initialised in setup_hook"
-                raise RuntimeError(msg)
             infractions = await self.bot.infraction_service.get_modlogs(
                 guild_id,
                 target_id,

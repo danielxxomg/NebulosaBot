@@ -185,47 +185,43 @@ def _resolve_key(lang: str, key: str) -> str | None:
 
 # Discord locale variants that map to our supported languages.
 # Discord uses hyphenated locale codes (e.g., "es-ES", "en-US").
-_SPANISH_LOCALES: frozenset[str] = frozenset(
-    {
-        "es-ES",
-        "es-419",
-        "es-MX",
-        "es-AR",
-        "es-CL",
-        "es-CO",
-        "es-CR",
-        "es-DO",
-        "es-EC",
-        "es-GT",
-        "es-HN",
-        "es-NI",
-        "es-PA",
-        "es-PE",
-        "es-PR",
-        "es-PY",
-        "es-SV",
-        "es-UY",
-        "es-VE",
-    }
-)
+_SPANISH_LOCALES: frozenset[str] = frozenset({
+    "es-ES",
+    "es-419",
+    "es-MX",
+    "es-AR",
+    "es-CL",
+    "es-CO",
+    "es-CR",
+    "es-DO",
+    "es-EC",
+    "es-GT",
+    "es-HN",
+    "es-NI",
+    "es-PA",
+    "es-PE",
+    "es-PR",
+    "es-PY",
+    "es-SV",
+    "es-UY",
+    "es-VE",
+})
 
-_ENGLISH_LOCALES: frozenset[str] = frozenset(
-    {
-        "en-US",
-        "en-GB",
-        "en-AU",
-        "en-CA",
-        "en-IN",
-        "en-NZ",
-        "en-PH",
-        "en-SG",
-        "en-ZA",
-    }
-)
+_ENGLISH_LOCALES: frozenset[str] = frozenset({
+    "en-US",
+    "en-GB",
+    "en-AU",
+    "en-CA",
+    "en-IN",
+    "en-NZ",
+    "en-PH",
+    "en-SG",
+    "en-ZA",
+})
 
 # Reverse map: Discord locale value → our language code.
-_LOCALE_MAP: dict[str, str] = {loc: "es" for loc in _SPANISH_LOCALES}
-_LOCALE_MAP.update({loc: "en" for loc in _ENGLISH_LOCALES})
+_LOCALE_MAP: dict[str, str] = dict.fromkeys(_SPANISH_LOCALES, "es")
+_LOCALE_MAP.update(dict.fromkeys(_ENGLISH_LOCALES, "en"))
 
 
 class LocaleTranslator(app_commands.Translator):
@@ -250,12 +246,9 @@ class LocaleTranslator(app_commands.Translator):
         Args:
             string: The ``locale_str`` carrying the key in ``extras["key"]``.
             locale: The user's Discord client locale.
-            context: Translation context (unused — in-memory only).
-
-        Returns:
-            The translated string, or ``None`` if the locale is unsupported
-            or the key is missing.
+            context: Translation context.
         """
+        _ = context
         key = string.extras.get("key") if string.extras else None
         if key is None:
             return None

@@ -60,10 +60,10 @@ class GreetingsCog(commands.Cog, name="Greetings"):
         """Dispatch a welcome card when a member joins."""
         if member.bot:
             return
+        if self.bot.greeting_service is None:
+            msg = "GreetingService initialised in setup_hook"
+            raise RuntimeError(msg)
         try:
-            if self.bot.greeting_service is None:
-                msg = "GreetingService initialised in setup_hook"
-                raise RuntimeError(msg)
             await self.bot.greeting_service.dispatch_welcome(member)
         except Exception:
             logger.exception(
@@ -77,10 +77,10 @@ class GreetingsCog(commands.Cog, name="Greetings"):
         """Dispatch a goodbye card when a member leaves."""
         if member.bot:
             return
+        if self.bot.greeting_service is None:
+            msg = "GreetingService initialised in setup_hook"
+            raise RuntimeError(msg)
         try:
-            if self.bot.greeting_service is None:
-                msg = "GreetingService initialised in setup_hook"
-                raise RuntimeError(msg)
             await self.bot.greeting_service.dispatch_goodbye(member)
         except Exception:
             logger.exception(
@@ -108,13 +108,13 @@ class GreetingsCog(commands.Cog, name="Greetings"):
 
         await ctx.defer(ephemeral=True)
 
+        if self.bot.image_service is None:
+            msg = "ImageService initialised in setup_hook"
+            raise RuntimeError(msg)
         try:
             avatar_url = _resolve_avatar_url(ctx.author)
             guild_id = str(ctx.guild.id) if ctx.guild else ""
             member_count = (ctx.guild.member_count or 0) if ctx.guild else 0
-            if self.bot.image_service is None:
-                msg = "ImageService initialised in setup_hook"
-                raise RuntimeError(msg)
             buffer: io.BytesIO = await asyncio.to_thread(
                 self.bot.image_service.generate_greeting_card,
                 username=ctx.author.display_name,
@@ -164,13 +164,13 @@ class GreetingsCog(commands.Cog, name="Greetings"):
 
         await ctx.defer(ephemeral=True)
 
+        if self.bot.image_service is None:
+            msg = "ImageService initialised in setup_hook"
+            raise RuntimeError(msg)
         try:
             avatar_url = _resolve_avatar_url(ctx.author)
             guild_id = str(ctx.guild.id) if ctx.guild else ""
             member_count = (ctx.guild.member_count or 0) if ctx.guild else 0
-            if self.bot.image_service is None:
-                msg = "ImageService initialised in setup_hook"
-                raise RuntimeError(msg)
             buffer: io.BytesIO = await asyncio.to_thread(
                 self.bot.image_service.generate_greeting_card,
                 username=ctx.author.display_name,
