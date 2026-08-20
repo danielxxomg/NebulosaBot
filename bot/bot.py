@@ -22,11 +22,13 @@ from bot.core.database import Database, create_realtime_client
 from bot.core.i18n import LocaleTranslator, load_locales, t, validate_slash_localizations
 from bot.core.realtime import RealtimeCacheSubscriber
 from bot.services.economy_service import EconomyService
+from bot.services.greeting_renderer import PillowGreetingRenderer
 from bot.services.greeting_service import GreetingService
 from bot.services.guild_service import GuildService
 from bot.services.image_service import ImageService
 from bot.services.infraction_service import InfractionService
 from bot.services.logging_service import LoggingService
+from bot.services.rank_renderer import RankRenderer
 from bot.services.ticket_service import TicketService
 from bot.services.transcript_service import TranscriptService
 from bot.utils.embeds import error_embed
@@ -215,11 +217,29 @@ class NebulosaBot(commands.Bot):
         self.image_service = ImageService()
         logger.info("ImageService initialised")
 
+        # --- 3f. GreetingRenderer probe (cairosvg → Pillow fallback) ---
+        try:
+            import cairosvg  # ty: ignore[unresolved-import]  # noqa: F401 -- probe only; Cycle 1 still uses Pillow
+
+            _cairosvg_available = True
+        except ImportError:
+            _cairosvg_available = False
+            logger.warning("cairosvg not available — using PillowGreetingRenderer")
+
+        # Cycle 1: Pillow is always the injected renderer (cairosvg path reserved for Cycle 2).
+        _greeting_renderer = PillowGreetingRenderer()
+        if _cairosvg_available:
+            logger.info("cairosvg available but Cycle 1 uses PillowGreetingRenderer (probe acknowledged)")
+
+        # Keep RankRenderer import exercised (tach layer check) without requiring a live caller yet.
+        _rank_renderer = RankRenderer()  # noqa: F841 -- ensures rank_renderer module is importable and layer-valid
+        _ = _rank_renderer
+
         # --- 3f. GreetingService ---
         self.greeting_service = GreetingService(
             db=self.db,
             cache=self.cache,
-            image_service=self.image_service,
+            greeting_renderer=_greeting_renderer,
         )
         logger.info("GreetingService initialised")
 

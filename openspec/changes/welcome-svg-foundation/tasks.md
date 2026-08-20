@@ -53,19 +53,19 @@ Chain strategy: pending
 
 ## Phase 4: Renderer SRP Split (PR2)
 
-- [ ] 4.1 Create `bot/services/shared_assets.py`: `_card_base`, gradient loop, `_load_font`, `_safe_fetch_avatar`, `_paste_circular_asset` (services layer; no cog/view imports)
-- [ ] 4.2 RED: `test_greeting_renderer` — no `#7289da`/`GREETING_ACCENT`; accent from `brand.ACCENT`; font `OSError`→`ImageFont.load_default()` + WARNING
-- [ ] 4.3 GREEN: create `bot/services/greeting_renderer.py` — `GreetingRenderer` Protocol + `PillowGreetingRenderer`; reads `brand.ACCENT`, `to_thread`-safe
-- [ ] 4.4 RED: `test_rank_renderer` — output byte-identical to pre-split (golden bytes)
-- [ ] 4.5 GREEN: create `bot/services/rank_renderer.py` — `RankRenderer` owning `generate_rank_card`; imports `shared_assets`
-- [ ] 4.6 RED: `test_bot_probe` — cairosvg ImportError → Pillow + WARNING, no abort; cairosvg present → Pillow still default (Cycle 1)
-- [ ] 4.7 GREEN: `bot/bot.py:215` probe `import cairosvg` → inject `PillowGreetingRenderer`; pass to `GreetingService`
-- [ ] 4.8 RED: `test_greeting_service` native-kwargs path — exercises `generate_greeting_card` with localized kwargs directly (guard before shim delete)
-- [ ] 4.9 GREEN: `greeting_service.py` depend on `GreetingRenderer` interface; delete `_generate_greeting_card_compatibly` shim; `dispatch_greeting` calls renderer via `to_thread`
-- [ ] 4.10 `greetings.py`: `/welcome_test` + `/goodbye_test` call renderer via `to_thread`; DRY kwargs assembly
-- [ ] 4.11 Remove `generate_rank_card` + `generate_greeting_card` + helpers from `image_service.py`; delete file if no callers remain (verify first)
-- [ ] 4.12 `bot/utils/brand.py`: re-export greeting accent token (single source; no palette value change)
-- [ ] 4.13 `tach.toml`: confirm `bot.services` declaration covers new modules; no new top-level `[[modules]]` entry
+- [x] 4.1 Create `bot/services/shared_assets.py`: `_card_base`, gradient loop, `_load_font`, `_safe_fetch_avatar`, `_paste_circular_asset` (services layer; no cog/view imports)
+- [x] 4.2 RED: `test_greeting_renderer` — no `#7289da`/`GREETING_ACCENT`; accent from `brand.ACCENT`; font `OSError`→`ImageFont.load_default()` + WARNING
+- [x] 4.3 GREEN: create `bot/services/greeting_renderer.py` — `GreetingRenderer` Protocol + `PillowGreetingRenderer`; reads `brand.ACCENT`, `to_thread`-safe
+- [x] 4.4 RED: `test_rank_renderer` — output byte-identical to pre-split (golden bytes)
+- [x] 4.5 GREEN: create `bot/services/rank_renderer.py` — `RankRenderer` owning `generate_rank_card`; imports `shared_assets`
+- [x] 4.6 RED: `test_bot_probe` — cairosvg ImportError → Pillow + WARNING, no abort; cairosvg present → Pillow still default (Cycle 1)
+- [x] 4.7 GREEN: `bot/bot.py:215` probe `import cairosvg` → inject `PillowGreetingRenderer`; pass to `GreetingService`
+- [x] 4.8 RED: `test_greeting_service` native-kwargs path — exercises `generate_greeting_card` with localized kwargs directly (guard before shim delete)
+- [x] 4.9 GREEN: `greeting_service.py` depend on `GreetingRenderer` interface; delete `_generate_greeting_card_compatibly` shim; `dispatch_greeting` calls renderer via `to_thread`
+- [x] 4.10 `greetings.py`: `/welcome_test` + `/goodbye_test` call renderer via `to_thread`; DRY kwargs assembly
+- [x] 4.11 Remove `generate_rank_card` + `generate_greeting_card` + helpers from `image_service.py`; delete file if no callers remain (verify first)
+- [x] 4.12 `bot/utils/brand.py`: re-export greeting accent token (single source; no palette value change)
+- [x] 4.13 `tach.toml`: confirm `bot.services` declaration covers new modules; no new top-level `[[modules]]` entry
 
 ## Phase 5: Verify Gates
 
