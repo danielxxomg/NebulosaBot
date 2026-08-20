@@ -65,14 +65,24 @@ class TestParityBanditRuffS:
     """5.1 Parity proof — run BOTH tools once; document delta."""
 
     def test_bandit_runs_and_count_documented(self) -> None:
-        """Bandit must run; low-severity count documented (post-PR4b = 3, pre-PR4b 95)."""
+        """Bandit must run; low-severity count documented (post-PR4b = 3, pre-PR4b 95).
+
+        Post-migration bandit is removed (PR5 deleted [tool.bandit] + dev dep).
+        Skip when bandit binary absent — Ruff S is the source of truth post-migration.
+        """
         result = _run(["uv", "run", "bandit", "-r", "bot/", "-c", "pyproject.toml", "--severity-level", "low"])
         combined = result.stdout + result.stderr
+        if "No such file" in combined or "Failed to spawn" in combined:
+            import pytest as _pytest
+
+            _pytest.skip("bandit removed — Ruff S is post-migration security gate (PR5 5.2)")
         assert "Total lines of code" in combined or "Run metrics" in combined, combined[:2000]
         # Post-PR4b, 3 findings remain (2x S311 random + 1x S310 urlopen); pre-PR4b was 95 B101.
         # Either bandit config present (old) or absent (new) — both are valid post-deletion if we skip.
         # After 5.2, pyproject will lack [tool.bandit]; bandit then uses defaults and still runs.
-        # So just assert it exits and reports metrics.
+        # So just assert it exits and reports metrics (or skip above if bandit absent).
+        if "No such file" in combined or "Failed to spawn" in combined:
+            return
         assert result.returncode in (0, 1), f"bandit failed to run: {combined[:2000]}"
 
     def test_ruff_s_isolated_stats(self) -> None:
