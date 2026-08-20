@@ -11,8 +11,6 @@ import subprocess
 import tomllib
 from pathlib import Path
 
-import pytest
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = PROJECT_ROOT / "pyproject.toml"
 UV_LOCK = PROJECT_ROOT / "uv.lock"

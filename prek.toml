@@ -1,0 +1,28 @@
+[priorities]
+builtin = 0
+format = 10
+lint = 20
+type = 30
+gga = 40
+push = 50
+
+[[repos]]
+repo = "builtin"
+hooks = [
+  { id = "trailing-whitespace", exclude = "(^openspec/changes/archive/|\\.md$|\\.mmd$|\\.json$|\\.css$|\\.js$|\\.ts$|\\.tsx$)" },
+  { id = "end-of-file-fixer", exclude = "(^openspec/changes/archive/|\\.md$|\\.mmd$|\\.json$|\\.css$|\\.js$|\\.ts$|\\.tsx$)" },
+  { id = "check-yaml" },
+  { id = "check-added-large-files" },
+]
+
+[[repos]]
+repo = "local"
+hooks = [
+  { id = "ruff-check", name = "ruff check", language = "system", entry = "uv run ruff check --fix", files = "^(bot/|tests/)", types = ["python"], stages = ["pre-commit"], priority = "lint" },
+  { id = "ruff-format", name = "ruff format", language = "system", entry = "uv run ruff format --check", files = "^(bot/|tests/)", types = ["python"], stages = ["pre-commit"], priority = "format" },
+  { id = "ty", name = "ty", language = "system", entry = "uv run ty check bot/ tests/", files = "^(bot/|tests/)", types = ["python"], stages = ["pre-commit"], priority = "type" },
+  { id = "gga", name = "GGA", language = "system", entry = "bash .gga", always_run = true, pass_filenames = false, stages = ["pre-commit"], priority = "gga" },
+  { id = "uv-check", name = "uv check", language = "system", entry = "uv check", always_run = true, pass_filenames = false, stages = ["pre-push"], priority = "push" },
+  { id = "tach-check", name = "tach check", language = "system", entry = "uv run tach check", always_run = true, pass_filenames = false, stages = ["pre-push"], priority = "push" },
+  { id = "tach-check-external", name = "tach check-external", language = "system", entry = "uv run tach check-external", always_run = true, pass_filenames = false, stages = ["pre-push"], priority = "push" },
+]

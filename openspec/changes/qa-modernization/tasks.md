@@ -54,11 +54,11 @@ Chain strategy: stacked-to-main
 
 ## Phase 3 — PR3: prek Replaces pre-commit (after PR2)
 
-- [ ] 3.1 Create `prek.toml`: `[priorities]` builtin=0/format=10/lint=20/type=30/gga=40/push=50; `[[repos]] repo="builtin"` (trailing-ws/eof/yaml/large-files, archive/md/json/css/js/ts exclusions); `[[repos]] repo="local"` (ruff-check `--fix`, ruff-format `--check`, ty `uv run ty check bot/ tests/`, gga `bash .gga`, pre-push: uv-check/tach-check/tach-check-external). **Why**: YAML→TOML, pre-push stage. **Accept**: `prek run --all-files` exit 0. **Evidence**: `prek run --all-files`. **Dep**: Phase 2.
-- [ ] 3.2 RED: stage a file with trailing whitespace; assert `prek run trailing-whitespace` fails. GREEN: fix file. **Why**: strict TDD hook behavior. **Accept**: non-zero on violation. **Evidence**: staged violation aborts. **Dep**: 3.1.
-- [ ] 3.3 RED: stage a ruff violation; assert `ruff-check` hook fails before `ty` runs. GREEN: fix. **Why**: ordering spec. **Accept**: ty not reached when ruff fails. **Evidence**: hook output order. **Dep**: 3.2.
-- [ ] 3.4 Delete `.pre-commit-config.yaml`. **Why**: single source of truth. **Accept**: file absent. **Evidence**: `ls .pre-commit-config.yaml` fails. **Dep**: 3.3.
-- [ ] 3.5 Verify `SKIP=ty git commit` bypasses ty only. **Why**: SKIP spec. **Accept**: commit succeeds, other hooks ran. **Evidence**: `SKIP=ty` commit. **Dep**: 3.4.
+- [x] 3.1 Create `prek.toml`: `[priorities]` builtin=0/format=10/lint=20/type=30/gga=40/push=50; `[[repos]] repo="builtin"` (trailing-ws/eof/yaml/large-files, archive/md/json/css/js/ts exclusions); `[[repos]] repo="local"` (ruff-check `--fix`, ruff-format `--check`, ty `uv run ty check bot/ tests/`, gga `bash .gga`, pre-push: uv-check/tach-check/tach-check-external). **Why**: YAML→TOML, pre-push stage. **Accept**: `prek run --all-files` exit 0. **Evidence**: `prek run --all-files`. **Dep**: Phase 2.
+- [x] 3.2 RED: stage a file with trailing whitespace; assert `prek run trailing-whitespace` fails. GREEN: fix file. **Why**: strict TDD hook behavior. **Accept**: non-zero on violation. **Evidence**: staged violation aborts. **Dep**: 3.1.
+- [x] 3.3 RED: stage a ruff violation; assert `ruff-check` hook fails before `ty` runs. GREEN: fix. **Why**: ordering spec. **Accept**: ty not reached when ruff fails. **Evidence**: hook output order. **Dep**: 3.2.
+- [x] 3.4 Delete `.pre-commit-config.yaml`. **Why**: single source of truth. **Accept**: file absent. **Evidence**: `ls .pre-commit-config.yaml` fails. **Dep**: 3.3.
+- [x] 3.5 Verify `SKIP=ty git commit` bypasses ty only. **Why**: SKIP spec. **Accept**: commit succeeds, other hooks ran. **Evidence**: `SKIP=ty` commit. **Dep**: 3.4.
 
 ## Phase 4a — PR4a: Ruff Mechanical (after PR2; TRY003/EM101/EM102)
 
