@@ -69,11 +69,11 @@ Chain strategy: stacked-to-main
 
 ## Phase 4b — PR4b: Ruff Security (S101/S310/S311/S110)
 
-- [ ] 4b.1 RED: `uv run ruff check --select S bot/` shows ~97 (92 S101 + 2 S310 + 2 S311 + 1 S110). **Why**: baseline. **Accept**: count recorded. **Evidence**: ruff output. **Dep**: 4a.4.
-- [ ] 4b.2 Remove `S` from `bot/**/*.py` per-file-ignores. **Why**: bandit parity (S strictly broader: 97 vs 95). **Accept**: S removed. **Evidence**: pyproject diff. **Dep**: 4b.1.
-- [ ] 4b.3 GREEN S101: replace `assert` in bot/ with `raise ValueError(...)` / `if … else` real checks. **Why**: real fixes not suppression. **Accept**: 0 S101 in bot/. **Evidence**: `ruff check --select S101 bot/`. **Dep**: 4b.2.
-- [ ] 4b.4 GREEN S310/S311/S110: review each (url-open/non-crypto-random/try-pass) case-by-case; fix or document narrow `# noqa: Sxxx` with reason. **Why**: ~30 need review. **Accept**: each dispositioned. **Evidence**: `ruff check --select S310,S311,S110 bot/`. **Dep**: 4b.3.
-- [ ] 4b.5 Keep `tests/**` S101/ARG/T20 semantic ignores. **Why**: test exceptions only. **Accept**: tests ignores unchanged. **Evidence**: pyproject per-file-ignores. **Dep**: 4b.4.
+- [x] 4b.1 RED: `uv run ruff check --select S bot/` shows ~97 (92 S101 + 2 S310 + 2 S311 + 1 S110). **Why**: baseline. **Accept**: count recorded. **Evidence**: ruff output. **Dep**: 4a.4.
+- [x] 4b.2 Remove `S` from `bot/**/*.py` per-file-ignores. **Why**: bandit parity (S strictly broader: 97 vs 95). **Accept**: S removed. **Evidence**: pyproject diff. **Dep**: 4b.1.
+- [x] 4b.3 GREEN S101: replace `assert` in bot/ with `raise ValueError(...)` / `if … else` real checks. **Why**: real fixes not suppression. **Accept**: 0 S101 in bot/. **Evidence**: `ruff check --select S101 bot/`. **Dep**: 4b.2.
+- [x] 4b.4 GREEN S310/S311/S110: review each (url-open/non-crypto-random/try-pass) case-by-case; fix or document narrow `# noqa: Sxxx` with reason. **Why**: ~30 need review. **Accept**: each dispositioned. **Evidence**: `ruff check --select S310,S311,S110 bot/`. **Dep**: 4b.3.
+- [x] 4b.5 Keep `tests/**` S101/ARG/T20 semantic ignores. **Why**: test exceptions only. **Accept**: tests ignores unchanged. **Evidence**: pyproject per-file-ignores. **Dep**: 4b.4.
 
 ## Phase 4c — PR4c: Ruff Quality + Preview (ARG/TRY300/FURB/C901/F841 + ANN/PYI/PGH003)
 

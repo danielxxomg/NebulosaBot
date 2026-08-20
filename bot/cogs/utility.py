@@ -153,7 +153,9 @@ class UtilityCog(commands.Cog, name="Utility"):
         # Build roles list — skip @everyone (first role)
         # Type narrowing: in guild context, target is always a Member.
         # Assert satisfies mypy without adding a new runtime branch.
-        assert isinstance(target, discord.Member), "userinfo target must be Member in guild context"
+        if not isinstance(target, discord.Member):
+            msg = "userinfo target must be Member in guild context"
+            raise TypeError(msg)
         role_mentions = [r.mention for r in target.roles[1:]]
         if len(role_mentions) > 20:
             remaining = len(role_mentions) - 20

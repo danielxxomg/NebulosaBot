@@ -197,7 +197,7 @@ def validate_supabase_key(key: str) -> None:
         except ServiceRoleValidationError:
             raise
         except Exception:
-            pass
+            logger.debug("Service role validation fallback — trying next verifier", exc_info=True)
         verified_role = _verify_jwt_signature(key)
         if verified_role is not None:
             if verified_role != "service_role":

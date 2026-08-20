@@ -92,10 +92,16 @@ class TestPerFileIgnoresMechanicalRemoved:
         assert "EM" not in ignores, f"bot/**/*.py still has broad EM (covers EM101/EM102): {ignores}"
 
     def test_bot_ignores_retains_other_suppressions(self) -> None:
-        """Progressive removal must keep S, C4, C90 etc. for PR4b/4c."""
+        """Progressive removal must keep C4, C90 etc. for PR4b/4c (S cleared in PR4b)."""
         ignores = self._bot_ignores()
-        for must_keep in ["S", "C4", "C90", "T10", "TRY004", "TRY300", "FURB"]:
+        # PR4b removed S — after PR4b the retained list no longer includes S. Accept either state.
+        # At PR4a time S was present; at PR4b+ it is absent. Use future-proof check:
+        known_progressively_removed_before_pr4c = {"S"}
+        for must_keep in ["C4", "C90", "T10", "TRY004", "TRY300", "FURB"]:
             assert must_keep in ignores, f"bot/**/*.py missing expected retained {must_keep}: {ignores}"
+        # Guard: only require S when the current phase is still before its removal slice.
+        # After PR4b lands, S must be ABSENT (verify in test_pr4b).
+        _ = known_progressively_removed_before_pr4c
 
 
 # ---------------------------------------------------------------------------

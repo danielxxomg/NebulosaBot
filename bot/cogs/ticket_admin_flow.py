@@ -89,7 +89,9 @@ class TicketAdminFlow:
     ) -> None:
         if ctx.guild is None:
             return
-        assert self.bot.db is not None
+        if self.bot.db is None:
+            msg = "db not initialised"
+            raise RuntimeError(msg)
         gid = str(ctx.guild.id)
         try:
             existing = await self.bot.db.get_ticket_categories(gid)
@@ -116,7 +118,9 @@ class TicketAdminFlow:
     async def list_categories(self, ctx: NebulosaContext) -> None:
         if ctx.guild is None:
             return
-        assert self.bot.db is not None
+        if self.bot.db is None:
+            msg = "db not initialised"
+            raise RuntimeError(msg)
         gid = str(ctx.guild.id)
         try:
             rows = await self.bot.db.get_ticket_categories(gid)
@@ -149,7 +153,9 @@ class TicketAdminFlow:
     async def delete_category(self, ctx: NebulosaContext, category_id: str) -> None:
         if ctx.guild is None:
             return
-        assert self.bot.db is not None
+        if self.bot.db is None:
+            msg = "db not initialised"
+            raise RuntimeError(msg)
         gid = str(ctx.guild.id)
         try:
             row = await self.bot.db.get_ticket_category(category_id, guild_id=gid)
@@ -211,7 +217,9 @@ class TicketAdminFlow:
                 ephemeral=True,
             )
             return
-        assert self.bot.db is not None
+        if self.bot.db is None:
+            msg = "db not initialised"
+            raise RuntimeError(msg)
         try:
             row = await self.bot.db.get_ticket_category(category_id, guild_id=gid)
         except Exception:

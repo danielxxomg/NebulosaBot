@@ -61,7 +61,9 @@ class GreetingsCog(commands.Cog, name="Greetings"):
         if member.bot:
             return
         try:
-            assert self.bot.greeting_service is not None, "GreetingService initialised in setup_hook"
+            if self.bot.greeting_service is None:
+                msg = "GreetingService initialised in setup_hook"
+                raise RuntimeError(msg)
             await self.bot.greeting_service.dispatch_welcome(member)
         except Exception:
             logger.exception(
@@ -76,7 +78,9 @@ class GreetingsCog(commands.Cog, name="Greetings"):
         if member.bot:
             return
         try:
-            assert self.bot.greeting_service is not None, "GreetingService initialised in setup_hook"
+            if self.bot.greeting_service is None:
+                msg = "GreetingService initialised in setup_hook"
+                raise RuntimeError(msg)
             await self.bot.greeting_service.dispatch_goodbye(member)
         except Exception:
             logger.exception(
@@ -108,7 +112,9 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             avatar_url = _resolve_avatar_url(ctx.author)
             guild_id = str(ctx.guild.id) if ctx.guild else ""
             member_count = (ctx.guild.member_count or 0) if ctx.guild else 0
-            assert self.bot.image_service is not None, "ImageService initialised in setup_hook"
+            if self.bot.image_service is None:
+                msg = "ImageService initialised in setup_hook"
+                raise RuntimeError(msg)
             buffer: io.BytesIO = await asyncio.to_thread(
                 self.bot.image_service.generate_greeting_card,
                 username=ctx.author.display_name,
@@ -162,7 +168,9 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             avatar_url = _resolve_avatar_url(ctx.author)
             guild_id = str(ctx.guild.id) if ctx.guild else ""
             member_count = (ctx.guild.member_count or 0) if ctx.guild else 0
-            assert self.bot.image_service is not None, "ImageService initialised in setup_hook"
+            if self.bot.image_service is None:
+                msg = "ImageService initialised in setup_hook"
+                raise RuntimeError(msg)
             buffer: io.BytesIO = await asyncio.to_thread(
                 self.bot.image_service.generate_greeting_card,
                 username=ctx.author.display_name,
@@ -272,7 +280,9 @@ class GreetingsCog(commands.Cog, name="Greetings"):
         """Show the current welcome configuration."""
         if not await self._admin_guard(ctx):
             return
-        assert self.bot.greeting_service is not None, "GreetingService initialised in setup_hook"
+        if self.bot.greeting_service is None:
+            msg = "GreetingService initialised in setup_hook"
+            raise RuntimeError(msg)
         guild_id = str(ctx.guild.id) if ctx.guild else ""
         config = await self.bot.greeting_service.get_config(guild_id)
         await ctx.send(
@@ -302,7 +312,9 @@ class GreetingsCog(commands.Cog, name="Greetings"):
         """Set the welcome channel."""
         if not await self._admin_guard(ctx):
             return
-        assert self.bot.greeting_service is not None, "GreetingService initialised in setup_hook"
+        if self.bot.greeting_service is None:
+            msg = "GreetingService initialised in setup_hook"
+            raise RuntimeError(msg)
         guild_id = str(ctx.guild.id) if ctx.guild else ""
         config = await self.bot.greeting_service.get_config(guild_id)
         config.welcome_channel_id = str(channel.id)
@@ -328,7 +340,9 @@ class GreetingsCog(commands.Cog, name="Greetings"):
         """Toggle welcome messages on/off."""
         if not await self._admin_guard(ctx):
             return
-        assert self.bot.greeting_service is not None, "GreetingService initialised in setup_hook"
+        if self.bot.greeting_service is None:
+            msg = "GreetingService initialised in setup_hook"
+            raise RuntimeError(msg)
         guild_id = str(ctx.guild.id) if ctx.guild else ""
         config = await self.bot.greeting_service.get_config(guild_id)
         config.welcome_enabled = not config.welcome_enabled
@@ -370,7 +384,9 @@ class GreetingsCog(commands.Cog, name="Greetings"):
         """Set the welcome message template."""
         if not await self._admin_guard(ctx):
             return
-        assert self.bot.greeting_service is not None, "GreetingService initialised in setup_hook"
+        if self.bot.greeting_service is None:
+            msg = "GreetingService initialised in setup_hook"
+            raise RuntimeError(msg)
         guild_id = str(ctx.guild.id) if ctx.guild else ""
         config = await self.bot.greeting_service.get_config(guild_id)
         config.welcome_message = template
@@ -400,7 +416,9 @@ class GreetingsCog(commands.Cog, name="Greetings"):
         """Show the current goodbye configuration."""
         if not await self._admin_guard(ctx):
             return
-        assert self.bot.greeting_service is not None, "GreetingService initialised in setup_hook"
+        if self.bot.greeting_service is None:
+            msg = "GreetingService initialised in setup_hook"
+            raise RuntimeError(msg)
         guild_id = str(ctx.guild.id) if ctx.guild else ""
         config = await self.bot.greeting_service.get_config(guild_id)
         await ctx.send(
@@ -430,7 +448,9 @@ class GreetingsCog(commands.Cog, name="Greetings"):
         """Set the goodbye channel."""
         if not await self._admin_guard(ctx):
             return
-        assert self.bot.greeting_service is not None, "GreetingService initialised in setup_hook"
+        if self.bot.greeting_service is None:
+            msg = "GreetingService initialised in setup_hook"
+            raise RuntimeError(msg)
         guild_id = str(ctx.guild.id) if ctx.guild else ""
         config = await self.bot.greeting_service.get_config(guild_id)
         config.goodbye_channel_id = str(channel.id)
@@ -456,7 +476,9 @@ class GreetingsCog(commands.Cog, name="Greetings"):
         """Toggle goodbye messages on/off."""
         if not await self._admin_guard(ctx):
             return
-        assert self.bot.greeting_service is not None, "GreetingService initialised in setup_hook"
+        if self.bot.greeting_service is None:
+            msg = "GreetingService initialised in setup_hook"
+            raise RuntimeError(msg)
         guild_id = str(ctx.guild.id) if ctx.guild else ""
         config = await self.bot.greeting_service.get_config(guild_id)
         config.goodbye_enabled = not config.goodbye_enabled
@@ -498,7 +520,9 @@ class GreetingsCog(commands.Cog, name="Greetings"):
         """Set the goodbye message template."""
         if not await self._admin_guard(ctx):
             return
-        assert self.bot.greeting_service is not None, "GreetingService initialised in setup_hook"
+        if self.bot.greeting_service is None:
+            msg = "GreetingService initialised in setup_hook"
+            raise RuntimeError(msg)
         guild_id = str(ctx.guild.id) if ctx.guild else ""
         config = await self.bot.greeting_service.get_config(guild_id)
         config.goodbye_message = template

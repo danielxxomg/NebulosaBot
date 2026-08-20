@@ -63,7 +63,9 @@ class TicketActionsView(discord.ui.View):
     async def _get_ticket(
         bot: NebulosaBot, channel_id: int, guild_id: str | None = None, *, action: str = "claim"
     ) -> tuple[dict[str, Any] | None, str | None]:
-        assert bot.db is not None
+        if bot.db is None:
+            msg = "db not initialised"
+            raise RuntimeError(msg)
         _t = _get_t()
         row = await bot.db.get_ticket_by_channel(str(channel_id), guild_id=guild_id)
         if row is None:
@@ -109,7 +111,9 @@ class TicketActionsView(discord.ui.View):
                 ephemeral=True,
             )
             return
-        assert ticket_row is not None
+        if ticket_row is None:
+            msg = "ticket_row not initialised"
+            raise RuntimeError(msg)
         claimed_by_id = ticket_row.get("claimedBy")
         if claimed_by_id:
             from bot.views.confirmation import ConfirmCancelView
@@ -118,7 +122,9 @@ class TicketActionsView(discord.ui.View):
             staff_id = str(interaction.user.id)
 
             async def _on_transfer_confirm(confirm_interaction: discord.Interaction) -> None:
-                assert bot.ticket_service is not None
+                if bot.ticket_service is None:
+                    msg = "ticket_service not initialised"
+                    raise RuntimeError(msg)
                 try:
                     ticket = await bot.ticket_service.transfer_ticket(
                         ticket_id,
@@ -194,7 +200,9 @@ class TicketActionsView(discord.ui.View):
                 ephemeral=True,
             )
             return
-        assert bot.ticket_service is not None
+        if bot.ticket_service is None:
+            msg = "ticket_service not initialised"
+            raise RuntimeError(msg)
         try:
             ticket = await bot.ticket_service.claim_ticket(ticket_id, staff_id, guild_id=guild_id)
         except Exception:
@@ -240,7 +248,9 @@ class TicketActionsView(discord.ui.View):
                 ephemeral=True,
             )
             return
-        assert ticket_row is not None
+        if ticket_row is None:
+            msg = "ticket_row not initialised"
+            raise RuntimeError(msg)
         author_id = ticket_row.get("authorId")
         is_author = author_id is not None and interaction.user.id == int(author_id)
         if not is_author and not await _is_mod_check(interaction):
@@ -263,7 +273,9 @@ class TicketActionsView(discord.ui.View):
         async def _on_close_confirm(confirm_interaction: discord.Interaction) -> None:
             if not isinstance(channel, discord.TextChannel):
                 return
-            assert bot.ticket_service is not None
+            if bot.ticket_service is None:
+                msg = "ticket_service not initialised"
+                raise RuntimeError(msg)
             from bot.models.ticket import Ticket
 
             ticket = Ticket.from_db_row(ticket_row)
@@ -342,7 +354,9 @@ class TicketActionsView(discord.ui.View):
                 ephemeral=True,
             )
             return
-        assert bot.db is not None
+        if bot.db is None:
+            msg = "db not initialised"
+            raise RuntimeError(msg)
         ticket_row = await bot.db.get_ticket_by_channel(str(channel_id), guild_id=guild_id)
         if ticket_row is None:
             await interaction.response.send_message(

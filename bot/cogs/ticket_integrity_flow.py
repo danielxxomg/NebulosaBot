@@ -38,7 +38,9 @@ class TicketIntegrityFlow:
             await ctx.send(embed=_err(None, "tickets.integrity.server_only"), ephemeral=True)
             return
         gid = str(ctx.guild.id)
-        assert self.bot.ticket_service is not None
+        if self.bot.ticket_service is None:
+            msg = "ticket_service not initialised"
+            raise RuntimeError(msg)
         try:
             results = await self.bot.ticket_service.sweep_integrity(gid, self.bot)
         except Exception:
@@ -57,7 +59,9 @@ class TicketIntegrityFlow:
             await ctx.send(embed=_err(None, "tickets.integrity.server_only"), ephemeral=True)
             return
         gid = str(ctx.guild.id)
-        assert self.bot.ticket_service is not None
+        if self.bot.ticket_service is None:
+            msg = "ticket_service not initialised"
+            raise RuntimeError(msg)
         actor = ctx.author
         is_owner = isinstance(actor, discord.Member) and actor == ctx.guild.owner
         is_admin = isinstance(actor, discord.Member) and actor.guild_permissions.administrator

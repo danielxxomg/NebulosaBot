@@ -75,12 +75,18 @@ class TicketLifecycleFlow:
             return
         guild, author = ctx.guild, ctx.author
         gid = str(guild.id)
-        assert (
-            isinstance(author, discord.Member)
-            and self.bot.db is not None
-            and self.bot.guild_service is not None
-            and self.bot.ticket_service is not None
-        )
+        if not isinstance(author, discord.Member):
+            msg = "author must be discord.Member"
+            raise TypeError(msg)
+        if self.bot.db is None:
+            msg = "Database not initialised"
+            raise RuntimeError(msg)
+        if self.bot.guild_service is None:
+            msg = "GuildService not initialised"
+            raise RuntimeError(msg)
+        if self.bot.ticket_service is None:
+            msg = "TicketService not initialised"
+            raise RuntimeError(msg)
         try:
             config = await self.bot.guild_service.get_config(gid)
         except Exception:
@@ -155,7 +161,9 @@ class TicketLifecycleFlow:
         if ctx.guild is None:
             await ctx.send(embed=_err(None, "tickets.reopen.server_only"))
             return
-        assert self.bot.ticket_service is not None
+        if self.bot.ticket_service is None:
+            msg = "ticket_service not initialised"
+            raise RuntimeError(msg)
         gid = str(ctx.guild.id)
         row = await resolve_ticket_for_reopen(self.bot, ctx, ticket_ref, gid)
         if row is None:
@@ -190,8 +198,12 @@ class TicketLifecycleFlow:
             await ctx.send(embed=_err(None, "tickets.transfer.server_only"))
             return
         gid = str(ctx.guild.id)
-        assert self.bot.ticket_service is not None
-        assert self.bot.db is not None
+        if self.bot.ticket_service is None:
+            msg = "ticket_service not initialised"
+            raise RuntimeError(msg)
+        if self.bot.db is None:
+            msg = "db not initialised"
+            raise RuntimeError(msg)
         try:
             row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id), guild_id=gid)
         except Exception:
@@ -221,7 +233,12 @@ class TicketLifecycleFlow:
             await ctx.send(embed=_err(None, "tickets.actions.unclaim_not_ticket_title"))
             return
         gid = str(ctx.guild.id)
-        assert self.bot.db is not None and self.bot.ticket_service is not None
+        if self.bot.db is None:
+            msg = "db not initialised"
+            raise RuntimeError(msg)
+        if self.bot.ticket_service is None:
+            msg = "ticket_service not initialised"
+            raise RuntimeError(msg)
         try:
             row = await self.bot.db.get_ticket_by_channel(str(ctx.channel.id), guild_id=gid)
         except Exception:
