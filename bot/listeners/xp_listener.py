@@ -48,7 +48,9 @@ class XPListener(commands.Cog):
         user_id = str(message.author.id)
 
         # Delegate to EconomyService — handles cooldown via DB timestamp.
-        assert self.bot.economy_service is not None, "EconomyService initialised in setup_hook"
+        if self.bot.economy_service is None:
+            msg = "EconomyService initialised in setup_hook"
+            raise RuntimeError(msg)
         new_xp, new_level, leveled_up = await self.bot.economy_service.gain_xp(guild_id, user_id)
 
         # No XP awarded (cooldown or zero config).
@@ -68,7 +70,9 @@ class XPListener(commands.Cog):
 
         Fetches economy config ONCE and passes it to both sub-helpers.
         """
-        assert self.bot.economy_service is not None, "EconomyService initialised in setup_hook"
+        if self.bot.economy_service is None:
+            msg = "EconomyService initialised in setup_hook"
+            raise RuntimeError(msg)
         config = await self.bot.economy_service.get_economy_config(guild_id)
 
         await self._send_level_up_embed(message, new_level, config)
@@ -82,7 +86,9 @@ class XPListener(commands.Cog):
     ) -> None:
         """Send a level-up notification to the appropriate channel."""
         guild = message.guild
-        assert guild is not None  # Guarded earlier.
+        if guild is None:
+            msg = "guild not initialised"
+            raise RuntimeError(msg)
 
         # Determine target channel from config, or fallback to message channel.
         target_channel: discord.abc.Messageable = message.channel
@@ -134,7 +140,9 @@ class XPListener(commands.Cog):
             return
 
         guild = message.guild
-        assert guild is not None
+        if guild is None:
+            msg = "guild not initialised"
+            raise RuntimeError(msg)
 
         try:
             role_id = int(role_id_str)

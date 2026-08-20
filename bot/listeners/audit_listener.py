@@ -34,7 +34,9 @@ class AuditListener(commands.Cog):
 
     def __init__(self, bot: NebulosaBot) -> None:
         self.bot = bot
-        assert bot.logging_service is not None, "LoggingService initialised in setup_hook"
+        if bot.logging_service is None:
+            msg = "LoggingService initialised in setup_hook"
+            raise RuntimeError(msg)
         self._logging = bot.logging_service
 
     # ------------------------------------------------------------------

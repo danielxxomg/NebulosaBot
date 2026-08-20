@@ -65,7 +65,9 @@ class StellarCog(commands.Cog, name="Stellar"):
         user_id = str(ctx.author.id)
 
         try:
-            assert self.bot.economy_service is not None, "EconomyService initialised in setup_hook"
+            if self.bot.economy_service is None:
+                msg = "EconomyService initialised in setup_hook"
+                raise RuntimeError(msg)
             success, coins_awarded, streak, remaining_seconds = await self.bot.economy_service.claim_daily(
                 guild_id, user_id
             )
@@ -123,7 +125,9 @@ class StellarCog(commands.Cog, name="Stellar"):
         user_id = str(target.id)
 
         try:
-            assert self.bot.economy_service is not None, "EconomyService initialised in setup_hook"
+            if self.bot.economy_service is None:
+                msg = "EconomyService initialised in setup_hook"
+                raise RuntimeError(msg)
             balance = await self.bot.economy_service.get_balance(guild_id, user_id)
         except Exception:
             logger.exception("Balance query failed for user %s", user_id)
@@ -173,7 +177,9 @@ class StellarCog(commands.Cog, name="Stellar"):
             sort_by = "xp"
 
         try:
-            assert self.bot.economy_service is not None, "EconomyService initialised in setup_hook"
+            if self.bot.economy_service is None:
+                msg = "EconomyService initialised in setup_hook"
+                raise RuntimeError(msg)
             rows = await self.bot.economy_service.get_leaderboard(guild_id, sort_by=sort_by, limit=10, offset=0)
         except Exception:
             logger.exception("Leaderboard query failed for guild %s", guild_id)
@@ -241,7 +247,9 @@ class StellarCog(commands.Cog, name="Stellar"):
         await ctx.defer(ephemeral=True)
 
         try:
-            assert self.bot.economy_service is not None, "EconomyService initialised in setup_hook"
+            if self.bot.economy_service is None:
+                msg = "EconomyService initialised in setup_hook"
+                raise RuntimeError(msg)
             rank_info = await self.bot.economy_service.get_rank_info(guild_id, user_id)
         except Exception:
             logger.exception("Rank info query failed for user %s", user_id)
@@ -278,7 +286,9 @@ class StellarCog(commands.Cog, name="Stellar"):
             )
 
         # Generate the rank card in a thread to avoid blocking.
-        assert self.bot.image_service is not None, "ImageService initialised in setup_hook"
+        if self.bot.image_service is None:
+            msg = "ImageService initialised in setup_hook"
+            raise RuntimeError(msg)
         buffer = await asyncio.to_thread(
             self.bot.image_service.generate_rank_card,
             username=target.display_name,

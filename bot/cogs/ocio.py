@@ -59,7 +59,7 @@ class OcioCog(commands.Cog, name="Ocio"):
     ) -> None:
         """Roll a die with *sides* faces and reply with the result."""
         guild_id = ctx.guild.id if ctx.guild else None
-        result = random.randint(1, sides)
+        result = random.randint(1, sides)  # noqa: S311 -- non-crypto dice roll for entertainment
         embed = info_embed(
             t(guild_id, "ocio.dados.title"),
             t(guild_id, "ocio.dados.description", result=result, sides=sides),
@@ -89,7 +89,7 @@ class OcioCog(commands.Cog, name="Ocio"):
             )
             return
 
-        size = random.randint(2, 30)
+        size = random.randint(2, 30)  # noqa: S311 -- non-crypto banana size for entertainment
         embed = info_embed(
             t(guild_id, "ocio.banana.title"),
             t(guild_id, "ocio.banana.description", size=size),

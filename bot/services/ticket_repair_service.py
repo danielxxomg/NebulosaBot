@@ -508,7 +508,9 @@ class TicketRepairService:
                     timestamp=datetime.now(UTC),
                 )
         else:
-            assert ref.uuid is not None
+            if ref.uuid is None:
+                msg = "uuid not initialised"
+                raise RuntimeError(msg)
             try:
                 row = await self._db.get_ticket(ref.uuid, guild_id=guild_id)
             except Exception as exc:

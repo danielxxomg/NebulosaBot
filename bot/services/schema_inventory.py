@@ -114,12 +114,17 @@ GUILD_SCOPE_RUNTIME_CLOSED: int = len(GUILD_SCOPE_GAP_HISTORY)
 GUILD_SCOPE_RUNTIME_CLOSED_COMPUTED: int = len(GUILD_SCOPE_GAP_HISTORY)
 
 # Fail fast if constant drifts from registry (import-time guard for tests)
-assert GUILD_SCOPE_RUNTIME_CLOSED == GUILD_SCOPE_RUNTIME_CLOSED_COMPUTED, (
-    f"GUILD_SCOPE_RUNTIME_CLOSED={GUILD_SCOPE_RUNTIME_CLOSED} != len(HISTORY)={GUILD_SCOPE_RUNTIME_CLOSED_COMPUTED}"
-)
-assert GUILD_SCOPE_RUNTIME_CLOSED == 12, (
-    f"GUILD_SCOPE_RUNTIME_CLOSED={GUILD_SCOPE_RUNTIME_CLOSED} expected 12 — update ledger and tests if history changes"
-)
+if GUILD_SCOPE_RUNTIME_CLOSED != GUILD_SCOPE_RUNTIME_CLOSED_COMPUTED:
+    msg = (
+        f"GUILD_SCOPE_RUNTIME_CLOSED={GUILD_SCOPE_RUNTIME_CLOSED} != len(HISTORY)={GUILD_SCOPE_RUNTIME_CLOSED_COMPUTED}"
+    )
+    raise ValueError(msg)
+if GUILD_SCOPE_RUNTIME_CLOSED != 12:
+    msg = (
+        f"GUILD_SCOPE_RUNTIME_CLOSED={GUILD_SCOPE_RUNTIME_CLOSED} expected 12 — "
+        "update ledger and tests if history changes"
+    )
+    raise ValueError(msg)
 
 
 def _unwrap_response(response: Any) -> list[Any]:

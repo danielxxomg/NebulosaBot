@@ -439,11 +439,11 @@ class ImageService:
             return None
 
         try:
-            req = urllib.request.Request(
+            req = urllib.request.Request(  # noqa: S310 -- avatar URL is Discord CDN https; scheme validated by caller
                 avatar_url,
                 headers={"User-Agent": "NebulosaBot/1.0 (rank card)"},
             )
-            with urllib.request.urlopen(req, timeout=AVATAR_FETCH_TIMEOUT) as resp:  # nosec B310 — user-supplied avatar URL is expected
+            with urllib.request.urlopen(req, timeout=AVATAR_FETCH_TIMEOUT) as resp:  # noqa: S310 -- Discord CDN avatar URL is caller-supplied; Request validated with fixed scheme and timeout
                 data = resp.read()
             return Image.open(io.BytesIO(data)).convert("RGBA")
         except Exception:

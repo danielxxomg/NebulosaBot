@@ -82,7 +82,9 @@ class SetupCog(commands.Cog, name="Setup"):
             return
 
         guild_id = str(ctx.guild.id)
-        assert self.bot.guild_service is not None
+        if self.bot.guild_service is None:
+            msg = "guild_service not initialised"
+            raise RuntimeError(msg)
 
         try:
             config = await self.bot.guild_service.get_config(guild_id)

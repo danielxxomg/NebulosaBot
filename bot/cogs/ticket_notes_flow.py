@@ -45,7 +45,9 @@ class TicketNotesFlow:
 
     async def note_add(self, ctx: NebulosaContext, content: str) -> None:
         gid = str(ctx.guild.id) if ctx.guild else None
-        assert self.bot.ticket_service is not None
+        if self.bot.ticket_service is None:
+            msg = "ticket_service not initialised"
+            raise RuntimeError(msg)
         row = await resolve_ticket_for_channel(self.bot, ctx.channel.id, gid, action="note_add")
         if row is None:
             await ctx.send(embed=_err(gid, "tickets.note.add_not_ticket"))
@@ -76,7 +78,9 @@ class TicketNotesFlow:
 
     async def note_list(self, ctx: NebulosaContext) -> None:
         gid = str(ctx.guild.id) if ctx.guild else None
-        assert self.bot.ticket_service is not None
+        if self.bot.ticket_service is None:
+            msg = "ticket_service not initialised"
+            raise RuntimeError(msg)
         row = await resolve_ticket_for_channel(self.bot, ctx.channel.id, gid, action="note_list")
         if row is None:
             await ctx.send(embed=_err(gid, "tickets.note.add_not_ticket"))
@@ -105,7 +109,9 @@ class TicketNotesFlow:
 
     async def note_delete(self, ctx: NebulosaContext, note_id: str) -> None:
         gid = str(ctx.guild.id) if ctx.guild else None
-        assert self.bot.ticket_service is not None
+        if self.bot.ticket_service is None:
+            msg = "ticket_service not initialised"
+            raise RuntimeError(msg)
         row = await resolve_ticket_for_channel(self.bot, ctx.channel.id, gid, action="note_delete")
         if row is None:
             await ctx.send(embed=_err(gid, "tickets.note.delete_not_ticket"))

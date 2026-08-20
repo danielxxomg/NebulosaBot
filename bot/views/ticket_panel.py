@@ -96,7 +96,15 @@ async def _create_ticket_after_modal(
         _t = _i18n_t
     bot: NebulosaBot = interaction.client  # type: ignore[assignment]
     guild_id = str(guild.id)
-    assert bot.db is not None and bot.guild_service is not None and bot.ticket_service is not None
+    if bot.db is None:
+        msg = "db not initialised"
+        raise RuntimeError(msg)
+    if bot.guild_service is None:
+        msg = "guild_service not initialised"
+        raise RuntimeError(msg)
+    if bot.ticket_service is None:
+        msg = "ticket_service not initialised"
+        raise RuntimeError(msg)
 
     try:
         config = await bot.guild_service.get_config(guild_id)
@@ -144,7 +152,9 @@ async def _create_ticket_after_modal(
     mod_role = resolve_mod_role(guild, config.mod_role_id)
 
     author = interaction.user
-    assert isinstance(author, discord.Member)
+    if not isinstance(author, discord.Member):
+        msg = "author must be discord.Member"
+        raise TypeError(msg)
 
     try:
         channel, ticket = await bot.ticket_service.create_ticket_channel(
@@ -444,7 +454,9 @@ class TicketPanelView(discord.ui.View):
                 ephemeral=True,
             )
             return
-        assert bot.db is not None
+        if bot.db is None:
+            msg = "db not initialised"
+            raise RuntimeError(msg)
         rows = await bot.db.get_ticket_categories(str(guild.id))
         categories = [TicketCategory.from_db_row(r) for r in rows if r.get("active", True)]
         if not categories:

@@ -325,7 +325,9 @@ class NebulosaBot(commands.Bot):
         eagerly so every command handler can access it synchronously.
         """
         ctx = await super().get_context(message, cls=cls)
-        assert isinstance(ctx, NebulosaContext)
+        if not isinstance(ctx, NebulosaContext):
+            msg = "get_context did not return NebulosaContext"
+            raise TypeError(msg)
 
         if ctx.guild is not None and self.guild_service is not None:
             try:
@@ -512,7 +514,9 @@ class NebulosaBot(commands.Bot):
 
     async def _validate_single_panel(self, guild_id: str) -> None:
         """Validate a single guild's ticket panel; self-heal if unhealthy."""
-        assert self.guild_service is not None
+        if self.guild_service is None:
+            msg = "GuildService not initialised"
+            raise RuntimeError(msg)
 
         # Resolve guild from the guilds list (populated by the gateway).
         guild: discord.Guild | None = None

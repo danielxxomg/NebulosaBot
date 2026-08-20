@@ -221,7 +221,9 @@ async def resolve_ticket_for_channel(
     Returns the raw DB row dict on success, or ``None`` after logging
     the error (the caller MUST check and send its own error embed).
     """
-    assert bot.db is not None
+    if bot.db is None:
+        msg = "db not initialised"
+        raise RuntimeError(msg)
     if guild_id is None:
         msg = "guild_id required"
         raise ValueError(msg)
@@ -246,7 +248,9 @@ async def resolve_ticket_for_reopen(
     Returns the ticket row dict on success or ``None`` after sending an
     ``error_embed``.
     """
-    assert bot.db is not None
+    if bot.db is None:
+        msg = "db not initialised"
+        raise RuntimeError(msg)
     ref = parse_ticket_ref(ticket_ref)
 
     if ticket_ref is not None and ref is None:

@@ -91,7 +91,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
 
     async def _sync_channel_cache(self) -> None:
         all_ids: set[int] = set()
-        assert self.bot.db is not None
+        if self.bot.db is None:
+            msg = "db not initialised"
+            raise RuntimeError(msg)
         for guild in self.bot.guilds:
             try:
                 for cid in await self.bot.db.get_open_ticket_channel_ids(str(guild.id)):
@@ -99,7 +101,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
                         all_ids.add(int(cid))
             except Exception:
                 logger.exception("Failed to load ticket channel IDs for guild %s", guild.id)
-        assert self.bot.ticket_service is not None
+        if self.bot.ticket_service is None:
+            msg = "ticket_service not initialised"
+            raise RuntimeError(msg)
         self.bot.ticket_service.sync_channel_cache(all_ids)
         logger.info("Ticket channel cache synced: %d active channels", len(all_ids))
 
@@ -107,7 +111,12 @@ class TicketsCog(commands.Cog, name="Tickets"):
     async def auto_close_stale_tickets(self) -> None:
         logger.info("Auto-close task: checking for stale tickets ...")
         closed = 0
-        assert self.bot.guild_service is not None and self.bot.ticket_service is not None
+        if self.bot.guild_service is None:
+            msg = "guild_service not initialised"
+            raise RuntimeError(msg)
+        if self.bot.ticket_service is None:
+            msg = "ticket_service not initialised"
+            raise RuntimeError(msg)
         for guild in self.bot.guilds:
             gid = str(guild.id)
             try:
@@ -137,7 +146,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @tasks.loop(hours=1)
     async def integrity_sweep_loop(self) -> None:
         logger.info("Integrity sweep task: checking active ticket channels ...")
-        assert self.bot.ticket_service is not None
+        if self.bot.ticket_service is None:
+            msg = "ticket_service not initialised"
+            raise RuntimeError(msg)
         for guild in self.bot.guilds:
             gid = str(guild.id)
             try:
@@ -156,7 +167,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
         ts = getattr(self.bot, "ticket_service", None)
         if ts is None or not ts.is_ticket_channel(message.channel.id):
             return
-        assert self.bot.db is not None
+        if self.bot.db is None:
+            msg = "db not initialised"
+            raise RuntimeError(msg)
         try:
             from datetime import UTC, datetime
 

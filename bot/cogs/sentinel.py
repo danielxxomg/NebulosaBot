@@ -60,7 +60,9 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     @staticmethod
     def _guild_id(ctx: NebulosaContext) -> str:
         """Return the guild ID as a string for the current context."""
-        assert ctx.guild is not None, "Guild-only command"
+        if ctx.guild is None:
+            msg = "Guild-only command"
+            raise RuntimeError(msg)
         return str(ctx.guild.id)
 
     async def _validate_target(
@@ -76,7 +78,9 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         a guard fails.
         """
         guild_id = self._guild_id(ctx)
-        assert self.bot.user is not None, "Bot user available after on_ready"
+        if self.bot.user is None:
+            msg = "Bot user available after on_ready"
+            raise RuntimeError(msg)
         if target.id == self.bot.user.id:
             await ctx.send(
                 embed=error_embed(
@@ -173,7 +177,9 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         moderator_id = str(ctx.author.id)
 
         try:
-            assert self.bot.infraction_service is not None, "InfractionService initialised in setup_hook"
+            if self.bot.infraction_service is None:
+                msg = "InfractionService initialised in setup_hook"
+                raise RuntimeError(msg)
             infraction, escalation = await self.bot.infraction_service.warn(
                 guild_id,
                 target_id,
@@ -190,8 +196,12 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             )
             return
 
-        assert self.bot.logging_service is not None, "LoggingService initialised in setup_hook"
-        assert isinstance(ctx.author, discord.Member)
+        if self.bot.logging_service is None:
+            msg = "LoggingService initialised in setup_hook"
+            raise RuntimeError(msg)
+        if not isinstance(ctx.author, discord.Member):
+            msg = "ctx.author must be discord.Member"
+            raise TypeError(msg)
         await self.bot.logging_service.log_moderation_action(
             guild_id,
             "Warn",
@@ -209,7 +219,9 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                         timedelta(seconds=escalation.duration),
                         reason=f"Auto-escalation: {escalation.threshold} warnings",
                     )
-                    assert self.bot.db is not None, "Database initialised in setup_hook"
+                    if self.bot.db is None:
+                        msg = "Database initialised in setup_hook"
+                        raise RuntimeError(msg)
                     await self.bot.db.insert_infraction(
                         guild_id=guild_id,
                         target_id=target_id,
@@ -217,7 +229,9 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                         type="MUTE",
                         reason=(f"Auto-escalation after {escalation.threshold} warnings"),
                     )
-                    assert self.bot.logging_service is not None, "LoggingService initialised in setup_hook"
+                    if self.bot.logging_service is None:
+                        msg = "LoggingService initialised in setup_hook"
+                        raise RuntimeError(msg)
                     await self.bot.logging_service.log_moderation_action(
                         guild_id,
                         "Mute (Auto-escalation)",
@@ -242,7 +256,9 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                     await member.kick(
                         reason=(f"Auto-escalation: {escalation.threshold} warnings"),
                     )
-                    assert self.bot.db is not None, "Database initialised in setup_hook"
+                    if self.bot.db is None:
+                        msg = "Database initialised in setup_hook"
+                        raise RuntimeError(msg)
                     await self.bot.db.insert_infraction(
                         guild_id=guild_id,
                         target_id=target_id,
@@ -250,7 +266,9 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                         type="KICK",
                         reason=(f"Auto-escalation after {escalation.threshold} warnings"),
                     )
-                    assert self.bot.logging_service is not None, "LoggingService initialised in setup_hook"
+                    if self.bot.logging_service is None:
+                        msg = "LoggingService initialised in setup_hook"
+                        raise RuntimeError(msg)
                     await self.bot.logging_service.log_moderation_action(
                         guild_id,
                         "Kick (Auto-escalation)",
@@ -308,7 +326,9 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         target_id = str(member.id)
 
         try:
-            assert self.bot.infraction_service is not None, "InfractionService initialised in setup_hook"
+            if self.bot.infraction_service is None:
+                msg = "InfractionService initialised in setup_hook"
+                raise RuntimeError(msg)
             result = await self.bot.infraction_service.unwarn(guild_id, target_id)
         except Exception:
             logger.exception("InfractionService.unwarn() failed")
@@ -329,8 +349,12 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             )
             return
 
-        assert self.bot.logging_service is not None, "LoggingService initialised in setup_hook"
-        assert isinstance(ctx.author, discord.Member)
+        if self.bot.logging_service is None:
+            msg = "LoggingService initialised in setup_hook"
+            raise RuntimeError(msg)
+        if not isinstance(ctx.author, discord.Member):
+            msg = "ctx.author must be discord.Member"
+            raise TypeError(msg)
         await self.bot.logging_service.log_moderation_action(
             guild_id,
             "Unwarn",
@@ -400,7 +424,9 @@ class SentinelCog(commands.Cog, name="Sentinel"):
 
         # Create MUTE infraction for audit trail.
         try:
-            assert self.bot.db is not None, "Database initialised in setup_hook"
+            if self.bot.db is None:
+                msg = "Database initialised in setup_hook"
+                raise RuntimeError(msg)
             await self.bot.db.insert_infraction(
                 guild_id=guild_id,
                 target_id=target_id,
@@ -411,8 +437,12 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         except Exception:
             logger.exception("Failed to insert MUTE infraction (non-fatal)")
 
-        assert self.bot.logging_service is not None, "LoggingService initialised in setup_hook"
-        assert isinstance(ctx.author, discord.Member)
+        if self.bot.logging_service is None:
+            msg = "LoggingService initialised in setup_hook"
+            raise RuntimeError(msg)
+        if not isinstance(ctx.author, discord.Member):
+            msg = "ctx.author must be discord.Member"
+            raise TypeError(msg)
         await self.bot.logging_service.log_moderation_action(
             guild_id,
             "Mute",
@@ -462,8 +492,12 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             await self._handle_mod_error(ctx, exc, "unmute", member)
             return
 
-        assert self.bot.logging_service is not None, "LoggingService initialised in setup_hook"
-        assert isinstance(ctx.author, discord.Member)
+        if self.bot.logging_service is None:
+            msg = "LoggingService initialised in setup_hook"
+            raise RuntimeError(msg)
+        if not isinstance(ctx.author, discord.Member):
+            msg = "ctx.author must be discord.Member"
+            raise TypeError(msg)
         await self.bot.logging_service.log_moderation_action(
             guild_id,
             "Unmute",
@@ -513,7 +547,9 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                 return
 
             try:
-                assert self.bot.db is not None, "Database initialised in setup_hook"
+                if self.bot.db is None:
+                    msg = "Database initialised in setup_hook"
+                    raise RuntimeError(msg)
                 await self.bot.db.insert_infraction(
                     guild_id=guild_id,
                     target_id=target_id,
@@ -524,8 +560,12 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             except Exception:
                 logger.exception("Failed to insert KICK infraction (non-fatal)")
 
-            assert self.bot.logging_service is not None, "LoggingService initialised in setup_hook"
-            assert isinstance(ctx.author, discord.Member)
+            if self.bot.logging_service is None:
+                msg = "LoggingService initialised in setup_hook"
+                raise RuntimeError(msg)
+            if not isinstance(ctx.author, discord.Member):
+                msg = "ctx.author must be discord.Member"
+                raise TypeError(msg)
             await self.bot.logging_service.log_moderation_action(
                 guild_id,
                 "Kick",
@@ -602,7 +642,9 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                 return
 
             try:
-                assert self.bot.db is not None, "Database initialised in setup_hook"
+                if self.bot.db is None:
+                    msg = "Database initialised in setup_hook"
+                    raise RuntimeError(msg)
                 await self.bot.db.insert_infraction(
                     guild_id=guild_id,
                     target_id=target_id,
@@ -613,8 +655,12 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             except Exception:
                 logger.exception("Failed to insert BAN infraction (non-fatal)")
 
-            assert self.bot.logging_service is not None, "LoggingService initialised in setup_hook"
-            assert isinstance(ctx.author, discord.Member)
+            if self.bot.logging_service is None:
+                msg = "LoggingService initialised in setup_hook"
+                raise RuntimeError(msg)
+            if not isinstance(ctx.author, discord.Member):
+                msg = "ctx.author must be discord.Member"
+                raise TypeError(msg)
             await self.bot.logging_service.log_moderation_action(
                 guild_id,
                 "Ban",
@@ -711,8 +757,12 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             )
             return
 
-        assert self.bot.logging_service is not None, "LoggingService initialised in setup_hook"
-        assert isinstance(ctx.author, discord.Member)
+        if self.bot.logging_service is None:
+            msg = "LoggingService initialised in setup_hook"
+            raise RuntimeError(msg)
+        if not isinstance(ctx.author, discord.Member):
+            msg = "ctx.author must be discord.Member"
+            raise TypeError(msg)
         await self.bot.logging_service.log_moderation_action(
             guild_id,
             "Lock",
@@ -782,8 +832,12 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             )
             return
 
-        assert self.bot.logging_service is not None, "LoggingService initialised in setup_hook"
-        assert isinstance(ctx.author, discord.Member)
+        if self.bot.logging_service is None:
+            msg = "LoggingService initialised in setup_hook"
+            raise RuntimeError(msg)
+        if not isinstance(ctx.author, discord.Member):
+            msg = "ctx.author must be discord.Member"
+            raise TypeError(msg)
         await self.bot.logging_service.log_moderation_action(
             guild_id,
             "Unlock",
@@ -835,7 +889,9 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         target_id = str(member.id)
 
         try:
-            assert self.bot.infraction_service is not None, "InfractionService initialised in setup_hook"
+            if self.bot.infraction_service is None:
+                msg = "InfractionService initialised in setup_hook"
+                raise RuntimeError(msg)
             infractions = await self.bot.infraction_service.get_modlogs(
                 guild_id,
                 target_id,

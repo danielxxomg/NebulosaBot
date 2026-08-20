@@ -173,7 +173,9 @@ class _EditCategorySelect(discord.ui.Select[discord.ui.View]):
         channel = interaction.channel
         if not isinstance(channel, discord.TextChannel):
             return
-        assert bot.db is not None
+        if bot.db is None:
+            msg = "db not initialised"
+            raise RuntimeError(msg)
         ticket_row = await bot.db.get_ticket_by_channel(str(channel.id), guild_id=guild_id)
         if ticket_row is None:
             await interaction.response.send_message(
@@ -202,7 +204,9 @@ class _EditCategorySelect(discord.ui.Select[discord.ui.View]):
 
         ticket_id = ticket_row["id"]
         actor_id = str(interaction.user.id)
-        assert bot.ticket_service is not None
+        if bot.ticket_service is None:
+            msg = "ticket_service not initialised"
+            raise RuntimeError(msg)
 
         category_name = next(
             (opt.label for opt in self.options if opt.value == new_category_id),

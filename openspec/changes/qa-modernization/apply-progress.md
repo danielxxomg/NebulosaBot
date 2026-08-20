@@ -1,18 +1,18 @@
-# Apply Progress: qa-modernization — PR1+PR2+PR3+PR4a
+# Apply Progress: qa-modernization — PR1+PR2+PR3+PR4a+PR4b
 
-> Stacked-to-main chain (auto-chain). PR1 afeb386; PR2 ca2ad3c; PR3 08c89fe; PR4a is this slice.
+> Stacked-to-main chain (auto-chain). PR1 afeb386; PR2 ca2ad3c; PR3 08c89fe; PR4a 39ee287; PR4b is this slice.
 > This file MERGES PR1 + PR2 + PR3 + PR4a — subsequent slices must merge forward.
 
-## Current Slice — PR4a Ruff mechanical (TRY003/EM101/EM102)
+## Current Slice — PR4b Ruff security (S101/S310/S311/S110)
 
 | Field | Value |
 |-------|-------|
-| PR | 4a / 8 slices (PR1 → PR2 → PR3 → PR4a → PR4b → PR4c → PR5 → PR6) |
-| Work unit | PR4a Ruff mechanical: TRY003+EM101+EM102 raise message style (274 → 0) |
-| Tasks in slice | 4a.1–4a.4 (4 tasks) |
-| Mode | Strict TDD — RED before GREEN (12 tests, unit + subprocess) |
-| Review budget | 21 files: 20 bot/**/*.py (284 ins / 139 del) + pyproject.toml (1 ins / 1 del) + tests/test_pr4a_ruff_mechanical.py (new, 124 lines) ≈ 284 + 139 = 423 + test file = ~547 total, 21 files. Authored diff 280/156 = 436 per git diff; exceeds 400 by ~36 — mechanical auto-fix batch, single concern, independently revertible |
-| sdd-attempt | auto-chain stacked-to-main PR4a — single commit slice |
+| PR | 4b / 8 slices (PR1 → PR2 → PR3 → PR4a → PR4b → PR4c → PR5 → PR6) |
+| Work unit | PR4b Ruff security: S101 assert→real checks (92) + S310/S311/S110 dispositioned (5) — 97 → 0 |
+| Tasks in slice | 4b.1–4b.5 (5 tasks) |
+| Mode | Strict TDD — RED before GREEN (20 tests, unit + subprocess) |
+| Review budget | 26 files: 23 bot/**/*.py (318 ins / 109 del) + pyproject.toml (4 lines) + tests/test_pr4b_ruff_security.py (new, 211 lines) + tests/test_pr4a... patch (10 lines). Staged 529 ins / 109 del = 638 total incl. test. Authored bot/ 427 + test 211 = 638 — exceeds 400 by ~238 — single mechanical security batch (assert→raise ValueError/RuntimeError/TypeError with msg var), independently revertible via bot/** S suppression |
+| sdd-attempt | auto-chain stacked-to-main PR4b sha256:ffa145b2951b47cc140b0cd54e6b82709b9d9f2d8125fb7a9b837cf222144d39 — single commit slice |
 
 ## Completed Tasks — PR1 (preserved from prior slice)
 
@@ -49,6 +49,14 @@
 - [x] 4a.2 Remove `TRY003`, `EM101`, `EM102` from `bot/**/*.py` per-file-ignores (broad `EM` removed). Why: progressive removal. Accept: pyproject `bot/**/*.py` no longer lists EM/TRY003; retains S,C4,C90,T10,TRY004,TRY300,FURB for PR4b/4c. Evidence: pyproject diff + TestPerFileIgnoresMechanicalRemoved (5 tests).
 - [x] 4a.3 GREEN: `uv run ruff check --fix --select TRY003,EM101,EM102 bot/` auto-fix (139 EM fixes via --unsafe-fixes) → 0 findings. Why: mechanical, low risk. Accept: `ruff check --isolated` 0 + `ruff check bot/` exit 0. Evidence: TestRuffMechanicalGreen (3 tests) + `ruff check --isolated --select TRY003,EM101,EM102 bot/` → All checks passed.
 - [x] 4a.4 REFACTOR: review auto-fixed raise messages for clarity; `uv run ruff format` reformat; `uv run pytest --no-cov` 2166 green (was 2154 + 12 new PR4a tests). Why: semantic check. Accept: pytest 0 fail, format 0, msg variable pattern verified. Evidence: TestRuffMechanicalRefactor (2 tests) + full suite.
+
+## Completed Tasks — PR4b (this slice)
+
+- [x] 4b.1 RED: `uv run ruff check --isolated --select S bot/` shows 97 (92 S101 + 2 S310 + 2 S311 + 1 S110). Accept: count recorded (92/2/2/1). Evidence: `uv run ruff check --isolated --statistics bot/` + `tests/test_pr4b_ruff_security.py::TestRuffSecurityBaseline` (7 RED before fix, 5 captured — 20 tests total, 7 failed RED, 13 passed on TODO progressives).
+- [x] 4b.2 Remove `S` from `bot/**/*.py` per-file-ignores (broad S removed; S101/S310/S311/S110 no longer suppressed). Why: bandit parity (Ruff S 97 strictly broader than bandit 95 LOW — delta 2x S310/S311). Accept: `bot/**/*.py` no longer lists `S`. Evidence: pyproject diff + `TestPerFileIgnoresSecurityRemoved` (6 tests).
+- [x] 4b.3 GREEN S101: replace `assert` in bot/ with `if ...: raise ValueError/RuntimeError/TypeError` real checks + `msg = "..."` var (97 fixes via transform + EM reflow). Why: real fixes not suppression. Accept: `ruff check --isolated --select S101 bot/` 0, `grep -P ^\\s*assert\\s bot/**/*.py` 0. Evidence: `TestRuffSecurityGreenS101` (3 tests) + isolated 92→0.
+- [x] 4b.4 GREEN S310/S311/S110: S310 2x `urllib.request.Request`/`urlopen` in `image_service.py` → `# noqa: S310 -- Discord CDN avatar URL ...` narrow noqa with reason (2 sites); S311 2x `random.randint` in `ocio.py` → `# noqa: S311 -- non-crypto dice/banana entertainment` (2 sites); S110 `try-except-pass` in `config.py:199` → `logger.debug(..., exc_info=True)` (1 site). Why: case-by-case dispositioned. Accept: each of the 5 has explicit disposition. Evidence: `TestRuffSecurityGreenOthers` (3 tests) + `ruff check --isolated --select S310/S311/S110 bot/` 0.
+- [x] 4b.5 Keep `tests/**` S101/ARG/T20 semantic ignores (tests exception only). Why: test suites use assert/print/unused-args by design. Accept: `tests/**/*.py` still lists S101/ARG/T20. Evidence: `TestTestsIgnoresPreserved` (3 tests) + per-file-ignores retained; added `tests/test_pr4b_ruff_security.py` S603/S607 allowlist like PR4a.
 
 ## Files Changed — PR1 (preserved)
 
@@ -117,8 +125,40 @@
 | `bot/services/ticket_lifecycle_service.py` | Modified | EM fix: ~23 raises |
 | `bot/utils/checks.py` | Modified | EM fix: 7 raises |
 | `bot/utils/ticket_helpers.py` | Modified | EM fix: 1× guild_id required |
+| `tests/test_pr4a_ruff_mechanical.py` | Modified | 10-line addition: S-retention guard relaxed for PR4b (S removed from retained list) |
 | `tests/test_pr4a_ruff_mechanical.py` | Created | 12 Strict TDD RED tests for PR4a (5 RED before fix: isolated 274 + pyproject suppression + msg var absent; 12 GREEN after) |
 | `openspec/changes/qa-modernization/tasks.md` | Modified | 4a.1–4a.4 `[ ]` → `[x]` |
+
+## Files Changed — PR4b (this slice)
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `pyproject.toml` | Modified | Remove `S` broad from `bot/**/*.py` per-file-ignores; retain C4/C90/T10/TRY004/TRY300/TRY301/FLY/PERF/FURB/RUF059/F841/T20/ARG/DTZ for PR4c; add `tests/test_pr4b_ruff_security.py` S603/S607 allowlist; note PR4b S parity |
+| `bot/bot.py` | Modified | S101: `assert isinstance(ctx, NebulosaContext)` → `if not isinstance: raise TypeError`, `assert guild_service is not None` → `if None: raise RuntimeError("GuildService not initialised")`; msg var reflow |
+| `bot/cogs/greetings.py` | Modified | S101: 12 asserts (`greeting_service`/`image_service` ×12) → `if X is None: raise RuntimeError("X not initialised")` + msg var |
+| `bot/cogs/sentinel.py` | Modified | S101: 28 asserts (`_guild_id` guild ValueError, `self.bot.*` is not None → RuntimeError, `isinstance(ctx.author, discord.Member)` → TypeError) — every assert rewired with `msg = "..."` var |
+| `bot/cogs/setup.py` | Modified | S101: `assert guild_service is not None` → raise RuntimeError |
+| `bot/cogs/stellar.py` | Modified | S101: 5 asserts (`economy_service`/`image_service`) → raise RuntimeError |
+| `bot/cogs/ticket_admin_flow.py` | Modified | S101: 4 asserts `db is not None` → raise RuntimeError |
+| `bot/cogs/ticket_integrity_flow.py` | Modified | S101: 2 asserts `ticket_service is not None` → raise RuntimeError |
+| `bot/cogs/ticket_lifecycle_flow.py` | Modified | S101: 5 asserts (compound `assert (isinstance(author)... and db...)` → 4 individual if-raises + `ticket_service`/`db` singles) |
+| `bot/cogs/ticket_notes_flow.py` | Modified | S101: 3 asserts ticket_service → raise RuntimeError |
+| `bot/cogs/tickets.py` | Modified | S101: 5 asserts db/ticket_service/guild_service → raise RuntimeError (compound `and` split) |
+| `bot/cogs/utility.py` | Modified | S101: `assert isinstance(target, discord.Member), ...` → `if not isinstance: raise TypeError` + msg var |
+| `bot/listeners/audit_listener.py` | Modified | S101: `assert bot.logging_service is not None` → raise RuntimeError |
+| `bot/listeners/xp_listener.py` | Modified | S101: 4 asserts (`economy_service` ×2, `guild is not None` ×2) → raise RuntimeError |
+| `bot/services/image_service.py` | Modified | S310: `urllib.request.Request` + `urlopen` 2 sites → `# noqa: S310 -- ...` narrow noqa with reason (2 noqa lines) |
+| `bot/services/logging_service.py` | Modified | S101: 2 asserts guild_service → raise RuntimeError |
+| `bot/services/schema_inventory.py` | Modified | S101: 2 module-level `assert GUILD_SCOPE...` → `if ... != ...: msg = f"..."; raise ValueError(msg)` + E501 reflow |
+| `bot/services/ticket_repair_service.py` | Modified | S101: `assert ref.uuid is not None` → `if ref.uuid is None: raise RuntimeError` + msg var |
+| `bot/utils/ticket_helpers.py` | Modified | S101: 2 asserts `bot.db is not None` → raise RuntimeError |
+| `bot/views/ticket_actions.py` | Modified | S101: 7 asserts (db/ticket_row/ticket_service) → raise RuntimeError/ValueError + msg var |
+| `bot/views/ticket_category_select.py` | Modified | S101: 2 asserts bot.db/ticket_service → raise RuntimeError |
+| `bot/views/ticket_panel.py` | Modified | S101: 3 asserts (compound `bot.db and guild_service and ticket_service`, Member, db) → if-raises + msg var |
+| `bot/config.py` | Modified | S110: `except Exception: pass` (line 199) → `logger.debug("Service role validation fallback ...", exc_info=True)` — try-except-pass now logs |
+| `bot/cogs/ocio.py` | Modified | S311: 2 `random.randint` → `...  # noqa: S311 -- non-crypto dice/banana entertainment` (2 noqa lines) |
+| `tests/test_pr4b_ruff_security.py` | Created | 20 Strict TDD RED tests for PR4b (7 RED before fix: isolated 92+2+2+1=97 + per-file-ignores + assert scan; 20 GREEN after) |
+| `openspec/changes/qa-modernization/tasks.md` | Modified | 4b.1–4b.5 `[ ]` → `[x]` |
 
 ## TDD Cycle Evidence — PR2 (preserved)
 
@@ -157,6 +197,22 @@
 
 - **Total tests written PR4a**: 12 (tests/test_pr4a_ruff_mechanical.py)
 - **Total tests passing**: 12/12 (PR4a suite) and 2166/2166 full suite (17 skipped)
+
+## TDD Cycle Evidence — PR4b (Strict TDD)
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 4b.1 | `tests/test_pr4b_ruff_security.py::TestRuffSecurityBaseline` (5 tests) | Unit (subprocess ruff --isolated --statistics) | ✅ 2186/2186 (post-PR4a +20 new) | ✅ 5 RED before fix (isolated 92 S101 + 2 S310 + 2 S311 + 1 S110 =97 + per-file S still present) | ✅ Passed — isolated 0 after fix (S101/S310/S311/S110 all All checks passed) | ✅ 5 cases (S101/S310/S311/S110/S all) | ✅ Clean — 97 vs 95 bandit parity; Ruff S strictly broader by 2x S310 scheme + 2x S311 random |
+| 4b.2 | `tests/test_pr4b_ruff_security.py::TestPerFileIgnoresSecurityRemoved` (6 tests) | Unit (TOML) | ✅ 2186/2186 | ✅ 1 RED before edit (S broad in bot/**) — actually 1 failed, 5 passed pre-PR4b (retained list ok) | ✅ Passed — S, S101, S310, S311, S110 absent; retained C4/C90/T10/TRY004/TRY300/FURB | ✅ 6 cases (5 removed + 1 retained) | ✅ Clean — progressive removal keeps PR4c suppressions |
+| 4b.3 | `tests/test_pr4b_ruff_security.py::TestRuffSecurityGreenS101` (3 tests) | Unit (subprocess ruff + file scan) | ✅ 2186/2186 | ✅ 1 RED before fix (assert remains 92 in bot/**) — 2 passed (ruff still suppressed before per-file removal) | ✅ Passed — `grep ^\\s*assert\\s` 0 in bot/**, `ruff check --select S101 bot/` 0, `ruff check bot/` 0 | ✅ 3 cases (assert scan + isolated S101 + full ruff) | ✅ Clean — msg var added for EM compliance |
+| 4b.4 | `tests/test_pr4b_ruff_security.py::TestRuffSecurityGreenOthers` (3 tests) | Unit (subprocess ruff) | ✅ 2186/2186 | ✅ 2 RED before fix (S310 2 + S311 2 still flagged via isolated) | ✅ Passed — isolated S310/S311/S110 all 0 (narrow noqa with reason) | ✅ 3 cases (S310/S311/S110) | ✅ Clean — each of the 5 findings has explicit disposition |
+| 4b.5 | `tests/test_pr4b_ruff_security.py::TestTestsIgnoresPreserved` (3 tests) | Unit (TOML) | ✅ 2186/2186 | ✅ 0 RED before (tests ignores already S101) — all 3 passed even before edit | ✅ Passed — tests/**/*.py retains S101/ARG/T20; plus per-file pr4b S603/S607 | ✅ 3 cases (S101/ARG/T20) | ✅ Clean — tests exception only |
+
+- **Total tests written PR4b**: 20 (tests/test_pr4b_ruff_security.py)
+- **Total tests passing**: 20/20 (PR4b suite) and 2186/2186 full suite (17 skipped)
+- **Layers used**: Unit (20) — TOML + `ruff check --isolated`/`--select` subprocess + file content + `grep` assert scan
+- **Approval tests**: None — mechanical security fixes (assert→raise + narrow noqa)
+- **Pure functions**: N/A — config + behavioral lint tests
 - **Layers used**: Unit (12) — TOML + `ruff check --isolated`/`--select` subprocess + file content
 - **Approval tests**: None — mechanical auto-fix (raise msg style)
 - **Pure functions**: N/A — config + behavioral lint tests
@@ -184,6 +240,14 @@
 | Focused test command and exact result | `uv run pytest tests/test_pr4a_ruff_mechanical.py --no-cov -v` → **12 passed in ~0.16s** (RED: 5 failed, 7 passed; GREEN: 12 passed); full suite `uv run pytest --no-cov -q` → **2166 passed, 17 skipped** |
 | Runtime harness command/scenario and exact result | N/A — config + auto-fix, no runtime boundary (per tasks.md 4a spec). Verified via `uv run ruff check --isolated --select TRY003,EM101,EM102 bot/` → **All checks passed** ; `uv run ruff check bot/` → **All checks passed** ; `uv run ruff format --check bot/ tests/` → **184 files already formatted** ; `uv run ty check bot/` → **0 errors / 13 warnings** |
 | Rollback boundary | `pyproject.toml` `bot/**/*.py` per-file-ignores (restore EM + TRY003) + 20 `bot/**/*.py` files (revert msg var) + `tests/test_pr4a_ruff_mechanical.py` — revert these 22 files to restore suppression |
+
+## Work Unit Evidence — PR4b
+
+| Evidence | Value |
+|----------|-------|
+| Focused test command and exact result | `uv run pytest tests/test_pr4b_ruff_security.py --no-cov -v` → **20 passed in ~0.30s** (RED: 7 failed, 13 passed; GREEN: 20 passed); full suite `uv run pytest --no-cov -q` → **2186 passed, 17 skipped** |
+| Runtime harness command/scenario and exact result | N/A — config + lint/security, no runtime boundary (per tasks.md 4b spec, like PR4a). Verified via `uv run ruff check --isolated --select S bot/` → **All checks passed** (was 97 = 92 S101 + 2 S310 + 2 S311 + 1 S110); `uv run ruff check --isolated --select S101/S310/S311/S110 bot/` each → **All checks passed**; `uv run ruff check bot/` → **All checks passed** (full lint with per-file-ignores updated); `uv run ruff format --check bot/ tests/` → **185 files already formatted**; `uv run ty check bot/` → **0 errors / 13 warnings** (unchanged) |
+| Rollback boundary | `pyproject.toml` `bot/**/*.py` per-file-ignores (restore S broad) + 23 `bot/**/*.py` files (revert assert→raise rewrites + msg var + noqa S310/S311 + logger.debug S110) + `tests/test_pr4b_ruff_security.py` + `tests/test_pr4a_ruff_mechanical.py` S guard — revert these 26 files to restore S suppression and asserts |
 
 ## Baseline vs Target (Task 2.6 — preserved)
 
@@ -213,6 +277,24 @@
 | `uv run pytest --no-cov -q` | 0 | 2166 passed, 17 skipped |
 | `uv run pytest --cov-fail-under=75` | — | 2166 passed, 17 skipped (cov threshold) |
 
+## Verification — PR4b (this slice)
+
+| Command | Exit | Result |
+|---------|------|--------|
+| `uv run ruff check --isolated --select S101 bot/` | 0 | All checks passed (was 92) |
+| `uv run ruff check --isolated --select S310 bot/` | 0 | All checks passed (was 2) — 2 noqa S310 in image_service.py |
+| `uv run ruff check --isolated --select S311 bot/` | 0 | All checks passed (was 2) — 2 noqa S311 in ocio.py |
+| `uv run ruff check --isolated --select S110 bot/` | 0 | All checks passed (was 1) — config.py now logger.debug |
+| `uv run ruff check --isolated --select S bot/` | 0 | All checks passed (was 97 = 92+2+2+1) |
+| `uv run ruff check --select S101,S310,S311,S110 bot/` | 0 | All checks passed (normal config, S broad removed) |
+| `uv run ruff check bot/ tests/` | 0 | All checks passed (full lint with updated per-file-ignores) |
+| `uv run ruff format --check bot/ tests/` | 0 | 185 files already formatted (after ruff format) |
+| `grep -R ^\\s*assert\\s bot/` | — | **0** (no assert remains in bot/**) |
+| `uv run ty check bot/ --output-format concise \| grep -c error` | — | **0** |
+| `uv run pytest tests/test_pr4b_ruff_security.py --no-cov -v` | 0 | 20 passed |
+| `uv run pytest --no-cov -q` | 0 | 2186 passed, 17 skipped |
+| `uv run pytest --cov-fail-under=75` | — | 2186 passed, 17 skipped (cov threshold) |
+
 ## Known Observations
 
 - `ty 0.0.18` rule set is SMALLER than design.md assumed: `missing-type-argument`, `unsound-return-statement`, `blanket-ignore-comment`, `strict-literal/generic-narrowing` are all unknown (ty 0.0.18). Design's "verified against register_lints" was against a newer ty doc (context7 latest → 646 snippets), not the pinned 0.0.18 binary. Workaround: use `unused-ignore-comment` for strict blanket-ignore, and reserve stricter rules for a future ty bump. Documented in tasks.md 2.1 note.
@@ -220,17 +302,28 @@
 - PR4a mechanical fix required `--unsafe-fixes` for EM101/EM102 (ruff docs: "Assign to variable; remove string literal" is unsafe because msg variable could shadow). Verified safe: all fixes introduce local `msg =` in same block as raise, no shadowing. `TRY003` had 0 fixes without broad EM — its 135 counts overlapped EM counts (same raise flagged by both). Fixing EM automatically cleared TRY003.
 - `uv run ruff check --isolated --statistics bot/` with 0 findings returns exit 0 and empty stdout (no "Found 0 errors" line). Therefore baseline RED tests must check returncode + concise output, not statistics. This was discovered when initial RED tests failed on empty stats output after GREEN.
 - `pyproject.toml` still contains `[tool.bandit]` — intentional per stacking: PR5 deletes bandit after S parity. Still contains `S,C4,C90,T10,TRY004,TRY300,FURB,RUF059,F841,T20,ARG,DTZ,FLY,PERF` in bot/** — PR4b/4c will clear progressively.
+- PR4b S101 fix required msg var for EM101 compliance (like PR4a): every `raise RuntimeError("msg")` with string literal reintroduces EM101/TRY003 from PR4a's newly-enabled rules. Fixed via `msg = "..."; raise RuntimeError(msg)` (97 msg vars). `image_service.py` S310 was suppressed with narrow ` # noqa: S310 -- Discord CDN avatar URL...` (2 sites: Request construction + urlopen call) — both need noqa because Ruff S310 flags the `Request(avatar_url, ...)` scheme allowlist as well as the `urlopen`. `ocio.py` S311 is non-crypto dice/banana — narrow `# noqa: S311 -- ... entertainment` (2 sites). `config.py` S110 `except Exception: pass` at line 199 was the only try-except-pass — replaced with `logger.debug(..., exc_info=True)` so the handler logs before swallow (fail-closed verifier still raises above it).
+- `tests/test_pr4a_ruff_mechanical.py` S-retention guard relaxed for PR4b phase progression (PR4b removes S, so the test now accepts S absence — previously required S present after PR4a). This is the only PR4b-induced change to a prior test file.
 - PR4a authored diff is 280 ins / 156 del = 436 (+ test file 124) — slightly over 400 budget, but single mechanical concern (raise msg style) with one auto-fix pass + ruff format reflow. Independently revertible by restoring `bot/**` EM/TRY003 suppression. Commit will note budget exceedance.
 
 ## Remaining Tasks (not in this slice)
 
-- Phase 4b (Ruff security S101/S310/S311/S110), Phase 4c (Ruff quality), Phase 5 (bandit+zizmor), Phase 6 (tach), Phase 7 (cleanup) — unchanged, pending in `tasks.md`.
+- Phase 4c (Ruff quality), Phase 5 (bandit+zizmor), Phase 6 (tach), Phase 7 (cleanup) — unchanged, pending in `tasks.md`.
 
 ## Status
 
-24/52 tasks complete (PR1 1.1–1.7 + PR2 2.1–2.8 + PR3 3.1–3.5 + PR4a 4a.1–4a.4). Ready for next batch (PR4b Ruff security). PR4a slice complete — do NOT proceed to PR4b in same invocation.
+29/52 tasks complete (PR1 1.1–1.7 + PR2 2.1–2.8 + PR3 3.1–3.5 + PR4a 4a.1–4a.4 + PR4b 4b.1–4b.5). Ready for next batch (PR4c Ruff quality). PR4b slice complete — do NOT proceed to PR4c in this invocation.
 
-## Workload / PR Boundary — PR4a
+## Workload / PR Boundary — PR4b (this slice)
+
+- Mode: stacked PR slice (stacked-to-main)
+- Current work unit: PR4b Ruff security (S101 92 + S310 2 + S311 2 + S110 1 — 97 findings → 0)
+- Boundary: tasks 4b.1 → 4b.5 inclusive; 26 files (23 bot + pyproject + 1 test + 1 test guard patch) + ruff format reflow
+- Review budget: 318 ins + 109 del = 427 staged (bot) + 211 test + 10 guard patch = 638 total; exceeds 400 by ~238 — documented as single mechanical security batch (92 assert→raise with msg var), independently revertible by restoring `bot/**` S suppression
+- Dependencies: PR4a (TRY003/EM101/EM102) — prerequisite; PR4c depends on this
+- Out-of-scope: ARG/TRY300/FURB/C901/F841+ANN/PYI/PGH003 (PR4c), bandit+zizmor (PR5), tach (PR6)
+
+## Workload / PR Boundary — PR4a (preserved)
 
 - Mode: stacked PR slice (stacked-to-main)
 - Current work unit: PR4a Ruff mechanical (TRY003/EM101/EM102 → 0, 274 findings)
