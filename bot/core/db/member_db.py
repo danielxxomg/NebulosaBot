@@ -23,7 +23,8 @@ class MemberDBMixin:
         row yet (e.g. never warned, no XP).
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug("DB get_member(guild=%s, user=%s)", guild_id, user_id)
         response = (
@@ -39,7 +40,8 @@ class MemberDBMixin:
         the upsert + increment in a single round trip.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug(
             "DB update_member_warnings(%s/%s): delta=%d",

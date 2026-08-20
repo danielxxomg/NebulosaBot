@@ -42,7 +42,8 @@ class TicketAuditDBMixin:
         so the audit can record the failure scoped to the caller guild.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         if ticket_id:
             ticket_rows = await self._client.table("ticket").select("guildId").eq("id", ticket_id).execute()
@@ -51,7 +52,8 @@ class TicketAuditDBMixin:
             # A missing ticket (already deleted/unknown) still allows audit so
             # sweep/repair failures can be recorded scoped to the caller guild.
             if ticket_data and ticket_data[0].get("guildId") != guild_id:
-                raise ValueError("cross_guild_denied")
+                msg = "cross_guild_denied"
+                raise ValueError(msg)
 
         audit_id = str(uuid.uuid4())
         row = {
@@ -83,7 +85,8 @@ class TicketAuditDBMixin:
         *offset* backs the dashboard audit panel.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug("DB get_audit_rows(guild=%s, limit=%d, offset=%d)", guild_id, limit, offset)
         response = await (

@@ -31,7 +31,8 @@ class TicketCategoryDBMixin:
         is set by the database default clause.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         category_id = str(uuid.uuid4())
         row = {
@@ -51,7 +52,8 @@ class TicketCategoryDBMixin:
     async def get_ticket_categories(self: Any, guild_id: str) -> list[dict[str, Any]]:
         """Return all active ticket categories for a guild, ordered by position."""
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug("DB get_ticket_categories(guild=%s)", guild_id)
         response = await (
@@ -74,9 +76,11 @@ class TicketCategoryDBMixin:
         flag missing guild_id at call sites until they are migrated.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
         if guild_id is None:
-            raise ValueError("guild_id required")
+            msg = "guild_id required"
+            raise ValueError(msg)
 
         logger.debug("DB get_ticket_category(%r, guild=%s)", category_id, guild_id)
         query = self._client.table("ticket_category").select("*").eq("id", category_id).eq("guildId", guild_id)
@@ -93,9 +97,11 @@ class TicketCategoryDBMixin:
         preserves backward compatibility for in-flight callers.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
         if guild_id is None:
-            raise ValueError("guild_id required")
+            msg = "guild_id required"
+            raise ValueError(msg)
 
         logger.debug("DB delete_ticket_category(%s, guild=%s)", category_id, guild_id)
         query = self._client.table("ticket_category").delete().eq("id", category_id).eq("guildId", guild_id)
@@ -109,7 +115,8 @@ class TicketCategoryDBMixin:
         cannot see another guild's ticket counts.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug("DB count_open_tickets_by_category(%s, %s)", guild_id, category_id)
         response = await (
@@ -134,7 +141,8 @@ class TicketCategoryDBMixin:
         categories even if the category ID is known.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug("DB update_ticket_category_field_definitions(guild=%s, cat=%s)", guild_id, category_id)
         await (

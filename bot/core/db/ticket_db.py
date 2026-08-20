@@ -39,7 +39,8 @@ class TicketDBMixin:
         parent (one level deep — service-layer validation enforces this).
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         ticket_id = str(uuid.uuid4())
         now = datetime.now(UTC).isoformat()
@@ -72,9 +73,11 @@ class TicketDBMixin:
         ``guild_id`` raises ``ValueError("guild_id required")``.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
         if guild_id is None:
-            raise ValueError("guild_id required")
+            msg = "guild_id required"
+            raise ValueError(msg)
 
         logger.debug("DB get_tickets_by_parent(%r, guild=%s)", parent_id, guild_id)
         query = self._client.table("ticket").select("*").eq("parentId", parent_id).eq("guildId", guild_id)
@@ -90,9 +93,11 @@ class TicketDBMixin:
         ``ValueError("guild_id required")``.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
         if guild_id is None:
-            raise ValueError("guild_id required")
+            msg = "guild_id required"
+            raise ValueError(msg)
 
         logger.debug("DB get_ticket(%r, guild=%s)", ticket_id, guild_id)
         query = self._client.table("ticket").select("*").eq("id", ticket_id).eq("guildId", guild_id)
@@ -110,9 +115,11 @@ class TicketDBMixin:
         raises ``ValueError("guild_id required")``.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
         if guild_id is None:
-            raise ValueError("guild_id required")
+            msg = "guild_id required"
+            raise ValueError(msg)
 
         logger.debug("DB get_ticket_by_channel(%r, guild=%s)", channel_id, guild_id)
         query = self._client.table("ticket").select("*").eq("channelId", channel_id).eq("guildId", guild_id)
@@ -128,7 +135,8 @@ class TicketDBMixin:
         lookup is unusable for closed tickets. Guild-scoped by construction.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug("DB get_ticket_by_number(guild=%s, number=%d)", guild_id, ticket_number)
         response = await (
@@ -148,11 +156,13 @@ class TicketDBMixin:
         The ``guild_id`` key is not persisted as a column.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         guild_id = kwargs.pop("guild_id", None)
         if guild_id is None:
-            raise ValueError("guild_id required")
+            msg = "guild_id required"
+            raise ValueError(msg)
         logger.debug("DB update_ticket(%s, guild=%s) %s", ticket_id, guild_id, kwargs)
         query = self._client.table("ticket").update(kwargs).eq("id", ticket_id).eq("guildId", guild_id)
         await query.execute()
@@ -165,7 +175,8 @@ class TicketDBMixin:
         Used by the auto-close task to identify inactive tickets.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         cutoff = datetime.now(UTC) - timedelta(hours=hours)
         logger.debug("DB get_stale_tickets(guild=%s, cutoff=%s)", guild_id, cutoff.isoformat())
@@ -182,7 +193,8 @@ class TicketDBMixin:
     async def get_max_ticket_number(self: Any, guild_id: str) -> int:
         """Return the highest ``ticketNumber`` for a guild, or 0 if none exist."""
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug("DB get_max_ticket_number(guild=%s)", guild_id)
         response = await (
@@ -203,7 +215,8 @@ class TicketDBMixin:
         ``on_message`` lookups.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug("DB get_open_ticket_channel_ids(guild=%s)", guild_id)
         response = await (
@@ -235,7 +248,8 @@ class TicketDBMixin:
         count against itself).
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug(
             "DB count_user_open_tickets_in_category(%s, %s, %s, exclude=%s)",
@@ -270,7 +284,8 @@ class TicketDBMixin:
         evidence-gated sweeps to detect zombie tickets.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug("DB get_active_ticket_by_channel(guild=%s, ch=%s)", guild_id, channel_id)
         response = (
@@ -319,7 +334,8 @@ class TicketDBMixin:
         guild_id="g1")``) so the ``(ticket_id, ...)`` form keeps working.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug(
             "DB transition_ticket_to_closed(guild=%s, %s, expected=%s, reason=%s)",
@@ -377,7 +393,8 @@ class TicketDBMixin:
         cannot modify another guild's tickets.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug("DB update_ticket_last_activity(guild=%s, ch=%s)", guild_id, channel_id)
         await (

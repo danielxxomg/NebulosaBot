@@ -23,7 +23,8 @@ class EconomyDBMixin:
         no economy configuration yet.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug("DB get_economy_config(%r)", guild_id)
         response = await self._client.table("economy_config").select("*").eq("guildId", guild_id).execute()
@@ -38,7 +39,8 @@ class EconomyDBMixin:
                 instance whose ``to_db_dict()`` produces camelCase keys.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug("DB upsert_economy_config(%r)", config.guild_id)
         await self._client.table("economy_config").upsert(config.to_db_dict()).execute()
@@ -58,7 +60,8 @@ class EconomyDBMixin:
         from guild economy config thresholds.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug(
             "DB update_member_xp(%s/%s): delta=%d",
@@ -97,7 +100,8 @@ class EconomyDBMixin:
         the upsert + increment in a single round trip.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug(
             "DB update_member_coins(%s/%s): delta=%d",
@@ -134,7 +138,8 @@ class EconomyDBMixin:
         round trip.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug(
             "DB update_member_daily(%s/%s): coins_delta=%d, streak=%d",
@@ -178,7 +183,8 @@ class EconomyDBMixin:
             List of camelCase row dicts ordered by *sort_by* DESC.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         column = "xp" if sort_by == "xp" else "coins"
         logger.debug(
@@ -206,7 +212,8 @@ class EconomyDBMixin:
         target member.  Returns ``None`` if the member has no row.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         member = await self.get_member(guild_id, user_id)
         if member is None:

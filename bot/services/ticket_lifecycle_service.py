@@ -94,10 +94,10 @@ class TicketLifecycleService:
             except Exception as exc:
                 logger.warning("Ticket insert conflict on attempt %d/%d: %s", attempt, MAX_RETRIES, exc)
                 if attempt == MAX_RETRIES:
-                    raise RuntimeError(
-                        f"Failed to create ticket after {MAX_RETRIES} attempts (guild={guild_id})"
-                    ) from exc
-        raise RuntimeError(f"Failed to create ticket after {MAX_RETRIES} attempts (guild={guild_id})")
+                    msg = f"Failed to create ticket after {MAX_RETRIES} attempts (guild={guild_id})"
+                    raise RuntimeError(msg) from exc
+        msg = f"Failed to create ticket after {MAX_RETRIES} attempts (guild={guild_id})"
+        raise RuntimeError(msg)
 
     async def close_ticket(
         self,
@@ -196,7 +196,8 @@ class TicketLifecycleService:
                 )
             except Exception:
                 logger.warning("Failed to write cross-guild claim denied audit for %s", ticket_id, exc_info=True)
-            raise ValueError(f"Ticket {ticket_id} not found")
+            msg = f"Ticket {ticket_id} not found"
+            raise ValueError(msg)
         guild_id = pre.get("guildId", "")
         try:
             check_can_claim(pre.get("status", ""), pre.get("claimedBy"))
@@ -206,7 +207,8 @@ class TicketLifecycleService:
         await self._db.update_ticket(ticket_id, guild_id=guild_id, status="claimed", claimedBy=claimed_by)
         row = await self._db.get_ticket(ticket_id, guild_id=guild_id)
         if row is None:
-            raise ValueError(f"Ticket {ticket_id} not found after claim")
+            msg = f"Ticket {ticket_id} not found after claim"
+            raise ValueError(msg)
         ticket = Ticket.from_db_row(row)
         try:
             await self._db.insert_audit_row(guild_id, ticket_id, "claim", claimed_by, "success", None)
@@ -227,7 +229,8 @@ class TicketLifecycleService:
                 )
             except Exception:
                 logger.warning("Failed to write cross-guild unclaim denied audit for %s", ticket_id, exc_info=True)
-            raise ValueError(f"Ticket {ticket_id} not found")
+            msg = f"Ticket {ticket_id} not found"
+            raise ValueError(msg)
         guild_id = pre.get("guildId", "")
         try:
             check_can_unclaim(actor_id, pre, is_mod=is_mod)
@@ -237,7 +240,8 @@ class TicketLifecycleService:
         await self._db.update_ticket(ticket_id, guild_id=guild_id, status="open", claimedBy=None)
         row = await self._db.get_ticket(ticket_id, guild_id=guild_id)
         if row is None:
-            raise ValueError(f"Ticket {ticket_id} not found after unclaim")
+            msg = f"Ticket {ticket_id} not found after unclaim"
+            raise ValueError(msg)
         ticket = Ticket.from_db_row(row)
         try:
             await self._db.insert_audit_row(guild_id, ticket_id, "unclaim", actor_id, "success", None)
@@ -260,17 +264,20 @@ class TicketLifecycleService:
         if guild_id is not None:
             pre = await self._db.get_ticket(ticket_id, guild_id=guild_id)
             if pre is None:
-                raise ValueError(f"Ticket {ticket_id} not found")
+                msg = f"Ticket {ticket_id} not found"
+                raise ValueError(msg)
             guild_id = pre.get("guildId", guild_id)
         else:
             pre = await self._db.get_ticket(ticket_id)
             if pre is None:
-                raise ValueError(f"Ticket {ticket_id} not found")
+                msg = f"Ticket {ticket_id} not found"
+                raise ValueError(msg)
             guild_id = pre.get("guildId", "")
         author_id = pre.get("authorId", "")
         status = pre.get("status", "")
         if status == "closed":
-            raise ValueError(f"Cannot edit category of a closed ticket (status={status!r})")
+            msg = f"Cannot edit category of a closed ticket (status={status!r})"
+            raise ValueError(msg)
         try:
             check_can_edit_category(actor_id, pre, is_mod=is_mod)
         except ValueError as exc:
@@ -285,7 +292,8 @@ class TicketLifecycleService:
         await self._db.update_ticket(ticket_id, guild_id=guild_id, categoryId=new_category_id)
         row = await self._db.get_ticket(ticket_id, guild_id=guild_id)
         if row is None:
-            raise ValueError(f"Ticket {ticket_id} not found after edit_category")
+            msg = f"Ticket {ticket_id} not found after edit_category"
+            raise ValueError(msg)
         ticket = Ticket.from_db_row(row)
         try:
             await self._db.insert_audit_row(guild_id, ticket_id, "edit_category", actor_id, "success", None)
@@ -319,7 +327,8 @@ class TicketLifecycleService:
             await self._db.insert_audit_row(
                 guild_id, parent_id, "subticket_create", author_id, "denied", f"Parent ticket {parent_id} not found"
             )
-            raise ValueError(f"Parent ticket {parent_id} not found")
+            msg = f"Parent ticket {parent_id} not found"
+            raise ValueError(msg)
         parent = Ticket.from_db_row(parent_row)
         parent_guild_id = parent_row.get("guildId", "")
         if parent.parent_id is not None and parent.parent_id == parent.id:
@@ -331,7 +340,8 @@ class TicketLifecycleService:
                 "denied",
                 f"Parent ticket {parent_id} is self-referential",
             )
-            raise ValueError(f"Parent ticket {parent_id} is self-referential")
+            msg = f"Parent ticket {parent_id} is self-referential"
+            raise ValueError(msg)
         try:
             check_subticket_parent(parent_row, parent_guild_id, guild_id, current_id=None)
         except ValueError as exc:
@@ -366,10 +376,10 @@ class TicketLifecycleService:
             except Exception as exc:
                 logger.warning("Sub-ticket insert conflict on attempt %d/%d: %s", attempt, MAX_RETRIES, exc)
                 if attempt == MAX_RETRIES:
-                    raise RuntimeError(
-                        f"Failed to create sub-ticket after {MAX_RETRIES} attempts (guild={guild_id})"
-                    ) from exc
-        raise RuntimeError(f"Failed to create sub-ticket after {MAX_RETRIES} attempts (guild={guild_id})")
+                    msg = f"Failed to create sub-ticket after {MAX_RETRIES} attempts (guild={guild_id})"
+                    raise RuntimeError(msg) from exc
+        msg = f"Failed to create sub-ticket after {MAX_RETRIES} attempts (guild={guild_id})"
+        raise RuntimeError(msg)
 
     async def reopen_ticket(self, ticket_id: str, *, guild: discord.Guild) -> Ticket:
         # Reopen must be guild-scoped: derive guild_id from the Discord guild param,
@@ -377,15 +387,15 @@ class TicketLifecycleService:
         reopen_gid = str(guild.id)
         closed_row = await self._db.get_ticket(ticket_id, guild_id=reopen_gid)
         if closed_row is None:
-            raise ValueError(f"Ticket {ticket_id} not found")
+            msg = f"Ticket {ticket_id} not found"
+            raise ValueError(msg)
         guild_id = closed_row.get("guildId", reopen_gid)
         try:
             check_can_reopen(closed_row.get("status", ""))
         except ValueError as exc:
             await self._db.insert_audit_row(guild_id, ticket_id, "reopen", None, "denied", str(exc))
-            raise ValueError(
-                f"Solo se pueden reabrir tickets cerrados. Estado actual: {closed_row.get('status')}"
-            ) from exc
+            msg = f"Solo se pueden reabrir tickets cerrados. Estado actual: {closed_row.get('status')}"
+            raise ValueError(msg) from exc
         guild_row = await self._db.get_guild(str(guild.id))
         category_channel = self._resolve_ticket_category(guild, guild_row)
         if category_channel is None:
@@ -398,7 +408,8 @@ class TicketLifecycleService:
         )
         row = await self._db.get_ticket(ticket_id, guild_id=guild_id)
         if row is None:
-            raise ValueError(f"Ticket {ticket_id} not found after reopen")
+            msg = f"Ticket {ticket_id} not found after reopen"
+            raise ValueError(msg)
         ticket = Ticket.from_db_row(row)
         self._query.add_channel(int(ticket.channel_id))
         await self._db.insert_audit_row(guild_id, ticket_id, "reopen", None, "success", None)
@@ -466,7 +477,8 @@ class TicketLifecycleService:
                 )
             except Exception:
                 logger.warning("Failed to write cross-guild transfer denied audit for %s", ticket_id, exc_info=True)
-            raise ValueError(f"Ticket {ticket_id} not found")
+            msg = f"Ticket {ticket_id} not found"
+            raise ValueError(msg)
         guild_id = pre.get("guildId", "")
         try:
             check_can_transfer(pre.get("status", ""), pre.get("claimedBy"), new_claimed_by)
@@ -476,7 +488,8 @@ class TicketLifecycleService:
         await self._db.update_ticket(ticket_id, guild_id=guild_id, claimedBy=new_claimed_by, status="claimed")
         row = await self._db.get_ticket(ticket_id, guild_id=guild_id)
         if row is None:
-            raise ValueError(f"Ticket {ticket_id} not found after transfer")
+            msg = f"Ticket {ticket_id} not found after transfer"
+            raise ValueError(msg)
         ticket = Ticket.from_db_row(row)
         await self._db.insert_audit_row(ticket.guild_id, ticket_id, "transfer", actor_id, "success", None)
         if logging_service is not None and guild is not None:
@@ -505,7 +518,8 @@ class TicketLifecycleService:
         if guild_id is not None:
             ticket_row = await self._db.get_ticket(ticket_id, guild_id=guild_id)
             if ticket_row is None:
-                raise ValueError(f"Ticket {ticket_id} not found")
+                msg = f"Ticket {ticket_id} not found"
+                raise ValueError(msg)
             resolved_gid: str = guild_id
             existing = await self._db.get_ticket_notes(ticket_id, limit=NOTE_CAP, guild_id=resolved_gid)
         else:
@@ -524,10 +538,11 @@ class TicketLifecycleService:
             recent_hashes = [compute_note_hash(r.get("content", "")) for r in recent]
             new_hash = compute_note_hash(content)
             if is_duplicate_note(new_hash, author_id, recent_hashes):
-                raise ValueError(
+                msg = (
                     "Duplicate note (same author submitted the same normalized content"
                     " within the 2-second dedup window)"
                 )
+                raise ValueError(msg)
         except ValueError as exc:
             await self._db.insert_audit_row(guild_id, ticket_id, "note_add", author_id, "denied", str(exc))
             raise
@@ -563,7 +578,8 @@ class TicketLifecycleService:
             target = next((r for r in rows if r.get("id") == note_id), None)
             try:
                 if target is None:
-                    raise ValueError(f"Note {note_id} not found on ticket {ticket_id}")
+                    msg = f"Note {note_id} not found on ticket {ticket_id}"
+                    raise ValueError(msg)
                 check_can_delete_note(target.get("authorId", ""), author_id)
             except ValueError as exc:
                 await self._db.insert_audit_row(guild_id, ticket_id, "note_delete", author_id, "denied", str(exc))
@@ -583,7 +599,8 @@ class TicketLifecycleService:
         target = next((r for r in scoped_rows if r.get("id") == note_id), None)
         try:
             if target is None:
-                raise ValueError(f"Note {note_id} not found on ticket {ticket_id}")
+                msg = f"Note {note_id} not found on ticket {ticket_id}"
+                raise ValueError(msg)
             check_can_delete_note(target.get("authorId", ""), author_id)
         except ValueError as exc:
             eff_gid = guild_id if guild_id else resolved_gid

@@ -25,7 +25,8 @@ class GuildDBMixin:
         never been configured.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug("DB get_guild(%r)", guild_id)
         response = await self._client.table("guild").select("*").eq("id", guild_id).execute()
@@ -39,7 +40,8 @@ class GuildDBMixin:
         (new guild) and ``UPDATE`` (changed prefix, language, etc.).
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug("DB upsert_guild(%r)", config.id)
         await self._client.table("guild").upsert(config.to_db_dict()).execute()
@@ -55,7 +57,8 @@ class GuildDBMixin:
         member of (``on_guild_join`` only fires for joins during the session).
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug("DB ensure_guild_exists(%r)", guild_id)
         await (
@@ -75,7 +78,8 @@ class GuildDBMixin:
         Passing ``None`` for either ID clears the stored value.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug(
             "DB update_guild_panel(guild=%s, msg=%s, ch=%s)",

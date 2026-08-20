@@ -83,7 +83,8 @@ class TicketNotesFlow:
             return
         try:
             if gid is None:
-                raise ValueError("guild_id required")
+                msg = "guild_id required"
+                raise ValueError(msg)
             notes = await self.bot.ticket_service.get_notes(row["id"], guild_id=gid)
         except Exception:
             logger.exception("Failed to fetch notes for ticket %s", row["id"])
@@ -111,7 +112,8 @@ class TicketNotesFlow:
             return
         try:
             if gid is None:
-                raise ValueError("guild_id required")
+                msg = "guild_id required"
+                raise ValueError(msg)
             await self.bot.ticket_service.delete_note(
                 note_id=note_id, author_id=str(ctx.author.id), ticket_id=row["id"], guild_id=gid
             )

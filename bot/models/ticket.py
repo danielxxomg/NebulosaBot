@@ -128,13 +128,16 @@ class RepairResult:
         """Reject wire values outside the documented repair contract."""
         combination = f"{self.action}/{self.outcome}"
         if combination not in _VALID_REPAIR_COMBINATIONS:
-            raise ValueError(f"Invalid repair action/outcome combination: {self.action}/{self.outcome}")
+            msg = f"Invalid repair action/outcome combination: {self.action}/{self.outcome}"
+            raise ValueError(msg)
         if combination == "close/repaired" and not self.evidence_id:
-            raise ValueError("Repaired close requires evidence_id")
+            msg = "Repaired close requires evidence_id"
+            raise ValueError(msg)
         # Denied/quarantined/error outcomes must be reviewable: a non-empty
         # reason is mandatory so no failure path is silently recorded.
         if self.outcome in _REASON_REQUIRED_OUTCOMES and not (self.reason and self.reason.strip()):
-            raise ValueError(f"Repair outcome {self.outcome!r} requires a non-empty reason")
+            msg = f"Repair outcome {self.outcome!r} requires a non-empty reason"
+            raise ValueError(msg)
 
     @classmethod
     def from_db_row(cls, row: dict[str, Any]) -> RepairResult:

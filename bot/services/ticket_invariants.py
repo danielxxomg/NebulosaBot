@@ -91,9 +91,11 @@ def check_can_claim(ticket_status: str, claimed_by: str | None) -> None:
     Raises ``ValueError`` otherwise.
     """
     if ticket_status != "open":
-        raise ValueError(f"Cannot claim a ticket with status {ticket_status!r} (must be open)")
+        msg = f"Cannot claim a ticket with status {ticket_status!r} (must be open)"
+        raise ValueError(msg)
     if claimed_by is not None:
-        raise ValueError("Cannot claim a ticket that is already claimed (use transfer)")
+        msg = "Cannot claim a ticket that is already claimed (use transfer)"
+        raise ValueError(msg)
 
 
 def check_can_close(ticket_status: str) -> None:
@@ -103,9 +105,11 @@ def check_can_close(ticket_status: str) -> None:
     ticket raises ``ValueError``.
     """
     if ticket_status == "closed":
-        raise ValueError("Cannot close a ticket that is already closed")
+        msg = "Cannot close a ticket that is already closed"
+        raise ValueError(msg)
     if ticket_status not in ("open", "claimed"):
-        raise ValueError(f"Cannot close a ticket with status {ticket_status!r}")
+        msg = f"Cannot close a ticket with status {ticket_status!r}"
+        raise ValueError(msg)
 
 
 def check_can_unclaim(actor_id: str, ticket: dict[str, Any], *, is_mod: bool) -> None:
@@ -118,10 +122,12 @@ def check_can_unclaim(actor_id: str, ticket: dict[str, Any], *, is_mod: bool) ->
     """
     claimed_by = ticket.get("claimedBy")
     if claimed_by is None:
-        raise ValueError("Cannot unclaim a ticket that is not currently claimed")
+        msg = "Cannot unclaim a ticket that is not currently claimed"
+        raise ValueError(msg)
     if actor_id == claimed_by or is_mod:
         return
-    raise ValueError("Only the claimer or a moderator can unclaim this ticket")
+    msg = "Only the claimer or a moderator can unclaim this ticket"
+    raise ValueError(msg)
 
 
 def check_can_reopen(ticket_status: str) -> None:
@@ -131,7 +137,8 @@ def check_can_reopen(ticket_status: str) -> None:
     Raises ``ValueError`` for ``open`` or ``claimed``.
     """
     if ticket_status != "closed":
-        raise ValueError(f"Cannot reopen a ticket with status {ticket_status!r} (must be closed)")
+        msg = f"Cannot reopen a ticket with status {ticket_status!r} (must be closed)"
+        raise ValueError(msg)
 
 
 def check_can_transfer(ticket_status: str, current_claimed_by: str | None, target_id: str | None) -> None:
@@ -146,11 +153,14 @@ def check_can_transfer(ticket_status: str, current_claimed_by: str | None, targe
     Raises ``ValueError`` on any violation.
     """
     if ticket_status == "closed":
-        raise ValueError("Cannot transfer a closed ticket (reopen it first)")
+        msg = "Cannot transfer a closed ticket (reopen it first)"
+        raise ValueError(msg)
     if target_id is None:
-        raise ValueError("Cannot transfer a ticket without a target staff member")
+        msg = "Cannot transfer a ticket without a target staff member"
+        raise ValueError(msg)
     if current_claimed_by is not None and target_id == current_claimed_by:
-        raise ValueError("Cannot transfer a ticket to the same staff member who already claimed it")
+        msg = "Cannot transfer a ticket to the same staff member who already claimed it"
+        raise ValueError(msg)
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +174,8 @@ def check_can_add_note(existing_count: int, cap: int = NOTE_CAP) -> None:
     Raises ``ValueError`` when the ticket has reached or exceeded *cap* notes.
     """
     if existing_count >= cap:
-        raise ValueError(f"Cannot add a note: ticket has reached the {cap}-note cap ({existing_count} notes)")
+        msg = f"Cannot add a note: ticket has reached the {cap}-note cap ({existing_count} notes)"
+        raise ValueError(msg)
 
 
 def check_can_delete_note(note_author_id: str, actor_id: str) -> None:
@@ -174,7 +185,8 @@ def check_can_delete_note(note_author_id: str, actor_id: str) -> None:
     ``ValueError`` for any other actor.
     """
     if actor_id != note_author_id:
-        raise ValueError("Only the note's author may delete a note")
+        msg = "Only the note's author may delete a note"
+        raise ValueError(msg)
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +219,8 @@ def check_one_ticket_per_user_per_category(
         return
     open_count = count_fn(user_id, category_id)
     if open_count > 0:
-        raise ValueError(f"User {user_id} already has an open ticket in category {category_id!r}")
+        msg = f"User {user_id} already has an open ticket in category {category_id!r}"
+        raise ValueError(msg)
 
 
 # ---------------------------------------------------------------------------
@@ -233,7 +246,8 @@ def check_can_edit_category(
     """
     if is_mod:
         return
-    raise ValueError("Only moderators can edit a ticket's category")
+    msg = "Only moderators can edit a ticket's category"
+    raise ValueError(msg)
 
 
 # ---------------------------------------------------------------------------
@@ -265,13 +279,17 @@ def check_subticket_parent(
     Raises ``ValueError`` on any invariant violation.
     """
     if parent is None:
-        raise ValueError("Subticket parent not found")
+        msg = "Subticket parent not found"
+        raise ValueError(msg)
     if current_id is not None and parent.get("id") == current_id:
-        raise ValueError("A ticket cannot be its own parent (self-reference)")
+        msg = "A ticket cannot be its own parent (self-reference)"
+        raise ValueError(msg)
     if parent.get("parentId") is not None:
-        raise ValueError("Subticket parent is itself a subticket (depth limit is 2)")
+        msg = "Subticket parent is itself a subticket (depth limit is 2)"
+        raise ValueError(msg)
     if parent_guild_id != current_guild_id:
-        raise ValueError("Subticket parent must belong to the same guild as the child")
+        msg = "Subticket parent must belong to the same guild as the child"
+        raise ValueError(msg)
 
 
 # ---------------------------------------------------------------------------

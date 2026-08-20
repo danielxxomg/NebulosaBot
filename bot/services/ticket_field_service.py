@@ -36,41 +36,48 @@ def validate_field_definitions(raw: Any) -> list[dict[str, Any]]:
         ValueError: If the input violates any constraint.
     """
     if not isinstance(raw, list):
-        raise ValueError("field_definitions must be a list")
+        msg = "field_definitions must be a list"
+        raise ValueError(msg)
 
     if len(raw) > _MAX_FIELDS:
-        raise ValueError(f"field_definitions allows at most {_MAX_FIELDS} fields, got {len(raw)}")
+        msg = f"field_definitions allows at most {_MAX_FIELDS} fields, got {len(raw)}"
+        raise ValueError(msg)
 
     seen_keys: set[str] = set()
     result: list[dict[str, Any]] = []
 
     for i, item in enumerate(raw):
         if not isinstance(item, dict):
-            raise ValueError(f"field_definitions[{i}] must be a dict")
+            msg = f"field_definitions[{i}] must be a dict"
+            raise ValueError(msg)
 
         # --- key (required) ---
         key = item.get("key")
         if not key or not isinstance(key, str):
-            raise ValueError(f"field_definitions[{i}].key is required and must be a non-empty string")
+            msg = f"field_definitions[{i}].key is required and must be a non-empty string"
+            raise ValueError(msg)
         if not _KEY_RE.match(key):
-            raise ValueError(f"field_definitions[{i}].key must match ^[a-z][a-z0-9_]{{0,31}}$, got {key!r}")
+            msg = f"field_definitions[{i}].key must match ^[a-z][a-z0-9_]{{0,31}}$, got {key!r}"
+            raise ValueError(msg)
         if key in seen_keys:
-            raise ValueError(f"field_definitions has duplicate key: {key!r}")
+            msg = f"field_definitions has duplicate key: {key!r}"
+            raise ValueError(msg)
         seen_keys.add(key)
 
         # --- label (required) ---
         label = item.get("label")
         if not label or not isinstance(label, str):
-            raise ValueError(f"field_definitions[{i}].label is required and must be a non-empty string")
+            msg = f"field_definitions[{i}].label is required and must be a non-empty string"
+            raise ValueError(msg)
         if len(label) > _MAX_LABEL_LEN:
-            raise ValueError(
-                f"field_definitions[{i}].label must be at most {_MAX_LABEL_LEN} characters, got {len(label)}"
-            )
+            msg = f"field_definitions[{i}].label must be at most {_MAX_LABEL_LEN} characters, got {len(label)}"
+            raise ValueError(msg)
 
         # --- style (optional, default 'short') ---
         style = item.get("style", "short")
         if style not in _VALID_STYLES:
-            raise ValueError(f"field_definitions[{i}].style must be one of {_VALID_STYLES}, got {style!r}")
+            msg = f"field_definitions[{i}].style must be one of {_VALID_STYLES}, got {style!r}"
+            raise ValueError(msg)
 
         # --- required (optional, default False) ---
         required = bool(item.get("required", False))
@@ -80,14 +87,14 @@ def validate_field_definitions(raw: Any) -> list[dict[str, Any]]:
         hard_max = _MAX_MAX_LENGTH_SHORT if style == "short" else _MAX_MAX_LENGTH_PARAGRAPH
         max_length = item.get("max_length", default_max)
         if not isinstance(max_length, int) or max_length < 1 or max_length > hard_max:
-            raise ValueError(f"field_definitions[{i}].max_length must be between 1 and {hard_max}, got {max_length!r}")
+            msg = f"field_definitions[{i}].max_length must be between 1 and {hard_max}, got {max_length!r}"
+            raise ValueError(msg)
 
         # --- placeholder (optional) ---
         placeholder = item.get("placeholder")
         if placeholder is not None and (not isinstance(placeholder, str) or len(placeholder) > _MAX_PLACEHOLDER_LEN):
-            raise ValueError(
-                f"field_definitions[{i}].placeholder must be a string of at most {_MAX_PLACEHOLDER_LEN} characters"
-            )
+            msg = f"field_definitions[{i}].placeholder must be a string of at most {_MAX_PLACEHOLDER_LEN} characters"
+            raise ValueError(msg)
 
         # Build normalized entry — strip unknown keys.
         entry: dict[str, Any] = {
@@ -122,7 +129,8 @@ def validate_custom_fields(
         ValueError: If a required field is missing/blank or a value is not a string.
     """
     if not isinstance(submitted, dict):
-        raise ValueError("custom_fields must be a dict")
+        msg = "custom_fields must be a dict"
+        raise ValueError(msg)
 
     def_map = {d["key"]: d for d in definitions}
     result: dict[str, str] = {}
@@ -133,17 +141,20 @@ def validate_custom_fields(
 
         if raw_val is None:
             if defn["required"]:
-                raise ValueError(f"custom_fields: required field {defn['label']!r} ({key!r}) is missing")
+                msg = f"custom_fields: required field {defn['label']!r} ({key!r}) is missing"
+                raise ValueError(msg)
             continue
 
         if not isinstance(raw_val, str):
-            raise ValueError(f"custom_fields: value for {key!r} must be a string, got {type(raw_val).__name__}")
+            msg = f"custom_fields: value for {key!r} must be a string, got {type(raw_val).__name__}"
+            raise ValueError(msg)
 
         val = raw_val.strip()
 
         if not val:
             if defn["required"]:
-                raise ValueError(f"custom_fields: required field {defn['label']!r} ({key!r}) is blank")
+                msg = f"custom_fields: required field {defn['label']!r} ({key!r}) is blank"
+                raise ValueError(msg)
             continue
 
         max_len = defn.get("max_length", 100)

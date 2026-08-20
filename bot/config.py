@@ -160,11 +160,14 @@ def validate_supabase_key(key: str) -> None:
     if key in ("test-key",) or key.startswith("test-key-"):
         if _is_test_env():
             return
-        raise ServiceRoleValidationError("test-key sentinel is only allowed in test env — expected service_role JWT")
+        msg = "test-key sentinel is only allowed in test env — expected service_role JWT"
+        raise ServiceRoleValidationError(msg)
     if not key or not key.strip():
-        raise ServiceRoleValidationError("Supabase key is missing or empty — expected service_role")
+        msg = "Supabase key is missing or empty — expected service_role"
+        raise ServiceRoleValidationError(msg)
     if key.startswith("sb_publishable_"):
-        raise ServiceRoleValidationError("Publishable key is not service_role — RLS would deny anon access")
+        msg = "Publishable key is not service_role — RLS would deny anon access"
+        raise ServiceRoleValidationError(msg)
     # Modern Supabase secret key — opaque, not a JWT; acceptance is proven
     # by a read-only SELECT probe on RLS-enabled tables in health_check.
     if key.startswith("sb_secret_"):
@@ -183,12 +186,14 @@ def validate_supabase_key(key: str) -> None:
                 jwks_role = _verify_jwt_jwks(key)
                 if jwks_role is not None:
                     if jwks_role != "service_role":
-                        raise ServiceRoleValidationError(f"Supabase key role is {jwks_role!r}, expected service_role")
+                        msg = f"Supabase key role is {jwks_role!r}, expected service_role"
+                        raise ServiceRoleValidationError(msg)
                     return
-                raise ServiceRoleValidationError(
+                msg = (
                     "Supabase JWT JWKS verification failed (kid/iss/aud/exp/role) — "
                     "expected verifiable service_role JWT or modern sb_secret_"
                 )
+                raise ServiceRoleValidationError(msg)
         except ServiceRoleValidationError:
             raise
         except Exception:
@@ -196,13 +201,16 @@ def validate_supabase_key(key: str) -> None:
         verified_role = _verify_jwt_signature(key)
         if verified_role is not None:
             if verified_role != "service_role":
-                raise ServiceRoleValidationError(f"Supabase key role is {verified_role!r}, expected service_role")
+                msg = f"Supabase key role is {verified_role!r}, expected service_role"
+                raise ServiceRoleValidationError(msg)
             return
-        raise ServiceRoleValidationError(
+        msg = (
             "Supabase JWT signature verification failed or no signing source (SUPABASE_JWT_SECRET/JWKS) — "
             "expected verifiable service_role JWT or modern sb_secret_"
         )
-    raise ServiceRoleValidationError("Supabase key is not a verifiable service_role credential")
+        raise ServiceRoleValidationError(msg)
+    msg = "Supabase key is not a verifiable service_role credential"
+    raise ServiceRoleValidationError(msg)
 
 
 INTEGRITY_BATCH_SIZE = 50

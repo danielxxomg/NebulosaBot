@@ -118,13 +118,15 @@ class GuildService:
     async def get_greeting_config(self, guild_id: str) -> GreetingConfig:
         """Delegate greeting configuration reads to the owning service."""
         if self._greeting_service is None:
-            raise RuntimeError("GreetingService must be configured for greeting CRUD")
+            msg = "GreetingService must be configured for greeting CRUD"
+            raise RuntimeError(msg)
         return await self._greeting_service.get_config(guild_id)
 
     async def save_greeting_config(self, config: GreetingConfig) -> None:
         """Delegate greeting configuration writes without duplicating fields."""
         if self._greeting_service is None:
-            raise RuntimeError("GreetingService must be configured for greeting CRUD")
+            msg = "GreetingService must be configured for greeting CRUD"
+            raise RuntimeError(msg)
         await self._greeting_service.save_config(config)
 
     async def deactivate_guild(self, guild_id: str) -> None:

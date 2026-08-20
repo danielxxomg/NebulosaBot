@@ -92,9 +92,8 @@ class DatabaseBase:
         if not healthy:
             self._client = None
             logger.error("Supabase health check failed — client cleared (fail-closed)")
-            raise ServiceRoleValidationError(
-                "Supabase health probe failed — sb_secret_ not verified via RLS SELECT on guild+ticket"
-            )
+            msg = "Supabase health probe failed — sb_secret_ not verified via RLS SELECT on guild+ticket"
+            raise ServiceRoleValidationError(msg)
         logger.info("Supabase connection verified")
 
     async def health_check(self) -> bool:
