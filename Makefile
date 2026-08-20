@@ -1,4 +1,4 @@
-.PHONY: lint type test cov ci audit lint-full type-full
+.PHONY: lint type test cov ci audit lint-full type-full tach tach-external
 
 # -----------------------------------------------------------------
 # Full blocking gates — bot/ + tests/ (scripts/ excluded). PR1a hygiene.
@@ -26,7 +26,14 @@ test:
 cov:
 	uv run pytest --cov-fail-under=75 --cov-report=term --cov-report=html
 
-ci: lint type test cov
+tach:
+	uv run tach check
+	uv run tach check-external
+
+tach-external:
+	uv run tach check-external
+
+ci: lint type tach test cov
 
 audit:
 	uv audit

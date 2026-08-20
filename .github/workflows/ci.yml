@@ -45,6 +45,12 @@ jobs:
       - name: Ty
         run: uv run ty check bot/ tests/
 
+      - name: Tach check
+        run: uv run tach check
+
+      - name: Tach check-external
+        run: uv run tach check-external
+
       - name: uv audit
         run: uv audit
 

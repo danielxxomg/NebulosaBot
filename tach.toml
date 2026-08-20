@@ -1,0 +1,42 @@
+exclude = ["**/*__pycache__", "build/", "dist/", "dashboard/", "locales/"]
+source_roots = ["."]
+exact = true
+forbid_circular_dependencies = true
+ignore_type_checking_imports = true
+respect_gitignore = true
+root_module = "ignore"
+layers = ["cogs", "views", "services", "utils", "core", "db", "models"]
+[[modules]]
+path = "bot.cogs"
+layer = "cogs"
+[[modules]]
+path = "bot.views"
+layer = "views"
+[[modules]]
+path = "bot.services"
+layer = "services"
+[[modules]]
+path = "bot.utils"
+layer = "utils"
+[[modules]]
+path = "bot.listeners"
+layer = "utils"
+depends_on = ["bot.utils"]
+[[modules]]
+path = "bot.core"
+layer = "core"
+[[modules]]
+path = "bot.core.db"
+layer = "db"
+[[modules]]
+path = "bot.models"
+layer = "models"
+[[interfaces]]
+expose = ["parse_ticket_ref", "TicketRef"]
+from = ["bot.core.ticket_ref"]
+[[interfaces]]
+expose = ["*", "Ticket", "TicketNote", "TicketCategory"]
+from = ["bot.models"]
+[external]
+exclude = ["pytest", "hypothesis", "freezegun", "pyyaml", "yaml", "cryptography"]
+rename = ["PIL:pillow", "psycopg:psycopg"]

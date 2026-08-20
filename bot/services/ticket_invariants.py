@@ -16,10 +16,14 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
+
+from bot.core.ticket_ref import (  # noqa: F401 — re-exported (top-level, keeps no F401 and respects I001)
+    TicketRef,
+    parse_ticket_ref,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -293,20 +297,8 @@ def check_subticket_parent(
 
 
 # ---------------------------------------------------------------------------
-# /reopen ticket reference parser
+# /reopen ticket reference parser — re-export shim (canonical in bot.core.ticket_ref)
 # ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class TicketRef:
-    """A parsed /reopen ticket reference — exactly one of *number*/*uuid* set.
-
-    The cog resolves a *number* via ``Database.get_ticket_by_number(guild_id, n)``
-    and a *uuid* via ``Database.get_ticket(id)`` plus a guild-scope check.
-    """
-
-    number: int | None = None
-    uuid: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -408,48 +400,3 @@ def evaluate_repair_authority(
         return AuthorityDecision(True, "guild", None)
 
     return AuthorityDecision(False, "guild", "insufficient_authority")
-
-
-# UUID v4-ish (we do not enforce version — any 8-4-4-4-12 hex block).
-_UUID_RE = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-    re.IGNORECASE,
-)
-# A run of digits, optionally prefixed with '#'.
-_NUMBER_RE = re.compile(r"^#?(\d+)$")
-
-
-def parse_ticket_ref(ref_str: str | None) -> TicketRef | None:
-    """Parse a ``/reopen`` ticket reference into a :class:`TicketRef`.
-
-    Accepts (after stripping an optional ``ticket:`` prefix):
-        - ``#0003`` or ``0003`` → ``TicketRef(number=3)``
-        - a UUID (``8-4-4-4-12`` hex) → ``TicketRef(uuid=...)``
-
-    Returns ``None`` for empty/whitespace input or unparseable strings so the
-    caller (``/reopen`` cog) can distinguish "no arg" (legacy channel lookup)
-    from "bad arg" (user-facing error).
-
-    The literal guidance text ``/reopen ticket:#0003`` is valid: the slash
-    option is ``ticket_ref`` whose value ``ticket:#0003`` the parser strips to
-    ``#0003`` → ``number=3``. A bare ``#0003`` value also parses to ``3``.
-    """
-    if ref_str is None:
-        return None
-    value = ref_str.strip()
-    if not value:
-        return None
-    # Strip an optional 'ticket:' prefix (case-insensitive).
-    if value.lower().startswith("ticket:"):
-        value = value[len("ticket:") :]
-    value = value.strip()
-    if not value:
-        return None
-    # UUID?
-    if _UUID_RE.match(value):
-        return TicketRef(uuid=value.lower())
-    # #0003 / 0003?
-    num_match = _NUMBER_RE.match(value)
-    if num_match is not None:
-        return TicketRef(number=int(num_match.group(1)))
-    return None
