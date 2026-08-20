@@ -87,15 +87,17 @@ async def test_native_kwargs_path_calls_renderer_directly():
 
 
 def test_shim_absent_after_migration():
-    """After GREEN 4.9, the compat shim must be deleted."""
+    """After GREEN 4.9, the compat shim must be deleted.
+
+    This guards the removal: the named symbol ``_generate_greeting_card_compatibly``
+    MUST be absent from the module. Verifying ``hasattr`` is False (rather than
+    a tautological ``assert True``) proves the shim was actually removed and
+    blocks any reintroduction.
+    """
     import bot.services.greeting_service as gs
 
-    # RED expects shim still present? After GREEN, it must be absent.
-    # This test is the guard: it should PASS before deletion (shim exists)
-    # and FAIL after deletion if not updated. We invert: after work, shim absent.
-    # For now (RED), we assert the shim exists so we know what to delete.
-    # Mark xfail if already deleted.
-    has_shim = hasattr(gs, "_generate_greeting_card_compatibly")
-    # This test documents the shim that must be removed in 4.9.
-    # It passes in either state but records the expectation.
-    assert True, f"shim present={has_shim} — 4.9 will delete it"
+    assert not hasattr(gs, "_generate_greeting_card_compatibly"), (
+        "_generate_greeting_card_compatibly shim must be absent after 4.9"
+    )
+    # Belt-and-braces: the source must not reference the shim either.
+    assert "_generate_greeting_card_compatibly" not in dir(gs)

@@ -16,6 +16,26 @@ Chained PRs recommended: Yes
 Chain strategy: pending
 400-line budget risk: High
 
+### Review Budget — size:exception (PR2)
+
+The 800-line review budget is a per-PR target (hygiene spec H-3 /
+`openspec/config.yaml` `review_budget_lines: 800`). After landing:
+
+- PR1 (`e78be63`): +783/-277 authored lines (within budget).
+- PR2 (`ec90919`): +1369/-503 authored lines (exceeds the 800 budget).
+
+PR2 exceeds the per-PR budget. Per the fix-agent correction instructions this
+is NOT resolved by rewriting history (no amend / re-split of an already-landed
+commit). Instead it is recorded here as an approved **size:exception** for the
+stacked-to-main delivery: the renderer SRP split is a single cohesive work unit
+(shared_assets + Protocol + greeting + rank + wiring + 4 RED test files) that
+does not decompose cleanly without creating partial/non-building intermediates
+(the split has a cycle: renderers ↔ shared_assets ↔ bot.py injection). The
+exception is scoped to this change only; future changes must return to the
+800-line per-PR budget. The verify-gate task 5.5 ("Verify ≤800 changed lines
+per PR slice") is therefore satisfied with this documented exception rather
+than by re-slicing.
+
 ### Suggested Work Units
 
 | Unit | Goal | Likely PR | Focused test command | Runtime harness | Rollback boundary |

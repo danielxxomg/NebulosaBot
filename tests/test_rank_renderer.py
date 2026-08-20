@@ -72,8 +72,24 @@ class TestRankRendererGoldenBytes:
         from bot.services.rank_renderer import RankRenderer
 
         cases = [
-            {"username": "ZeroProgress", "avatar_url": None, "xp": 100, "level": 1, "rank": 10, "xp_for_current": 0.0, "xp_for_next": 150.0},
-            {"username": "FullProgress", "avatar_url": None, "xp": 250, "level": 1, "rank": 10, "xp_for_current": 150.0, "xp_for_next": 150.0},
+            {
+                "username": "ZeroProgress",
+                "avatar_url": None,
+                "xp": 100,
+                "level": 1,
+                "rank": 10,
+                "xp_for_current": 0.0,
+                "xp_for_next": 150.0,
+            },
+            {
+                "username": "FullProgress",
+                "avatar_url": None,
+                "xp": 250,
+                "level": 1,
+                "rank": 10,
+                "xp_for_current": 150.0,
+                "xp_for_next": 150.0,
+            },
             {
                 "username": "SuperLongUsernameThatExceedsTheTypicalDiscordLimit32Chars",
                 "avatar_url": None,

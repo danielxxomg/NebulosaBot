@@ -23,8 +23,10 @@ class GreetingConfig:
     onboarding_channel_id: str | None = None
     welcome_message: str | None = None
     goodbye_message: str | None = None
-    welcome_card_enabled: bool = True
-    goodbye_card_enabled: bool = True
+    # Card toggles default to False for new guilds per greeting-config spec
+    # (Scenario: Default values for new guild — "card toggles are false").
+    welcome_card_enabled: bool = False
+    goodbye_card_enabled: bool = False
     updated_at: datetime | None = None
 
     @classmethod
@@ -39,8 +41,8 @@ class GreetingConfig:
             onboarding_channel_id=row.get("onboardingChannelId"),
             welcome_message=row.get("welcomeMessage"),
             goodbye_message=row.get("goodbyeMessage"),
-            welcome_card_enabled=row.get("welcomeCardEnabled", True),
-            goodbye_card_enabled=row.get("goodbyeCardEnabled", True),
+            welcome_card_enabled=row.get("welcomeCardEnabled", False),
+            goodbye_card_enabled=row.get("goodbyeCardEnabled", False),
             updated_at=row.get("updatedAt"),
         )
 

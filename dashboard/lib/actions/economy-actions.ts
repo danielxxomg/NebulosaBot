@@ -17,7 +17,10 @@ export async function updateEconomyConfig(
   formData: FormData
 ): Promise<ActionResult> {
   // 1. Auth re-check.
-  const authError = await verifyGuildAdmin(guildId);
+  const authError = await verifyGuildAdmin(
+    guildId,
+    "You must be a server administrator to change economy settings."
+  );
   if (authError) return authError;
 
   // 2. Extract numeric fields.

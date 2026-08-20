@@ -1,15 +1,16 @@
 """Rank card renderer — SRP split from ImageService.
 
 Shares gradient loop, font loader, and avatar helpers via
-``bot.services.shared_assets`` so no code is duplicated.
+``bot.services.shared_assets`` so no code is duplicated. The circular avatar
+paste and missing-avatar placeholder are delegated to the shared
+``_paste_circular_asset`` / ``_safe_fetch_avatar`` helpers (spec R-3: avatar
+helpers are shared; missing avatar uses a placeholder).
 Services layer — MUST NOT import cogs or views.
 """
 
 from __future__ import annotations
 
 import io
-
-from PIL import Image, ImageDraw
 
 from bot.services import shared_assets
 
@@ -46,6 +47,11 @@ XP_BAR_FILL = (114, 137, 218, 255)
 XP_TEXT_COLOR = (185, 187, 190, 255)
 RANK_COLOR = (255, 255, 255, 255)
 
+# Rank-side placeholder for a missing avatar (spec R-3). Uses the shared
+# greeting placeholder palette so the fallback visual is consistent across
+# renderers; the shared _paste_circular_asset draws the ellipse.
+RANK_AVATAR_PLACEHOLDER = shared_assets.GREETING_PLACEHOLDER
+
 
 class RankRenderer:
     """Synchronous rank card generator using Pillow via shared assets.
@@ -80,14 +86,19 @@ class RankRenderer:
         font_xp_text = shared_assets._load_font(16, font_path=self._font_path)
         font_rank = shared_assets._load_font(36, font_path=self._font_path)
 
-        # -- Avatar (circular crop) ----------------------------------------
-        avatar = shared_assets._fetch_avatar(avatar_url)
-        if avatar is not None:
-            avatar = avatar.resize((AVATAR_SIZE, AVATAR_SIZE), Image.LANCZOS)  # type: ignore[attr-defined]
-            mask = Image.new("L", (AVATAR_SIZE, AVATAR_SIZE), 0)
-            ImageDraw.Draw(mask).ellipse((0, 0, AVATAR_SIZE, AVATAR_SIZE), fill=255)
-            avatar.putalpha(mask)
-            img.paste(avatar, (AVATAR_X, AVATAR_Y), avatar)
+        # -- Avatar (circular crop via shared helper) ---------------------
+        # Spec R-3: use shared _safe_fetch_avatar / _paste_circular_asset and
+        # render a placeholder when the avatar is missing so the card still
+        # shows identity treatment instead of a blank circle.
+        avatar = shared_assets._safe_fetch_avatar(avatar_url)
+        shared_assets._paste_circular_asset(
+            img,
+            avatar,
+            AVATAR_X,
+            AVATAR_Y,
+            AVATAR_SIZE,
+            RANK_AVATAR_PLACEHOLDER,
+        )
 
         # -- Username (truncate if too long) ------------------------------
         display_name = username[: shared_assets.MAX_USERNAME_DISPLAY]

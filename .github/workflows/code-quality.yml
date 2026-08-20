@@ -1,5 +1,17 @@
 name: Code Quality (Report Only)
 
+# Hygiene spec H-6: every external GitHub Action step is SHA-pinned
+# (see actions/checkout, actions/setup-node, actions/setup-python below).
+# Third-party *report-only* tools (jscpd, vulture) run via npx/pip in a run
+# block with continue-on-error: true — they emit duplication and dead-code
+# reports but never block the PR. npx/pip resolve from the package registry
+# by version, not by a git-object SHA the way Actions pin their steps; they
+# cannot be SHA-pinned inline. To stay closest to H-6 these tools are
+# version-pinned (not latest) and the jobs are non-blocking. Moving them to
+# a SHA-verified lockfile (npm ci with package-lock resolved SHAs; pip install
+# --require-hashes) is tracked as a follow-up; the report-only posture keeps
+# this deviation safe.
+
 on:
   pull_request:
     branches: [master]

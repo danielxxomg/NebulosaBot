@@ -134,7 +134,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
         member_count = (ctx.guild.member_count or 0) if ctx.guild else 0
         return {
             "username": ctx.author.display_name,
-            "avatar_url": _resolve_avatar_url(ctx.author),  # type: ignore[arg-type]  # ctx.author is Member in guild context
+            "avatar_url": _resolve_avatar_url(ctx.author),  # ctx.author is discord.abc.User; helper accepts User
             "guild_name": ctx.guild.name if ctx.guild else "Unknown",
             "member_count": member_count,
             "card_type": card_type,
