@@ -1,7 +1,7 @@
 "use server";
 
-import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase";
-import { fetchUserGuilds, hasAdministratorPerm } from "@/lib/discord";
+import { createServiceClient } from "@/lib/supabase";
+import { verifyGuildAdmin } from "@/lib/guards";
 import { revalidatePath } from "next/cache";
 import type { ActionResult } from "@/lib/types";
 
@@ -18,50 +18,6 @@ const VALID_LANGUAGES = new Set([
 function isValidSnowflake(value: string | null): boolean {
   if (!value) return true; // null/empty is valid (optional field)
   return /^\d{17,20}$/.test(value);
-}
-
-/**
- * Re-verify the current user has admin access to the target guild.
- *
- * Called inside every Server Action as defense-in-depth beyond the
- * layout-level permission guard.
- */
-async function verifyGuildAdmin(guildId: string): Promise<ActionResult | null> {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  if (!session) {
-    return { success: false, error: "Not authenticated." };
-  }
-
-  const providerToken = session.provider_token;
-  if (!providerToken) {
-    return { success: false, error: "Discord token not available. Please re-login." };
-  }
-
-  // Verify guild is active.
-  const serviceClient = await createServiceClient();
-  const { data: guild } = await serviceClient
-    .from("guild")
-    .select("active")
-    .eq("id", guildId)
-    .single();
-
-  if (!guild || !guild.active) {
-    return { success: false, error: "Guild not found or inactive." };
-  }
-
-  // Verify admin permission.
-  const userGuilds = await fetchUserGuilds(providerToken);
-  const target = userGuilds.find((g) => g.id === guildId);
-
-  if (!target || !hasAdministratorPerm(target.permissions)) {
-    return { success: false, error: "You must be a server administrator to change settings." };
-  }
-
-  return null; // null = auth passed
 }
 
 /**

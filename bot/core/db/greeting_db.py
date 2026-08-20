@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
 from bot.core.db.base import _unwrap
@@ -46,6 +47,8 @@ class GreetingDBMixin:
             raise RuntimeError(msg)
 
         logger.debug("DB upsert_greeting_config(%r)", guild_id)
-        await self._client.table("greeting_config").upsert(config.to_db_dict()).execute()
+        payload = config.to_db_dict()
+        payload["updatedAt"] = datetime.now(UTC).isoformat()
+        await self._client.table("greeting_config").upsert(payload).execute()
         if self._on_write is not None:
             await self._on_write("greeting_config", str(guild_id))

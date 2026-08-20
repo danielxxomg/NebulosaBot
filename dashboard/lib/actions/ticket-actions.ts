@@ -1,7 +1,7 @@
 "use server";
 
 import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase";
-import { fetchUserGuilds, hasAdministratorPerm } from "@/lib/discord";
+import { verifyGuildAdmin } from "@/lib/guards";
 import type { Ticket, TicketNote, TicketAudit } from "@/lib/types";
 import {
   checkCanAddNote,
@@ -78,62 +78,6 @@ const TICKET_PAGE_LIMIT = 50;
 const AUDIT_PAGE_SIZE = 20;
 
 /**
- * Re-verify the current user has admin access to the target guild.
- *
- * Called inside every Server Action as defense-in-depth beyond the
- * layout-level permission guard. Service-role reads must not rely only on
- * the route layout.
- *
- * Returns `null` when auth passes, or an `{ success: false, error }`
- * result describing why it failed.
- */
-async function verifyGuildAdmin(
-  guildId: string
-): Promise<{ success: false; error: string } | null> {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  if (!session) {
-    return { success: false, error: "Not authenticated." };
-  }
-
-  const providerToken = session.provider_token;
-  if (!providerToken) {
-    return {
-      success: false,
-      error: "Discord token not available. Please re-login.",
-    };
-  }
-
-  // Verify guild is active.
-  const serviceClient = await createServiceClient();
-  const { data: guild } = await serviceClient
-    .from("guild")
-    .select("active")
-    .eq("id", guildId)
-    .single();
-
-  if (!guild || !guild.active) {
-    return { success: false, error: "Guild not found or inactive." };
-  }
-
-  // Verify admin permission.
-  const userGuilds = await fetchUserGuilds(providerToken);
-  const target = userGuilds.find((g) => g.id === guildId);
-
-  if (!target || !hasAdministratorPerm(target.permissions)) {
-    return {
-      success: false,
-      error: "You must be a server administrator to view tickets.",
-    };
-  }
-
-  return null; // null = auth passed
-}
-
-/**
  * Resolve the current session user's Discord user id.
  *
  * Reads from the Supabase session's Discord identity
@@ -183,7 +127,7 @@ export async function getTicketsForGuild(
   const serviceClient = await createServiceClient();
   const { data: tickets, error } = await serviceClient
     .from("ticket")
-    .select("*")
+    .select("id, guildId, channelId, authorId, status, ticketNumber, categoryId, claimedBy, transcriptUrl, parentId, createdAt, lastActivity, closedAt")
     .eq("guildId", guildId)
     .order("createdAt", { ascending: false })
     .limit(TICKET_PAGE_LIMIT);
@@ -192,7 +136,7 @@ export async function getTicketsForGuild(
     return { data: null, error: `Database error: ${error.message}` };
   }
 
-  return { data: tickets ?? [], error: null };
+  return { data: (tickets as Ticket[]) ?? [], error: null };
 }
 
 // ---------------------------------------------------------------------------
@@ -354,7 +298,7 @@ export async function getTicketNotes(
   const serviceClient = await createServiceClient();
   const { data: notes, error } = await serviceClient
     .from("ticket_note")
-    .select("*")
+    .select("id, ticketId, authorId, content, createdAt")
     .eq("ticketId", ticketId)
     .order("createdAt", { ascending: false })
     .limit(TICKET_PAGE_LIMIT);
@@ -398,7 +342,7 @@ export async function addTicketNote(
   // considers author-scoped notes within a 2s window, both filtered in-app).
   const { data: existing, error: readError } = await serviceClient
     .from("ticket_note")
-    .select("*")
+    .select("id, ticketId, authorId, content, createdAt")
     .eq("ticketId", ticketId)
     .order("createdAt", { ascending: false })
     .limit(NOTE_CAP + 1);
@@ -532,7 +476,7 @@ export async function getTicketAudit(
   const serviceClient = await createServiceClient();
   let chain = serviceClient
     .from("ticket_audit")
-    .select("*")
+    .select("id, guildId, ticketId, action, actorId, outcome, reason, createdAt")
     .eq("guildId", guildId);
 
   if (ticketId) {

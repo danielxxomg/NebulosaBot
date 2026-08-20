@@ -3,6 +3,11 @@
 Used by economy_service to safely parse lastXpGain, lastDaily, and
 lastDailyReset timestamps regardless of whether Supabase returns them
 as datetime objects or ISO-8601 strings.
+
+NOTE: This module is distinct from :mod:`bot.utils.time` (human
+duration → seconds parsing). They serve different domains and MUST
+NOT be merged — DO NOT MERGE with ``time.py``. See ``bot/utils/time.py``
+for the separate domain.
 """
 
 from __future__ import annotations

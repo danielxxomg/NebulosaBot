@@ -9,7 +9,10 @@ from typing import TYPE_CHECKING
 import discord
 
 from bot.core.i18n import t
-from bot.utils.embeds import error_embed, info_embed, success_embed
+from bot.utils.brand import INFO
+from bot.utils.embeds import cog_err as _err
+from bot.utils.embeds import cog_info as _info
+from bot.utils.embeds import cog_ok as _ok
 from bot.utils.ticket_helpers import resolve_ticket_for_channel
 
 if TYPE_CHECKING:
@@ -17,20 +20,6 @@ if TYPE_CHECKING:
     from bot.core.context import NebulosaContext
 
 logger = logging.getLogger("bot.cogs.tickets")
-
-INFO = discord.Color.from_str("#5865F2") if hasattr(discord.Color, "from_str") else discord.Color.blurple()
-
-
-def _err(gid: str | None, key: str, **kw: object) -> discord.Embed:
-    return error_embed(t(gid, f"{key}_title"), t(gid, f"{key}_description", **kw), guild_id=gid)
-
-
-def _ok(gid: str | None, key: str, **kw: object) -> discord.Embed:
-    return success_embed(t(gid, f"{key}_title"), t(gid, f"{key}_description", **kw), guild_id=gid)
-
-
-def _info(gid: str | None, key: str, **kw: object) -> discord.Embed:
-    return info_embed(t(gid, f"{key}_title"), t(gid, f"{key}_description", **kw), guild_id=gid)
 
 
 class TicketNotesFlow:

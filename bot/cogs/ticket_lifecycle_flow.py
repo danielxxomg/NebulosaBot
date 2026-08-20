@@ -10,6 +10,9 @@ import discord
 from bot.core.i18n import t
 from bot.services.ticket_service import TicketCategoryNotConfiguredError
 from bot.utils.checks import is_mod_check
+from bot.utils.embeds import cog_err as _err
+from bot.utils.embeds import cog_info as _info
+from bot.utils.embeds import cog_ok as _ok
 from bot.utils.embeds import error_embed
 from bot.utils.ticket_helpers import (
     resolve_category_name,
@@ -23,22 +26,6 @@ if TYPE_CHECKING:
     from bot.core.context import NebulosaContext
 
 logger = logging.getLogger("bot.cogs.tickets")
-
-
-def _err(gid: str | None, key: str, **kw: object) -> discord.Embed:
-    return error_embed(t(gid, f"{key}_title"), t(gid, f"{key}_description", **kw), guild_id=gid)
-
-
-def _ok(gid: str | None, key: str, **kw: object) -> discord.Embed:
-    from bot.utils.embeds import success_embed
-
-    return success_embed(t(gid, f"{key}_title"), t(gid, f"{key}_description", **kw), guild_id=gid)
-
-
-def _info(gid: str | None, key: str, **kw: object) -> discord.Embed:
-    from bot.utils.embeds import info_embed
-
-    return info_embed(t(gid, f"{key}_title"), t(gid, f"{key}_description", **kw), guild_id=gid)
 
 
 class TicketLifecycleFlow:

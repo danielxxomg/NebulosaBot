@@ -200,6 +200,38 @@ def warning_embed(
     return _make_embed(title, description, WARNING, guild_id=guild_id, bot=bot, guild=guild)
 
 
+# ---------------------------------------------------------------------------
+# Shared cog helpers — DRY for ticket flows (2.3)
+# ---------------------------------------------------------------------------
+
+
+def cog_err(gid: str | None, key: str, **kw: object) -> discord.Embed:
+    """Shared error helper for cogs — wraps error_embed with i18n key."""
+    return error_embed(t(gid, f"{key}_title"), t(gid, f"{key}_description", **kw), guild_id=gid)
+
+
+def cog_ok(gid: str | None, key: str, **kw: object) -> discord.Embed:
+    """Shared success helper for cogs — wraps success_embed with i18n key."""
+    return success_embed(t(gid, f"{key}_title"), t(gid, f"{key}_description", **kw), guild_id=gid)
+
+
+def cog_info(gid: str | None, key: str, **kw: object) -> discord.Embed:
+    """Shared info helper for cogs — wraps info_embed with i18n key."""
+    return info_embed(t(gid, f"{key}_title"), t(gid, f"{key}_description", **kw), guild_id=gid)
+
+
+def _err(gid: str | None, key: str, **kw: object) -> discord.Embed:  # noqa: F811
+    return cog_err(gid, key, **kw)
+
+
+def _ok(gid: str | None, key: str, **kw: object) -> discord.Embed:  # noqa: F811
+    return cog_ok(gid, key, **kw)
+
+
+def _info(gid: str | None, key: str, **kw: object) -> discord.Embed:  # noqa: F811
+    return cog_info(gid, key, **kw)
+
+
 def build_ticket_embed(
     ticket: Any,
     *,

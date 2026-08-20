@@ -10,21 +10,14 @@ import discord
 from bot.core.i18n import t
 from bot.services.ticket_invariants import RepairAuthority
 from bot.utils.checks import is_mod_check
-from bot.utils.embeds import error_embed, info_embed
+from bot.utils.embeds import cog_err as _err
+from bot.utils.embeds import cog_info as _info
 
 if TYPE_CHECKING:
     from bot.bot import NebulosaBot
     from bot.core.context import NebulosaContext
 
 logger = logging.getLogger("bot.cogs.tickets")
-
-
-def _err(gid: str | None, key: str, **kw: object) -> discord.Embed:
-    return error_embed(t(gid, f"{key}_title"), t(gid, f"{key}_description", **kw), guild_id=gid)
-
-
-def _info(gid: str | None, key: str, **kw: object) -> discord.Embed:
-    return info_embed(t(gid, f"{key}_title"), t(gid, f"{key}_description", **kw), guild_id=gid)
 
 
 class TicketIntegrityFlow:

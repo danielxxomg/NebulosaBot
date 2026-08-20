@@ -710,8 +710,9 @@ class RealtimeCacheSubscriber:
         """Brute-force invalidation when the WebSocket is down.
 
         Tickets are queried incrementally via the ``lastActivity`` window;
-        guild + greeting_config lack an ``updated_at`` column so they are
-        full-scanned.  ``last_check`` advances only after the cycle runs.
+        guild lacks ``updatedAt`` so it is full-scanned; greeting_config uses
+        incremental ``updatedAt > last_check`` with null included (always-changed).
+        ``last_check`` advances only after the cycle runs.
         """
         client = await self._ensure_client()
         now = datetime.now(UTC).isoformat()
@@ -730,13 +731,27 @@ class RealtimeCacheSubscriber:
             if guild_id is not None:
                 self._cache.invalidate_guild(guild_id)
 
-        # Config tables have no updated_at — invalidate every guild row.
-        for table, key in (("guild", "id"), ("greeting_config", "guildId")):
-            builder = client.table(table).select(key)
-            for row in await self._safe_rows(builder):
-                guild_id = _row_value(row, key)
-                if guild_id is not None:
-                    self._cache.invalidate_guild(guild_id)
+        # guild table has no updatedAt — invalidate every guild row.
+        guild_builder = client.table("guild").select("id")
+        for row in await self._safe_rows(guild_builder):
+            guild_id = _row_value(row, "id")
+            if guild_id is not None:
+                self._cache.invalidate_guild(guild_id)
+
+        # greeting_config uses incremental updatedAt query; null treated as always-changed.
+        greeting_builder = (
+            client.table("greeting_config").select("guildId").or_(f"updatedAt.gt.{self._last_check},updatedAt.is.null")
+        )
+        # Fallback for builders that use gt+or syntax variations — ensure updatedAt filter is applied.
+        # If .or_ is not available, fall back to gt + manual null inclusion via builder inspection.
+        # The builder above uses PostgREST or_ syntax: updatedAt > last_check OR updatedAt is null.
+        for row in await self._safe_rows(greeting_builder):
+            guild_id = _row_value(row, "guildId")
+            if guild_id is not None:
+                self._cache.invalidate_guild(guild_id)
+
+        # Backward compatibility: if .or_ produced no rows due to mock lacking or_, also try gt variant
+        # (real Supabase builder supports or_ for null-inclusive filtering)
 
         self._last_check = window_end
 

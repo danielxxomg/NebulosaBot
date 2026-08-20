@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 
@@ -24,6 +25,7 @@ class GreetingConfig:
     goodbye_message: str | None = None
     welcome_card_enabled: bool = True
     goodbye_card_enabled: bool = True
+    updated_at: datetime | None = None
 
     @classmethod
     def from_db_row(cls, row: dict[str, Any]) -> GreetingConfig:
@@ -39,6 +41,7 @@ class GreetingConfig:
             goodbye_message=row.get("goodbyeMessage"),
             welcome_card_enabled=row.get("welcomeCardEnabled", True),
             goodbye_card_enabled=row.get("goodbyeCardEnabled", True),
+            updated_at=row.get("updatedAt"),
         )
 
     def to_db_dict(self) -> dict[str, Any]:
@@ -54,4 +57,5 @@ class GreetingConfig:
             "goodbyeMessage": self.goodbye_message,
             "welcomeCardEnabled": self.welcome_card_enabled,
             "goodbyeCardEnabled": self.goodbye_card_enabled,
+            "updatedAt": self.updated_at,
         }
