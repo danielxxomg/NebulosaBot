@@ -38,7 +38,7 @@ export default async function EconomyConfigPage({
   const serviceClient = await createServiceClient();
   const { data: economy } = await serviceClient
     .from("economy_config")
-    .select("*")
+    .select("guildId, dailyReward, dailyCooldownHours, xpPerMessage, xpCooldownSeconds, levelBaseXp, levelMultiplier, levelRoles, levelUpChannelId")
     .eq("guildId", guildId)
     .maybeSingle();
 

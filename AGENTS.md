@@ -30,9 +30,10 @@
 - **Services** handle business logic + cache integration — testable without Discord mocks
 - **Models** are dataclasses mirroring DB rows — no ORM
 - **Cache-first reads**: check RAM cache → DB fallback → populate cache
-- **Guild-scoped keys**: cache keys MUST include guild_id (e.g., `{guild_id}:config`)
+- **Guild-scoped keys**: cache keys MUST include guild_id (e.g., `{guild_id}:config`); new caches MUST use `cache_key(guild_id, entity)` from `bot.core.cache` so keys are `{guild_id}:{entity}` and cannot leak across guilds
 - **No blocking I/O in event loop**: use `asyncio.to_thread()` for Pillow, file I/O, etc.
 - **Supabase**: use `create_client()` with `ClientOptions`, async operations preferred
+- **Pterodactyl `python:3.11-slim` without apt**: `cairosvg` requires `libcairo` (`cairocffi` → C library) and is NOT available in slim; renderer default is `Pillow` procedural with `brand.ACCENT` tokens. SVG path is behind a probe+fallback (`import cairosvg` at boot → `ImportError` logs WARNING and injects `PillowGreetingRenderer`); Cycle 2 swaps one injection line when `libcairo` is provisioned
 
 ## Naming
 
@@ -99,3 +100,8 @@ inherited debt.
 - **Bundled scope ok**: a restoration/scoping commit that wires in
   previously-uncommitted artifacts is judged only on the artifacts it
   restores plus the wiring lines — not on adjacent pre-existing debt.
+
+## Domain Notes
+
+- **`bot/utils/time.py` vs `bot/utils/timeparse.py` — DO NOT MERGE**: `time.py` parses human duration strings → seconds (Sentinel timeouts); `timeparse.py` parses DB timestamp values → `datetime` (economy). Different domains, different callers. Keep separate and document the other as a distinct domain.
+- **Brand tokens**: all colors via `bot/utils/brand.py` (`ACCENT`, `INFO`, etc.); no hex literals outside `brand.py`. Greeting accent is `brand.ACCENT`, not `GREETING_ACCENT`/`#7289da`.

@@ -5,6 +5,11 @@ Used by SentinelCog to parse moderation timeout durations such as
 
 Returns 3600 (1 hour) for any unparseable input so mute commands
 degrade gracefully when the user provides a malformed duration.
+
+NOTE: This module is distinct from :mod:`bot.utils.timeparse` (DB
+timestamp → datetime parsing). They serve different domains and MUST
+NOT be merged — DO NOT MERGE with ``timeparse.py``. See
+``bot/utils/timeparse.py`` for the separate domain.
 """
 
 from __future__ import annotations

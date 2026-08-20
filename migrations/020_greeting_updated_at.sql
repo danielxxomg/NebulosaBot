@@ -1,0 +1,12 @@
+-- ============================================================================
+-- Migration 020: Greeting updatedAt (welcome-svg-foundation Cycle 1)
+-- NebulosaBot — additive updatedAt for greeting_config incremental poll
+-- ============================================================================
+-- Additive & idempotent: existing rows get NULL updatedAt; new upserts set NOW().
+-- Distinct non-003 prefix to avoid duplicate 003 collision (003_economy_config
+-- remains 003; 003_subtickets_notes moved to 019). No raw rename of deployed
+-- migration — this is the additive follow-up.
+-- Rollback: ALTER TABLE greeting_config DROP COLUMN IF EXISTS "updatedAt";
+-- Dependencies: Migration 004 (greeting_config must exist)
+-- ----------------------------------------------------------------------------
+ALTER TABLE greeting_config ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMPTZ;

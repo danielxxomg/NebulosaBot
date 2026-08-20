@@ -36,6 +36,10 @@ Thumbs.db
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+.ty_cache/
+.hypothesis/
+*.tsbuildinfo
+**/.next/
 
 # Local packaged archives
 *.7z

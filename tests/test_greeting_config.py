@@ -141,6 +141,7 @@ class TestToDbDict:
             "goodbyeMessage",
             "welcomeCardEnabled",
             "goodbyeCardEnabled",
+            "updatedAt",
         }
         assert set(result.keys()) == expected_keys
         assert result["guildId"] == "123456789"

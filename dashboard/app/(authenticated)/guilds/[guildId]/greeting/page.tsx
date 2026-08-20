@@ -41,7 +41,7 @@ export default async function GreetingConfigPage({
   const serviceClient = await createServiceClient();
   const { data: greeting } = await serviceClient
     .from("greeting_config")
-    .select("*")
+    .select("guildId, welcomeEnabled, goodbyeEnabled, welcomeChannelId, goodbyeChannelId, onboardingChannelId, welcomeMessage, goodbyeMessage, welcomeCardEnabled, goodbyeCardEnabled, updatedAt")
     .eq("guildId", guildId)
     .maybeSingle();
 
