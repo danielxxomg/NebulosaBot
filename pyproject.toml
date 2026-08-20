@@ -43,6 +43,7 @@ dev = [
     "freezegun>=1.5",
     "ruff==0.15.20",
     "ty==0.0.18",
+    "tach==0.35.0",
 ]
 
 [tool.uv]
@@ -132,6 +133,7 @@ max-complexity = 15
 "tests/test_pr4a_ruff_mechanical.py" = ["S101", "S105", "S106", "ARG", "T20", "TRY003", "EM101", "FURB110", "RET504", "RET505", "PERF401", "SIM108", "S603", "S607"]
 "tests/test_pr4b_ruff_security.py" = ["S101", "S105", "S106", "ARG", "T20", "TRY003", "EM101", "FURB110", "RET504", "RET505", "PERF401", "SIM108", "S603", "S607"]
 "tests/test_pr5_security_bandit_zizmor.py" = ["S101", "S105", "S106", "ARG", "T20", "TRY003", "TRY004", "EM101", "EM102", "TRY300", "TRY301", "FURB110", "FURB113", "RUF059", "RET504", "RET505", "PERF401", "PERF203", "SIM105", "SIM108", "S603", "S607", "E501", "TRY400", "TRY401", "RUF100"]
+"tests/test_pr6_tach_boundaries.py" = ["S101", "S105", "S106", "ARG", "T20", "TRY003", "EM101", "FURB110", "RET504", "RET505", "PERF401", "SIM108", "S603", "S607", "FURB101", "E501"]
 "tests/test_pr3_prek_replaces_precommit.py" = ["S101", "S105", "S106", "ARG", "T20", "TRY003", "EM101", "FURB110", "RET504", "RET505", "PERF401", "SIM108", "S603"]
 "tests/**/*.py" = ["S101", "S105", "S106", "ARG", "T20", "TRY003", "EM101", "FURB110", "RET504", "RET505", "PERF401", "SIM108", "ANN", "PYI", "PGH", "RUF052", "RUF029", "RUF069", "RUF050", "RUF100", "S404", "FURB101", "FURB113", "FURB142", "S603", "E501", "PYI034"]
 "scripts/**/*.py" = ["S404", "RUF052", "FURB101"]  # out of scope for PR4c (preview collateral)

@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 import discord
 
 from bot.core.i18n import t
-from bot.services.ticket_invariants import parse_ticket_ref
+from bot.core.ticket_ref import parse_ticket_ref
 from bot.utils.embeds import error_embed
 
 if TYPE_CHECKING:
