@@ -24,23 +24,23 @@ logger = logging.getLogger(__name__)
 def _get_t() -> Any:
     try:
         import bot.views.tickets as _facade
-
-        return _facade.t
     except Exception:
         from bot.core.i18n import t as _direct
 
         return _direct
+    else:
+        return _facade.t
 
 
 def _get_is_mod_check() -> Any:
     try:
         import bot.views.tickets as _facade
-
-        return _facade.is_mod_check
     except Exception:
         from bot.utils.checks import is_mod_check as _direct
 
         return _direct
+    else:
+        return _facade.is_mod_check
 
 
 class TicketActionsView(discord.ui.View):

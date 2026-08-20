@@ -2456,14 +2456,12 @@ class TestConfigureFieldsCommand:
         slash_ctx: MagicMock,
     ) -> None:
         """4+ fields → ephemeral error embed about max 3."""
-        four_fields = json.dumps(
-            [
-                {"key": "f1", "label": "F1"},
-                {"key": "f2", "label": "F2"},
-                {"key": "f3", "label": "F3"},
-                {"key": "f4", "label": "F4"},
-            ]
-        )
+        four_fields = json.dumps([
+            {"key": "f1", "label": "F1"},
+            {"key": "f2", "label": "F2"},
+            {"key": "f3", "label": "F3"},
+            {"key": "f4", "label": "F4"},
+        ])
         await tickets_cog.configure_fields_set.callback(
             tickets_cog, slash_ctx, category_id="cat-uuid-001", fields_json=four_fields
         )

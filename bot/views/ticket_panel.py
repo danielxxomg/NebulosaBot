@@ -27,10 +27,10 @@ logger: logging.Logger = logging.getLogger(__name__)
 def _get_logger() -> logging.Logger:
     try:
         import bot.views.tickets as _facade
-
-        return _facade.logger
     except Exception:
         return logger
+    else:
+        return _facade.logger
 
 
 CHANNEL_DELETE_DELAY = 5  # seconds
@@ -76,7 +76,7 @@ async def deploy_ticket_panel(
     return msg
 
 
-async def _create_ticket_after_modal(
+async def _create_ticket_after_modal(  # noqa: C901 -- modal orchestration: validation + branching + audit
     interaction: discord.Interaction,
     guild: discord.Guild,
     category_id: str,
@@ -395,7 +395,7 @@ class TicketIntakeModal(discord.ui.Modal):
             field_definitions=self._field_definitions,
         )
 
-    async def on_error(self, interaction: discord.Interaction, error: Exception, *args: Any) -> None:
+    async def on_error(self, interaction: discord.Interaction, error: Exception, *_args: Any) -> None:
         try:
             import bot.views.tickets as _facade
 

@@ -61,7 +61,7 @@ EXTENSIONS: tuple[str, ...] = (
 
 
 def _build_prefix_callable(
-    bot: NebulosaBot,
+    _bot: NebulosaBot,
 ) -> Callable[..., Any]:
     """Return an async callable that resolves the prefix per-message.
 
@@ -348,7 +348,7 @@ class NebulosaBot(commands.Bot):
     async def on_app_command_error(
         self,
         interaction: discord.Interaction,
-        error: discord.app_commands.AppCommandError,
+        _error: discord.app_commands.AppCommandError,
     ) -> None:
         """Global slash-command error handler — ephemeral embeds.
 
@@ -410,7 +410,6 @@ class NebulosaBot(commands.Bot):
         if ctx.guild is not None:
             try:
                 await ctx.author.send(embed=embed)
-                return
             except (discord.HTTPException, discord.Forbidden):
                 logger.debug(
                     "DM failed for user %s — falling back to channel",

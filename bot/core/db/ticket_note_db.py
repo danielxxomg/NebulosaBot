@@ -83,7 +83,8 @@ class TicketNoteDBMixin:
 
         logger.debug("DB get_ticket_notes(ticket=%s, limit=%d, guild=%s)", ticket_id, limit, guild_id)
         response = await (
-            self._client.table("ticket_note")
+            self._client
+            .table("ticket_note")
             .select("*")
             .eq("ticketId", ticket_id)
             .order("createdAt", desc=True)
@@ -152,7 +153,8 @@ class TicketNoteDBMixin:
             guild_id,
         )
         response = await (
-            self._client.table("ticket_note")
+            self._client
+            .table("ticket_note")
             .select("content")
             .eq("ticketId", ticket_id)
             .eq("authorId", author_id)

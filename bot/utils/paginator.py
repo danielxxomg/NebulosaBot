@@ -77,7 +77,7 @@ class EmbedPaginator(discord.ui.View):
     async def prev_button(
         self,
         interaction: discord.Interaction,
-        button: discord.ui.Button[EmbedPaginator],
+        _button: discord.ui.Button[EmbedPaginator],
     ) -> None:
         """Go to the previous page."""
         self.current_page = max(0, self.current_page - 1)
@@ -95,7 +95,7 @@ class EmbedPaginator(discord.ui.View):
     async def next_button(
         self,
         interaction: discord.Interaction,
-        button: discord.ui.Button[EmbedPaginator],
+        _button: discord.ui.Button[EmbedPaginator],
     ) -> None:
         """Go to the next page."""
         self.current_page = min(len(self._pages) - 1, self.current_page + 1)
@@ -113,7 +113,7 @@ class EmbedPaginator(discord.ui.View):
     async def stop_button(
         self,
         interaction: discord.Interaction,
-        button: discord.ui.Button[EmbedPaginator],
+        _button: discord.ui.Button[EmbedPaginator],
     ) -> None:
         """Stop pagination and disable all buttons."""
         for child in self.children:

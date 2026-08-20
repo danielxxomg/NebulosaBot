@@ -719,7 +719,8 @@ class RealtimeCacheSubscriber:
 
         # Incremental ticket query — only tickets touched since last_check.
         ticket_builder = (
-            client.table("ticket")
+            client
+            .table("ticket")
             .select("guildId")
             .gt("lastActivity", self._last_check)
             .lte("lastActivity", window_end)

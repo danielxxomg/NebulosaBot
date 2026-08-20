@@ -632,18 +632,16 @@ class TestModlogsCommand:
         """modlogs → paginated embed sent with infraction entries."""
         infractions = []
         for i in range(7):
-            infractions.append(
-                {
-                    "id": f"inf-{i:03d}",
-                    "guildId": "123456789",
-                    "targetId": "555555555",
-                    "moderatorId": "111111111",
-                    "type": "WARN",
-                    "reason": f"reason {i}",
-                    "active": True,
-                    "createdAt": datetime.now(UTC),
-                }
-            )
+            infractions.append({
+                "id": f"inf-{i:03d}",
+                "guildId": "123456789",
+                "targetId": "555555555",
+                "moderatorId": "111111111",
+                "type": "WARN",
+                "reason": f"reason {i}",
+                "active": True,
+                "createdAt": datetime.now(UTC),
+            })
         mock_db.get_infractions = AsyncMock(return_value=infractions)
 
         await sentinel_cog.modlogs.callback(sentinel_cog, sentinel_ctx, target_member, type=None, after=None)

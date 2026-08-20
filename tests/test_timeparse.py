@@ -9,6 +9,7 @@ Covers:
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
 
 from bot.utils.timeparse import _to_datetime
@@ -49,4 +50,4 @@ class TestToDatetime:
     def test_non_string_non_datetime_non_none_returns_none(self) -> None:
         """A non-string, non-datetime, non-None value (e.g. int) MUST return None."""
         assert _to_datetime(42) is None
-        assert _to_datetime(3.14) is None
+        assert _to_datetime(math.pi) is None

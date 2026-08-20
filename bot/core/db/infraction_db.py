@@ -77,7 +77,8 @@ class InfractionDBMixin:
             raise RuntimeError(msg)
 
         query = (
-            self._client.table("infraction")
+            self._client
+            .table("infraction")
             .select("*")
             .eq("guildId", guild_id)
             .eq("targetId", target_id)
@@ -104,7 +105,8 @@ class InfractionDBMixin:
 
         logger.debug("DB get_active_warnings(guild=%s, target=%s)", guild_id, target_id)
         response = await (
-            self._client.table("infraction")
+            self._client
+            .table("infraction")
             .select("*")
             .eq("guildId", guild_id)
             .eq("targetId", target_id)
@@ -127,7 +129,8 @@ class InfractionDBMixin:
 
         logger.debug("DB deactivate_infraction(%s, %s)", guild_id, infraction_id)
         await (
-            self._client.table("infraction")
+            self._client
+            .table("infraction")
             .update({"active": False})
             .eq("guildId", guild_id)
             .eq("id", infraction_id)

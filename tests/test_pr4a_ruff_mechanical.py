@@ -92,8 +92,18 @@ class TestPerFileIgnoresMechanicalRemoved:
         assert "EM" not in ignores, f"bot/**/*.py still has broad EM (covers EM101/EM102): {ignores}"
 
     def test_bot_ignores_retains_other_suppressions(self) -> None:
-        """Progressive removal must keep C4, C90 etc. for PR4b/4c (S cleared in PR4b)."""
+        """Progressive removal must keep C4, C90 etc. for PR4b/4c (S cleared in PR4b, quality cleared in PR4c)."""
         ignores = self._bot_ignores()
+        # After PR4c, bot/** is preview-only — remaining quality codes gone. Accept either state.
+        if ignores == ["ANN", "RUF052", "RUF029", "RUF069", "RUF050", "RUF100"] or set(ignores).issubset({
+            "ANN",
+            "RUF052",
+            "RUF029",
+            "RUF069",
+            "RUF050",
+            "RUF100",
+        }):
+            return
         # PR4b removed S — after PR4b the retained list no longer includes S. Accept either state.
         # At PR4a time S was present; at PR4b+ it is absent. Use future-proof check:
         known_progressively_removed_before_pr4c = {"S"}

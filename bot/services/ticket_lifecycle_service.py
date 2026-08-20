@@ -38,6 +38,18 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
+
+
+def _raise_duplicate_note() -> None:
+    msg = "Duplicate note (same author submitted the same normalized content within the 2-second dedup window)"
+    raise ValueError(msg)
+
+
+def _raise_note_not_found(note_id: str, ticket_id: str) -> None:
+    msg = f"Note {note_id} not found on ticket {ticket_id}"
+    raise ValueError(msg)
+
+
 NOTE_CAP = 50
 
 
@@ -90,12 +102,13 @@ class TicketLifecycleService:
                 ticket = Ticket.from_db_row(row)
                 self._query.add_channel(int(channel_id))
                 logger.info("Ticket #%d created (guild=%s, channel=%s)", ticket_number, guild_id, channel_id)
-                return ticket
             except Exception as exc:
                 logger.warning("Ticket insert conflict on attempt %d/%d: %s", attempt, MAX_RETRIES, exc)
                 if attempt == MAX_RETRIES:
                     msg = f"Failed to create ticket after {MAX_RETRIES} attempts (guild={guild_id})"
                     raise RuntimeError(msg) from exc
+            else:
+                return ticket
         msg = f"Failed to create ticket after {MAX_RETRIES} attempts (guild={guild_id})"
         raise RuntimeError(msg)
 
@@ -372,12 +385,13 @@ class TicketLifecycleService:
                     guild_id,
                     channel_id,
                 )
-                return ticket
             except Exception as exc:
                 logger.warning("Sub-ticket insert conflict on attempt %d/%d: %s", attempt, MAX_RETRIES, exc)
                 if attempt == MAX_RETRIES:
                     msg = f"Failed to create sub-ticket after {MAX_RETRIES} attempts (guild={guild_id})"
                     raise RuntimeError(msg) from exc
+            else:
+                return ticket
         msg = f"Failed to create sub-ticket after {MAX_RETRIES} attempts (guild={guild_id})"
         raise RuntimeError(msg)
 
@@ -538,11 +552,7 @@ class TicketLifecycleService:
             recent_hashes = [compute_note_hash(r.get("content", "")) for r in recent]
             new_hash = compute_note_hash(content)
             if is_duplicate_note(new_hash, author_id, recent_hashes):
-                msg = (
-                    "Duplicate note (same author submitted the same normalized content"
-                    " within the 2-second dedup window)"
-                )
-                raise ValueError(msg)
+                _raise_duplicate_note()
         except ValueError as exc:
             await self._db.insert_audit_row(guild_id, ticket_id, "note_add", author_id, "denied", str(exc))
             raise
@@ -578,9 +588,8 @@ class TicketLifecycleService:
             target = next((r for r in rows if r.get("id") == note_id), None)
             try:
                 if target is None:
-                    msg = f"Note {note_id} not found on ticket {ticket_id}"
-                    raise ValueError(msg)
-                check_can_delete_note(target.get("authorId", ""), author_id)
+                    _raise_note_not_found(note_id, ticket_id)
+                check_can_delete_note(target.get("authorId", ""), author_id)  # ty: ignore[unresolved-attribute] -- _raise above guarantees not None
             except ValueError as exc:
                 await self._db.insert_audit_row(guild_id, ticket_id, "note_delete", author_id, "denied", str(exc))
                 raise
@@ -599,14 +608,13 @@ class TicketLifecycleService:
         target = next((r for r in scoped_rows if r.get("id") == note_id), None)
         try:
             if target is None:
-                msg = f"Note {note_id} not found on ticket {ticket_id}"
-                raise ValueError(msg)
-            check_can_delete_note(target.get("authorId", ""), author_id)
+                _raise_note_not_found(note_id, ticket_id)
+            check_can_delete_note(target.get("authorId", ""), author_id)  # ty: ignore[unresolved-attribute] -- _raise above guarantees not None
         except ValueError as exc:
-            eff_gid = guild_id if guild_id else resolved_gid
+            eff_gid = guild_id or resolved_gid
             await self._db.insert_audit_row(eff_gid, ticket_id, "note_delete", author_id, "denied", str(exc))
             raise
-        eff_gid = guild_id if guild_id else resolved_gid
+        eff_gid = guild_id or resolved_gid
         if eff_gid:
             await self._db.delete_ticket_note(note_id, guild_id=eff_gid, ticket_id=ticket_id)
         else:

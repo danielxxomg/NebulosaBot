@@ -117,8 +117,18 @@ class TestPerFileIgnoresSecurityRemoved:
         assert "S110" not in ignores, f"bot/**/*.py still suppresses S110: {ignores}"
 
     def test_bot_ignores_retains_quality_suppressions(self) -> None:
-        """Progressive removal must keep PR4c suppressions (C4/C90/ARG/etc.)."""
+        """Progressive removal must keep PR4c suppressions (C4/C90/ARG/etc.) — or be clean after PR4c."""
         ignores = self._bot_ignores()
+        # After PR4c, bot/** is preview-only (ANN/RUF) — the 14 quality codes are gone. Accept either state.
+        if ignores == ["ANN", "RUF052", "RUF029", "RUF069", "RUF050", "RUF100"] or set(ignores).issubset({
+            "ANN",
+            "RUF052",
+            "RUF029",
+            "RUF069",
+            "RUF050",
+            "RUF100",
+        }):
+            return
         for must_keep in ["C4", "C90", "T20", "ARG", "DTZ", "T10", "TRY004", "TRY300", "FURB"]:
             assert must_keep in ignores, f"bot/**/*.py missing expected retained {must_keep}: {ignores}"
 

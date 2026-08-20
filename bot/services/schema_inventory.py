@@ -139,7 +139,7 @@ def _unwrap_response(response: Any) -> list[Any]:
     return []
 
 
-async def fetch_live_metadata(
+async def fetch_live_metadata(  # noqa: C901 -- 4-query live inventory; decomposed in helpers, top-level orchestration
     supabase_client: Any,
 ) -> tuple[
     list[dict[str, Any]],
@@ -372,8 +372,8 @@ class SchemaInventory:
                 resolved=False,
                 reasons=tuple(reasons),
                 rls_zero_policy_tables=tuple(RLS_NO_POLICY_TABLES),
-                guild_fk_children=tuple(),
-                publication_tables=tuple(),
+                guild_fk_children=(),
+                publication_tables=(),
                 migration_count=len(live_migrations) if isinstance(live_migrations, list) else 0,
                 guild_scope_gaps=GUILD_SCOPE_GAP_HISTORY,
                 guild_scope_runtime_closed=GUILD_SCOPE_RUNTIME_CLOSED,
@@ -382,9 +382,14 @@ class SchemaInventory:
                 no_ddl=True,
             )
         # Guild FKs: exactly 6 child->guild CASCADE on known baseline
-        expected_fk_children = frozenset(
-            {"economy_config", "greeting_config", "infraction", "member", "ticket", "ticket_category"}
-        )
+        expected_fk_children = frozenset({
+            "economy_config",
+            "greeting_config",
+            "infraction",
+            "member",
+            "ticket",
+            "ticket_category",
+        })
         observed_children = {str(r.get("child")) for r in live_fks if r.get("parent") == "guild"}
         observed_cascade = {
             str(r.get("child")) for r in live_fks if r.get("parent") == "guild" and r.get("on_delete") == "CASCADE"
@@ -405,8 +410,7 @@ class SchemaInventory:
         normalized_live = set()
         for m in live_migrations:
             s = str(m).strip()
-            if s.endswith(".sql"):
-                s = s[:-4]
+            s = s.removesuffix(".sql")
             # keep only basename if path
             if "/" in s:
                 s = s.rsplit("/", 1)[-1]

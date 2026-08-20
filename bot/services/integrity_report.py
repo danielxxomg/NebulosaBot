@@ -7,15 +7,13 @@ from datetime import UTC, datetime, timedelta
 
 from bot.config import INTEGRITY_EVIDENCE_FRESHNESS_SECONDS
 
-SUPPORTED_DEPLOYMENT_MODES = frozenset(
-    {
-        "postgres",
-        "postgres_direct",
-        "supabase",
-        "supabase_session",
-        "supabase_transaction",
-    }
-)
+SUPPORTED_DEPLOYMENT_MODES = frozenset({
+    "postgres",
+    "postgres_direct",
+    "supabase",
+    "supabase_session",
+    "supabase_transaction",
+})
 
 # Realtime publication tables verified in the live 2026-08-11 read-only probe.
 REQUIRED_REALTIME_PUBLICATION = frozenset({"guild", "greeting_config", "ticket", "ticket_note"})
@@ -152,7 +150,7 @@ def evaluate_live_preflight(**evidence: object) -> LivePreflightResult:
     observed_at = evidence.get("observed_at")
     if isinstance(observed_at, str):
         try:
-            observed_at = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+            observed_at = datetime.fromisoformat(observed_at)
         except ValueError:
             observed_at = None
     if not isinstance(observed_at, datetime) or observed_at.tzinfo is None:

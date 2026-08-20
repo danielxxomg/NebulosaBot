@@ -97,7 +97,7 @@ class ImageService:
         self,
         username: str,
         avatar_url: str | None,
-        xp: int,
+        xp: int,  # noqa: ARG002 -- public API: caller passes xp; display via xp_for_current/next
         level: int,
         rank: int,
         xp_for_current: float,
@@ -132,8 +132,7 @@ class ImageService:
             draw.line([(0, y), (CARD_WIDTH, y)], fill=(r, g, b, 255))
 
         # -- Load fonts ---------------------------------------------------
-        font_username = self._load_font(28)
-        font_username_bold = self._load_font(28)  # same file — Inter has no separate bold
+        font_username_bold = self._load_font(28)  # Inter has no separate bold — same file at 28
         font_level = self._load_font(20)
         font_xp_text = self._load_font(16)
         font_rank = self._load_font(36)

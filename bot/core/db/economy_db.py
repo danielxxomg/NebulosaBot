@@ -84,7 +84,8 @@ class EconomyDBMixin:
         # If caller provides a level override, update it separately.
         if new_level is not None:
             await (
-                self._client.table("member")
+                self._client
+                .table("member")
                 .update({"level": new_level})
                 .eq("guildId", guild_id)
                 .eq("userId", user_id)
@@ -195,7 +196,8 @@ class EconomyDBMixin:
             offset,
         )
         response = await (
-            self._client.table("member")
+            self._client
+            .table("member")
             .select("guildId,userId,xp,level,coins")
             .eq("guildId", guild_id)
             .order(column, desc=True)
@@ -232,7 +234,8 @@ class EconomyDBMixin:
         )
         # Count members with higher value → rank = count + 1
         response = await (
-            self._client.table("member")
+            self._client
+            .table("member")
             .select("userId", count="exact")
             .eq("guildId", guild_id)
             .gt(column, target_value)

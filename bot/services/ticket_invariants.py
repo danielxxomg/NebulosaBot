@@ -229,8 +229,8 @@ def check_one_ticket_per_user_per_category(
 
 
 def check_can_edit_category(
-    actor_id: str,
-    ticket: dict[str, Any],
+    _actor_id: str,
+    _ticket: dict[str, Any],
     *,
     is_mod: bool,
 ) -> None:

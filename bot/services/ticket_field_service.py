@@ -37,7 +37,7 @@ def validate_field_definitions(raw: Any) -> list[dict[str, Any]]:
     """
     if not isinstance(raw, list):
         msg = "field_definitions must be a list"
-        raise ValueError(msg)
+        raise ValueError(msg)  # noqa: TRY004 -- API contract is ValueError for invalid input, not TypeError
 
     if len(raw) > _MAX_FIELDS:
         msg = f"field_definitions allows at most {_MAX_FIELDS} fields, got {len(raw)}"
@@ -49,7 +49,7 @@ def validate_field_definitions(raw: Any) -> list[dict[str, Any]]:
     for i, item in enumerate(raw):
         if not isinstance(item, dict):
             msg = f"field_definitions[{i}] must be a dict"
-            raise ValueError(msg)
+            raise ValueError(msg)  # noqa: TRY004 -- API contract is ValueError
 
         # --- key (required) ---
         key = item.get("key")
@@ -130,9 +130,8 @@ def validate_custom_fields(
     """
     if not isinstance(submitted, dict):
         msg = "custom_fields must be a dict"
-        raise ValueError(msg)
+        raise ValueError(msg)  # noqa: TRY004 -- API contract is ValueError
 
-    def_map = {d["key"]: d for d in definitions}
     result: dict[str, str] = {}
 
     for defn in definitions:
@@ -147,7 +146,7 @@ def validate_custom_fields(
 
         if not isinstance(raw_val, str):
             msg = f"custom_fields: value for {key!r} must be a string, got {type(raw_val).__name__}"
-            raise ValueError(msg)
+            raise ValueError(msg)  # noqa: TRY004 -- API contract is ValueError
 
         val = raw_val.strip()
 

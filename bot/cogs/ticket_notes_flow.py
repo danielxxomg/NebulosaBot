@@ -85,10 +85,10 @@ class TicketNotesFlow:
         if row is None:
             await ctx.send(embed=_err(gid, "tickets.note.add_not_ticket"))
             return
+        if gid is None:
+            msg = "guild_id required"
+            raise ValueError(msg)
         try:
-            if gid is None:
-                msg = "guild_id required"
-                raise ValueError(msg)
             notes = await self.bot.ticket_service.get_notes(row["id"], guild_id=gid)
         except Exception:
             logger.exception("Failed to fetch notes for ticket %s", row["id"])
@@ -116,10 +116,10 @@ class TicketNotesFlow:
         if row is None:
             await ctx.send(embed=_err(gid, "tickets.note.delete_not_ticket"))
             return
+        if gid is None:
+            msg = "guild_id required"
+            raise ValueError(msg)
         try:
-            if gid is None:
-                msg = "guild_id required"
-                raise ValueError(msg)
             await self.bot.ticket_service.delete_note(
                 note_id=note_id, author_id=str(ctx.author.id), ticket_id=row["id"], guild_id=gid
             )

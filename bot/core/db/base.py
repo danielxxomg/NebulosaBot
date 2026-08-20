@@ -121,7 +121,8 @@ class DatabaseBase:
             _unwrap(guild_resp)
             ticket_resp = await self._client.table("ticket").select("id").limit(1).execute()
             _unwrap(ticket_resp)
-            return True
         except Exception:
             logger.exception("Supabase health probe (guild+ticket) failed")
             return False
+        else:
+            return True

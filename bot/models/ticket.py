@@ -10,15 +10,13 @@ from typing import Any
 from bot.config import INTEGRITY_EVIDENCE_FRESHNESS_SECONDS
 
 _ACTIVE_STATUSES = frozenset({"open", "claimed"})
-_VALID_REPAIR_COMBINATIONS = frozenset(
-    {
-        "close/repaired",
-        "close/error",
-        "no_op/already_closed",
-        "no_op/skipped",
-        "no_op/error",
-    }
-)
+_VALID_REPAIR_COMBINATIONS = frozenset({
+    "close/repaired",
+    "close/error",
+    "no_op/already_closed",
+    "no_op/skipped",
+    "no_op/error",
+})
 
 # Outcomes that MUST carry a non-empty review/audit reason.
 # Per ticket-model spec only repaired/already_closed/skipped/error are valid;
@@ -83,7 +81,7 @@ class IntegrityEvidence:
         """Build evidence from a ticket row and a completed channel check."""
         observed_at = row.get("observedAt")
         if isinstance(observed_at, str):
-            observed_at = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+            observed_at = datetime.fromisoformat(observed_at)
         evidence_id = row.get("evidenceId")
         return cls(
             ticket_id=row["ticketId"],
@@ -144,7 +142,7 @@ class RepairResult:
         """Build a result from a camelCase audit/evidence row."""
         timestamp = row["timestamp"]
         if isinstance(timestamp, str):
-            timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            timestamp = datetime.fromisoformat(timestamp)
         return cls(
             ticket_id=row["ticketId"],
             guild_id=row["guildId"],

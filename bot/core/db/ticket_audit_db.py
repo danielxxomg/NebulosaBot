@@ -90,7 +90,8 @@ class TicketAuditDBMixin:
 
         logger.debug("DB get_audit_rows(guild=%s, limit=%d, offset=%d)", guild_id, limit, offset)
         response = await (
-            self._client.table("ticket_audit")
+            self._client
+            .table("ticket_audit")
             .select("*")
             .eq("guildId", guild_id)
             .order("createdAt", desc=True)

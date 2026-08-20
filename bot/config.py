@@ -115,7 +115,6 @@ def _verify_jwt_jwks(key: str) -> str | None:
             role = payload.get("role")
             if not isinstance(role, str) or not role:
                 return None
-            return role
         except Exception as exc:
             last_exc = exc
             # Bounded kid refresh: retry only on JWK client kid-not-found errors.
@@ -125,6 +124,8 @@ def _verify_jwt_jwks(key: str) -> str | None:
                     continue
                 break
             return None
+        else:
+            return role
     # Exhausted retries
     _ = last_exc
     return None
@@ -157,7 +158,7 @@ def validate_supabase_key(key: str) -> None:
     (``PYTEST_CURRENT_TEST`` or ``ENV=test`` or pytest argv); in any other
     environment it is treated as unverifiable and fails closed.
     """
-    if key in ("test-key",) or key.startswith("test-key-"):
+    if key == "test-key" or key.startswith("test-key-"):
         if _is_test_env():
             return
         msg = "test-key sentinel is only allowed in test env — expected service_role JWT"
@@ -187,13 +188,13 @@ def validate_supabase_key(key: str) -> None:
                 if jwks_role is not None:
                     if jwks_role != "service_role":
                         msg = f"Supabase key role is {jwks_role!r}, expected service_role"
-                        raise ServiceRoleValidationError(msg)
+                        raise ServiceRoleValidationError(msg)  # noqa: TRY301 -- fail-closed inside try; caught by outer except
                     return
                 msg = (
                     "Supabase JWT JWKS verification failed (kid/iss/aud/exp/role) — "
                     "expected verifiable service_role JWT or modern sb_secret_"
                 )
-                raise ServiceRoleValidationError(msg)
+                raise ServiceRoleValidationError(msg)  # noqa: TRY301 -- fail-closed inside try
         except ServiceRoleValidationError:
             raise
         except Exception:

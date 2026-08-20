@@ -181,7 +181,8 @@ class TicketDBMixin:
         cutoff = datetime.now(UTC) - timedelta(hours=hours)
         logger.debug("DB get_stale_tickets(guild=%s, cutoff=%s)", guild_id, cutoff.isoformat())
         response = await (
-            self._client.table("ticket")
+            self._client
+            .table("ticket")
             .select("*")
             .eq("guildId", guild_id)
             .in_("status", ["open", "claimed"])
@@ -198,7 +199,8 @@ class TicketDBMixin:
 
         logger.debug("DB get_max_ticket_number(guild=%s)", guild_id)
         response = await (
-            self._client.table("ticket")
+            self._client
+            .table("ticket")
             .select("ticketNumber")
             .eq("guildId", guild_id)
             .order("ticketNumber", desc=True)
@@ -220,7 +222,8 @@ class TicketDBMixin:
 
         logger.debug("DB get_open_ticket_channel_ids(guild=%s)", guild_id)
         response = await (
-            self._client.table("ticket")
+            self._client
+            .table("ticket")
             .select("channelId")
             .eq("guildId", guild_id)
             .in_("status", ["open", "claimed"])
@@ -259,7 +262,8 @@ class TicketDBMixin:
             exclude_ticket_id,
         )
         query = (
-            self._client.table("ticket")
+            self._client
+            .table("ticket")
             .select("id", count="exact")
             .eq("guildId", guild_id)
             .eq("authorId", author_id)
@@ -289,7 +293,8 @@ class TicketDBMixin:
 
         logger.debug("DB get_active_ticket_by_channel(guild=%s, ch=%s)", guild_id, channel_id)
         response = (
-            await self._client.table("ticket")
+            await self._client
+            .table("ticket")
             .select("*")
             .eq("guildId", guild_id)
             .eq("channelId", channel_id)
@@ -347,7 +352,8 @@ class TicketDBMixin:
         # Step 1: fetch the ticket only if it belongs to the guild AND
         # matches expected_statuses.
         response = (
-            await self._client.table("ticket")
+            await self._client
+            .table("ticket")
             .select("*")
             .eq("guildId", guild_id)
             .eq("id", ticket_id)
@@ -371,7 +377,8 @@ class TicketDBMixin:
             update_data["transcriptUrl"] = transcript_url
 
         update_response = (
-            await self._client.table("ticket")
+            await self._client
+            .table("ticket")
             .update(update_data)
             .eq("guildId", guild_id)
             .eq("id", ticket_id)
@@ -398,7 +405,8 @@ class TicketDBMixin:
 
         logger.debug("DB update_ticket_last_activity(guild=%s, ch=%s)", guild_id, channel_id)
         await (
-            self._client.table("ticket")
+            self._client
+            .table("ticket")
             .update({"lastActivity": timestamp})
             .eq("guildId", guild_id)
             .eq("channelId", channel_id)
