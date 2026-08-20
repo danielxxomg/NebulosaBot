@@ -89,8 +89,8 @@ than by re-slicing.
 
 ## Phase 5: Verify Gates
 
-- [ ] 5.1 `uv run ruff check` — clean
-- [ ] 5.2 `uv run ty check` — clean
-- [ ] 5.3 `uv run tach check` — clean; new modules in services layer; no cross-layer violations
-- [ ] 5.4 `uv run pytest --cov=bot` — ≥75% coverage
-- [ ] 5.5 Verify ≤800 changed lines per PR slice; each slice solo-revertible
+- [x] 5.1 `uv run ruff check` — clean (verified 2026-08-20: All checks passed)
+- [x] 5.2 `uv run ty check` — clean (exit 0, 380 pre-existing warn diagnostics, no new errors)
+- [x] 5.3 `uv run tach check` — clean; new modules in services layer; no cross-layer violations (tach + tach check-external both pass)
+- [x] 5.4 `uv run pytest --cov=bot` — ≥75% coverage (verified 2325 passed, 17 skipped, 84.80%)
+- [x] 5.5 Verify ≤800 changed lines per PR slice; each slice solo-revertible — PR1 +783/-277 ✅, PR2 +1369/-503 with documented size:exception (stacked-to-main cohesive work unit, see Review Budget section)
