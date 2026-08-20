@@ -123,6 +123,9 @@ max-complexity = 15
 
 [tool.ruff.lint.per-file-ignores]
 # tests/ — allow assert, print, unused args in test files
+"tests/test_pr1_uv_foundation.py" = ["S101", "S105", "S106", "ARG", "T20", "TRY003", "EM101", "FURB110", "RET504", "RET505", "PERF401", "SIM108", "E741", "S603", "S607"]
+"tests/test_pr2_ty_replaces_mypy.py" = ["S101", "S105", "S106", "ARG", "T20", "TRY003", "EM101", "FURB110", "RET504", "RET505", "PERF401", "SIM108", "E741", "S603", "S607", "E501"]
+"tests/test_pr3_prek_replaces_precommit.py" = ["S101", "S105", "S106", "ARG", "T20", "TRY003", "EM101", "FURB110", "RET504", "RET505", "PERF401", "SIM108", "S603"]
 "tests/**/*.py" = ["S101", "S105", "S106", "ARG", "T20", "TRY003", "EM101", "FURB110", "RET504", "RET505", "PERF401", "SIM108"]
 # PR1 broad debt allowances — rules are ENABLED but violations suppressed.
 # PR2-PR5 will progressively remove these as debt is cleared.
