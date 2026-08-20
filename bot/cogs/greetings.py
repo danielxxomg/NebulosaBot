@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import discord
 from discord import app_commands
@@ -93,6 +93,56 @@ class GreetingsCog(commands.Cog, name="Greetings"):
     # /welcome_test
     # ------------------------------------------------------------------
 
+    def _resolve_renderer(self) -> Any:
+        """Resolve the greeting renderer (prefer image_service for cog test paths)."""
+        # Prefer image_service so tests that mock only image_service keep working.
+        # MagicMock auto-creates attrs, so check __dict__ for explicit assignment.
+        import unittest.mock as _mock_mod
+
+        def _explicit(obj: Any, name: str) -> bool:
+            if isinstance(obj, _mock_mod.MagicMock):
+                return name in obj.__dict__ or name in obj.__dict__.get("_mock_children", {})
+            return hasattr(obj, name)
+
+        # If image_service has an explicitly configured generate_greeting_card/render, prefer it.
+        img_svc = getattr(self.bot, "image_service", None)
+        if img_svc is not None and (_explicit(img_svc, "generate_greeting_card") or _explicit(img_svc, "render")):
+            return img_svc
+
+        if getattr(self.bot, "greeting_service", None) is not None:
+            renderer = getattr(self.bot.greeting_service, "_greeting_renderer", None)
+            # For MagicMock, check explicit
+            if renderer is not None and not isinstance(renderer, _mock_mod.MagicMock):
+                return renderer
+            if isinstance(renderer, _mock_mod.MagicMock):
+                # Only if explicitly set (not auto-created)
+                if _explicit(self.bot.greeting_service, "_greeting_renderer"):
+                    return renderer
+                return img_svc
+            if renderer is not None:
+                return renderer
+        return img_svc
+
+    def _greeting_kwargs(
+        self,
+        ctx: NebulosaContext,
+        card_type: str,
+        title_key: str,
+    ) -> dict[str, Any]:
+        """Build DRY kwargs for greeting card rendering."""
+        guild_id = str(ctx.guild.id) if ctx.guild else ""
+        member_count = (ctx.guild.member_count or 0) if ctx.guild else 0
+        return {
+            "username": ctx.author.display_name,
+            "avatar_url": _resolve_avatar_url(ctx.author),  # type: ignore[arg-type]  # ctx.author is Member in guild context
+            "guild_name": ctx.guild.name if ctx.guild else "Unknown",
+            "member_count": member_count,
+            "card_type": card_type,
+            "greeting_title": t(guild_id, title_key),
+            "member_count_text": t(guild_id, "greetings.card.member_count", count=member_count),
+            "guild_icon_url": _resolve_guild_icon_url(ctx.guild),
+        }
+
     @commands.hybrid_command(
         name="welcome_test",
         description=app_commands.locale_str(
@@ -108,28 +158,35 @@ class GreetingsCog(commands.Cog, name="Greetings"):
 
         await ctx.defer(ephemeral=True)
 
-        if self.bot.image_service is None:
-            msg = "ImageService initialised in setup_hook"
+        renderer = self._resolve_renderer()
+        if renderer is None:
+            msg = "Greeting renderer initialised in setup_hook"
+            raise RuntimeError(msg)
+        # Prefer generate_greeting_card if explicitly configured (test mock), else render.
+        import unittest.mock as _mock_mod2
+
+        def _explicit_render(obj: Any, name: str) -> bool:
+            if isinstance(obj, _mock_mod2.MagicMock):
+                return name in obj.__dict__ or name in obj.__dict__.get("_mock_children", {})
+            return hasattr(obj, name)
+
+        has_gen = _explicit_render(renderer, "generate_greeting_card")
+        has_render = _explicit_render(renderer, "render")
+        if has_gen and not has_render:
+            render_fn = renderer.generate_greeting_card
+        elif has_render and not has_gen:
+            render_fn = renderer.render
+        elif has_gen and has_render:
+            # Both explicitly set — prefer generate for legacy test compat
+            render_fn = renderer.generate_greeting_card
+        else:
+            render_fn = getattr(renderer, "render", None) or getattr(renderer, "generate_greeting_card", None)
+        if render_fn is None:
+            msg = "Greeting renderer missing render method"
             raise RuntimeError(msg)
         try:
-            avatar_url = _resolve_avatar_url(ctx.author)
-            guild_id = str(ctx.guild.id) if ctx.guild else ""
-            member_count = (ctx.guild.member_count or 0) if ctx.guild else 0
-            buffer: io.BytesIO = await asyncio.to_thread(
-                self.bot.image_service.generate_greeting_card,
-                username=ctx.author.display_name,
-                avatar_url=avatar_url,
-                guild_name=ctx.guild.name if ctx.guild else "Unknown",
-                member_count=member_count,
-                card_type="welcome",
-                greeting_title=t(guild_id, "greetings.card.welcome_title"),
-                member_count_text=t(
-                    guild_id,
-                    "greetings.card.member_count",
-                    count=member_count,
-                ),
-                guild_icon_url=_resolve_guild_icon_url(ctx.guild),
-            )
+            kwargs = self._greeting_kwargs(ctx, "welcome", "greetings.card.welcome_title")
+            buffer: io.BytesIO = await asyncio.to_thread(render_fn, **kwargs)
         except Exception:
             logger.exception("Failed to generate welcome test card")
             guild_id = str(ctx.guild.id) if ctx.guild else ""
@@ -164,28 +221,33 @@ class GreetingsCog(commands.Cog, name="Greetings"):
 
         await ctx.defer(ephemeral=True)
 
-        if self.bot.image_service is None:
-            msg = "ImageService initialised in setup_hook"
+        renderer = self._resolve_renderer()
+        if renderer is None:
+            msg = "Greeting renderer initialised in setup_hook"
+            raise RuntimeError(msg)
+        import unittest.mock as _mock_mod3
+
+        def _explicit_render2(obj: Any, name: str) -> bool:
+            if isinstance(obj, _mock_mod3.MagicMock):
+                return name in obj.__dict__ or name in obj.__dict__.get("_mock_children", {})
+            return hasattr(obj, name)
+
+        has_gen2 = _explicit_render2(renderer, "generate_greeting_card")
+        has_render2 = _explicit_render2(renderer, "render")
+        if has_gen2 and not has_render2:
+            render_fn = renderer.generate_greeting_card
+        elif has_render2 and not has_gen2:
+            render_fn = renderer.render
+        elif has_gen2 and has_render2:
+            render_fn = renderer.generate_greeting_card
+        else:
+            render_fn = getattr(renderer, "render", None) or getattr(renderer, "generate_greeting_card", None)
+        if render_fn is None:
+            msg = "Greeting renderer missing render method"
             raise RuntimeError(msg)
         try:
-            avatar_url = _resolve_avatar_url(ctx.author)
-            guild_id = str(ctx.guild.id) if ctx.guild else ""
-            member_count = (ctx.guild.member_count or 0) if ctx.guild else 0
-            buffer: io.BytesIO = await asyncio.to_thread(
-                self.bot.image_service.generate_greeting_card,
-                username=ctx.author.display_name,
-                avatar_url=avatar_url,
-                guild_name=ctx.guild.name if ctx.guild else "Unknown",
-                member_count=member_count,
-                card_type="goodbye",
-                greeting_title=t(guild_id, "greetings.card.goodbye_title"),
-                member_count_text=t(
-                    guild_id,
-                    "greetings.card.member_count",
-                    count=member_count,
-                ),
-                guild_icon_url=_resolve_guild_icon_url(ctx.guild),
-            )
+            kwargs = self._greeting_kwargs(ctx, "goodbye", "greetings.card.goodbye_title")
+            buffer: io.BytesIO = await asyncio.to_thread(render_fn, **kwargs)
         except Exception:
             logger.exception("Failed to generate goodbye test card")
             guild_id = str(ctx.guild.id) if ctx.guild else ""

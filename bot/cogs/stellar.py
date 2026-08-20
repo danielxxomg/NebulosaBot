@@ -286,19 +286,44 @@ class StellarCog(commands.Cog, name="Stellar"):
             )
 
         # Generate the rank card in a thread to avoid blocking.
-        if self.bot.image_service is None:
-            msg = "ImageService initialised in setup_hook"
-            raise RuntimeError(msg)
-        buffer = await asyncio.to_thread(
-            self.bot.image_service.generate_rank_card,
-            username=target.display_name,
-            avatar_url=avatar_url,
-            xp=rank_info["xp"],
-            level=rank_info["level"],
-            rank=rank_info["rank"],
-            xp_for_current=rank_info["xp_current"],
-            xp_for_next=rank_info["xp_needed"],
-        )
+        # Prefer RankRenderer, fallback to ImageService for back-compat.
+        rank_renderer = None
+        # Try to import RankRenderer lazily to avoid circular deps.
+        try:
+            from bot.services.rank_renderer import RankRenderer
+
+            # If bot has a RankRenderer injected, use it; otherwise create one.
+            rank_renderer = getattr(self.bot, "rank_renderer", None)
+            if rank_renderer is None:
+                rank_renderer = RankRenderer()
+        except Exception:
+            rank_renderer = None
+
+        if rank_renderer is not None:
+            buffer = await asyncio.to_thread(
+                rank_renderer.generate_rank_card,
+                username=target.display_name,
+                avatar_url=avatar_url,
+                xp=rank_info["xp"],
+                level=rank_info["level"],
+                rank=rank_info["rank"],
+                xp_for_current=rank_info["xp_current"],
+                xp_for_next=rank_info["xp_needed"],
+            )
+        else:
+            if self.bot.image_service is None:
+                msg = "ImageService initialised in setup_hook"
+                raise RuntimeError(msg)
+            buffer = await asyncio.to_thread(
+                self.bot.image_service.generate_rank_card,
+                username=target.display_name,
+                avatar_url=avatar_url,
+                xp=rank_info["xp"],
+                level=rank_info["level"],
+                rank=rank_info["rank"],
+                xp_for_current=rank_info["xp_current"],
+                xp_for_next=rank_info["xp_needed"],
+            )
 
         file = discord.File(buffer, filename="rank.png")
         await ctx.send(file=file, ephemeral=True)
