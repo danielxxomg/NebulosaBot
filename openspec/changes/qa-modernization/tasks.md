@@ -85,13 +85,13 @@ Chain strategy: stacked-to-main
 
 ## Phase 5 — PR5: Security (bandit delete + zizmor) (after PR4)
 
-- [ ] 5.1 Run BOTH bandit and ruff S once; record parity (bandit 95 ↔ S 97). **Why**: parity proof. **Accept**: delta documented. **Evidence**: both outputs. **Dep**: Phase 4c.
-- [ ] 5.2 Delete `[tool.bandit]` from pyproject; delete bandit hooks from prek.toml; delete Makefile `security` target; remove bandit from `ci` chain. **Why**: S strictly broader. **Accept**: `grep bandit` empty. **Evidence**: `grep -ri bandit`. **Dep**: 5.1.
-- [ ] 5.3 Add `workflow-security` job in ci.yml: `uvx zizmor --format=github .` (or sarif + `github/codeql-action/upload-sarif@<sha>`), blocking. **Why**: supply-chain gate. **Accept**: job fails on finding. **Evidence**: workflow YAML. **Dep**: 5.2.
-- [ ] 5.4 SHA-pin ALL `uses:` to 40-char SHA + `# vN` comment: checkout, setup-uv, setup-node, upload-artifact, codeql-action/upload-sarif, zizmor-action. **Why**: zizmor unpinned-uses. **Accept**: no `@vN` refs. **Evidence**: `grep '@v[0-9]' .github/workflows/`. **Dep**: 5.3.
-- [ ] 5.5 RED: temporarily revert one action to `@v4`; assert zizmor flags it. GREEN: restore SHA. **Why**: strict TDD for zizmor gate. **Accept**: zizmor fails on tag-pin. **Evidence**: zizmor output. **Dep**: 5.4.
-- [ ] 5.6 Top-level `permissions: contents: read`; `workflow-security` job elevates `security-events: write` for SARIF. **Why**: minimal permissions. **Accept**: no `write-all`. **Evidence**: YAML lint. **Dep**: 5.5.
-- [ ] 5.7 Fix `.github/workflows/code-quality.yml` trigger `main` → `master`. **Why**: repo default master. **Accept**: triggers on master PR. **Evidence**: workflow YAML. **Dep**: 5.6.
+- [x] 5.1 Run BOTH bandit and ruff S once; record parity (bandit 95 ↔ S 97). **Why**: parity proof. **Accept**: delta documented. **Evidence**: both outputs. **Dep**: Phase 4c.
+- [x] 5.2 Delete `[tool.bandit]` from pyproject; delete bandit hooks from prek.toml; delete Makefile `security` target; remove bandit from `ci` chain. **Why**: S strictly broader. **Accept**: `grep bandit` empty. **Evidence**: `grep -ri bandit`. **Dep**: 5.1.
+- [x] 5.3 Add `workflow-security` job in ci.yml: `uvx zizmor --format=github .` (or sarif + `github/codeql-action/upload-sarif@<sha>`), blocking. **Why**: supply-chain gate. **Accept**: job fails on finding. **Evidence**: workflow YAML. **Dep**: 5.2.
+- [x] 5.4 SHA-pin ALL `uses:` to 40-char SHA + `# vN` comment: checkout, setup-uv, setup-node, upload-artifact, codeql-action/upload-sarif, zizmor-action. **Why**: zizmor unpinned-uses. **Accept**: no `@vN` refs. **Evidence**: `grep '@v[0-9]' .github/workflows/`. **Dep**: 5.3.
+- [x] 5.5 RED: temporarily revert one action to `@v4`; assert zizmor flags it. GREEN: restore SHA. **Why**: strict TDD for zizmor gate. **Accept**: zizmor fails on tag-pin. **Evidence**: zizmor output. **Dep**: 5.4.
+- [x] 5.6 Top-level `permissions: contents: read`; `workflow-security` job elevates `security-events: write` for SARIF. **Why**: minimal permissions. **Accept**: no `write-all`. **Evidence**: YAML lint. **Dep**: 5.5.
+- [x] 5.7 Fix `.github/workflows/code-quality.yml` trigger `main` → `master`. **Why**: repo default master. **Accept**: triggers on master PR. **Evidence**: workflow YAML. **Dep**: 5.6.
 
 ## Phase 6 — PR6: Tach Boundaries (after PR3; pre-push tach hook)
 

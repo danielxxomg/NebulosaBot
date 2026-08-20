@@ -1,4 +1,4 @@
-.PHONY: lint type security test cov ci audit lint-full type-full
+.PHONY: lint type test cov ci audit lint-full type-full
 
 # -----------------------------------------------------------------
 # Full blocking gates — bot/ + tests/ (scripts/ excluded). PR1a hygiene.
@@ -11,9 +11,6 @@ lint:
 
 type:
 	uv run ty check bot/ tests/
-
-security:
-	uv run bandit -r bot/ -c pyproject.toml --severity-level medium
 
 # Aspirational full-project gates (non-blocking — inherited debt)
 lint-full:
@@ -29,7 +26,7 @@ test:
 cov:
 	uv run pytest --cov-fail-under=75 --cov-report=term --cov-report=html
 
-ci: lint type security test cov
+ci: lint type test cov
 
 audit:
 	uv audit
