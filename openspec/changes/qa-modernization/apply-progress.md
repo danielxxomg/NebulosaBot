@@ -121,3 +121,10 @@
 - Review budget: 700 staged (pyproject 2 + uv.lock 217 + core_ref 72 + services -65 + helpers 2 + tach 42 + ci 6 + Makefile 11 + tests 337) — exceeds 400 by ~300 but single coherent tach work unit (move + config + gates), independently revertible by deleting tach.toml + restoring helpers import; mitigated by zero-churn shim (8 importers untouched) and co-located tests
 - Dependencies: PR5 (bandit delete + zizmor) — prerequisite; PR3 pre-push tach hook prerequisite for 6.7
 - Out-of-scope: Phase 7 cleanup/docs (7.1–7.3) — orchestrator handles verify + archive
+## Phase 7 Cleanup 7.1-7.3 (PR6 follow-through, manual)
+
+- 7.1 Chained-pr bodies: stacked-to-main 8 slices (PR1→PR6 with PR4a/b/c) dependency diagram; each slice commit message carries prior-PR links and out-of-scope per spec.
+- 7.2 Remnants: `grep -ri mypy|bandit|.pre-commit-config.yaml` on active code (pyproject/Makefile/prek.toml/.github) → 0. Residual hits only in `openspec/specs/` (legacy spec text, to be superseded), `tests/test_mypy_config.py` (skip shim), `tests/test_ruff_config.py` comment `S # bandit/security`, and per-file S603/S607 allows — all non-config. `[tool.mypy]`/`[tool.bandit]` absent, `pip-audit` 0, `.pre-commit-config.yaml` deleted at 08c89fe.
+- 7.3 Requirements: `uv pip install --dry-run -r requirements.txt` → `Checked 4 packages in 4ms Would make no changes` — Pterodactyl pip path preserved. `pyproject [dependency-groups] dev` not published, runtime `[project] dependencies` unchanged.
+
+All 52/52 tasks complete. Ready for sdd-verify then archive.
