@@ -17,7 +17,11 @@ class TestGreetingConfigDefaults:
     """New GreetingConfig instances should have sensible defaults."""
 
     def test_default_guild_id_only(self) -> None:
-        """Creating a config with only guild_id sets all defaults."""
+        """Creating a config with only guild_id sets all defaults.
+
+        Per greeting-config spec (Scenario: Default values for new guild),
+        card toggles default to ``False`` for new guilds.
+        """
         config = GreetingConfig(guild_id="123456789")
         assert config.guild_id == "123456789"
         assert config.welcome_enabled is False
@@ -27,18 +31,18 @@ class TestGreetingConfigDefaults:
         assert config.onboarding_channel_id is None
         assert config.welcome_message is None
         assert config.goodbye_message is None
-        assert config.welcome_card_enabled is True
-        assert config.goodbye_card_enabled is True
+        assert config.welcome_card_enabled is False
+        assert config.goodbye_card_enabled is False
 
-    def test_default_welcome_card_enabled_is_true(self) -> None:
-        """Welcome card should default to True (design decision)."""
+    def test_default_welcome_card_enabled_is_false(self) -> None:
+        """Welcome card defaults to False (greeting-config spec: new-guild card toggles are false)."""
         config = GreetingConfig(guild_id="abc")
-        assert config.welcome_card_enabled is True
+        assert config.welcome_card_enabled is False
 
-    def test_default_goodbye_card_enabled_is_true(self) -> None:
-        """Goodbye card should default to True (design decision)."""
+    def test_default_goodbye_card_enabled_is_false(self) -> None:
+        """Goodbye card defaults to False (greeting-config spec: new-guild card toggles are false)."""
         config = GreetingConfig(guild_id="abc")
-        assert config.goodbye_card_enabled is True
+        assert config.goodbye_card_enabled is False
 
 
 # ---------------------------------------------------------------------------

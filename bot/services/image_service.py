@@ -1,10 +1,17 @@
-"""ImageService — thin shim delegating to RankRenderer / GreetingRenderer.
+"""ImageService — DEPRECATED thin shim delegating to RankRenderer / GreetingRenderer.
 
-The canonical implementations now live in :mod:`bot.services.rank_renderer`
-and :mod:`bot.services.greeting_renderer` via :mod:`bot.services.shared_assets`.
-This module is retained for back-compat so existing callers (tests, cogs that
-have not yet migrated) keep working. New code should import the renderers
-directly.
+DEPRECATED. The canonical implementations now live in
+:mod:`bot.services.rank_renderer` and :mod:`bot.services.greeting_renderer`
+via :mod:`bot.services.shared_assets` (spec R-1: rank-card generation is owned
+by ``RankRenderer``; WG-4: greeting cards by ``GreetingRenderer``). This class
+only *delegates* — it owns no rendering logic — and is retained solely so
+existing callers (``bot/cogs/stellar.py`` and the legacy/PR2 test suites that
+mock ``bot.image_service.generate_rank_card`` / ``generate_greeting_card``)
+keep working. ``GREETING_ACCENT`` below is a legacy RGBA back-compat constant
+for tests that patch ``ImageService``; the branded accent source of truth is
+``bot.utils.brand.GREETING_ACCENT`` (== ``brand.ACCENT``), used by
+``PillowGreetingRenderer``. New code MUST import the renderers directly; this
+shim will be removed once ``stellar.py`` and the legacy suites migrate.
 """
 
 from __future__ import annotations
@@ -19,10 +26,13 @@ from bot.services.rank_renderer import RankRenderer
 
 
 class ImageService:
-    """Thin compatibility shim delegating to the split renderers.
+    """DEPRECATED thin compatibility shim delegating to the split renderers.
 
-    All Pillow work remains synchronous; callers MUST wrap it in
-    :func:`asyncio.to_thread` to avoid blocking the event loop.
+    The methods below do NOT own rendering — they forward to
+    :class:`RankRenderer` and :class:`PillowGreetingRenderer` (spec R-1/WG-4
+    owners). Kept so legacy callers and mock-based tests keep working. Callers
+    MUST wrap Pillow work in :func:`asyncio.to_thread` to avoid blocking the
+    event loop.
     """
 
     # Re-expose greeting layout constants for tests that patch ImageService.

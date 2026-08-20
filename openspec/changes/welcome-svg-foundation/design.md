@@ -132,6 +132,7 @@ sequenceDiagram
 from typing import Protocol, runtime_checkable
 import io
 
+
 @runtime_checkable
 class GreetingRenderer(Protocol):
     """Render a branded greeting card PNG from pre-translated strings.
@@ -140,6 +141,7 @@ class GreetingRenderer(Protocol):
     Identity inputs (avatar, guild icon) are fetched off the event loop;
     callers wrap render() in asyncio.to_thread.
     """
+
     def render(
         self,
         *,
@@ -147,15 +149,18 @@ class GreetingRenderer(Protocol):
         avatar_url: str | None,
         guild_name: str,
         member_count: int,
-        card_type: str,                  # "welcome" | "goodbye"
-        greeting_title: str,             # pre-translated
-        member_count_text: str,          # pre-translated
+        card_type: str,  # "welcome" | "goodbye"
+        greeting_title: str,  # pre-translated
+        member_count_text: str,  # pre-translated
         guild_icon_url: str | None,
     ) -> io.BytesIO: ...
 
+
 class PillowGreetingRenderer:
     """Cycle 1 default. Accent from bot.utils.brand.ACCENT (no hex)."""
+
     __slots__ = ("_assets",)
+
     def __init__(self) -> None: ...
     def render(self, **kwargs) -> io.BytesIO: ...  # via shared_assets
 ```
@@ -201,8 +206,25 @@ process-integration surface in the shipped code.
 
 ## Open Questions
 
-- [ ] Confirm `image_service.py` retains any caller after the split (verify before delete vs. thin shim).
-- [ ] Exact `dashboard/lib` module name for the shared guard (`verifyGuildAdmin.ts` vs. `guards.ts`) — proposal says `guards.ts`, follow project convention.
+- [x] Confirm `image_service.py` retains any caller after the split (verify before delete vs. thin shim).
+      **Resolved (Cycle 1 correction):** `image_service.py` is retained as a
+      **DEPRECATED delegating shim**, not deleted. `bot/cogs/stellar.py:318`
+      still calls `self.bot.image_service.generate_rank_card`, and the legacy
+      + PR2 test suites mock `bot.image_service.generate_{rank,greeting}_card`.
+      Removing the method would break those callers and exceed the Cycle 1
+      correction budget. The shim owns NO rendering logic — it forwards to
+      `RankRenderer` / `PillowGreetingRenderer` (the spec R-1/WG-4 owners).
+      The `GREETING_ACCENT` RGBA constant on the shim is a legacy back-compat
+      value for tests that patch `ImageService`; the branded source of truth
+      is `bot.utils.brand.GREETING_ACCENT` (== `brand.ACCENT`). Full removal is
+      deferred until `stellar.py` and the legacy suites migrate to the
+      renderers directly. Spec R-1 "ImageService no longer owns rank card" is
+      satisfied in substance (ownership moved to `RankRenderer`); the on-disk
+      delegating method is intentional back-compat, documented as DEPRECATED.
+- [x] Exact `dashboard/lib` module name for the shared guard (`verifyGuildAdmin.ts` vs. `guards.ts`) — proposal says `guards.ts`, follow project convention.
+      **Resolved:** shared guard lives at `dashboard/lib/guards.ts` (matches
+      project convention); four action files import it and pass their
+      domain-specific admin error string.
 
 ## Next Step
 

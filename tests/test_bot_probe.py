@@ -51,6 +51,7 @@ async def test_probe_import_error_falls_back_to_pillow_and_logs_warning(caplog):
         # Call the probe logic in isolation.
         try:
             import cairosvg  # type: ignore  # noqa: F401
+
             renderer = PillowGreetingRenderer()  # Cycle 1 still Pillow even if present
         except ImportError:
             renderer = PillowGreetingRenderer()

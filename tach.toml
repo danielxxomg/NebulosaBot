@@ -38,5 +38,9 @@ from = ["bot.core.ticket_ref"]
 expose = ["*", "Ticket", "TicketNote", "TicketCategory"]
 from = ["bot.models"]
 [external]
-exclude = ["pytest", "hypothesis", "freezegun", "pyyaml", "yaml", "cryptography"]
+# cairosvg is an optional Cycle-2 renderer probe only; on python:3.11-slim
+# (no libcairo) the probe raises ImportError and PillowGreetingRenderer stays
+# the default. It is not a runtime dependency in Cycle 1, so tach does not
+# require it declared in pyproject.toml.
+exclude = ["pytest", "hypothesis", "freezegun", "pyyaml", "yaml", "cryptography", "cairosvg"]
 rename = ["PIL:pillow", "psycopg:psycopg"]

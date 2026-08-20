@@ -119,7 +119,10 @@ export async function getCurrentUserId(): Promise<string> {
 export async function getTicketsForGuild(
   guildId: string
 ): Promise<TicketListResult> {
-  const authError = await verifyGuildAdmin(guildId);
+  const authError = await verifyGuildAdmin(
+    guildId,
+    "You must be a server administrator to view tickets."
+  );
   if (authError) {
     return { data: null, error: authError.error };
   }
@@ -173,7 +176,10 @@ async function resolveTicketGuild(
   }
 
   const guildId = (data as { guildId: string }).guildId;
-  const authError = await verifyGuildAdmin(guildId);
+  const authError = await verifyGuildAdmin(
+    guildId,
+    "You must be a server administrator to view this ticket."
+  );
   if (authError) {
     return { error: authError.error };
   }
@@ -464,7 +470,10 @@ export async function getTicketAudit(
   ticketId?: string,
   page: number = 1
 ): Promise<TicketAuditListResult> {
-  const authError = await verifyGuildAdmin(guildId);
+  const authError = await verifyGuildAdmin(
+    guildId,
+    "You must be a server administrator to view the ticket audit trail."
+  );
   if (authError) {
     return { data: null, error: authError.error };
   }

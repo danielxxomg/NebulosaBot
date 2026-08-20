@@ -351,8 +351,14 @@ def _resolve_guild_channel(
         return None
 
 
-def _resolve_avatar_url(member: discord.Member) -> str | None:
-    """Return the display avatar URL for *member*, or ``None`` on failure."""
+def _resolve_avatar_url(member: discord.abc.User) -> str | None:
+    """Return the display avatar URL for *member*, or ``None`` on failure.
+
+    Accepts :class:`discord.abc.User` so cogs can pass ``ctx.author`` (typed
+    ``User`` but a ``Member`` at runtime in guild context) without a
+    ``type: ignore[arg-type]``. ``display_avatar`` exists on both ``User``
+    and ``Member``.
+    """
     try:
         return str(member.display_avatar.url)
     except Exception:

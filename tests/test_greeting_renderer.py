@@ -102,7 +102,16 @@ class TestGreetingRendererBrandTokens:
         assert "greeting_title" in params, "render must accept greeting_title"
         assert "member_count_text" in params, "render must accept member_count_text"
         # Should be keyword-only per design.
-        for name in ("username", "avatar_url", "guild_name", "member_count", "card_type", "greeting_title", "member_count_text", "guild_icon_url"):
+        for name in (
+            "username",
+            "avatar_url",
+            "guild_name",
+            "member_count",
+            "card_type",
+            "greeting_title",
+            "member_count_text",
+            "guild_icon_url",
+        ):
             assert name in params, f"missing param {name}"
 
 
@@ -142,10 +151,9 @@ class TestGreetingRendererFontFallback:
             assert mock_default.called, "OSError must trigger ImageFont.load_default()"
             # Must have logged WARNING.
             warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
-            assert any(
-                "load_default" in r.getMessage() or "Could not load font" in r.getMessage()
-                for r in warnings
-            ), f"expected WARNING about font fallback, got {[r.getMessage() for r in warnings]}"
+            assert any("load_default" in r.getMessage() or "Could not load font" in r.getMessage() for r in warnings), (
+                f"expected WARNING about font fallback, got {[r.getMessage() for r in warnings]}"
+            )
             assert isinstance(buf, io.BytesIO)
             assert buf.getvalue()[:8] == b"\x89PNG\r\n\x1a\n"
 
