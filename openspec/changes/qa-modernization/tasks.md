@@ -106,6 +106,6 @@ Chain strategy: stacked-to-main
 
 ## Phase 7 — Cleanup / Documentation
 
-- [ ] 7.1 Update PR bodies with dependency diagram (📍 current PR), prior-PR links, out-of-scope. **Why**: chained-pr contract. **Accept**: each PR has Chain Context. **Evidence**: PR descriptions. **Dep**: per phase.
-- [ ] 7.2 Verify no `mypy`/`bandit`/`pip-audit`/`.pre-commit-config.yaml` remnants repo-wide. **Why**: complete migration. **Accept**: `grep -ri` empty. **Evidence**: `git grep`. **Dep**: Phase 6.
-- [ ] 7.3 Confirm `requirements.txt` still pip-resolves (Pterodactyl). **Why**: runtime safety. **Accept**: `pip install -r requirements.txt --dry-run` ok. **Evidence**: dry-run. **Dep**: Phase 6.
+- [x] 7.1 Update PR bodies with dependency diagram (📍 current PR), prior-PR links, out-of-scope. **Why**: chained-pr contract. **Accept**: each PR has Chain Context. **Evidence**: PR descriptions. **Dep**: per phase.
+- [x] 7.2 Verify no `mypy`/`bandit`/`pip-audit`/`.pre-commit-config.yaml` remnants repo-wide. **Why**: complete migration. **Accept**: `grep -ri` empty. **Evidence**: `git grep`. **Dep**: Phase 6.
+- [x] 7.3 Confirm `requirements.txt` still pip-resolves (Pterodactyl). **Why**: runtime safety. **Accept**: `pip install -r requirements.txt --dry-run` ok. **Evidence**: dry-run. **Dep**: Phase 6.
