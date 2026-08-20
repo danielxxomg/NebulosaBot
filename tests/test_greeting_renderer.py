@@ -201,3 +201,42 @@ class TestGreetingRendererFontFallback:
                 guild_icon_url=None,
             )
         assert buf.getvalue()[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+class TestGreetingRendererGuildIconPresent:
+    """WG-5: a configured guild icon MUST render distinct from the placeholder."""
+
+    def test_guild_icon_present_renders_distinct_output(self) -> None:
+        from bot.services.greeting_renderer import PillowGreetingRenderer
+
+        renderer = PillowGreetingRenderer()
+        guild_icon = Image.new("RGBA", (48, 48), (230, 150, 40, 255))
+        member_avatar = Image.new("RGBA", (128, 128), (40, 180, 220, 255))
+
+        def _fetch(url: str | None):
+            if url == "guild-icon":
+                return guild_icon
+            if url == "member-avatar":
+                return member_avatar
+            return None
+
+        common = {
+            "username": "IconUser",
+            "avatar_url": "member-avatar",
+            "guild_name": "Branded Guild",
+            "member_count": 42,
+            "card_type": "welcome",
+            "greeting_title": "Welcome!",
+            "member_count_text": "Member #42",
+        }
+
+        with patch("bot.services.shared_assets._safe_fetch_avatar", side_effect=_fetch):
+            with_icon = renderer.render(guild_icon_url="guild-icon", **common)
+        with patch("bot.services.shared_assets._safe_fetch_avatar", side_effect=_fetch):
+            without_icon = renderer.render(guild_icon_url=None, **common)
+
+        assert with_icon.getvalue()[:8] == b"\x89PNG\r\n\x1a\n"
+        assert without_icon.getvalue()[:8] == b"\x89PNG\r\n\x1a\n"
+        assert with_icon.getvalue() != without_icon.getvalue(), (
+            "guild-icon render must differ from the no-icon placeholder render"
+        )

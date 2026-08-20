@@ -8,6 +8,7 @@ export const metadata = {
 
 /**
  * Sensible defaults used when no greeting_config row exists yet.
+ * Card toggles default to false to match bot/models/greeting_config.py (spec GC-4).
  */
 const GREETING_DEFAULTS = {
   welcomeEnabled: false,
@@ -17,8 +18,8 @@ const GREETING_DEFAULTS = {
   onboardingChannelId: null as string | null,
   welcomeMessage: null as string | null,
   goodbyeMessage: null as string | null,
-  welcomeCardEnabled: true,
-  goodbyeCardEnabled: true,
+  welcomeCardEnabled: false,
+  goodbyeCardEnabled: false,
 };
 
 interface GreetingConfigPageProps {
