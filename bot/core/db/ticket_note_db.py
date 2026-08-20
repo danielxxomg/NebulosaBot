@@ -34,14 +34,17 @@ class TicketNoteDBMixin:
         A missing ``guild_id`` raises ``ValueError("guild_id required")``.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
         if guild_id is None:
-            raise ValueError("guild_id required")
+            msg = "guild_id required"
+            raise ValueError(msg)
 
         ticket_rows = await self._client.table("ticket").select("guildId").eq("id", ticket_id).execute()
         ticket_data = _unwrap(ticket_rows)
         if not ticket_data or ticket_data[0].get("guildId") != guild_id:
-            raise ValueError("cross_guild_denied")
+            msg = "cross_guild_denied"
+            raise ValueError(msg)
 
         note_id = str(uuid.uuid4())
         row = {
@@ -67,9 +70,11 @@ class TicketNoteDBMixin:
         ``ValueError("guild_id required")``.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
         if guild_id is None:
-            raise ValueError("guild_id required")
+            msg = "guild_id required"
+            raise ValueError(msg)
 
         ticket_rows = await self._client.table("ticket").select("guildId").eq("id", ticket_id).execute()
         ticket_data = _unwrap(ticket_rows)
@@ -97,19 +102,23 @@ class TicketNoteDBMixin:
         and a cross-guild request raises ``ValueError("cross_guild_denied")``.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
         if guild_id is None or ticket_id is None:
-            raise ValueError("guild_id required")
+            msg = "guild_id required"
+            raise ValueError(msg)
 
         ticket_rows = await self._client.table("ticket").select("guildId").eq("id", ticket_id).execute()
         ticket_data = _unwrap(ticket_rows)
         if not ticket_data or ticket_data[0].get("guildId") != guild_id:
-            raise ValueError("cross_guild_denied")
+            msg = "cross_guild_denied"
+            raise ValueError(msg)
         # Also ensure the note belongs to the claimed ticket
         note_rows = await self._client.table("ticket_note").select("ticketId").eq("id", note_id).execute()
         note_data = _unwrap(note_rows)
         if not note_data or note_data[0].get("ticketId") != ticket_id:
-            raise ValueError("cross_guild_denied")
+            msg = "cross_guild_denied"
+            raise ValueError(msg)
 
         logger.debug("DB delete_ticket_note(%s, guild=%s)", note_id, guild_id)
         await self._client.table("ticket_note").delete().eq("id", note_id).execute()
@@ -123,9 +132,11 @@ class TicketNoteDBMixin:
         ``ValueError("guild_id required")``, mismatched guild returns ``[]``.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
         if guild_id is None:
-            raise ValueError("guild_id required")
+            msg = "guild_id required"
+            raise ValueError(msg)
 
         ticket_rows = await self._client.table("ticket").select("guildId").eq("id", ticket_id).execute()
         ticket_data = _unwrap(ticket_rows)

@@ -24,7 +24,8 @@ class GreetingDBMixin:
         no greeting configuration yet.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug("DB get_greeting_config(%r)", guild_id)
         response = await self._client.table("greeting_config").select("*").eq("guildId", guild_id).execute()
@@ -41,7 +42,8 @@ class GreetingDBMixin:
                 including the nullable ``onboardingChannelId`` field.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug("DB upsert_greeting_config(%r)", guild_id)
         await self._client.table("greeting_config").upsert(config.to_db_dict()).execute()

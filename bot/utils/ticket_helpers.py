@@ -223,7 +223,8 @@ async def resolve_ticket_for_channel(
     """
     assert bot.db is not None
     if guild_id is None:
-        raise ValueError("guild_id required")
+        msg = "guild_id required"
+        raise ValueError(msg)
     try:
         ticket_row = await bot.db.get_ticket_by_channel(str(channel_id), guild_id=guild_id)
     except Exception:

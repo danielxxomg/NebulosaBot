@@ -190,7 +190,8 @@ async def fetch_live_metadata(
         # not PostgREST catalog). No DDL, no mutation — caller treats as unavailable.
         msg = str(exc)
         if "PGRST205" in msg or "pg_constraint" in msg or "schema cache" in msg:
-            raise RuntimeError("PGRST205: catalog unavailable — use DB/RPC staging path (S4)") from exc
+            msg_0 = "PGRST205: catalog unavailable — use DB/RPC staging path (S4)"
+            raise RuntimeError(msg_0) from exc
         raise
 
     live_fks: list[dict[str, Any]] = []

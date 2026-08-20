@@ -62,10 +62,10 @@ Chain strategy: stacked-to-main
 
 ## Phase 4a — PR4a: Ruff Mechanical (after PR2; TRY003/EM101/EM102)
 
-- [ ] 4a.1 RED: `uv run ruff check --select TRY003,EM101,EM102 bot/` shows ~274 findings. **Why**: establish baseline. **Accept**: count recorded. **Evidence**: ruff output. **Dep**: Phase 2.
-- [ ] 4a.2 Remove `TRY003`, `EM101`, `EM102` from `bot/**/*.py` per-file-ignores. **Why**: progressive removal. **Accept**: rules removed from suppression. **Evidence**: pyproject diff. **Dep**: 4a.1.
-- [ ] 4a.3 GREEN: run `uv run ruff check --fix --select TRY003,EM101,EM102 bot/` (auto-fixable message style). **Why**: mechanical, low risk. **Accept**: 0 findings. **Evidence**: `ruff check bot/` exit 0. **Dep**: 4a.2.
-- [ ] 4a.4 REFACTOR: review auto-fixed raise messages for clarity; run `make test` (2101 green). **Why**: semantic check. **Accept**: pytest 0 fail. **Evidence**: `uv run pytest`. **Dep**: 4a.3.
+- [x] 4a.1 RED: `uv run ruff check --select TRY003,EM101,EM102 bot/` shows ~274 findings. **Why**: establish baseline. **Accept**: count recorded (274 = 135 TRY003 + 95 EM101 + 44 EM102 via --isolated). **Evidence**: ruff --isolated --statistics + tests/test_pr4a_ruff_mechanical.py::TestRuffMechanicalBaseline. **Dep**: Phase 2.
+- [x] 4a.2 Remove `TRY003`, `EM101`, `EM102` from `bot/**/*.py` per-file-ignores. **Why**: progressive removal. **Accept**: EM broad + TRY003 removed; bot/** retains S,C4,C90,T10,TRY004,TRY300. **Evidence**: pyproject diff (PR4a). **Dep**: 4a.1.
+- [x] 4a.3 GREEN: run `uv run ruff check --fix --select TRY003,EM101,EM102 bot/` (auto-fixable message style). **Why**: mechanical, low risk. **Accept**: 0 findings (isolated + normal both 0). **Evidence**: `ruff check --isolated` 0 + `ruff check bot/` 0 + 12 tests green. **Dep**: 4a.2.
+- [x] 4a.4 REFACTOR: review auto-fixed raise messages for clarity; run `make test` (2166 green, 17 skipped). **Why**: semantic check. **Accept**: pytest 0 fail, ruff format 0, msg variable pattern verified. **Evidence**: `uv run pytest --no-cov` 2166 passed. **Dep**: 4a.3.
 
 ## Phase 4b — PR4b: Ruff Security (S101/S310/S311/S110)
 

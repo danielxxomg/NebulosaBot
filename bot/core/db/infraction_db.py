@@ -34,7 +34,8 @@ class InfractionDBMixin:
         Returns the camelCase row dict (matching ``Infraction.from_db_row``).
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         infraction_id = str(uuid.uuid4())
         row = {
@@ -72,7 +73,8 @@ class InfractionDBMixin:
             List of camelCase row dicts ordered by ``createdAt`` descending.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         query = (
             self._client.table("infraction")
@@ -97,7 +99,8 @@ class InfractionDBMixin:
         and an explicit ``active`` filter.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug("DB get_active_warnings(guild=%s, target=%s)", guild_id, target_id)
         response = await (
@@ -119,7 +122,8 @@ class InfractionDBMixin:
         guild's infractions even if the infraction ID is known.
         """
         if self._client is None:
-            raise RuntimeError("Database.connect() must be called first")
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
 
         logger.debug("DB deactivate_infraction(%s, %s)", guild_id, infraction_id)
         await (

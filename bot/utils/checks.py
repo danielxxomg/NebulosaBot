@@ -32,7 +32,8 @@ def is_admin() -> Any:
 
     async def _app_predicate(interaction: _discord.Interaction) -> bool:
         if not interaction.guild:
-            raise app_commands.NoPrivateMessage("This command can only be used in a server.")
+            msg = "This command can only be used in a server."
+            raise app_commands.NoPrivateMessage(msg)
 
         if not interaction.user.guild_permissions.administrator:  # type: ignore[union-attr]
             raise app_commands.MissingPermissions(["administrator"])
@@ -41,7 +42,8 @@ def is_admin() -> Any:
 
     async def _prefix_predicate(ctx: _commands.Context) -> bool:
         if not ctx.guild:
-            raise _commands.NoPrivateMessage("This command can only be used in a server.")
+            msg = "This command can only be used in a server."
+            raise _commands.NoPrivateMessage(msg)
 
         if not isinstance(ctx.author, _discord.Member) or not ctx.author.guild_permissions.administrator:
             raise _commands.MissingPermissions(["administrator"])
@@ -120,7 +122,8 @@ def is_mod() -> Any:
         # DM guard surfaces the specific NoPrivateMessage exception —
         # is_mod_check only returns False for DMs (never raises).
         if not interaction.guild:
-            raise app_commands.NoPrivateMessage("This command can only be used in a server.")
+            msg = "This command can only be used in a server."
+            raise app_commands.NoPrivateMessage(msg)
 
         if await is_mod_check(interaction):
             return True
@@ -131,18 +134,19 @@ def is_mod() -> Any:
 
         if mod_role_id is None:
             # No mod role configured — only admins pass (spec: unconfigured mod role).
-            raise app_commands.CheckFailure(
-                "No moderator role is configured for this server. Only administrators can use this command."
-            )
+            msg = "No moderator role is configured for this server. Only administrators can use this command."
+            raise app_commands.CheckFailure(msg)
 
         raise app_commands.MissingRole(mod_role_id)
 
     async def _prefix_predicate(ctx: _commands.Context) -> bool:
         if not ctx.guild:
-            raise _commands.NoPrivateMessage("This command can only be used in a server.")
+            msg = "This command can only be used in a server."
+            raise _commands.NoPrivateMessage(msg)
 
         if not isinstance(ctx.author, _discord.Member):
-            raise _commands.CheckFailure("This command can only be used by guild members.")
+            msg = "This command can only be used by guild members."
+            raise _commands.CheckFailure(msg)
 
         # Admin always passes.
         if ctx.author.guild_permissions.administrator:
@@ -151,9 +155,8 @@ def is_mod() -> Any:
         mod_role_id = _resolve_mod_role_id_from_bot(ctx.bot, ctx.guild.id)
 
         if mod_role_id is None:
-            raise _commands.CheckFailure(
-                "No moderator role is configured for this server. Only administrators can use this command."
-            )
+            msg = "No moderator role is configured for this server. Only administrators can use this command."
+            raise _commands.CheckFailure(msg)
 
         if _user_has_role(ctx.author, mod_role_id):
             return True
