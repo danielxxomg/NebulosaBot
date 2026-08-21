@@ -146,6 +146,7 @@ class TestToDbDict:
             "welcomeCardEnabled",
             "goodbyeCardEnabled",
             "updatedAt",
+            "themeId",
         }
         assert set(result.keys()) == expected_keys
         assert result["guildId"] == "123456789"
@@ -199,4 +200,45 @@ class TestRoundtrip:
         )
         db_dict = original.to_db_dict()
         restored = GreetingConfig.from_db_row(db_dict)
+        assert restored == original
+
+
+# ---------------------------------------------------------------------------
+# theme_id round-trip (PR1 2.1)
+# ---------------------------------------------------------------------------
+
+
+class TestThemeIdRoundTrip:
+    """theme_id nullable round-trip via from_db_row / to_db_dict."""
+
+    def test_from_db_row_reads_theme_id(self) -> None:
+        row = {"guildId": "g1", "themeId": "gaming_neon"}
+        cfg = GreetingConfig.from_db_row(row)
+        assert cfg.theme_id == "gaming_neon"
+
+    def test_from_db_row_null_theme_id(self) -> None:
+        row = {"guildId": "g1"}
+        cfg = GreetingConfig.from_db_row(row)
+        assert cfg.theme_id is None
+
+    def test_to_db_dict_includes_theme_id(self) -> None:
+        cfg = GreetingConfig(guild_id="g1", theme_id="gaming_neon")
+        d = cfg.to_db_dict()
+        assert d["themeId"] == "gaming_neon"
+
+    def test_to_db_dict_null_theme_id(self) -> None:
+        cfg = GreetingConfig(guild_id="g1", theme_id=None)
+        d = cfg.to_db_dict()
+        assert d["themeId"] is None
+
+    def test_roundtrip_preserves_neon_theme_id(self) -> None:
+        original = GreetingConfig(guild_id="g1", theme_id="gaming_neon", welcome_enabled=True)
+        restored = GreetingConfig.from_db_row(original.to_db_dict())
+        assert restored.theme_id == "gaming_neon"
+        assert restored == original
+
+    def test_roundtrip_preserves_null_theme_id(self) -> None:
+        original = GreetingConfig(guild_id="g1", theme_id=None)
+        restored = GreetingConfig.from_db_row(original.to_db_dict())
+        assert restored.theme_id is None
         assert restored == original

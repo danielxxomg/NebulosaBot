@@ -14,6 +14,10 @@ WARNING: int = 0xF59E0B  # Amber
 ERROR: int = 0xEF4444  # Red
 INFO: int = 0x8B5CF6  # Indigo
 
+# Neon theme palette — magenta→cyan diagonal for gaming_neon greeting theme.
+ACCENT_A: int = 0xFF2E97  # Magenta
+ACCENT_B: int = 0x00E5FF  # Cyan
+
 # Greeting card accent — single source of truth for GreetingRenderer.
 # Re-exports ACCENT so the greeting palette is branded, not hardcoded #7289da.
 GREETING_ACCENT: int = ACCENT  # alias; value must stay == ACCENT

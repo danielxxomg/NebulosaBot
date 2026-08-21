@@ -98,3 +98,73 @@ describe("GreetingConfigPage onboarding setup control", () => {
     });
   });
 });
+
+describe("GreetingThemeSelector — themeId field (PR1 5.1)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("renders a themeId field defaulting to empty for a new config", async () => {
+    setupGreeting(null);
+
+    const page = await GreetingConfigPage({ params: Promise.resolve({ guildId: "guild-1" }) });
+
+    const fields = findConfigForm(page).props.fields as Array<{
+      name: string;
+      label: string;
+      defaultValue: string;
+    }>;
+    const theme = fields.find((field) => field.name === "themeId");
+    expect(theme).toBeDefined();
+    expect(theme?.defaultValue).toBe("");
+    expect(theme?.label.toLowerCase()).toContain("theme");
+  });
+
+  it("loads the configured gaming_neon themeId into the selector", async () => {
+    setupGreeting({
+      themeId: "gaming_neon",
+      welcomeEnabled: false,
+      goodbyeEnabled: false,
+      welcomeChannelId: null,
+      goodbyeChannelId: null,
+      welcomeMessage: null,
+      goodbyeMessage: null,
+      welcomeCardEnabled: false,
+      goodbyeCardEnabled: false,
+    });
+
+    const page = await GreetingConfigPage({ params: Promise.resolve({ guildId: "guild-1" }) });
+
+    const fields = findConfigForm(page).props.fields as Array<{
+      name: string;
+      defaultValue: string;
+    }>;
+    expect(fields.find((field) => field.name === "themeId")).toMatchObject({
+      defaultValue: "gaming_neon",
+    });
+  });
+
+  it("loads a null themeId as an empty string for the form", async () => {
+    setupGreeting({
+      themeId: null,
+      welcomeEnabled: false,
+      goodbyeEnabled: false,
+      welcomeChannelId: null,
+      goodbyeChannelId: null,
+      welcomeMessage: null,
+      goodbyeMessage: null,
+      welcomeCardEnabled: false,
+      goodbyeCardEnabled: false,
+    });
+
+    const page = await GreetingConfigPage({ params: Promise.resolve({ guildId: "guild-1" }) });
+
+    const fields = findConfigForm(page).props.fields as Array<{
+      name: string;
+      defaultValue: string;
+    }>;
+    expect(fields.find((field) => field.name === "themeId")).toMatchObject({
+      defaultValue: "",
+    });
+  });
+});
