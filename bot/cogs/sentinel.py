@@ -115,6 +115,26 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             )
             return False
 
+        # Author hierarchy: author's top role must be strictly above target's (owner exempt).
+        if ctx.guild is not None and ctx.author != ctx.guild.owner:
+            try:
+                author_role = getattr(ctx.author, "top_role", None)
+                if author_role is not None and author_role <= target.top_role:
+                    await ctx.send(
+                        embed=error_embed(
+                            t(guild_id, "sentinel.validate.role_hierarchy_title"),
+                            t(
+                                guild_id,
+                                "sentinel.validate.role_hierarchy_description",
+                                action=action,
+                                mention=target.mention,
+                            ),
+                        )
+                    )
+                    return False
+            except Exception:
+                logger.debug("author hierarchy check failed — keeping bot-hierarchy only", exc_info=True)
+
         return True
 
     async def _handle_mod_error(
@@ -538,6 +558,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         guild_id = self._guild_id(ctx)
 
         async def _do_kick(interaction: discord.Interaction) -> None:
+            safe_reason = discord.utils.escape_markdown(reason)
             target_id = str(member.id)
             moderator_id = str(ctx.author.id)
             try:
@@ -577,9 +598,10 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             await interaction.response.edit_message(
                 embed=success_embed(
                     t(guild_id, "sentinel.kick.success_title"),
-                    t(guild_id, "sentinel.kick.success_description", mention=member.mention, reason=reason),
+                    t(guild_id, "sentinel.kick.success_description", mention=member.mention, reason=safe_reason),
                 ),
                 view=None,
+                allowed_mentions=discord.AllowedMentions.none(),
             )
 
         view = ConfirmCancelView(
@@ -587,14 +609,21 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             owner_id=ctx.author.id,
             on_confirm=_do_kick,
         )
+        safe_kick_reason = discord.utils.escape_markdown(reason)
         msg = await ctx.send(
             embed=discord.Embed(
                 title=t(guild_id, "confirm.kick_confirm_title"),
-                description=t(guild_id, "confirm.kick_confirm_description", mention=member.mention, reason=reason),
+                description=t(
+                    guild_id,
+                    "confirm.kick_confirm_description",
+                    mention=member.mention,
+                    reason=safe_kick_reason,
+                ),
                 color=INFO,
             ),
             view=view,
             ephemeral=True,
+            allowed_mentions=discord.AllowedMentions.none(),
         )
         view.message = msg
 
@@ -633,6 +662,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         guild_id = self._guild_id(ctx)
 
         async def _do_ban(interaction: discord.Interaction) -> None:
+            safe_reason = discord.utils.escape_markdown(reason)
             target_id = str(member.id)
             moderator_id = str(ctx.author.id)
             try:
@@ -672,9 +702,10 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             await interaction.response.edit_message(
                 embed=success_embed(
                     t(guild_id, "sentinel.ban.success_title"),
-                    t(guild_id, "sentinel.ban.success_description", mention=member.mention, reason=reason),
+                    t(guild_id, "sentinel.ban.success_description", mention=member.mention, reason=safe_reason),
                 ),
                 view=None,
+                allowed_mentions=discord.AllowedMentions.none(),
             )
 
         view = ConfirmCancelView(
@@ -682,6 +713,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             owner_id=ctx.author.id,
             on_confirm=_do_ban,
         )
+        safe_ban_reason = discord.utils.escape_markdown(reason)
         msg = await ctx.send(
             embed=discord.Embed(
                 title=t(guild_id, "confirm.ban_confirm_title"),
@@ -689,13 +721,14 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                     guild_id,
                     "confirm.ban_confirm_description",
                     mention=member.mention,
-                    reason=reason,
+                    reason=safe_ban_reason,
                     delete_days=delete_days,
                 ),
                 color=INFO,
             ),
             view=view,
             ephemeral=True,
+            allowed_mentions=discord.AllowedMentions.none(),
         )
         view.message = msg
 

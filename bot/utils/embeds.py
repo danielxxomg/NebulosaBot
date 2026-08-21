@@ -232,6 +232,13 @@ def _info(gid: str | None, key: str, **kw: object) -> discord.Embed:  # noqa: F8
     return cog_info(gid, key, **kw)
 
 
+def _escape_md(text: str) -> str:
+    try:
+        return discord.utils.escape_markdown(text)
+    except Exception:
+        return text
+
+
 def build_ticket_embed(
     ticket: Any,
     *,
@@ -266,7 +273,8 @@ def build_ticket_embed(
     else:
         color = SUCCESS
         if subject:
-            title = t(guild_id, "tickets.open.welcome_title_with_subject", number=number, subject=subject)
+            safe_subject = _escape_md(str(subject))
+            title = t(guild_id, "tickets.open.welcome_title_with_subject", number=number, subject=safe_subject)
         else:
             title = t(guild_id, "tickets.open.welcome_title", number=number)
         description = t(guild_id, "tickets.open.welcome_description")
@@ -274,7 +282,9 @@ def build_ticket_embed(
     embed = discord.Embed(title=title, description=description, color=color, timestamp=datetime.now(UTC))
     embed.add_field(name=t(guild_id, "tickets.open.author_field"), value=f"<@{author_id}>", inline=True)
     if description_text:
-        embed.add_field(name=t(guild_id, "tickets.open.details_field"), value=description_text, inline=False)
+        embed.add_field(
+            name=t(guild_id, "tickets.open.details_field"), value=_escape_md(str(description_text)), inline=False
+        )
 
     # Render custom fields as inline embed fields.
     if custom_fields:
@@ -285,7 +295,7 @@ def build_ticket_embed(
             if not value:
                 continue
             label = def_map.get(key, {}).get("label", key)
-            display = str(value)
+            display = _escape_md(str(value))
             if len(display) > 1021:
                 display = display[:1021] + "..."
             embed.add_field(name=label, value=display, inline=True)
