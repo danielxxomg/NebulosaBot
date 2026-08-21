@@ -78,6 +78,9 @@ filterwarnings = [
     # Pillow/tempfile cleanup noise under PYTHONASYNCIODEBUG on 3.14 CI image tests
     "ignore::ResourceWarning",
     "ignore::pytest.PytestUnraisableExceptionWarning",
+    # discord.utils.escape_markdown calls re.sub with positional count (discord.py internal)
+    "ignore::DeprecationWarning:re",
+    "ignore:.*count.*is passed as positional argument:DeprecationWarning",
 ]
 
 [tool.setuptools.packages.find]
@@ -141,6 +144,7 @@ max-complexity = 15
 "scripts/**/*.py" = ["S404", "RUF052", "FURB101"]  # out of scope for PR4c (preview collateral)
 # PR4c: full quality suppression removal — bot/** now lint-clean (40 findings fixed via real code changes + narrow noqa with reasons).
 # Per-file broad suppression for bot/** removed; remaining narrow noqa per-site retained.
+"bot/services/ocio_service.py" = ["TRY301"]
 "bot/**/*.py" = ["ANN", "RUF052", "RUF029", "RUF069", "RUF050", "RUF100"]  # preview debt deferred: dummy-var/unused-async/float-eq/unused-noqa (0 ANN/PYI/PGH003 in bot/; preview=true per 4c.4)
 
 [tool.ruff.lint.isort]

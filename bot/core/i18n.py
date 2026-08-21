@@ -381,6 +381,7 @@ SLASH_DESCRIPTIONS: dict[str, str] = {
     # Ocío
     "dados": "slash.descriptions.dados",
     "banana": "slash.descriptions.banana",
+    "8ball": "slash.descriptions.8ball",
 }
 
 SLASH_DESCRIBES: dict[str, dict[str, str]] = {
@@ -451,4 +452,5 @@ SLASH_DESCRIBES: dict[str, dict[str, str]] = {
     "goodbye message": {"template": "slash.describes.goodbye.message.template"},
     # Ocío
     "dados": {"sides": "slash.describes.dados.sides"},
+    "8ball": {"question": "slash.describes.8ball.question"},
 }

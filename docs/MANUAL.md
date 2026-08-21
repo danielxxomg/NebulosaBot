@@ -16,7 +16,7 @@ NebulosaBot es un bot de Discord con **8 módulos** y **47 comandos** (slash + p
 | Stellar | Economía: monedas diarias, ranking, tabla de líderes | Todos |
 | Greetings | Tarjetas de bienvenida y despedida configurables | Admin |
 | Utility | Información de usuarios y servidores | Todos |
-| Ocio | Comandos casuales: dados, banana | Todos |
+| Ocio | Comandos casuales: dados, banana, 8ball | Todos |
 | Setup | Configuración del servidor (categoría de tickets, rol de mod, canal de logs, idioma) | Admin |
 
 **Formato de comandos**: todos son híbridos — funcionan como slash (`/comando`) y como prefijo (configurable por servidor). El bot soporta español e inglés para las respuestas en tiempo real; los nombres de comandos permanecen en inglés, pero sus descripciones se localizan automáticamente según el idioma del cliente de Discord de cada usuario (español por defecto, inglés para clientes en inglés).
@@ -77,7 +77,7 @@ El bot usa **dos capas de permisos**:
 
 | Nivel | Check | Comandos |
 |-------|-------|----------|
-| Usuario | Ninguno | `/ping`, `/help`, `/avatar`, `/serverinfo`, `/userinfo`, `/dados`, `/banana`, `/daily`, `/coins`, `/leaderboard`, `/rank` |
+| Usuario | Ninguno | `/ping`, `/help`, `/avatar`, `/serverinfo`, `/userinfo`, `/dados`, `/banana`, `/8ball`, `/daily`, `/coins`, `/leaderboard`, `/rank` |
 | Moderador | `@is_mod()` | `/status`, `/warn`, `/unwarn`, `/mute`, `/unmute`, `/kick`, `/lock`, `/unlock`, `/modlogs`, todos los comandos de tickets |
 | Administrador | `@is_admin()` | `/sync`, `/ban`, `/setup`, `/ticket_panel`, `/create_category`, `/list_categories`, `/delete_category`, `/configure_fields`, `/welcome`, `/goodbye`, `/welcome_test`, `/goodbye_test` |
 
@@ -160,6 +160,7 @@ Las claves de caché incluyen `guild_id` para aislar datos entre servidores.
 | Tirar un dado de 6 caras | `/dados` | Resultado aleatorio 1-6 |
 | Tirar un dado personalizado | `/dados 20` | Resultado aleatorio 1-20 (2-100 caras) |
 | Medir en bananas | `/banana` | Imagen de banana con medición aleatoria (2-30 cm) |
+| Preguntar a la bola 8 | `/8ball <pregunta>` | Respuesta aleatoria (20 variantes, efímero) |
 
 ---
 
@@ -293,6 +294,7 @@ Los tickets sin actividad por **48 horas** se cierran automáticamente. El bot r
 | `/rank` | `[@usuario]` | Tarjeta de rango como imagen |
 | `/dados` | `[caras]` | Tira un dado (2-100 caras, por defecto 6) |
 | `/banana` | — | Medición aleatoria en bananas |
+| `/8ball` | `[pregunta]` | Bola 8: responde a una pregunta de sí/no (efímero, 20 respuestas) |
 
 ### Moderación
 
