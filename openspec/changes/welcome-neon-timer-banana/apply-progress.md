@@ -436,3 +436,31 @@ CF4/CF8 migration existence + additive row + 8ball no-DB + live marker, **CF8b
 `delete_category` mod-deny** (real prefix + app `is_admin` predicate raises
 `MissingPermissions`).
 
+## TDD Cycle Evidence (remediation: close-22-partial)
+
+Work unit `remediation-close-22-partial-ociosecurity-migration` (SDD Runtime Authority
+`20260820-c2-remed-partials-acq-02`). Behavioral probes that replace the remaining
+⚠️ PARTIAL source-presence / mock-only evidence with real production-code calls.
+Each probe FAILS if the behavior is removed. Added `tests/test_remediation_final_partials.py`
+(15 tests, ~515 lines) — no production changes, no new migration.
+
+| Scenario (verify-report PARTIAL) | RED file:line (probe) | GREEN production path exercised | Promotion |
+|----------------------------------|-----------------------|---------------------------------|-----------|
+| Ocio 8ball S1 — localized response | `test_remediation_final_partials.py:74` | `OcioService.get_8ball_response` → `t()` real 20-key es set | ⚠️→✅ |
+| Ocio 8ball S2 — es/en isolation | `test_remediation_final_partials.py:104` | real `eight_ball.callback` (mock ctx, real service) | ⚠️→✅ |
+| Ocio banana S1 — pool membership | `test_remediation_final_partials.py:147` | `OcioService.get_random_banana` 99% path → real pool basenames | ⚠️→✅ |
+| Guards S1 — ticket subject escape | `test_remediation_final_partials.py:197` | `build_ticket_embed` → `_escape_md` on `*bold*` payload | ⚠️→✅ |
+| Guards S2 — ban reason + AllowedMentions | `test_remediation_final_partials.py:248` | `SentinelCog.ban.callback` → `escape_markdown` + `AllowedMentions.none()` | ⚠️→✅ |
+| Guards S3 — 8ball question escape | `test_remediation_final_partials.py:308` | `OcioCog.eight_ball.callback` → `escape_markdown` + `AllowedMentions.none()` | ⚠️→✅ |
+| Database AsyncClientOptions S1 — flags | `test_remediation_final_partials.py:357` | `DatabaseBase.connect` → `acreate_client` spy captures `AsyncClientOptions` flags | ⚠️→✅ |
+| Database S3 non-goal — publishable denied | `test_remediation_final_partials.py:391` | `validate_supabase_key` rejects `sb_publishable_` before `acreate_client` | ⚠️→✅ |
+| Close confirmation S1/S4 — confirm writes | `test_remediation_final_partials.py:420` | `TicketRepairService.confirm_timer_schedule` → real `scheduledCloseAt/By` write | ⚠️→✅ |
+| Ticket service S7 — overwrite persists | `test_remediation_final_partials.py:484` | `handle_timer_message` ×2 → second `scheduledCloseAt` later (extend) | ⚠️→✅ |
+
+**RED-before-GREEN proof**: the Guards escape probes were verified RED by temporarily
+removing `_escape_md` escaping — `test_s1_ticket_subject_*` and `test_s1_ticket_description_*`
+failed with the expected `assert '\\*bold\\*' in '*bold* ...'`. The 8ball membership probe
+was verified RED by stubbing `get_8ball_response` to return `"OFF_SET_VALUE"` — the
+membership assertion failed as expected. Post-GREEN the full suite passes: **2512 passed /
+18 skipped / 84.38% coverage** (ruff/format/ty/tach all green; ty exit 0).
+
