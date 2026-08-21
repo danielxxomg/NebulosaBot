@@ -87,7 +87,7 @@ class OcioCog(commands.Cog, name="Ocio"):
             filename=filename,
         )
         embed.set_image(url=f"attachment://{filename}")
-        await ctx.send(file=file, embed=embed)
+        await ctx.send(file=file, embed=embed, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
     @commands.hybrid_command(
         name="8ball",
