@@ -738,6 +738,18 @@ class TicketRepairService:
                 exc_info=True,
             )
 
+    async def schedule_close(
+        self, guild_id: str, ticket_id: str, scheduled_close_at: str, scheduled_close_by: str
+    ) -> None:
+        """Set scheduledCloseAt/By for a ticket (guild-scoped)."""
+        await self._db.update_ticket(
+            ticket_id, guild_id=guild_id, scheduledCloseAt=scheduled_close_at, scheduledCloseBy=scheduled_close_by
+        )
+
+    async def cancel_scheduled_close(self, guild_id: str, ticket_id: str) -> None:
+        """Clear scheduledCloseAt/By (guild-scoped, safe no-op when already null)."""
+        await self._db.update_ticket(ticket_id, guild_id=guild_id, scheduledCloseAt=None, scheduledCloseBy=None)
+
     # -- orchestration (channel + transcript) -----------------------------
 
     async def create_ticket_channel(
@@ -865,6 +877,11 @@ class TicketRepairService:
         await self._lifecycle.close_ticket(
             ticket.id, closed_by=closed_by, transcript_url=transcript_url, guild_id=ticket.guild_id
         )
+        # PR2: clear scheduled timer fields on close so no stale timer lingers.
+        with contextlib.suppress(Exception):
+            await self._db.update_ticket(
+                ticket.id, guild_id=ticket.guild_id, scheduledCloseAt=None, scheduledCloseBy=None
+            )
 
         if manual:
             await self._countdown_and_delete(channel, closed_by)
