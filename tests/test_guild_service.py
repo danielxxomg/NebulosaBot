@@ -460,3 +460,155 @@ async def test_update_guild_panel_supports_nullable_ids(
 
     mock_db.update_guild_panel.assert_awaited_once_with(guild_id, None, None)
     assert cache.get(cache_key) is None
+
+
+# ---------------------------------------------------------------------------
+# PR1 Phase 2: GuildConfig permission_matrix round-trip (guild-config spec)
+# ---------------------------------------------------------------------------
+
+
+class TestGuildConfigPermissionMatrix:
+    """PR1 2.1-2.2 — GuildConfig.from_db_row/to_db_dict round-trips permissionMatrix."""
+
+    def test_round_trip_preserves_matrix_and_other_fields(self) -> None:
+        """Round-trip permissionMatrix={"moderation.ban":["roleA"]} preserves prefix/language/matrix."""
+        from bot.models.guild import GuildConfig
+
+        row = {
+            "id": "guild-xyz",
+            "prefix": "nb!",
+            "language": "es",
+            "modRoleId": "mod-1",
+            "permissionMatrix": {"moderation.ban": ["roleA"]},
+            "logChannelId": None,
+            "logEnabled": False,
+            "welcomeEnabled": False,
+            "active": True,
+        }
+        config = GuildConfig.from_db_row(row)
+        assert config.permission_matrix == {"moderation.ban": ["roleA"]}
+        assert config.prefix == "nb!"
+        assert config.language == "es"
+        assert config.mod_role_id == "mod-1"
+
+        out = config.to_db_dict()
+        assert out["permissionMatrix"] == {"moderation.ban": ["roleA"]}
+        assert out["prefix"] == "nb!"
+        assert out["language"] == "es"
+        assert out["modRoleId"] == "mod-1"
+
+    def test_empty_matrix_round_trips_as_empty_dict(self) -> None:
+        """Empty/missing permissionMatrix round-trips as {}."""
+        from bot.models.guild import GuildConfig
+
+        row = {"id": "g1", "prefix": "nb!", "language": "es"}
+        config = GuildConfig.from_db_row(row)
+        assert config.permission_matrix == {}
+        out = config.to_db_dict()
+        assert out["permissionMatrix"] == {}
+
+    def test_unknown_permission_keys_tolerated(self) -> None:
+        """Unknown key {"unknown.perm":["roleX"]} loads without error."""
+        from bot.models.guild import GuildConfig
+
+        row = {"id": "g1", "permissionMatrix": {"unknown.perm": ["roleX"]}}
+        config = GuildConfig.from_db_row(row)
+        assert config.permission_matrix == {"unknown.perm": ["roleX"]}
+        # stored but never grants — can() will deny unknown (tested in checks)
+        out = config.to_db_dict()
+        assert out["permissionMatrix"] == {"unknown.perm": ["roleX"]}
+
+    def test_alias_maps_permission_matrix(self) -> None:
+        """GuildConfig._db_aliases maps permissionMatrix ↔ permission_matrix."""
+        from bot.models.guild import GuildConfig
+
+        gc = GuildConfig(id="g1")
+        assert gc._db_aliases["permissionMatrix"] == "permission_matrix"
+
+
+# ---------------------------------------------------------------------------
+# PR1 Phase 3: GuildService cache ride (guild-config spec)
+# ---------------------------------------------------------------------------
+
+
+class TestGuildServiceMatrixCacheRide:
+    """PR1 3.1 — matrix rides {guild_id}:config, no bare perm_matrix key, CDC eviction."""
+
+    @pytest.mark.asyncio
+    async def test_matrix_read_from_cache_no_extra_fetch(
+        self, cache: TTLCache, mock_db: AsyncMock, mod_role_cache: dict[int, str]
+    ) -> None:
+        """When config is cached, matrix is available without extra DB fetch."""
+        from bot.core.cache import cache_key as ck_fn
+        from bot.models.guild import GuildConfig
+        from bot.services.guild_service import GuildService
+
+        guild_id = "999000111"
+        config = GuildConfig(id=guild_id, prefix="nb!", language="es", permission_matrix={"moderation.ban": ["roleA"]})
+        # Pre-populate cache via cache_key(guild_id, "config")
+        cache.set(ck_fn(guild_id, "config"), config, ttl=300)
+        # Ensure no bare key exists
+        assert cache.get("perm_matrix") is None
+        assert cache.get(f"{guild_id}:perm_matrix") is None
+
+        svc = GuildService(db=mock_db, cache=cache, mod_role_cache=mod_role_cache)
+        loaded = await svc.get_config(guild_id)
+        assert loaded.permission_matrix == {"moderation.ban": ["roleA"]}
+        mock_db.get_guild.assert_not_called()
+        # Second read also from cache
+        loaded2 = await svc.get_config(guild_id)
+        assert loaded2.permission_matrix == {"moderation.ban": ["roleA"]}
+        mock_db.get_guild.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cdc_invalidate_guild_evicts_matrix(
+        self, cache: TTLCache, mock_db: AsyncMock, mod_role_cache: dict[int, str]
+    ) -> None:
+        """CDC invalidate_guild evicts the matrix (it lives inside config)."""
+        from bot.core.cache import cache_key as ck_fn
+        from bot.models.guild import GuildConfig
+        from bot.services.guild_service import GuildService
+
+        guild_id = "999000222"
+        config = GuildConfig(id=guild_id, permission_matrix={"moderation.ban": ["roleA"]})
+        cache.set(ck_fn(guild_id, "config"), config, ttl=300)
+        svc = GuildService(db=mock_db, cache=cache, mod_role_cache=mod_role_cache)
+        # Confirm cached
+        assert (await svc.get_config(guild_id)).permission_matrix == {"moderation.ban": ["roleA"]}
+        mock_db.get_guild.assert_not_called()
+
+        # CDC invalidates guild
+        cache.invalidate_guild(guild_id)
+        assert cache.get(ck_fn(guild_id, "config")) is None
+
+        # Next read re-fetches (DB now returns different matrix)
+        mock_db.get_guild.return_value = {
+            "id": guild_id,
+            "prefix": "nb!",
+            "language": "es",
+            "permissionMatrix": {"moderation.ban": ["roleB"]},
+            "modRoleId": None,
+            "logChannelId": None,
+            "logEnabled": False,
+            "welcomeEnabled": False,
+            "active": True,
+        }
+        reloaded = await svc.get_config(guild_id)
+        assert reloaded.permission_matrix == {"moderation.ban": ["roleB"]}
+        mock_db.get_guild.assert_awaited_once_with(guild_id)
+
+    def test_no_bare_perm_matrix_cache_key_in_source(self) -> None:
+        """Source MUST NOT contain a guild-global bare perm_matrix key (leak guard)."""
+        import pathlib
+        import re
+
+        src = pathlib.Path("bot/services/guild_service.py").read_text(encoding="utf-8")
+        # Forbid cache_key(<literal>, "perm_matrix") or bare "...:perm_matrix" without guild.
+        assert not re.search(r'cache_key\s*\(\s*["\']perm_matrix["\']', src), (
+            "GuildService MUST NOT use bare perm_matrix as cache_key entity"
+        )
+        assert '":perm_matrix"' not in src, "GuildService MUST NOT construct bare perm_matrix key"
+        # Also check checks.py doesn't construct its own bare key
+        src2 = pathlib.Path("bot/utils/checks.py").read_text(encoding="utf-8")
+        assert not re.search(r'cache_key\s*\(\s*["\']perm_matrix["\']', src2)
+        assert '":perm_matrix"' not in src2

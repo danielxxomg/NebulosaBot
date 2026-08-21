@@ -22,7 +22,7 @@ from discord.ext import commands
 from bot.core.context import NebulosaContext
 from bot.core.i18n import t
 from bot.utils.brand import INFO
-from bot.utils.checks import is_admin, is_mod
+from bot.utils.checks import can_check, is_mod
 from bot.utils.embeds import (
     error_embed,
     info_embed,
@@ -643,7 +643,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         ),
     )
     @app_commands.default_permissions(ban_members=True)
-    @is_admin()
+    @can_check("moderation.ban")
     async def ban(
         self,
         ctx: NebulosaContext,
