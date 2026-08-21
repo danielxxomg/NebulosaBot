@@ -78,6 +78,8 @@ export interface GreetingConfig {
   welcomeCardEnabled: boolean;
   /** Whether goodbye image cards are generated. */
   goodbyeCardEnabled: boolean;
+  /** Theme selector — null = default, gaming_neon = neon. */
+  themeId: string | null;
 }
 
 // ── Member ───────────────────────────────────────────────────────────────

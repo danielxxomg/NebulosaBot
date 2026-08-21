@@ -20,6 +20,7 @@ const GREETING_DEFAULTS = {
   goodbyeMessage: null as string | null,
   welcomeCardEnabled: false,
   goodbyeCardEnabled: false,
+  themeId: null as string | null,
 };
 
 interface GreetingConfigPageProps {
@@ -42,7 +43,7 @@ export default async function GreetingConfigPage({
   const serviceClient = await createServiceClient();
   const { data: greeting } = await serviceClient
     .from("greeting_config")
-    .select("guildId, welcomeEnabled, goodbyeEnabled, welcomeChannelId, goodbyeChannelId, onboardingChannelId, welcomeMessage, goodbyeMessage, welcomeCardEnabled, goodbyeCardEnabled, updatedAt")
+    .select("guildId, welcomeEnabled, goodbyeEnabled, welcomeChannelId, goodbyeChannelId, onboardingChannelId, welcomeMessage, goodbyeMessage, welcomeCardEnabled, goodbyeCardEnabled, updatedAt, themeId")
     .eq("guildId", guildId)
     .maybeSingle();
 
@@ -119,6 +120,15 @@ export default async function GreetingConfigPage({
       type: "switch",
       defaultValue: config.goodbyeCardEnabled,
       hint: "Generate a custom image card for goodbye messages.",
+    },
+    // ── Theme ────────────────────────────────────────────────
+    {
+      name: "themeId",
+      label: "Greeting Theme",
+      type: "text",
+      defaultValue: (config as { themeId?: string | null }).themeId ?? "",
+      placeholder: "gaming_neon or empty for default",
+      hint: "Theme for greeting cards: gaming_neon or default (empty).",
     },
   ];
 

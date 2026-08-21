@@ -28,6 +28,7 @@ class GreetingConfig:
     welcome_card_enabled: bool = False
     goodbye_card_enabled: bool = False
     updated_at: datetime | None = None
+    theme_id: str | None = None
 
     @classmethod
     def from_db_row(cls, row: dict[str, Any]) -> GreetingConfig:
@@ -44,6 +45,7 @@ class GreetingConfig:
             welcome_card_enabled=row.get("welcomeCardEnabled", False),
             goodbye_card_enabled=row.get("goodbyeCardEnabled", False),
             updated_at=row.get("updatedAt"),
+            theme_id=row.get("themeId"),
         )
 
     def to_db_dict(self) -> dict[str, Any]:
@@ -60,4 +62,5 @@ class GreetingConfig:
             "welcomeCardEnabled": self.welcome_card_enabled,
             "goodbyeCardEnabled": self.goodbye_card_enabled,
             "updatedAt": self.updated_at,
+            "themeId": self.theme_id,
         }

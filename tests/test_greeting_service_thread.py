@@ -76,3 +76,86 @@ async def test_dispatch_greeting_runs_renderer_through_to_thread() -> None:
     sent = channel.send.call_args.kwargs.get("file")
     assert isinstance(sent, discord.File)
     assert sent.filename == "welcome.png"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_greeting_passes_theme_id_through_to_thread() -> None:
+    """PR1 3.2 — config.theme_id is forwarded to the renderer via asyncio.to_thread."""
+    db = AsyncMock()
+    db.get_greeting_config.return_value = {
+        "guildId": "123456789",
+        "welcomeEnabled": True,
+        "welcomeChannelId": "111111111",
+        "welcomeCardEnabled": True,
+        "welcomeMessage": "Welcome {mention}!",
+        "goodbyeEnabled": False,
+        "themeId": "gaming_neon",
+    }
+    cache = TTLCache()
+    renderer = PillowGreetingRenderer()
+    service = GreetingService(db=db, cache=cache, greeting_renderer=renderer)
+
+    captured_kwargs: list[dict] = []
+    real_to_thread = asyncio.to_thread
+
+    async def _recorder(func, *args, **kwargs):
+        captured_kwargs.append(kwargs)
+        return await real_to_thread(func, *args, **kwargs)
+
+    member = _make_member()
+    with (
+        patch("bot.services.greeting_service.asyncio.to_thread", side_effect=_recorder),
+        patch("bot.services.shared_assets._safe_fetch_avatar", return_value=None),
+    ):
+        await service.dispatch_welcome(member)
+
+    assert captured_kwargs, "asyncio.to_thread was not awaited"
+    # The renderer call MUST include theme_id from the config.
+    render_kwargs = next(
+        (kw for kw in captured_kwargs if "card_type" in kw and "username" in kw),
+        None,
+    )
+    assert render_kwargs is not None, "no render call captured in to_thread"
+    assert render_kwargs.get("theme_id") == "gaming_neon", (
+        f"theme_id not forwarded through to_thread: {render_kwargs.get('theme_id')}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_greeting_passes_none_theme_id_for_default() -> None:
+    """PR1 3.2 — a config with no theme_id forwards None to the renderer."""
+    db = AsyncMock()
+    db.get_greeting_config.return_value = {
+        "guildId": "123456789",
+        "welcomeEnabled": True,
+        "welcomeChannelId": "111111111",
+        "welcomeCardEnabled": True,
+        "welcomeMessage": "Welcome {mention}!",
+        "goodbyeEnabled": False,
+    }
+    cache = TTLCache()
+    renderer = PillowGreetingRenderer()
+    service = GreetingService(db=db, cache=cache, greeting_renderer=renderer)
+
+    captured_kwargs: list[dict] = []
+    real_to_thread = asyncio.to_thread
+
+    async def _recorder(func, *args, **kwargs):
+        captured_kwargs.append(kwargs)
+        return await real_to_thread(func, *args, **kwargs)
+
+    member = _make_member()
+    with (
+        patch("bot.services.greeting_service.asyncio.to_thread", side_effect=_recorder),
+        patch("bot.services.shared_assets._safe_fetch_avatar", return_value=None),
+    ):
+        await service.dispatch_welcome(member)
+
+    render_kwargs = next(
+        (kw for kw in captured_kwargs if "card_type" in kw and "username" in kw),
+        None,
+    )
+    assert render_kwargs is not None
+    assert render_kwargs.get("theme_id") is None, (
+        f"default config must forward theme_id=None: {render_kwargs.get('theme_id')}"
+    )

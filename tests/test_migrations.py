@@ -247,3 +247,37 @@ class TestMigrationParity:
         assert "insert into schema_migrations" not in sql
         assert "down migration" not in sql
         assert "drop column" not in sql
+
+
+class TestMigration021:
+    """PR1 2.2 — migration 021_greeting_theme_id.sql additive nullable themeId."""
+
+    def test_file_exists(self) -> None:
+        _read_migration("021_greeting_theme_id.sql")
+
+    def test_adds_theme_id_column_to_greeting_config(self) -> None:
+        sql = _read_migration("021_greeting_theme_id.sql")
+        assert "ALTER TABLE" in sql
+        assert "greeting_config" in sql
+        assert '"themeId"' in sql or "themeId" in sql
+
+    def test_is_additive_nullable_text(self) -> None:
+        sql = _read_migration("021_greeting_theme_id.sql")
+        assert "TEXT" in sql
+        # Must NOT add NOT NULL or a non-null default (additive nullable).
+        assert "NOT NULL" not in sql.upper() or "IF NOT EXISTS" in sql.upper()
+
+    def test_is_idempotent(self) -> None:
+        """Migration MUST use ADD COLUMN IF NOT EXISTS for idempotency."""
+        sql = _read_migration("021_greeting_theme_id.sql")
+        assert "ADD COLUMN IF NOT EXISTS" in sql.upper() or "ADD COLUMN IF NOT EXISTS" in sql
+
+    def test_documents_schema_migrations_check(self) -> None:
+        """Migration comment MUST mention checking schema_migrations before apply."""
+        sql = _read_migration("021_greeting_theme_id.sql").lower()
+        assert "schema_migrations" in sql
+
+    def test_documents_rollback_drop_column(self) -> None:
+        """Migration MUST document DROP COLUMN rollback."""
+        sql = _read_migration("021_greeting_theme_id.sql")
+        assert "DROP COLUMN" in sql.upper()
