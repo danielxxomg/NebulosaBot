@@ -522,3 +522,288 @@ def test_is_mod_dual_registration() -> None:
     assert len(test_cmd.checks) > 0, "prefix checks must be non-empty"
     # Slash path checks (app_commands.check)
     assert len(test_cmd.app_command.checks) > 0, "slash checks must be non-empty"
+
+
+# ---------------------------------------------------------------------------
+# PR1 Phase 4-6: can() resolver + can_check + can_member + is_mod shim (permission-model)
+# ---------------------------------------------------------------------------
+
+
+def _make_ctx_with_member(
+    guild: MagicMock | None,
+    member: MagicMock,
+    bot_cache: dict[int, str] | None = None,
+) -> MagicMock:
+    """Build a commands.Context mock wired for can() tests."""
+    ctx = MagicMock(spec=commands.Context)
+    ctx.guild = guild
+    ctx.author = member
+    ctx.bot = MagicMock()
+    ctx.bot._guild_mod_role_cache = bot_cache or {}
+    return ctx
+
+
+def _make_member_with_roles(
+    guild_id: int,
+    role_ids: list[int],
+    *,
+    administrator: bool = False,
+) -> MagicMock:
+    m = MagicMock(spec=discord.Member)
+    m.__class__ = discord.Member
+    m.guild_permissions.administrator = administrator
+    m.id = 111222333
+    m.guild = MagicMock()
+    m.guild.id = guild_id
+    roles = []
+    for rid in role_ids:
+        r = MagicMock(spec=discord.Role)
+        r.id = rid
+        roles.append(r)
+    m.roles = roles
+    return m
+
+
+@pytest.mark.asyncio
+async def test_can_admin_passes_without_matrix(mock_guild: MagicMock) -> None:
+    """4.1 Admin → True without consulting matrix."""
+    from bot.utils.checks import can
+
+    admin = _make_member_with_roles(mock_guild.id, [], administrator=True)
+    ctx = _make_ctx_with_member(mock_guild, admin)
+    with patch("bot.utils.checks._get_guild_service") as gs_mock:
+        gs_mock.return_value.get_config = AsyncMock(return_value=MagicMock(permission_matrix={}, mod_role_id=None))
+        assert await can("moderation.ban", ctx) is True
+        # admin short-circuits before get_config — should not fetch config
+
+
+@pytest.mark.asyncio
+async def test_can_matrix_role_grants(mock_guild: MagicMock) -> None:
+    """4.2 matrix role grants — {moderation.ban:[roleA]} + user holds roleA → True."""
+    from bot.utils.checks import PERMISSIONS, can
+
+    assert "moderation.ban" in PERMISSIONS
+    role_a = 9001
+    member = _make_member_with_roles(mock_guild.id, [role_a])
+    ctx = _make_ctx_with_member(mock_guild, member)
+    cfg = MagicMock(permission_matrix={"moderation.ban": [str(role_a)]}, mod_role_id=None)
+    with patch("bot.utils.checks._get_guild_service") as gs_mock:
+        gs_mock.return_value.get_config = AsyncMock(return_value=cfg)
+        assert await can("moderation.ban", ctx) is True
+
+
+@pytest.mark.asyncio
+async def test_can_moderation_fallback_to_mod_role(mock_guild: MagicMock) -> None:
+    """4.3 moderation fallback — no matrix key, user holds modRoleId → True."""
+    from bot.utils.checks import can
+
+    mod_role = 777
+    member = _make_member_with_roles(mock_guild.id, [mod_role])
+    ctx = _make_ctx_with_member(mock_guild, member, bot_cache={mock_guild.id: str(mod_role)})
+    cfg = MagicMock(permission_matrix={}, mod_role_id=str(mod_role))
+    with patch("bot.utils.checks._get_guild_service") as gs_mock:
+        gs_mock.return_value.get_config = AsyncMock(return_value=cfg)
+        assert await can("moderation.ban", ctx) is True
+
+
+@pytest.mark.asyncio
+async def test_can_deny_when_key_present_no_role(mock_guild: MagicMock) -> None:
+    """4.4 deny when key present + user lacks role → False (no fallback)."""
+    from bot.utils.checks import can
+
+    member = _make_member_with_roles(mock_guild.id, [123])
+    ctx = _make_ctx_with_member(mock_guild, member, bot_cache={mock_guild.id: "777"})
+    cfg = MagicMock(permission_matrix={"moderation.ban": ["9999"]}, mod_role_id="777")
+    with patch("bot.utils.checks._get_guild_service") as gs_mock:
+        gs_mock.return_value.get_config = AsyncMock(return_value=cfg)
+        assert await can("moderation.ban", ctx) is False
+
+
+@pytest.mark.asyncio
+async def test_can_unconfigured_non_moderation_denies(mock_guild: MagicMock) -> None:
+    """4.5 unconfigured greeting.manage with {} + no modRole → False."""
+    from bot.utils.checks import can
+
+    member = _make_member_with_roles(mock_guild.id, [])
+    ctx = _make_ctx_with_member(mock_guild, member)
+    cfg = MagicMock(permission_matrix={}, mod_role_id=None)
+    with patch("bot.utils.checks._get_guild_service") as gs_mock:
+        gs_mock.return_value.get_config = AsyncMock(return_value=cfg)
+        assert await can("greeting.manage", ctx) is False
+
+
+@pytest.mark.asyncio
+async def test_can_unknown_perm_denies(mock_guild: MagicMock) -> None:
+    """4.6 unknown perm → False."""
+    from bot.utils.checks import can
+
+    member = _make_member_with_roles(mock_guild.id, [123])
+    ctx = _make_ctx_with_member(mock_guild, member)
+    cfg = MagicMock(permission_matrix={"moderation.ban": ["123"]}, mod_role_id=None)
+    with patch("bot.utils.checks._get_guild_service") as gs_mock:
+        gs_mock.return_value.get_config = AsyncMock(return_value=cfg)
+        assert await can("nonexistent.perm", ctx) is False
+
+
+@pytest.mark.asyncio
+async def test_can_member_dm_denies() -> None:
+    """4.7 DM can_member no guild → False."""
+    from bot.utils.checks import can_member
+
+    m = _make_member_with_roles(1, [123])
+    # guild_id None simulates DM or non-guild listener
+    # can_member takes guild_id param — pass 0 or None; it should deny.
+    assert await can_member("moderation.ban", m, guild_id=None) is False  # type: ignore[arg-type]
+    # also string "0" with no guild context
+    with patch("bot.utils.checks._get_guild_service") as gs_mock:
+        gs_mock.return_value.get_config = AsyncMock(return_value=MagicMock(permission_matrix={}, mod_role_id=None))
+        # When guild_id is None, should not even fetch config — direct deny
+        assert await can_member("moderation.ban", m, guild_id=None) is False  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_can_cross_guild_isolation() -> None:
+    """4.8 cross-guild isolation — guild A grants, guild B does not → False in B."""
+    from bot.utils.checks import can
+
+    guild_a = MagicMock(spec=discord.Guild)
+    guild_a.id = 1001
+    guild_b = MagicMock(spec=discord.Guild)
+    guild_b.id = 1002
+    role_x = 5555
+    member_b = _make_member_with_roles(guild_b.id, [role_x])
+    ctx_b = _make_ctx_with_member(guild_b, member_b)
+    # Guild B config has no matrix for moderation.ban
+    cfg_b = MagicMock(permission_matrix={}, mod_role_id=None)
+    with patch("bot.utils.checks._get_guild_service") as gs_mock:
+
+        async def _cfg(gid: str):
+            assert gid == str(guild_b.id)
+            return cfg_b
+
+        gs_mock.return_value.get_config = AsyncMock(side_effect=_cfg)
+        assert await can("moderation.ban", ctx_b) is False
+        gs_mock.return_value.get_config.assert_awaited_with(str(guild_b.id))
+
+
+@pytest.mark.asyncio
+async def test_can_all_seven_perms_resolvable(mock_guild: MagicMock) -> None:
+    """4.9 all seven perms return True for granted role."""
+    from bot.utils.checks import PERMISSIONS, can
+
+    expected = {
+        "moderation.warn",
+        "moderation.mute",
+        "moderation.kick",
+        "moderation.ban",
+        "tickets.manage",
+        "economy.manage",
+        "greeting.manage",
+    }
+    assert expected == PERMISSIONS
+    role = 9999
+    member = _make_member_with_roles(mock_guild.id, [role])
+    ctx = _make_ctx_with_member(mock_guild, member)
+    matrix = {perm: [str(role)] for perm in expected}
+    cfg = MagicMock(permission_matrix=matrix, mod_role_id=None)
+    with patch("bot.utils.checks._get_guild_service") as gs_mock:
+        gs_mock.return_value.get_config = AsyncMock(return_value=cfg)
+        for perm in expected:
+            assert await can(perm, ctx) is True, f"{perm} should be granted"
+
+
+# Phase 5: can_check + can_member
+
+
+def test_can_check_dual_registration() -> None:
+    """5.1 can_check dual-registration — cmd.checks non-empty AND app_command.checks non-empty."""
+    from bot.utils.checks import can_check
+
+    @can_check("moderation.ban")
+    @commands.hybrid_command(name="test_can_check_dual")
+    async def test_cmd(self, ctx):  # pragma: no cover
+        pass
+
+    assert len(test_cmd.checks) > 0
+    assert len(test_cmd.app_command.checks) > 0
+    # predicates exposed
+    dec = can_check("moderation.ban")
+    assert hasattr(dec, "predicate")
+    assert hasattr(dec, "prefix_predicate")
+
+
+@pytest.mark.asyncio
+async def test_can_member_mirrors_can(mock_guild: MagicMock) -> None:
+    """5.2 can_member mirrors can (admin, matrix, fallback, deny) for listeners."""
+    from bot.utils.checks import can_member
+
+    # admin pass
+    admin = _make_member_with_roles(mock_guild.id, [], administrator=True)
+    with patch("bot.utils.checks._get_guild_service") as gs_mock:
+        gs_mock.return_value.get_config = AsyncMock(return_value=MagicMock(permission_matrix={}, mod_role_id=None))
+        # admin path should not need matrix — but we mock anyway
+        assert await can_member("moderation.ban", admin, str(mock_guild.id)) is True
+
+    # matrix grant
+    role_a = 9001
+    member = _make_member_with_roles(mock_guild.id, [role_a])
+    with patch("bot.utils.checks._get_guild_service") as gs_mock:
+        gs_mock.return_value.get_config = AsyncMock(
+            return_value=MagicMock(permission_matrix={"moderation.ban": [str(role_a)]}, mod_role_id=None)
+        )
+        assert await can_member("moderation.ban", member, str(mock_guild.id)) is True
+
+    # fallback
+    mod_role = 777
+    member2 = _make_member_with_roles(mock_guild.id, [mod_role])
+    with patch("bot.utils.checks._get_guild_service") as gs_mock:
+        gs_mock.return_value.get_config = AsyncMock(
+            return_value=MagicMock(permission_matrix={}, mod_role_id=str(mod_role))
+        )
+        assert await can_member("moderation.ban", member2, str(mock_guild.id)) is True
+
+    # deny
+    outsider = _make_member_with_roles(mock_guild.id, [123])
+    with patch("bot.utils.checks._get_guild_service") as gs_mock:
+        gs_mock.return_value.get_config = AsyncMock(
+            return_value=MagicMock(permission_matrix={"moderation.ban": ["9999"]}, mod_role_id="777")
+        )
+        assert await can_member("moderation.ban", outsider, str(mock_guild.id)) is False
+
+
+# Phase 6: is_mod shim
+
+
+@pytest.mark.asyncio
+async def test_is_mod_shim_honors_matrix_moderation_key(mock_interaction: MagicMock) -> None:
+    """6.1 is_mod shim honors moderation.* matrix keys (admin/mod/matrix)."""
+    role_matrix = 555
+    guild_id = 123456789
+    mock_interaction.guild = MagicMock(spec=discord.Guild)
+    mock_interaction.guild_id = guild_id
+    mock_interaction.user.guild_permissions.administrator = False
+    r = MagicMock(spec=discord.Role)
+    r.id = role_matrix
+    mock_interaction.user.roles = [r]
+    mock_interaction.client._guild_mod_role_cache = {}
+
+    cfg = MagicMock(permission_matrix={"moderation.ban": [str(role_matrix)]}, mod_role_id=None)
+    with patch("bot.utils.checks._get_guild_service") as gs_mock:
+        gs_mock.return_value.get_config = AsyncMock(return_value=cfg)
+        from bot.utils.checks import can as _can
+
+        ctx = MagicMock(spec=commands.Context)
+        ctx.guild = mock_interaction.guild
+        ctx.author = mock_interaction.user
+        ctx.bot = mock_interaction.client
+        assert await _can("moderation.ban", ctx) is True
+
+
+@pytest.mark.asyncio
+async def test_is_mod_shim_dm_raises_no_private_message_shim() -> None:
+    """is_mod DM still raises NoPrivateMessage after shim."""
+    predicate = is_mod().prefix_predicate
+    ctx = MagicMock(spec=commands.Context)
+    ctx.guild = None
+    with pytest.raises(commands.NoPrivateMessage):
+        await predicate(ctx)

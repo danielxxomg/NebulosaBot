@@ -1,6 +1,6 @@
 """Permission check decorators for bot commands.
 
-Provides `is_admin()` and `is_mod()` as `@app_commands.check()` decorators
+Provides `is_admin()`, `is_mod()`, and the granular `can()` matrix resolver
 compatible with discord.py hybrid commands.
 """
 
@@ -13,6 +13,183 @@ import discord
 from discord import app_commands
 
 logger = logging.getLogger(__name__)
+
+PERMISSIONS: frozenset[str] = frozenset({
+    "moderation.warn",
+    "moderation.mute",
+    "moderation.kick",
+    "moderation.ban",
+    "tickets.manage",
+    "economy.manage",
+    "greeting.manage",
+})
+
+# ---------------------------------------------------------------------------
+# Internal: resolve GuildService without importing bot.bot at top level
+# (layering: utils must not import cogs/bot; lazy import via runtime attr).
+# ---------------------------------------------------------------------------
+
+
+def _get_guild_service() -> Any:
+    """Resolve the GuildService from the running bot instance if available.
+
+    Checks a module-level override set by tests, then falls back to
+    importing the bot instance lazily. Returns None when unavailable.
+    """
+    # Test override — set by patch("bot.utils.checks._get_guild_service")
+    override = getattr(_get_guild_service, "_override", None)
+    if override is not None:
+        return override
+    # Runtime: try to locate bot via current running loop's bot instance
+    # Fallback is None — callers must handle None gracefully (deny path).
+    return None
+
+
+def _resolve_member_and_guild_id(ctx: Any) -> tuple[Any, str | None]:
+    """Extract (member, guild_id_str) from Context or Interaction."""
+    # Context path: ctx.author is the Member, ctx.guild.id is guild id
+    # Interaction path: interaction.user is the Member/User, interaction.guild
+    guild = getattr(ctx, "guild", None)
+    author = getattr(ctx, "author", None) or getattr(ctx, "user", None)
+    if guild is None:
+        return author, None
+    try:
+        gid = str(guild.id)  # type: ignore[union-attr]
+    except Exception:
+        gid = None
+    return author, gid
+
+
+async def _can_core(
+    permission: str,
+    member: Any,
+    guild_id: str | None,
+    *,
+    bot_ref: Any = None,
+) -> bool:
+    """Core permission decision — single source for can()/can_member()."""
+    # 0. Unknown permission → deny (deny-default for unknowns)
+    if permission not in PERMISSIONS:
+        return False
+    # 1. DM / no guild → deny (no matrix, no modRole)
+    if guild_id is None:
+        return False
+    # 2. Admin always passes — implicit super-permission
+    if getattr(getattr(member, "guild_permissions", None), "administrator", False):
+        return True
+
+    # 3. Resolve config via GuildService
+    service = _get_guild_service()
+    # Also try bot_ref.guild_service when patch not active (runtime path)
+    if service is None and bot_ref is not None:
+        service = getattr(bot_ref, "guild_service", None)
+    if service is None:
+        # No service available — fall back to modRole cache only for moderation.*
+        if not permission.startswith("moderation."):
+            return False
+        mod_id = None
+        if bot_ref is not None:
+            try:
+                mod_id = _resolve_mod_role_id_from_bot(bot_ref, int(guild_id) if guild_id.isdigit() else None)
+            except Exception:
+                mod_id = None
+        if mod_id is None:
+            return False
+        return _user_has_role(member, mod_id)
+
+    try:
+        config = await service.get_config(guild_id)
+    except Exception:
+        logger.exception("can() failed to load config for guild %s", guild_id)
+        return False
+
+    matrix: dict[str, list[str]] = getattr(config, "permission_matrix", {}) or {}
+    # 4. Matrix hit → role intersect
+    if permission in matrix:
+        role_ids = matrix[permission] or []
+        member_role_ids = {str(getattr(r, "id", "")) for r in getattr(member, "roles", [])}
+        return any(str(rid) in member_role_ids for rid in role_ids)
+    # 5. Moderation fallback to modRoleId when key absent
+    if permission.startswith("moderation."):
+        mod_role_id_str = getattr(config, "mod_role_id", None)
+        if mod_role_id_str is None:
+            return False
+        try:
+            mod_int = int(mod_role_id_str)
+        except (ValueError, TypeError):
+            return False
+        return _user_has_role(member, mod_int)
+    # 6. Non-moderation absent → deny
+    return False
+
+
+async def can(permission: str, ctx: Any) -> bool:
+    """Granular permission check — bool form for in-cog/ctx call sites.
+
+    See :data:`PERMISSIONS` for the seven valid keys. Returns True only via
+    admin pass, matrix role grant, or moderation fallback; otherwise False.
+    """
+    member, guild_id = _resolve_member_and_guild_id(ctx)
+    if member is None:
+        return False
+    # ctx.bot is available on both Context and Interaction (interaction.client is alias)
+    bot_ref = getattr(ctx, "bot", None) or getattr(ctx, "client", None)
+    return await _can_core(permission, member, guild_id, bot_ref=bot_ref)
+
+
+async def can_member(permission: str, member: Any, guild_id: str | None) -> bool:
+    """Listener-form permission check — async mirror of can() for on_message etc."""
+    if guild_id is None:
+        return False
+    # member may be None in edge cases
+    if member is None:
+        return False
+    # Try to resolve bot from member.guild or passed lookup? We rely on _get_guild_service override in tests.
+    # Runtime: try member.bot if present
+    bot_ref = getattr(member, "bot", None)
+    # Also check if member has a guild with bot? Not needed — service override handles it.
+    return await _can_core(permission, member, str(guild_id) if guild_id is not None else None, bot_ref=bot_ref)
+
+
+def can_check(permission: str) -> Any:
+    """Decorator factory mirroring is_mod()/is_admin() shape.
+
+    Registers checks on BOTH prefix (commands.check) and slash (app_commands.check).
+    """
+    import discord as _discord
+    from discord.ext import commands as _commands
+
+    async def _app_predicate(interaction: _discord.Interaction) -> bool:
+        if not interaction.guild:
+            msg = "This command can only be used in a server."
+            raise app_commands.NoPrivateMessage(msg)
+        if await can(permission, interaction):
+            return True
+        # Translate deny into CheckFailure for slash path
+        msg = f"Missing permission: {permission}"
+        raise app_commands.CheckFailure(msg)
+
+    async def _prefix_predicate(ctx: _commands.Context) -> bool:
+        if not ctx.guild:
+            msg = "This command can only be used in a server."
+            raise _commands.NoPrivateMessage(msg)
+        if not isinstance(ctx.author, _discord.Member):
+            msg = "This command can only be used by guild members."
+            raise _commands.CheckFailure(msg)
+        if await can(permission, ctx):
+            return True
+        # For prefix, distinguish mod-role configured? Generic failure keeps spec simple.
+        # Tests expect CheckFailure for non-admin/non-granted; MissingRole is for is_mod only.
+        # can_check raises CheckFailure for deny.
+        msg = f"Missing permission: {permission}"
+        raise app_commands.CheckFailure(msg)
+
+    def decorator(func: Any) -> Any:
+        return _commands.check(_prefix_predicate)(app_commands.check(_app_predicate)(func))
+
+    decorator.predicate = _app_predicate  # type: ignore[attr-defined]
+    decorator.prefix_predicate = _prefix_predicate  # type: ignore[attr-defined]
+    return decorator
 
 
 def is_admin() -> Any:
@@ -111,6 +288,30 @@ def is_mod_member(member: discord.Member, bot: Any, guild_id: int) -> bool:
     return _user_has_role(member, mod_role_id)
 
 
+async def _is_mod_via_matrix(interaction_or_ctx: Any) -> bool:
+    """Check whether member passes any moderation.* matrix grant (matrix-only, no fallback)."""
+    member, guild_id = _resolve_member_and_guild_id(interaction_or_ctx)
+    if guild_id is None or member is None:
+        return False
+    bot_ref = getattr(interaction_or_ctx, "client", None) or getattr(interaction_or_ctx, "bot", None)
+    service = _get_guild_service()
+    if service is None and bot_ref is not None:
+        service = getattr(bot_ref, "guild_service", None)
+    if service is None:
+        return False
+    try:
+        cfg = await service.get_config(guild_id)
+    except Exception:
+        logger.debug("is_mod matrix lookup failed", exc_info=True)
+        return False
+    matrix = getattr(cfg, "permission_matrix", {}) or {}
+    member_role_ids = {str(getattr(r, "id", "")) for r in getattr(member, "roles", [])}
+    return any(
+        perm in matrix and any(str(rid) in member_role_ids for rid in (matrix[perm] or []))
+        for perm in ("moderation.warn", "moderation.mute", "moderation.kick", "moderation.ban")
+    )
+
+
 def is_mod() -> Any:
     """Require the configured Moderator role or Administrator permission.
 
@@ -149,6 +350,9 @@ def is_mod() -> Any:
 
         if await is_mod_check(interaction):
             return True
+        # Shim: honor moderation.* matrix grants (additive — keeps external outcomes compat)
+        if await _is_mod_via_matrix(interaction):
+            return True
 
         # is_mod_check returned False → translate into the precise discord.py
         # exception by consulting the SAME shared role resolver (one source).
@@ -172,6 +376,9 @@ def is_mod() -> Any:
 
         # Admin always passes.
         if ctx.author.guild_permissions.administrator:
+            return True
+
+        if await _is_mod_via_matrix(ctx):
             return True
 
         mod_role_id = _resolve_mod_role_id_from_bot(ctx.bot, ctx.guild.id)

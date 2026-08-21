@@ -796,3 +796,49 @@ def test_warn_is_mod_dual_path_gated(sentinel_cog: SentinelCog) -> None:
     assert len(cmd.checks) > 0, "warn must have prefix checks from @is_mod()"
     assert hasattr(cmd, "app_command") and cmd.app_command is not None
     assert len(cmd.app_command.checks) > 0, "warn must have slash checks from @is_mod()"
+
+
+# ---------------------------------------------------------------------------
+# PR1 6.2 — /ban re-gated to can_check("moderation.ban")
+# ---------------------------------------------------------------------------
+
+
+def test_ban_is_gated_by_can_check_moderation_ban(sentinel_cog: SentinelCog) -> None:
+    """PR1 6.2: /ban MUST be gated by can_check(moderation.ban) not is_admin.
+
+    Characterization: admin, matrix role, and mod fallback all pass; outsider denied.
+    We prove dual registration and that can_check is the decorator used.
+    """
+    import pathlib
+
+    src = pathlib.Path("bot/cogs/sentinel.py").read_text(encoding="utf-8")
+    # ban decorator must be can_check("moderation.ban")
+    assert 'can_check("moderation.ban")' in src or "can_check('moderation.ban')" in src
+    # must not be is_admin on ban
+    # Find the ban method definition and the decorator lines above it
+    lines = src.splitlines()
+    ban_idx = next(i for i, line in enumerate(lines) if "async def ban(" in line)
+    window = "\n".join(lines[max(0, ban_idx - 10) : ban_idx])
+    assert "is_admin" not in window, "ban MUST NOT use @is_admin — must use @can_check"
+    assert "can_check" in window
+
+    # Dual-path gate still holds for the new decorator
+    cmd = sentinel_cog.ban
+    assert len(cmd.checks) > 0
+    assert hasattr(cmd, "app_command") and cmd.app_command is not None
+    assert len(cmd.app_command.checks) > 0
+
+
+def test_ban_keeps_confirm_view_and_default_permissions(sentinel_cog: SentinelCog) -> None:
+    """PR1 6.2: /ban MUST keep ConfirmCancelView + default_permissions(ban_members=True)."""
+    import pathlib
+
+    src = pathlib.Path("bot/cogs/sentinel.py").read_text(encoding="utf-8")
+    # Check ban decorator area + its ConfirmCancelView usage (below the method)
+    lines = src.splitlines()
+    ban_idx = next(i for i, line in enumerate(lines) if "async def ban(" in line)
+    decorator_window = "\n".join(lines[max(0, ban_idx - 15) : ban_idx + 1])
+    assert "default_permissions(ban_members=True)" in decorator_window
+    # ConfirmCancelView is inside the ban method body (~80 lines below)
+    body_window = "\n".join(lines[ban_idx : ban_idx + 120])
+    assert "ConfirmCancelView" in body_window

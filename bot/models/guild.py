@@ -27,6 +27,7 @@ class GuildConfig:
     log_enabled: bool = False
     welcome_enabled: bool = False
     active: bool = True
+    permission_matrix: dict[str, list[str]] = field(default_factory=dict)
 
     # Aliases matching DB column names for Supabase row mapping.
     _db_aliases: dict[str, str] = field(
@@ -38,6 +39,7 @@ class GuildConfig:
             "ticketPanelChannelId": "ticket_panel_channel_id",
             "logEnabled": "log_enabled",
             "welcomeEnabled": "welcome_enabled",
+            "permissionMatrix": "permission_matrix",
         },
         init=False,
         repr=False,
@@ -46,6 +48,9 @@ class GuildConfig:
     @classmethod
     def from_db_row(cls, row: dict[str, Any]) -> GuildConfig:
         """Build a GuildConfig from a Supabase row (camelCase keys)."""
+        raw = row.get("permissionMatrix", {})
+        # Supabase may return JSONB as dict; tolerate missing / non-dict.
+        matrix = raw if isinstance(raw, dict) else {}
         return cls(
             id=row["id"],
             prefix=row.get("prefix", FALLBACK_PREFIX),
@@ -58,6 +63,7 @@ class GuildConfig:
             log_enabled=row.get("logEnabled", False),
             welcome_enabled=row.get("welcomeEnabled", False),
             active=row.get("active", True),
+            permission_matrix=dict(matrix),
         )
 
     def to_db_dict(self) -> dict[str, Any]:
@@ -74,4 +80,5 @@ class GuildConfig:
             "logEnabled": self.log_enabled,
             "welcomeEnabled": self.welcome_enabled,
             "active": self.active,
+            "permissionMatrix": dict(self.permission_matrix),
         }

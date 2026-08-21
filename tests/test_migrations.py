@@ -281,3 +281,75 @@ class TestMigration021:
         """Migration MUST document DROP COLUMN rollback."""
         sql = _read_migration("021_greeting_theme_id.sql")
         assert "DROP COLUMN" in sql.upper()
+
+
+class TestMigration024:
+    """PR1 1.1 — migration 024_permission_matrix_indexes.sql additive JSONB + partial indexes."""
+
+    def test_file_exists(self) -> None:
+        """Migration 024 file MUST exist in migrations/."""
+        _read_migration("024_permission_matrix_indexes.sql")
+
+    def test_adds_permission_matrix_column(self) -> None:
+        """Migration MUST ADD COLUMN permissionMatrix JSONB DEFAULT '{}'."""
+        sql = _read_migration("024_permission_matrix_indexes.sql")
+        upper = sql.upper()
+        assert "ALTER TABLE" in sql
+        assert "GUILD" in upper
+        assert "PERMISSIONMATRIX" in upper
+        assert "JSONB" in upper
+        assert "DEFAULT" in upper
+        assert "{}" in sql
+
+    def test_permission_matrix_column_not_null_default(self) -> None:
+        """permissionMatrix MUST be JSONB NOT NULL DEFAULT '{}'::jsonb."""
+        sql = _read_migration("024_permission_matrix_indexes.sql")
+        # Must be quoted camelCase identifier.
+        assert '"permissionMatrix"' in sql or "permissionMatrix" in sql
+        assert "NOT NULL" in sql.upper()
+        # Default is empty object cast to jsonb
+        assert "'{}'" in sql
+
+    def test_is_idempotent_add_column_if_not_exists(self) -> None:
+        """Migration MUST use ADD COLUMN IF NOT EXISTS for idempotency."""
+        sql = _read_migration("024_permission_matrix_indexes.sql")
+        assert "ADD COLUMN IF NOT EXISTS" in sql.upper()
+
+    def test_creates_warn_decay_partial_index(self) -> None:
+        """Migration MUST create idx_infraction_warn_decay partial index."""
+        sql = _read_migration("024_permission_matrix_indexes.sql")
+        assert "idx_infraction_warn_decay" in sql
+        assert "CREATE INDEX IF NOT EXISTS" in sql
+        upper = sql.upper()
+        assert "INFRACTION" in upper
+        assert "CREATEDAT" in upper or '"createdAt"' in sql
+        # partial predicate
+        assert "WARN" in sql
+
+    def test_creates_tempban_expiry_partial_index(self) -> None:
+        """Migration MUST create idx_infraction_tempban_expiry partial index."""
+        sql = _read_migration("024_permission_matrix_indexes.sql")
+        assert "idx_infraction_tempban_expiry" in sql
+        assert "CREATE INDEX IF NOT EXISTS" in sql
+        assert "EXPIRESAT" in sql.upper() or '"expiresAt"' in sql
+        assert "BAN" in sql
+
+    def test_partial_index_predicates(self) -> None:
+        """Both partial indexes MUST have WHERE predicates for active filtering."""
+        sql = _read_migration("024_permission_matrix_indexes.sql")
+        # warn decay: type='WARN' AND active
+        assert "active" in sql.lower()
+        # tempban: expiresAt IS NOT NULL
+        assert "IS NOT NULL" in sql.upper() or "is not null" in sql.lower()
+
+    def test_documents_schema_migrations_check(self) -> None:
+        """Migration comment MUST mention checking schema_migrations before apply."""
+        sql = _read_migration("024_permission_matrix_indexes.sql").lower()
+        assert "schema_migrations" in sql
+
+    def test_documents_rollback(self) -> None:
+        """Migration MUST document rollback DROP INDEX / DROP COLUMN."""
+        sql = _read_migration("024_permission_matrix_indexes.sql")
+        upper = sql.upper()
+        assert "DROP INDEX" in upper
+        assert "DROP COLUMN" in upper
