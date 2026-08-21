@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -160,6 +161,10 @@ class TicketLifecycleService:
                 f" (transcript: {transcript_url})" if transcript_url else "",
                 f" (reason: {close_reason})" if close_reason else "",
             )
+            with contextlib.suppress(Exception):
+                await self._db.update_ticket(
+                    ticket_id, guild_id=resolved_gid, scheduledCloseAt=None, scheduledCloseBy=None
+                )
             return ticket
         pre = await self._db.get_ticket(ticket_id)
         guild_id = pre.get("guildId", "") if isinstance(pre, dict) else ""
@@ -197,6 +202,8 @@ class TicketLifecycleService:
             f" (transcript: {transcript_url})" if transcript_url else "",
             f" (reason: {close_reason})" if close_reason else "",
         )
+        with contextlib.suppress(Exception):
+            await self._db.update_ticket(ticket_id, guild_id=guild_id, scheduledCloseAt=None, scheduledCloseBy=None)
         return ticket
 
     async def claim_ticket(self, ticket_id: str, claimed_by: str, *, guild_id: str | None = None) -> Ticket:

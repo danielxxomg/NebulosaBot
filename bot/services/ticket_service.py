@@ -273,6 +273,16 @@ class TicketService:
             guild_id=guild_id,
         )
 
+    async def schedule_close(
+        self, guild_id: str, ticket_id: str, scheduled_close_at: str, scheduled_close_by: str
+    ) -> None:
+        """Set scheduledCloseAt/By (delegates to repair service)."""
+        return await self._repair.schedule_close(guild_id, ticket_id, scheduled_close_at, scheduled_close_by)
+
+    async def cancel_scheduled_close(self, guild_id: str, ticket_id: str) -> None:
+        """Clear scheduledCloseAt/By (delegates to repair service)."""
+        return await self._repair.cancel_scheduled_close(guild_id, ticket_id)
+
     # -- Query/cache facade (S3.3A): single owner is TicketQueryService --
 
     @property
