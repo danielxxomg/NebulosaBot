@@ -5,7 +5,20 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
+from bot.services.ticket_repair_service import TimerMessageResult
 from bot.views.confirmation import ConfirmCancelView
+
+
+def _needs_confirmation_result(seconds=3600, gid="123", ticket_id="t1", author_id="999"):
+    return TimerMessageResult(
+        action="needs_confirmation",
+        guild_id=gid,
+        ticket_id=ticket_id,
+        author_id=author_id,
+        seconds=seconds,
+        prompt_title="Confirm Scheduled Close",
+        prompt_desc="Schedule close in 1h? Confirm within 30s.",
+    )
 
 
 @pytest.mark.asyncio
@@ -19,7 +32,12 @@ async def test_confirm_view_threshold_triggers_confirm():
     row = {"id": "t1", "status": "open", "guildId": "123", "channelId": "444"}
     bot.db.get_ticket_by_channel = AsyncMock(return_value=row)
     bot.ticket_service = MagicMock(
-        is_ticket_channel=MagicMock(return_value=True), schedule_close=AsyncMock(), cancel_scheduled_close=AsyncMock()
+        is_ticket_channel=MagicMock(return_value=True),
+        schedule_close=AsyncMock(),
+        cancel_scheduled_close=AsyncMock(),
+        handle_timer_message=AsyncMock(return_value=_needs_confirmation_result(seconds=3600)),
+        confirm_timer_schedule=AsyncMock(),
+        upsert_timer_embed=AsyncMock(),
     )
     bot.db.get_scheduled_close_candidates = AsyncMock(return_value=[])
     bot._guild_mod_role_cache = {}
@@ -39,13 +57,15 @@ async def test_confirm_view_threshold_triggers_confirm():
     msg.content = ",1h"
     await cog.on_message(msg)
     # Should have sent a view (confirm), not scheduled immediately
-    bot.ticket_service.schedule_close.assert_not_awaited()
+    bot.ticket_service.confirm_timer_schedule.assert_not_awaited()
     # Check that a view was sent
     assert any("view" in (c.kwargs or {}) for c in msg.channel.send.await_args_list)
 
 
 @pytest.mark.asyncio
 async def test_12h_immediate_no_confirm():
+    from datetime import UTC, datetime
+
     from bot.cogs.tickets import TicketsCog
 
     bot = MagicMock()
@@ -53,8 +73,23 @@ async def test_12h_immediate_no_confirm():
     bot.db.update_ticket_last_activity = AsyncMock()
     row = {"id": "t1", "status": "open", "guildId": "123", "channelId": "444"}
     bot.db.get_ticket_by_channel = AsyncMock(return_value=row)
+    seconds = 43200
     bot.ticket_service = MagicMock(
-        is_ticket_channel=MagicMock(return_value=True), schedule_close=AsyncMock(), cancel_scheduled_close=AsyncMock()
+        is_ticket_channel=MagicMock(return_value=True),
+        schedule_close=AsyncMock(),
+        cancel_scheduled_close=AsyncMock(),
+        handle_timer_message=AsyncMock(
+            return_value=TimerMessageResult(
+                action="scheduled",
+                guild_id="123",
+                ticket_id="t1",
+                author_id="999",
+                seconds=seconds,
+                due_ts=datetime.now(UTC).timestamp() + seconds,
+            )
+        ),
+        confirm_timer_schedule=AsyncMock(),
+        upsert_timer_embed=AsyncMock(),
     )
     bot.db.get_scheduled_close_candidates = AsyncMock(return_value=[])
     bot._guild_mod_role_cache = {}
@@ -73,7 +108,8 @@ async def test_12h_immediate_no_confirm():
     msg.channel.pins = AsyncMock(return_value=[])
     msg.content = ",12h"
     await cog.on_message(msg)
-    bot.ticket_service.schedule_close.assert_awaited_once()
+    bot.ticket_service.handle_timer_message.assert_awaited_once()
+    bot.ticket_service.upsert_timer_embed.assert_awaited_once()
 
 
 @pytest.mark.asyncio

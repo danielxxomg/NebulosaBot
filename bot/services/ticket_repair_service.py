@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import discord
 
 from bot.config import INTEGRITY_BATCH_SIZE
+from bot.core.i18n import t
 from bot.models.ticket import IntegrityEvidence, RepairResult, Ticket
 from bot.services.ticket_invariants import (
     GlobalMutationGrant,
@@ -25,7 +27,9 @@ from bot.services.ticket_repair import (
     plan_sweep_batch,
     probe_channel_absence,
 )
+from bot.utils.brand import WARNING
 from bot.utils.ticket_helpers import build_ticket_overwrites, sanitize_channel_name
+from bot.utils.time import format_remaining, parse_duration_strict
 
 if TYPE_CHECKING:
     from bot.bot import NebulosaBot
@@ -36,6 +40,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 CHANNEL_DELETE_DELAY = 5
+
+# Timer threshold constants (business rules): durations below MIN or above MAX
+# require explicit confirmation via ConfirmCancelView before being scheduled.
+TIMER_MIN_SECONDS = 2 * 3600  # 2 hours
+TIMER_MAX_SECONDS = 5 * 86400  # 5 days
+TIMER_CONFIRM_TIMEOUT = 30  # seconds before the confirm view times out
+
+_ACTIVE_TICKET_STATUSES = ("open", "claimed")
 
 
 class TicketRepairService:
@@ -750,6 +762,204 @@ class TicketRepairService:
         """Clear scheduledCloseAt/By (guild-scoped, safe no-op when already null)."""
         await self._db.update_ticket(ticket_id, guild_id=guild_id, scheduledCloseAt=None, scheduledCloseBy=None)
 
+    # -- scheduled-close timer message handling ---------------------------
+
+    async def handle_timer_message(
+        self,
+        guild_id: str,
+        ticket_row: dict[str, Any],
+        content: str,
+        author_id: str,
+    ) -> TimerMessageResult | None:
+        """Process a ``,<duration>`` or ``,cancel`` mod timer message.
+
+        Encapsulates the timer state-machine: parses the duration, applies the
+        2h..5d threshold gate, and either schedules the close immediately or
+        signals the cog to show a :class:`ConfirmCancelView`. ``None`` return
+        means the message is not a valid timer command (silent ignore).
+
+        Args:
+            guild_id: Guild snowflake as string (guild-scoped DB writes).
+            ticket_row: The active ticket DB row (status already validated open/claimed).
+            content: The raw message content (must start with ``,``).
+            author_id: The invoking member's snowflake as string.
+
+        Returns:
+            - ``TimerMessageResult(action="scheduled", ...)``: close was scheduled
+              immediately and the timer embed posted (or failed — see error flags).
+            - ``TimerMessageResult(action="cancelled", ...)``: timer was cleared.
+            - ``TimerMessageResult(action="needs_confirmation", ...)``: duration is
+              outside 2h..5d; the cog MUST show a :class:`ConfirmCancelView` and
+              call :meth:`confirm_timer_schedule` on confirm.
+            - ``None``: content is not a valid timer command (e.g. ``,hola``).
+        """
+        ticket_id = ticket_row.get("id")
+        if not ticket_id:
+            return None
+        content_lower = content.lower()
+
+        if content_lower.startswith(",cancel"):
+            try:
+                await self.cancel_scheduled_close(guild_id, ticket_id)
+            except Exception:
+                logger.exception("Failed to cancel scheduled close for ticket %s", ticket_id)
+            return TimerMessageResult(
+                action="cancelled",
+                guild_id=guild_id,
+                ticket_id=ticket_id,
+                author_id=author_id,
+            )
+
+        seconds = parse_duration_strict(content)
+        if seconds is None:
+            return None  # ,hola etc: silent ignore, no error embed
+
+        if seconds < TIMER_MIN_SECONDS or seconds > TIMER_MAX_SECONDS:
+            # Threshold breach: cog must show ConfirmCancelView, then call
+            # confirm_timer_schedule on confirm.
+            return TimerMessageResult(
+                action="needs_confirmation",
+                guild_id=guild_id,
+                ticket_id=ticket_id,
+                author_id=author_id,
+                seconds=seconds,
+                prompt_title=self._confirm_prompt_title(guild_id),
+                prompt_desc=self._confirm_prompt_desc(guild_id, seconds),
+            )
+
+        # Immediate schedule (within 2h..5d)
+        due_ts = datetime.now(UTC).timestamp() + seconds
+        due_iso = datetime.fromtimestamp(due_ts, tz=UTC).isoformat()
+        try:
+            await self.schedule_close(guild_id, ticket_id, due_iso, author_id)
+        except Exception:
+            logger.exception("Failed to schedule close for ticket %s", ticket_id)
+            return TimerMessageResult(
+                action="scheduled",
+                guild_id=guild_id,
+                ticket_id=ticket_id,
+                author_id=author_id,
+                seconds=seconds,
+                due_ts=due_ts,
+                schedule_failed=True,
+            )
+        return TimerMessageResult(
+            action="scheduled",
+            guild_id=guild_id,
+            ticket_id=ticket_id,
+            author_id=author_id,
+            seconds=seconds,
+            due_ts=due_ts,
+        )
+
+    async def confirm_timer_schedule(
+        self,
+        guild_id: str,
+        ticket_id: str,
+        seconds: int,
+        author_id: str,
+    ) -> TimerMessageResult:
+        """Execute the schedule on confirm-view confirmation.
+
+        Called by the cog's ConfirmCancelView ``on_confirm`` callback after the
+        mod confirms an out-of-threshold (``<2h`` or ``>5d``) duration.
+
+        Args:
+            guild_id: Guild snowflake as string.
+            ticket_id: The ticket UUID to schedule the close for.
+            seconds: The duration in seconds (passed through from the original parse).
+            author_id: The confirming member's snowflake as string.
+
+        Returns:
+            A :class:`TimerMessageResult` with ``action="scheduled"`` and the
+            computed ``due_ts``. The ``schedule_failed`` flag is set if the
+            DB write raised.
+        """
+        due_ts = datetime.now(UTC).timestamp() + seconds
+        due_iso = datetime.fromtimestamp(due_ts, tz=UTC).isoformat()
+        schedule_failed = False
+        try:
+            await self.schedule_close(guild_id, ticket_id, due_iso, author_id)
+        except Exception:
+            logger.exception("Failed to schedule close on confirm for ticket %s", ticket_id)
+            schedule_failed = True
+        return TimerMessageResult(
+            action="scheduled",
+            guild_id=guild_id,
+            ticket_id=ticket_id,
+            author_id=author_id,
+            seconds=seconds,
+            due_ts=due_ts,
+            schedule_failed=schedule_failed,
+        )
+
+    async def get_due_scheduled_tickets(self, guild_id: str, *, batch_size: int = 50) -> list[dict[str, Any]]:
+        """Return due scheduled-close candidate rows for *guild_id* (guild-scoped).
+
+        Encapsulates the DB query so the cog loop stays a thin facade. Each row
+        is the raw camelCase DB row; the cog resolves the channel and fetches
+        the full row for :meth:`close_ticket_full` (or clears stale fields if
+        the ticket is no longer active).
+        """
+        return await self._db.get_scheduled_close_candidates(guild_id, batch_size=batch_size)
+
+    async def upsert_timer_embed(
+        self,
+        channel: discord.TextChannel,
+        guild_id: str,
+        ticket_id: str,
+        due_ts: float,
+        seconds: int,
+    ) -> None:
+        """Post or edit the pinned timer embed carrying ``<t:R>``/``<t:F>``.
+
+        Posts a fresh embed and pins it; if a pinned timer embed already exists
+        (title contains ``<t:``), edits it in place instead of creating a duplicate.
+        """
+        unix = int(due_ts)
+        remaining = format_remaining(seconds, guild_id=guild_id)
+        title = t(guild_id, "tickets.timer.scheduled_title")
+        if title.startswith("tickets.timer"):
+            title = f"\u23f3 Cierra <t:{unix}:R> (<t:{unix}:F>)"
+        else:
+            try:
+                title = title.format(unix=unix, remaining=remaining)
+            except Exception:
+                title = f"\u23f3 Cierra <t:{unix}:R> (<t:{unix}:F>)"
+        if f"<t:{unix}:R>" not in title:
+            title = f"\u23f3 Cierra <t:{unix}:R> (<t:{unix}:F>)"
+        desc = t(guild_id, "tickets.timer.scheduled_description", remaining=remaining, unix=unix)
+        if desc.startswith("tickets.timer"):
+            desc = f"Cierre programado {remaining} — <t:{unix}:F>"
+        embed = discord.Embed(title=title, description=desc, color=WARNING)
+        with contextlib.suppress(Exception):
+            pins = await channel.pins()
+            for m in pins:
+                if m.embeds and m.embeds[0].title and "<t:" in (m.embeds[0].title or ""):
+                    with contextlib.suppress(Exception):
+                        await m.edit(embed=embed)
+                        return
+        try:
+            msg = await channel.send(embed=embed)
+            with contextlib.suppress(Exception):
+                await msg.pin(reason="Scheduled close by timer")
+        except Exception:
+            logger.exception("Failed to send timer embed for ticket %s", ticket_id)
+
+    @staticmethod
+    def _confirm_prompt_title(guild_id: str) -> str:
+        """Resolve the localized confirm-prompt title (with fallback)."""
+        title = t(guild_id, "tickets.timer.confirm_title")
+        return "Confirm Scheduled Close" if title.startswith("tickets.timer") else title
+
+    @staticmethod
+    def _confirm_prompt_desc(guild_id: str, seconds: int) -> str:
+        """Resolve the localized confirm-prompt description (with fallback)."""
+        desc = t(guild_id, "tickets.timer.confirm_description")
+        if desc.startswith("tickets.timer"):
+            return f"Schedule close in {format_remaining(seconds, guild_id=guild_id)}? Confirm within 30s."
+        return desc
+
     # -- orchestration (channel + transcript) -----------------------------
 
     async def create_ticket_channel(
@@ -941,3 +1151,24 @@ class TicketRepairService:
                 logger.info("Ticket channel %s already deleted during countdown fallback", channel.id)
             except discord.HTTPException:
                 logger.exception("Failed to delete ticket channel %s after countdown failure", channel.id)
+
+
+@dataclass(frozen=True)
+class TimerMessageResult:
+    """Outcome of processing one ``,<duration>``/``,cancel`` timer message.
+
+    Returned by :meth:`TicketRepairService.handle_timer_message` and
+    :meth:`confirm_timer_schedule`. The cog inspects ``action`` to decide
+    whether to upsert the timer embed, show a :class:`ConfirmCancelView`, or
+    post a cancellation confirmation.
+    """
+
+    action: str  # "scheduled" | "cancelled" | "needs_confirmation"
+    guild_id: str
+    ticket_id: str
+    author_id: str
+    seconds: int = 0
+    due_ts: float = 0.0
+    schedule_failed: bool = False
+    prompt_title: str = ""
+    prompt_desc: str = ""

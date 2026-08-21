@@ -35,6 +35,7 @@ from bot.services.ticket_repair import (
 from bot.services.ticket_repair import evaluate_repair_eligibility as _coordinator_evaluate
 from bot.services.ticket_repair import plan_sweep_batch as _coordinator_plan_sweep_batch
 from bot.services.ticket_repair import probe_channel_absence as _coordinator_probe
+from bot.services.ticket_repair_service import TimerMessageResult
 
 if TYPE_CHECKING:
     from bot.bot import NebulosaBot
@@ -282,6 +283,41 @@ class TicketService:
     async def cancel_scheduled_close(self, guild_id: str, ticket_id: str) -> None:
         """Clear scheduledCloseAt/By (delegates to repair service)."""
         return await self._repair.cancel_scheduled_close(guild_id, ticket_id)
+
+    async def handle_timer_message(
+        self,
+        guild_id: str,
+        ticket_row: dict[str, Any],
+        content: str,
+        author_id: str,
+    ) -> TimerMessageResult | None:
+        """Process a ``,<duration>``/``,cancel`` mod timer message (delegates to repair service)."""
+        return await self._repair.handle_timer_message(guild_id, ticket_row, content, author_id)
+
+    async def confirm_timer_schedule(
+        self,
+        guild_id: str,
+        ticket_id: str,
+        seconds: int,
+        author_id: str,
+    ) -> TimerMessageResult:
+        """Execute the schedule on confirm-view confirmation (delegates to repair service)."""
+        return await self._repair.confirm_timer_schedule(guild_id, ticket_id, seconds, author_id)
+
+    async def get_due_scheduled_tickets(self, guild_id: str, *, batch_size: int = 50) -> list[dict[str, Any]]:
+        """Return due scheduled-close candidate rows for *guild_id* (delegates to repair service)."""
+        return await self._repair.get_due_scheduled_tickets(guild_id, batch_size=batch_size)
+
+    async def upsert_timer_embed(
+        self,
+        channel: discord.TextChannel,
+        guild_id: str,
+        ticket_id: str,
+        due_ts: float,
+        seconds: int,
+    ) -> None:
+        """Post or edit the pinned timer embed carrying ``<t:R>``/``<t:F>`` (delegates to repair service)."""
+        await self._repair.upsert_timer_embed(channel, guild_id, ticket_id, due_ts, seconds)
 
     # -- Query/cache facade (S3.3A): single owner is TicketQueryService --
 

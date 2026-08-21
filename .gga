@@ -1,8 +1,8 @@
 # Gentleman Guardian Angel — NebulosaBot
-# Provider: Command Code
-# Model: Muse Spark 1.2 Contributor
+# Provider: Fx Gateway — GLM 5.2
+# Model: glm-5.2 via opencode (vercel-fx/zai)
 
-PROVIDER="opencode:commandcode/muse-spark-1.2-contributor"
+PROVIDER="opencode:vercel-fx/zai/glm-5.2"
 
 FILE_PATTERNS="*.py"
 EXCLUDE_PATTERNS="__pycache__,*.pyc,.mypy_cache,.pytest_cache,tests/"

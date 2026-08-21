@@ -89,6 +89,28 @@ async def is_mod_check(interaction: discord.Interaction) -> bool:
     return _user_has_role(interaction.user, mod_role_id)
 
 
+def is_mod_member(member: discord.Member, bot: Any, guild_id: int) -> bool:
+    """Member-based mod gate for listeners (e.g. ``on_message``).
+
+    Synchronous sibling of :func:`is_mod_check` for the ``discord.Message``
+    path where no :class:`discord.Interaction` is available. Returns ``True``
+    when *member* is an administrator OR holds the guild's configured mod role;
+    ``False`` otherwise (including non-members). NEVER raises — listeners must
+    not propagate permission-check failures.
+
+    Args:
+        member: The message author as a :class:`discord.Member`.
+        bot: The bot instance (carries ``_guild_mod_role_cache``).
+        guild_id: The guild snowflake (int) the message originated in.
+    """
+    if getattr(member.guild_permissions, "administrator", False):
+        return True
+    mod_role_id = _resolve_mod_role_id_from_bot(bot, guild_id)
+    if mod_role_id is None:
+        return False
+    return _user_has_role(member, mod_role_id)
+
+
 def is_mod() -> Any:
     """Require the configured Moderator role or Administrator permission.
 
