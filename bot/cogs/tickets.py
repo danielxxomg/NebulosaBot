@@ -20,6 +20,7 @@ from bot.cogs.ticket_integrity_flow import TicketIntegrityFlow
 from bot.cogs.ticket_lifecycle_flow import TicketLifecycleFlow
 from bot.cogs.ticket_notes_flow import TicketNotesFlow
 from bot.core.context import NebulosaContext
+from bot.utils.brand import SUCCESS, WARNING
 from bot.utils.checks import is_admin, is_mod
 from bot.utils.embeds import build_ticket_embed
 from bot.views.tickets import (
@@ -359,7 +360,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
                                         "tickets.timer"
                                     )
                                     else "Scheduled close set.",
-                                    color=discord.Color.green(),
+                                    color=discord.Color(SUCCESS),
                                 ),
                                 view=None,
                             )
@@ -380,7 +381,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
 
                         prompt_desc = f"Schedule close in {_fmt(seconds, guild_id=gid)}? Confirm within 30s."
                     await message.channel.send(
-                        embed=discord.Embed(title=prompt_title, description=prompt_desc, color=discord.Color.orange()),
+                        embed=discord.Embed(title=prompt_title, description=prompt_desc, color=discord.Color(WARNING)),
                         view=view,
                     )
                     view.message = (
@@ -435,7 +436,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         desc = _t(guild_id, "tickets.timer.scheduled_description", remaining=remaining, unix=unix)
         if desc.startswith("tickets.timer"):
             desc = f"Cierre programado {remaining} — <t:{unix}:F>"
-        embed = discord.Embed(title=title, description=desc, color=discord.Color.orange())
+        embed = discord.Embed(title=title, description=desc, color=discord.Color(WARNING))
         # Try to find existing pinned timer embed and edit it
         with contextlib.suppress(Exception):
             pins = await channel.pins()
