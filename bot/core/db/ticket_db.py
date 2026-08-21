@@ -412,3 +412,38 @@ class TicketDBMixin:
             .eq("channelId", channel_id)
             .execute()
         )
+
+    _SCHEDULED_CLOSE_COLUMNS = (
+        "id",
+        "ticketNumber",
+        "guildId",
+        "authorId",
+        "channelId",
+        "status",
+        "scheduledCloseAt",
+        "scheduledCloseBy",
+        "lastActivity",
+    )
+
+    async def get_scheduled_close_candidates(self: Any, guild_id: str, *, batch_size: int = 50) -> list[dict[str, Any]]:
+        """Return up to *batch_size* tickets with scheduledCloseAt <= now().
+
+        Only open/claimed tickets with a non-null scheduledCloseAt in the past
+        are returned (partial index ``idx_ticket_scheduled_close`` supports this).
+        Explicit columns — no ``select("*")``.
+        """
+        if self._client is None:
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
+        now_iso = datetime.now(UTC).isoformat()
+        response = await (
+            self._client
+            .table("ticket")
+            .select(",".join(self._SCHEDULED_CLOSE_COLUMNS))
+            .eq("guildId", guild_id)
+            .in_("status", ["open", "claimed"])
+            .lte("scheduledCloseAt", now_iso)
+            .limit(batch_size)
+            .execute()
+        )
+        return _unwrap(response)
