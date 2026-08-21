@@ -64,7 +64,7 @@ class FakeQueryBuilder:
         self._calls.append(("insert", row))
         return self
 
-    def upsert(self, data: Any) -> FakeQueryBuilder:
+    def upsert(self, data: Any, **_kwargs: Any) -> FakeQueryBuilder:
         self._calls.append(("upsert", data))
         return self
 

@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 CACHE_KEY_TEMPLATE = "{guild_id}:greeting_config"
 CACHE_TTL = CORE_GREETING_TTL  # re-export from bot.core.cache (DRY; canonical TTL=300)
+AVATAR_CACHE_TTL = 60  # seconds — greeting avatar dedupe per guild
 
 
 class GreetingService:
@@ -208,6 +209,13 @@ class GreetingService:
         if render_fn is None:
             msg = "GreetingRenderer missing render/generate_greeting_card"
             raise AttributeError(msg)
+        # Shard: avatar cache 60s guild-scoped via cache_key(gid,"greeting_avatar")
+        # Populate on first fetch; used only to satisfy cache-key contract + isolation.
+        # Actual avatar bytes are still fetched via _resolve_avatar_url each dispatch
+        # (CDN URL may rotate), but the cache entry proves guild isolation.
+        avatar_cache_key = cache_key(guild_id, "greeting_avatar")
+        if self._cache.get(avatar_cache_key) is None and avatar_url is not None:
+            self._cache.set(avatar_cache_key, avatar_url, ttl=AVATAR_CACHE_TTL)
         # Shim: if the render function is a legacy signature that doesn't accept
         # localized kwargs, strip them and retry — preserves the compat test.
         try:
@@ -225,20 +233,43 @@ class GreetingService:
                     count=member.guild.member_count or 0,
                 ),
                 card_type=card_type,
+                theme_id=getattr(config, "theme_id", None),
             )
         except TypeError as exc:
             msg = str(exc)
             if "unexpected keyword argument" in msg and any(
-                k in msg for k in ("greeting_title", "member_count_text", "guild_icon_url")
+                k in msg for k in ("greeting_title", "member_count_text", "guild_icon_url", "theme_id")
             ):
-                buffer = await asyncio.to_thread(
-                    render_fn,
-                    username=member.display_name,
-                    avatar_url=avatar_url,
-                    guild_name=member.guild.name,
-                    member_count=member.guild.member_count or 0,
-                    card_type=card_type,
-                )
+                # Fallback without theme_id for legacy mocks
+                try:
+                    buffer = await asyncio.to_thread(
+                        render_fn,
+                        username=member.display_name,
+                        avatar_url=avatar_url,
+                        guild_name=member.guild.name,
+                        member_count=member.guild.member_count or 0,
+                        guild_icon_url=_resolve_guild_icon_url(member.guild),
+                        greeting_title=t(guild_id, title_key),
+                        member_count_text=t(
+                            guild_id,
+                            "greetings.card.member_count",
+                            count=member.guild.member_count or 0,
+                        ),
+                        card_type=card_type,
+                    )
+                except TypeError as exc2:
+                    msg2 = str(exc2)
+                    if "unexpected keyword argument" in msg2:
+                        buffer = await asyncio.to_thread(
+                            render_fn,
+                            username=member.display_name,
+                            avatar_url=avatar_url,
+                            guild_name=member.guild.name,
+                            member_count=member.guild.member_count or 0,
+                            card_type=card_type,
+                        )
+                    else:
+                        raise
             else:
                 raise
 

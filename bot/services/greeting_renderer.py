@@ -13,6 +13,8 @@ import io
 import logging
 from typing import Protocol, runtime_checkable
 
+from PIL import Image, ImageDraw, ImageFilter
+
 from bot.services import shared_assets
 from bot.utils import brand
 
@@ -51,6 +53,53 @@ def _brand_accent_rgba() -> tuple[int, int, int, int]:
     return ((v >> 16) & 255, (v >> 8) & 255, v & 255, 255)
 
 
+def _brand_neon_rgba_a() -> tuple[int, int, int, int]:
+    v = brand.ACCENT_A
+    return ((v >> 16) & 255, (v >> 8) & 255, v & 255, 255)
+
+
+def _brand_neon_rgba_b() -> tuple[int, int, int, int]:
+    v = brand.ACCENT_B
+    return ((v >> 16) & 255, (v >> 8) & 255, v & 255, 255)
+
+
+def _hexagon_points(cx: int, cy: int, radius: int) -> list[tuple[float, float]]:
+    import math
+
+    pts: list[tuple[float, float]] = []
+    for i in range(6):
+        ang = math.radians(60 * i - 30)
+        pts.append((cx + radius * math.cos(ang), cy + radius * math.sin(ang)))
+    return pts
+
+
+def _render_neon_overlay(img: Image.Image) -> None:
+    """Draw neon hex polygon + GaussianBlur glow diagonal ACCENT_A→ACCENT_B."""
+    w, h = img.size
+    # Glow layer: hex polygon with blur
+    glow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    glow_draw = ImageDraw.Draw(glow)
+    cx, cy = w - 110, h // 2
+    pts = _hexagon_points(cx, cy, 62)
+    neon_a = _brand_neon_rgba_a()
+    neon_b = _brand_neon_rgba_b()
+    # Diagonal accent: two-tone hex — outer glow in ACCENT_A, inner in ACCENT_B
+    glow_draw.polygon(pts, fill=neon_a, outline=neon_a)
+    # Inner hex slightly smaller in ACCENT_B
+    inner = _hexagon_points(cx, cy, 44)
+    glow_draw.polygon(inner, fill=neon_b, outline=neon_b)
+    # Blur glow
+    blurred = glow.filter(ImageFilter.GaussianBlur(radius=8))
+    img.alpha_composite(blurred)
+    # Sharp hex on top
+    draw = ImageDraw.Draw(img)
+    draw.polygon(pts, outline=neon_a, width=2)
+    draw.polygon(inner, outline=neon_b, width=1)
+    # Diagonal accent line ACCENT_A→ACCENT_B
+    draw.line([(18, 16), (w - 18, h - 16)], fill=neon_a, width=2)
+    draw.line([(w - 18, 16), (18, h - 16)], fill=neon_b, width=1)
+
+
 @runtime_checkable
 class GreetingRenderer(Protocol):
     """Render a branded greeting card PNG from pre-translated strings.
@@ -71,6 +120,7 @@ class GreetingRenderer(Protocol):
         greeting_title: str,  # pre-translated
         member_count_text: str,  # pre-translated
         guild_icon_url: str | None,
+        theme_id: str | None = None,
     ) -> io.BytesIO: ...
 
 
@@ -93,6 +143,7 @@ class PillowGreetingRenderer:
         greeting_title: str,
         member_count_text: str,
         guild_icon_url: str | None = None,
+        theme_id: str | None = None,
     ) -> io.BytesIO:
         """Render a welcome or goodbye card PNG image.
 
@@ -116,6 +167,12 @@ class PillowGreetingRenderer:
 
         # -- Base image with gradient background --------------------------
         img, draw = shared_assets._card_base()
+
+        # -- Neon overlay when theme_id == gaming_neon --------------------
+        if theme_id == "gaming_neon":
+            _render_neon_overlay(img)
+            # Re-acquire draw after overlay (alpha_composite invalidates prior draw)
+            draw = ImageDraw.Draw(img)
 
         # -- Branded hierarchy ---------------------------------------------
         draw.rounded_rectangle(

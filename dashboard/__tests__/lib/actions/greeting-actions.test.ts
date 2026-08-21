@@ -309,3 +309,62 @@ describe("updateGreetingConfig — successful update", () => {
     assertFieldError(result, "onboardingChannelId");
   });
 });
+
+// ---------------------------------------------------------------------------
+// themeId persistence (PR1 5.1)
+// ---------------------------------------------------------------------------
+
+describe("updateGreetingConfig — themeId persistence (PR1 5.1)", () => {
+  beforeEach(() => {
+    setupAuth();
+  });
+
+  it("persists gaming_neon themeId to greeting_config", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const fd = buildFormData({ themeId: "gaming_neon" });
+
+    const result = await updateGreetingConfig(GUILD_ID, fd);
+
+    assertSuccess(result);
+    const service = await vi.mocked(createServiceClient).mock.results.at(-1)?.value;
+    const greetingUpsert = (service as unknown as {
+      greeting: { upsert: ReturnType<typeof vi.fn> };
+    }).greeting.upsert;
+    expect(greetingUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({ themeId: "gaming_neon" })
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it("round-trips an empty themeId as null (default theme)", async () => {
+    const fd = buildFormData({ themeId: "" });
+
+    const result = await updateGreetingConfig(GUILD_ID, fd);
+
+    assertSuccess(result);
+    const service = await vi.mocked(createServiceClient).mock.results.at(-1)?.value;
+    const greetingUpsert = (service as unknown as {
+      greeting: { upsert: ReturnType<typeof vi.fn> };
+    }).greeting.upsert;
+    expect(greetingUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({ themeId: null })
+    );
+  });
+
+  it("rejects an unknown themeId, coercing it to null", async () => {
+    const fd = buildFormData({ themeId: "hacker_theme" });
+
+    const result = await updateGreetingConfig(GUILD_ID, fd);
+
+    assertSuccess(result);
+    const service = await vi.mocked(createServiceClient).mock.results.at(-1)?.value;
+    const greetingUpsert = (service as unknown as {
+      greeting: { upsert: ReturnType<typeof vi.fn> };
+    }).greeting.upsert;
+    // Only gaming_neon is allowed; anything else coerces to null (default).
+    expect(greetingUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({ themeId: null })
+    );
+  });
+});
