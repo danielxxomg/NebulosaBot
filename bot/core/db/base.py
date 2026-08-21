@@ -86,7 +86,7 @@ class DatabaseBase:
         self._client = await acreate_client(
             self._url,
             self._key,
-            AsyncClientOptions(schema="public"),
+            AsyncClientOptions(schema="public", auto_refresh_token=False, persist_session=False),
         )
         healthy = await self.health_check()
         if not healthy:

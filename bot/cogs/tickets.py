@@ -20,7 +20,7 @@ from bot.cogs.ticket_integrity_flow import TicketIntegrityFlow
 from bot.cogs.ticket_lifecycle_flow import TicketLifecycleFlow
 from bot.cogs.ticket_notes_flow import TicketNotesFlow
 from bot.core.context import NebulosaContext
-from bot.utils.checks import is_mod
+from bot.utils.checks import is_admin, is_mod
 from bot.utils.embeds import build_ticket_embed
 from bot.views.tickets import (
     TicketActionsView,
@@ -532,7 +532,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         )
     )
     @app_commands.default_permissions(administrator=True)
-    @is_mod()
+    @is_admin()
     async def delete_category(self, ctx: NebulosaContext, category_id: str) -> None:
         await self._admin_flow.delete_category(ctx, category_id)
 

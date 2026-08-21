@@ -37,19 +37,19 @@ def _count_is_mod_decorators(path: str) -> int:
 
 class TestIsModLedger:
     def test_tickets_is_mod_count_17(self) -> None:
-        """tickets.py MUST have 16 @is_mod() decorators (unclaim intentionally undecorated — claimer-or-mod)."""
-        # unclaim at 707 intentionally lacks @is_mod(); verified by test_tickets_cog::test_unclaim_not_gated_by_is_mod
-        assert _count_is_mod_decorators("bot/cogs/tickets.py") == 16
+        """tickets.py MUST have 15 @is_mod() decorators (unclaim claimer-or-mod + delete_category now @is_admin in PR3)."""
+        # unclaim intentionally lacks @is_mod(); delete_category moved to @is_admin in PR3
+        assert _count_is_mod_decorators("bot/cogs/tickets.py") == 15
 
     def test_sentinel_is_mod_count_8(self) -> None:
         """sentinel.py MUST have 8 @is_mod() decorators (ban is @is_admin)."""
         assert _count_is_mod_decorators("bot/cogs/sentinel.py") == 8
 
     def test_total_is_mod_25(self) -> None:
-        """Total is_mod decorators MUST be 24 (16 tickets +8 sentinel); unclaim is claimer-or-mod."""
+        """Total is_mod decorators MUST be 23 (15 tickets +8 sentinel); PR3 moves delete_category to @is_admin."""
         total = _count_is_mod_decorators("bot/cogs/tickets.py") + _count_is_mod_decorators("bot/cogs/sentinel.py")
-        assert total == 24, (
-            f"is_mod ledger drift: got {total}, expected 24 (16 tickets +8 sentinel; unclaim is claimer-or-mod)"
+        assert total == 23, (
+            f"is_mod ledger drift: got {total}, expected 23 (15 tickets +8 sentinel; PR3 delete_category @is_admin)"
         )
 
     def test_is_mod_single_source(self) -> None:
