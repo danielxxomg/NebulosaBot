@@ -99,20 +99,21 @@ BEGIN
         RAISE EXCEPTION 'preflight: duplicate guild ticketNumber %', v_dup_guild_number;
     END IF;
 
-    -- invalid UUID: non-null categoryId that cannot cast to uuid
+    -- invalid UUID: non-null categoryId that cannot cast to uuid (skip if already UUID-type post-018)
     SELECT COUNT(*) INTO v_invalid_uuid
     FROM public.ticket
     WHERE "categoryId" IS NOT NULL
-      AND "categoryId" !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
+      AND pg_typeof("categoryId")::text = 'text'
+      AND "categoryId"::text !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
     IF v_invalid_uuid > 0 THEN
         RAISE EXCEPTION 'preflight: % ticket.categoryId values are not UUID-shaped (21/21 valid required)', v_invalid_uuid;
     END IF;
 
-    -- orphan category: UUID-shaped but no matching ticket_category.id
+    -- orphan category: present categoryId but no matching ticket_category.id (handle text/uuid)
     SELECT COUNT(*) INTO v_orphan_category
     FROM public.ticket t
     WHERE t."categoryId" IS NOT NULL
-      AND NOT EXISTS (SELECT 1 FROM public.ticket_category c WHERE c.id::text = t."categoryId");
+      AND NOT EXISTS (SELECT 1 FROM public.ticket_category c WHERE c.id = t."categoryId"::uuid);
     -- allow 0 per live 21/21 check; fail if any orphan beyond approved retention
     IF v_orphan_category > 0 THEN
         RAISE EXCEPTION 'preflight: % ticket.categoryId orphans (no matching ticket_category)', v_orphan_category;
@@ -179,11 +180,23 @@ WHERE NOT EXISTS (SELECT 1 FROM public.ticket_backup_categoryid_text_20260818 b 
 ON CONFLICT DO NOTHING;
 
 -- ---------------------------------------------------------------------------
--- 2. ticket.categoryId TEXT -> UUID USING cast (explicit)
+-- 2. ticket.categoryId TEXT -> UUID USING cast (explicit) — idempotent if live already UUID
 --    Backup exists above; preflight proved 21/21 valid UUID + matching category.
+--    Live is already UUID post-first-apply, so guard the ALTER to avoid "text = uuid" preflight errors.
 -- ---------------------------------------------------------------------------
-ALTER TABLE public.ticket
-    ALTER COLUMN "categoryId" TYPE UUID USING ("categoryId"::uuid);
+DO $alter_category$
+DECLARE v_is_uuid BOOLEAN;
+BEGIN
+    SELECT pg_typeof("categoryId")::text = 'uuid' INTO v_is_uuid FROM public.ticket LIMIT 1;
+    -- If no rows, fall back to column type check
+    IF v_is_uuid IS NULL THEN
+        SELECT format_type(atttypid, NULL) = 'uuid' INTO v_is_uuid
+        FROM pg_attribute WHERE attrelid='ticket'::regclass AND attname='categoryId';
+    END IF;
+    IF v_is_uuid IS DISTINCT FROM TRUE THEN
+        ALTER TABLE public.ticket ALTER COLUMN "categoryId" TYPE UUID USING ("categoryId"::uuid);
+    END IF;
+END $alter_category$;
 
 -- ---------------------------------------------------------------------------
 -- 3. Supporting child-side indexes (before FKs, per exploration DDL ordering)
