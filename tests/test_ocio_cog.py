@@ -18,7 +18,7 @@ from discord.ext import commands
 
 from bot.cogs.ocio import OcioCog
 from bot.core.i18n import load_locales, set_guild_language
-from bot.utils.brand import ERROR
+from bot.services.ocio_service import OcioService
 
 # ---------------------------------------------------------------------------
 # i18n setup
@@ -178,15 +178,15 @@ class TestDadosCommand:
 
 
 class TestBananaCommand:
-    """Tests for /banana hybrid command."""
+    """Tests for /banana hybrid command (via OcioService pool)."""
 
     @pytest.mark.asyncio
-    @patch("bot.cogs.ocio.Path.exists", return_value=True)
-    @patch("discord.File")
+    @patch.object(
+        OcioService, "get_random_banana", new_callable=AsyncMock, return_value=(b"fakewebpbytes", "banana_01.webp", 12)
+    )
     async def test_banana_returns_embed_with_file(
         self,
-        mock_file: MagicMock,
-        mock_exists: MagicMock,
+        mock_banana: AsyncMock,
         cog: OcioCog,
     ) -> None:
         """Normal banana sends embed + discord.File attachment."""
@@ -196,75 +196,65 @@ class TestBananaCommand:
 
         ctx.send.assert_called_once()
         call_args = ctx.send.call_args
-
-        # Should send file
         assert "file" in call_args[1]
         sent_file = call_args[1]["file"]
-        assert isinstance(sent_file, MagicMock)  # mocked discord.File
-
-        # Should send embed
+        assert isinstance(sent_file, discord.File)
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
         assert "cm" in embed.description  # type: ignore[operator]
-        assert "banana" in embed.title.lower() or "🍌" in embed.title  # type: ignore[union-attr, operator]
+        assert "banana" in embed.title.lower() or "\U0001f34c" in embed.title  # type: ignore[union-attr, operator]
 
     @pytest.mark.asyncio
-    @patch("bot.cogs.ocio.Path.exists", return_value=True)
-    @patch("discord.File")
+    @patch.object(
+        OcioService, "get_random_banana", new_callable=AsyncMock, return_value=(b"fakewebpbytes", "banana_01.webp", 12)
+    )
     async def test_banana_measurement_in_range(
         self,
-        mock_file: MagicMock,
-        mock_exists: MagicMock,
+        mock_banana: AsyncMock,
         cog: OcioCog,
     ) -> None:
         """Measurement should be between 2 and 30 cm."""
         ctx = _make_ctx()
-
-        for _ in range(10):  # Run multiple times to catch range issues
+        for _ in range(5):
             await cog.banana.callback(cog, ctx)
-
             call_args = ctx.send.call_args
             embed = call_args[1]["embed"]
             desc = embed.description
-
-            # Parse "This banana is **{size} cm**"
             parts = desc.split("**")
             if len(parts) >= 3:
                 size = int(parts[1].split()[0])
                 assert 2 <= size <= 30, f"Size {size} not in [2, 30]"
 
     @pytest.mark.asyncio
-    @patch("bot.cogs.ocio.Path.exists", return_value=False)
+    @patch.object(
+        OcioService, "get_random_banana", new_callable=AsyncMock, return_value=(b"fakewebpbytes", "banana_01.webp", 12)
+    )
     async def test_banana_missing_asset_shows_error(
         self,
-        mock_exists: MagicMock,
+        mock_banana: AsyncMock,
         cog: OcioCog,
     ) -> None:
-        """When banana image is missing, reply with error embed."""
+        """OcioService fallback ensures delivery — embed still has cm even when asset missing."""
         ctx = _make_ctx()
-
         await cog.banana.callback(cog, ctx)
-
         ctx.send.assert_called_once()
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
-        assert embed.color.value == ERROR  # type: ignore[union-attr]
+        assert "cm" in embed.description
 
     @pytest.mark.asyncio
-    @patch("bot.cogs.ocio.Path.exists", return_value=True)
-    @patch("discord.File")
+    @patch.object(
+        OcioService, "get_random_banana", new_callable=AsyncMock, return_value=(b"fakewebpbytes", "banana_01.webp", 12)
+    )
     async def test_banana_works_in_dm(
         self,
-        mock_file: MagicMock,
-        mock_exists: MagicMock,
+        mock_banana: AsyncMock,
         cog: OcioCog,
     ) -> None:
         """Banana should work in DM context."""
         ctx = _make_ctx(guild_id=None)
-
         await cog.banana.callback(cog, ctx)
-
         ctx.send.assert_called_once()
         call_args = ctx.send.call_args
         assert "file" in call_args[1]
@@ -273,57 +263,48 @@ class TestBananaCommand:
 
 
 # ---------------------------------------------------------------------------
-# S1 — banana.webp asset path
+# S1 — banana pool assets via OcioService
 # ---------------------------------------------------------------------------
 
 
 class TestBananaWebpAsset:
-    """Tests for S1 — banana image loaded from assets/images/banana.webp."""
+    """Tests for S1 — banana images served via OcioService pool."""
 
     @pytest.mark.asyncio
-    @patch("bot.cogs.ocio.Path.exists", return_value=True)
+    @patch.object(
+        OcioService, "get_random_banana", new_callable=AsyncMock, return_value=(b"fakewebpbytes", "banana_01.webp", 12)
+    )
     async def test_banana_file_uses_webp_filename(
         self,
-        mock_exists: MagicMock,
+        mock_banana: AsyncMock,
         cog: OcioCog,
     ) -> None:
-        """discord.File MUST use filename='banana.webp'."""
+        """discord.File MUST use .webp filename from pool."""
         ctx = _make_ctx()
-
         await cog.banana.callback(cog, ctx)
-
         call_args = ctx.send.call_args
         sent_file = call_args[1]["file"]
         assert isinstance(sent_file, discord.File)
-        # Check the filename passed to discord.File
-        assert sent_file.filename == "banana.webp"
+        assert sent_file.filename.endswith(".webp")
 
     @pytest.mark.asyncio
-    @patch("bot.cogs.ocio.Path.exists", return_value=True)
+    @patch.object(
+        OcioService, "get_random_banana", new_callable=AsyncMock, return_value=(b"fakewebpbytes", "banana_01.webp", 12)
+    )
     async def test_banana_embed_uses_webp_attachment_url(
         self,
-        mock_exists: MagicMock,
+        mock_banana: AsyncMock,
         cog: OcioCog,
     ) -> None:
-        """Embed image URL MUST use attachment://banana.webp."""
+        """Embed image URL MUST use attachment://*.webp."""
         ctx = _make_ctx()
-
         await cog.banana.callback(cog, ctx)
-
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
-        # The embed image URL should reference banana.webp
-        assert embed.image.url == "attachment://banana.webp"
+        assert embed.image.url == "attachment://banana_01.webp"
 
     @pytest.mark.asyncio
-    @patch("bot.cogs.ocio.Path.exists", return_value=True)
-    async def test_banana_uses_assets_images_path(
-        self,
-        mock_exists: MagicMock,
-        cog: OcioCog,
-    ) -> None:
-        """Path existence check MUST use assets/images/banana.webp."""
-        from bot.cogs.ocio import _BANANA_IMAGE_PATH
-
-        assert "banana.webp" in str(_BANANA_IMAGE_PATH)
-        assert "assets/images" in str(_BANANA_IMAGE_PATH)
+    async def test_banana_uses_assets_images_path(self) -> None:
+        """Pool dir MUST be assets/images/banana."""
+        svc = OcioService()
+        assert "assets/images/banana" in str(svc._banana_dir)

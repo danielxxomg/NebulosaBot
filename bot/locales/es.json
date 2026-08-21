@@ -79,7 +79,8 @@
         "message": "Establecer la plantilla del mensaje de despedida."
       },
       "sweep_integrity": "Verificar los canales de tickets activos y cerrar los que ya no existen.",
-      "repair_ticket": "Reparar un ticket cuyo canal fue eliminado (requiere corroboración)."
+      "repair_ticket": "Reparar un ticket cuyo canal fue eliminado (requiere corroboración).",
+      "8ball": "Preguntar a la bola 8."
     },
     "describes": {
       "help": {
@@ -200,6 +201,9 @@
       },
       "repair_ticket": {
         "ticket_ref": "Referencia del ticket: '#0003', '0003', un UUID, o 'ticket:#0003'"
+      },
+      "8ball": {
+        "question": "La pregunta para la bola 8"
       }
     }
   },
@@ -582,6 +586,32 @@
       "description": "Esta banana mide **{size} cm**",
       "error_title": "Imagen No Encontrada",
       "error_description": "La imagen de banana no está disponible. Contacta al dueño del bot."
+    },
+    "8ball": {
+      "r1": "Sí, definitivamente.",
+      "r2": "Sin duda.",
+      "r3": "Sin lugar a dudas.",
+      "r4": "Sí, cuenta con ello.",
+      "r5": "Puedes confiar en ello.",
+      "r6": "Tal como lo veo, sí.",
+      "r7": "Lo más probable.",
+      "r8": "Perspectiva favorable.",
+      "r9": "Sí.",
+      "r10": "Las señales apuntan a que sí.",
+      "r11": "Respuesta confusa, intenta de nuevo.",
+      "r12": "Pregunta de nuevo más tarde.",
+      "r13": "Mejor no decirte ahora.",
+      "r14": "No puedo predecir ahora.",
+      "r15": "Concéntrate y pregunta de nuevo.",
+      "r16": "No cuentes con ello.",
+      "r17": "Mi respuesta es no.",
+      "r18": "Mis fuentes dicen que no.",
+      "r19": "Perspectiva poco favorable.",
+      "r20": "Muy dudoso."
+    },
+    "cooldown": {
+      "title": "Enfriamiento",
+      "description": "Espera {retry_after:.1f}s antes de usar este comando de nuevo."
     }
   },
   "sentinel": {

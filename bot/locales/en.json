@@ -79,7 +79,8 @@
         "message": "Set the goodbye message template."
       },
       "sweep_integrity": "Run an integrity sweep over active ticket channels.",
-      "repair_ticket": "Repair a ticket whose channel was deleted (requires corroboration)."
+      "repair_ticket": "Repair a ticket whose channel was deleted (requires corroboration).",
+      "8ball": "Ask the magic 8-ball."
     },
     "describes": {
       "help": {
@@ -200,6 +201,9 @@
       },
       "repair_ticket": {
         "ticket_ref": "Optional ticket reference: '#0003', '0003', a UUID, or 'ticket:#0003'"
+      },
+      "8ball": {
+        "question": "The question to ask the 8-ball"
       }
     }
   },
@@ -582,6 +586,32 @@
       "description": "This banana is **{size} cm**",
       "error_title": "Image Missing",
       "error_description": "The banana image asset is not available. Please contact the bot owner."
+    },
+    "8ball": {
+      "r1": "It is certain.",
+      "r2": "It is decidedly so.",
+      "r3": "Without a doubt.",
+      "r4": "Yes — definitely.",
+      "r5": "You may rely on it.",
+      "r6": "As I see it, yes.",
+      "r7": "Most likely.",
+      "r8": "Outlook good.",
+      "r9": "Yes.",
+      "r10": "Signs point to yes.",
+      "r11": "Reply hazy, try again.",
+      "r12": "Ask again later.",
+      "r13": "Better not tell you now.",
+      "r14": "Cannot predict now.",
+      "r15": "Concentrate and ask again.",
+      "r16": "Don't count on it.",
+      "r17": "My reply is no.",
+      "r18": "My sources say no.",
+      "r19": "Outlook not so good.",
+      "r20": "Very doubtful."
+    },
+    "cooldown": {
+      "title": "Cooldown",
+      "description": "Wait {retry_after:.1f}s before using this command again."
     }
   },
   "sentinel": {

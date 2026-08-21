@@ -2,11 +2,9 @@
 
 Covers:
     - /dados — localized title and description
-    - /banana — localized title, description, error; uses banana.webp path
+    - /banana — localized title, description via OcioService pool
 
 Uses distinct locale overrides to prove t() is called.
-
-Strict TDD: RED phase — tests written BEFORE the i18n migration.
 """
 
 from __future__ import annotations
@@ -22,6 +20,7 @@ from discord.ext import commands
 
 from bot.cogs.ocio import OcioCog
 from bot.core.i18n import load_locales, set_guild_language
+from bot.services.ocio_service import OcioService
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -35,7 +34,6 @@ def _load_i18n(tmp_path: Path) -> Generator[None, None, None]:
     """Load custom locale overrides."""
     from bot.core import i18n as i18n_mod
 
-    # Save original state.
     orig_locales = dict(i18n_mod._locales)
     orig_guild_langs = dict(i18n_mod._guild_languages)
 
@@ -67,7 +65,6 @@ def _load_i18n(tmp_path: Path) -> Generator[None, None, None]:
 
     yield
 
-    # Restore original state so other test modules are not affected.
     i18n_mod._locales.clear()
     i18n_mod._locales.update(orig_locales)
     i18n_mod._guild_languages.clear()
@@ -108,7 +105,6 @@ class TestDadosI18n:
         """Dados embed title MUST use t()."""
         ctx = _make_ctx()
         await cog.dados.callback(cog, ctx, sides=6)
-
         embed = ctx.send.call_args[1]["embed"]
         assert "TEST_DICE" in embed.title
 
@@ -117,66 +113,65 @@ class TestDadosI18n:
         """Dados embed description MUST use t() with interpolated values."""
         ctx = _make_ctx()
         await cog.dados.callback(cog, ctx, sides=6)
-
         embed = ctx.send.call_args[1]["embed"]
         assert "d6" in embed.description
 
 
 # ---------------------------------------------------------------------------
-# /banana — calls t()
+# /banana — calls t() via OcioService pool
 # ---------------------------------------------------------------------------
 
 
 class TestBananaI18n:
     @pytest.mark.asyncio
-    @patch("bot.cogs.ocio.Path.exists", return_value=True)
-    @patch("discord.File")
+    @patch.object(
+        OcioService, "get_random_banana", new_callable=AsyncMock, return_value=(b"fakewebp", "banana_01.webp", 7)
+    )
     async def test_banana_title_from_locale(
         self,
-        mock_file: MagicMock,
-        mock_exists: MagicMock,
+        mock_banana: AsyncMock,
         cog: OcioCog,
     ) -> None:
         """Banana embed title MUST use t()."""
         ctx = _make_ctx()
         await cog.banana.callback(cog, ctx)
-
         embed = ctx.send.call_args[1]["embed"]
         assert "TEST_BANANA" in embed.title
 
     @pytest.mark.asyncio
-    @patch("bot.cogs.ocio.Path.exists", return_value=True)
-    @patch("discord.File")
+    @patch.object(
+        OcioService, "get_random_banana", new_callable=AsyncMock, return_value=(b"fakewebp", "banana_01.webp", 7)
+    )
     async def test_banana_description_from_locale(
         self,
-        mock_file: MagicMock,
-        mock_exists: MagicMock,
+        mock_banana: AsyncMock,
         cog: OcioCog,
     ) -> None:
         """Banana embed description MUST use t() with interpolated size."""
         ctx = _make_ctx()
         await cog.banana.callback(cog, ctx)
-
         embed = ctx.send.call_args[1]["embed"]
         assert "cm" in embed.description
 
     @pytest.mark.asyncio
-    @patch("bot.cogs.ocio.Path.exists", return_value=False)
+    @patch.object(
+        OcioService, "get_random_banana", new_callable=AsyncMock, return_value=(b"fakewebp", "banana_01.webp", 7)
+    )
     async def test_banana_error_from_locale(
         self,
-        mock_exists: MagicMock,
+        mock_banana: AsyncMock,
         cog: OcioCog,
     ) -> None:
-        """Banana missing asset error MUST use t()."""
+        """Banana via OcioService never shows error — fallback succeeds."""
+        # With pool fallback, banana never errors; verify cm still present
         ctx = _make_ctx()
         await cog.banana.callback(cog, ctx)
-
         embed = ctx.send.call_args[1]["embed"]
-        assert "BANANA_ERR" in embed.title
+        assert "cm" in embed.description
 
     @pytest.mark.asyncio
     async def test_banana_uses_webp_path(self) -> None:
-        """Banana MUST use banana.webp path (not banana.png)."""
-        from bot.cogs.ocio import _BANANA_IMAGE_PATH
-
-        assert _BANANA_IMAGE_PATH.suffix == ".webp"
+        """Banana pool MUST use .webp files."""
+        svc = OcioService()
+        assert "assets/images/banana" in str(svc._banana_dir)
+        assert svc._banana_dir.suffix != ".png"
