@@ -26,10 +26,17 @@ After close confirmation, the system MUST send ONE message to the ticket channel
 
 ### Requirement: Auto-close has no countdown
 
-Auto-close (48h inactivity) MUST delete the channel silently without posting or editing any countdown message.
+Auto-close (48h inactivity) and the Cycle 2 scheduled-close timer loop (`,12h` → 60s batch) MUST delete the channel silently without posting or editing any countdown message. Both are automatic paths: the 5→1 countdown is reserved for the manual close button flow only. A scheduled-close ticket MUST NOT post a countdown before deletion.
+(Previously: the requirement named only the 48h auto-close path as silent; the scheduled-close loop did not exist.)
 
 #### Scenario: Auto-close is silent
 
 - GIVEN a ticket inactive for 48 hours
 - WHEN the auto-close task runs
 - THEN the channel is deleted without any countdown messages
+
+#### Scenario: Scheduled-close loop is silent
+
+- GIVEN an open ticket with `scheduledCloseAt` in the past and the scheduled-close loop running
+- WHEN the loop closes the ticket
+- THEN the channel is deleted silently without any 5→1 countdown messages
