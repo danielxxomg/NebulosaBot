@@ -33,6 +33,8 @@ export async function updateGreetingConfig(
   const goodbyeMessage = (formData.get("goodbyeMessage") as string)?.trim() || null;
   const welcomeCardEnabled = formData.get("welcomeCardEnabled") === "on";
   const goodbyeCardEnabled = formData.get("goodbyeCardEnabled") === "on";
+  const rawThemeId = (formData.get("themeId") as string)?.trim() || null;
+  const themeId = rawThemeId === "gaming_neon" ? "gaming_neon" : null;
 
   // 3. Validate.
   if (welcomeEnabled && !welcomeChannelId) {
@@ -74,6 +76,7 @@ export async function updateGreetingConfig(
       goodbyeMessage,
       welcomeCardEnabled,
       goodbyeCardEnabled,
+      themeId,
     })
     .eq("guildId", guildId);
 
