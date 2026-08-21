@@ -2,7 +2,7 @@
 # Provider: Command Code
 # Model: Muse Spark 1.2 Contributor
 
-PROVIDER="opencode:commandcode/meta/muse-spark-1.2-contributor"
+PROVIDER="opencode:commandcode/muse-spark-1.2-contributor"
 
 FILE_PATTERNS="*.py"
 EXCLUDE_PATTERNS="__pycache__,*.pyc,.mypy_cache,.pytest_cache,tests/"
