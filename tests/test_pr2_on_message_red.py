@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
+from bot.services.ticket_repair_service import TimerMessageResult
+
 
 def _make_bot():
     bot = MagicMock()
@@ -21,6 +23,10 @@ def _make_bot():
     bot.ticket_service.schedule_close = AsyncMock()
     bot.ticket_service.cancel_scheduled_close = AsyncMock()
     bot.ticket_service.close_ticket_full = AsyncMock()
+    bot.ticket_service.handle_timer_message = AsyncMock(return_value=None)
+    bot.ticket_service.confirm_timer_schedule = AsyncMock(return_value=None)
+    bot.ticket_service.get_due_scheduled_tickets = AsyncMock(return_value=[])
+    bot.ticket_service.upsert_timer_embed = AsyncMock()
     bot.guilds = []
     bot._guild_mod_role_cache = {}
     bot.get_channel = MagicMock(return_value=None)
@@ -46,6 +52,17 @@ def _make_message(content, guild_id=123, channel_id=444, is_mod=True, status="op
     return msg
 
 
+def _scheduled_result(seconds=43200, gid="123", ticket_id="t1", author_id="999"):
+    return TimerMessageResult(
+        action="scheduled",
+        guild_id=gid,
+        ticket_id=ticket_id,
+        author_id=author_id,
+        seconds=seconds,
+        due_ts=datetime.now(UTC).timestamp() + seconds,
+    )
+
+
 @pytest.mark.asyncio
 async def test_on_message_mod_12h_sets_timer_and_pins():
     from bot.cogs.tickets import TicketsCog
@@ -53,12 +70,12 @@ async def test_on_message_mod_12h_sets_timer_and_pins():
     bot = _make_bot()
     row = {"id": "t1", "status": "open", "guildId": "123", "channelId": "444"}
     bot.db.get_ticket_by_channel = AsyncMock(return_value=row)
+    bot.ticket_service.handle_timer_message = AsyncMock(return_value=_scheduled_result())
     cog = TicketsCog(bot)
     msg = _make_message(",12h", is_mod=True, status="open")
     await cog.on_message(msg)
-    bot.ticket_service.schedule_close.assert_awaited_once()
-    # pinned embed sent
-    assert msg.channel.send.await_count >= 1
+    bot.ticket_service.handle_timer_message.assert_awaited_once()
+    bot.ticket_service.upsert_timer_embed.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -71,7 +88,7 @@ async def test_on_message_non_mod_ignored():
     cog = TicketsCog(bot)
     msg = _make_message(",12h", is_mod=False)
     await cog.on_message(msg)
-    bot.ticket_service.schedule_close.assert_not_awaited()
+    bot.ticket_service.handle_timer_message.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -88,7 +105,7 @@ async def test_on_message_dm_ignored():
     msg.channel = MagicMock()
     msg.channel.id = 444
     await cog.on_message(msg)
-    bot.ticket_service.schedule_close.assert_not_awaited()
+    bot.ticket_service.handle_timer_message.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -98,31 +115,37 @@ async def test_on_message_hola_ignored_no_error_embed():
     bot = _make_bot()
     row = {"id": "t1", "status": "open", "guildId": "123", "channelId": "444"}
     bot.db.get_ticket_by_channel = AsyncMock(return_value=row)
+    bot.ticket_service.handle_timer_message = AsyncMock(return_value=None)  # not a timer cmd
     cog = TicketsCog(bot)
     msg = _make_message(",hola", is_mod=True)
     await cog.on_message(msg)
-    bot.ticket_service.schedule_close.assert_not_awaited()
+    bot.ticket_service.upsert_timer_embed.assert_not_awaited()
     # No error embed check — just ensure not scheduled
 
 
 @pytest.mark.asyncio
 async def test_on_message_overwrite_edits_pinned():
-    from bot.cogs.tickets import TicketsCog
+    from bot.services.ticket_query_service import TicketQueryService
+    from bot.services.ticket_repair_service import TicketRepairService
 
-    bot = _make_bot()
-    row = {"id": "t1", "status": "open", "guildId": "123", "channelId": "444"}
-    bot.db.get_ticket_by_channel = AsyncMock(return_value=row)
-    cog = TicketsCog(bot)
-    # Existing pinned timer embed
+    # Service-level test: upsert_timer_embed edits existing pinned timer embed.
+    db = MagicMock()
+    query = MagicMock(spec=TicketQueryService)
+    lifecycle = MagicMock()
+    svc = TicketRepairService(db, query, lifecycle)
+    channel = MagicMock(spec=discord.TextChannel)
     pinned_msg = MagicMock()
     pinned_msg.embeds = [MagicMock(title="⏳ Cierra <t:123:R> (<t:123:F>)")]
     pinned_msg.edit = AsyncMock()
-    msg = _make_message(",12h", is_mod=True)
-    msg.channel.pins = AsyncMock(return_value=[pinned_msg])
-    await cog.on_message(msg)
+    channel.pins = AsyncMock(return_value=[pinned_msg])
+    channel.send = AsyncMock()
+    import time
+
+    due_ts = time.time() + 43200
+    await svc.upsert_timer_embed(channel, "123", "t1", due_ts, 43200)
     # Second timer should edit, not just send
-    # First call schedules, then _upsert tries to edit pinned
     pinned_msg.edit.assert_awaited()
+    channel.send.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -138,11 +161,14 @@ async def test_cancel_clears_and_confirms():
         "scheduledCloseAt": "2026-08-20T12:00:00Z",
     }
     bot.db.get_ticket_by_channel = AsyncMock(return_value=row)
+    bot.ticket_service.handle_timer_message = AsyncMock(
+        return_value=TimerMessageResult(action="cancelled", guild_id="123", ticket_id="t1", author_id="999")
+    )
     cog = TicketsCog(bot)
     msg = _make_message(",cancel", is_mod=True)
     await cog.on_message(msg)
-    bot.ticket_service.cancel_scheduled_close.assert_awaited_once()
-    assert msg.channel.send.await_count >= 1
+    bot.ticket_service.handle_timer_message.assert_awaited_once()
+    assert msg.channel.send.await_count >= 1  # cancel confirmation embed
 
 
 @pytest.mark.asyncio
@@ -152,25 +178,37 @@ async def test_cancel_no_timer_noop():
     bot = _make_bot()
     row = {"id": "t1", "status": "open", "guildId": "123", "channelId": "444"}
     bot.db.get_ticket_by_channel = AsyncMock(return_value=row)
+    bot.ticket_service.handle_timer_message = AsyncMock(
+        return_value=TimerMessageResult(action="cancelled", guild_id="123", ticket_id="t1", author_id="999")
+    )
     cog = TicketsCog(bot)
     msg = _make_message(",cancel", is_mod=True)
     await cog.on_message(msg)
-    bot.ticket_service.cancel_scheduled_close.assert_awaited_once()  # still called, safe no-op
+    bot.ticket_service.handle_timer_message.assert_awaited_once()  # still called, safe no-op
 
 
 @pytest.mark.asyncio
 async def test_embed_has_r_and_f():
-    from bot.cogs.tickets import TicketsCog
+    from bot.services.ticket_query_service import TicketQueryService
+    from bot.services.ticket_repair_service import TicketRepairService
 
-    bot = _make_bot()
-    row = {"id": "t1", "status": "open", "guildId": "123", "channelId": "444"}
-    bot.db.get_ticket_by_channel = AsyncMock(return_value=row)
-    cog = TicketsCog(bot)
-    msg = _make_message(",12h", is_mod=True)
-    await cog.on_message(msg)
+    # Service-level test: timer embed MUST carry <t:R> and <t:F>.
+    db = MagicMock()
+    query = MagicMock(spec=TicketQueryService)
+    lifecycle = MagicMock()
+    svc = TicketRepairService(db, query, lifecycle)
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.pins = AsyncMock(return_value=[])
+    sent_msg = MagicMock()
+    sent_msg.pin = AsyncMock()
+    channel.send = AsyncMock(return_value=sent_msg)
+    import time
+
+    due_ts = time.time() + 43200
+    await svc.upsert_timer_embed(channel, "123", "t1", due_ts, 43200)
     # Find embed with <t:*:R> and <t:*:F>
     found = False
-    for call in msg.channel.send.await_args_list:
+    for call in channel.send.await_args_list:
         kwargs = call.kwargs
         embed = kwargs.get("embed")
         if embed and "<t:" in (embed.title or "") and ":R>" in (embed.title or "") and ":F>" in (embed.title or ""):
@@ -201,7 +239,7 @@ async def test_scheduled_loop_batch_50_silent():
         for i in range(60)
     ]
     # First 50 are due
-    bot.db.get_scheduled_close_candidates = AsyncMock(return_value=rows[:50])
+    bot.ticket_service.get_due_scheduled_tickets = AsyncMock(return_value=rows[:50])
     bot.db.get_ticket = AsyncMock(
         side_effect=lambda tid, guild_id=None: next((r for r in rows if r["id"] == tid), None)
     )

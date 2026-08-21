@@ -15,33 +15,22 @@ async def test_scheduled_loop_is_silent_no_countdown():
 
     bot = MagicMock()
     bot.db = MagicMock()
-    bot.ticket_service = MagicMock(is_ticket_channel=MagicMock(return_value=True), close_ticket_full=AsyncMock())
-    bot.db.get_scheduled_close_candidates = AsyncMock(
-        return_value=[
-            {
-                "id": "t1",
-                "channelId": "500",
-                "guildId": "123",
-                "ticketNumber": 1,
-                "authorId": "a",
-                "status": "open",
-                "createdAt": datetime.now(UTC),
-                "lastActivity": datetime.now(UTC),
-            }
-        ]
+    row = {
+        "id": "t1",
+        "channelId": "500",
+        "guildId": "123",
+        "ticketNumber": 1,
+        "authorId": "a",
+        "status": "open",
+        "createdAt": datetime.now(UTC),
+        "lastActivity": datetime.now(UTC),
+    }
+    bot.ticket_service = MagicMock(
+        is_ticket_channel=MagicMock(return_value=True),
+        close_ticket_full=AsyncMock(),
+        get_due_scheduled_tickets=AsyncMock(return_value=[row]),
     )
-    bot.db.get_ticket = AsyncMock(
-        return_value={
-            "id": "t1",
-            "channelId": "500",
-            "guildId": "123",
-            "ticketNumber": 1,
-            "authorId": "a",
-            "status": "open",
-            "createdAt": datetime.now(UTC),
-            "lastActivity": datetime.now(UTC),
-        }
-    )
+    bot.db.get_ticket = AsyncMock(return_value=row)
     # Need guild + channel
     guild = MagicMock(spec=discord.Guild)
     guild.id = 123
