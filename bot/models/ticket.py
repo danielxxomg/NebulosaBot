@@ -208,6 +208,8 @@ class Ticket:
     subject: str | None = None
     description: str | None = None
     custom_fields: dict[str, Any] | None = None
+    scheduled_close_at: datetime | None = None
+    scheduled_close_by: str | None = None
 
     @classmethod
     def from_db_row(cls, row: dict[str, Any]) -> Ticket:
@@ -229,6 +231,8 @@ class Ticket:
             subject=row.get("subject"),
             description=row.get("description"),
             custom_fields=row.get("customFields"),
+            scheduled_close_at=row.get("scheduledCloseAt"),
+            scheduled_close_by=row.get("scheduledCloseBy"),
         )
 
     def to_db_dict(self) -> dict[str, Any]:
@@ -250,4 +254,6 @@ class Ticket:
             "subject": self.subject,
             "description": self.description,
             "customFields": self.custom_fields,
+            "scheduledCloseAt": self.scheduled_close_at.isoformat() if self.scheduled_close_at else None,
+            "scheduledCloseBy": self.scheduled_close_by,
         }
