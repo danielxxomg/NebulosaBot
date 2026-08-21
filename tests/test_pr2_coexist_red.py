@@ -59,16 +59,56 @@ async def test_auto_close_clears_scheduled_fields():
 
 @pytest.mark.asyncio
 async def test_coexist_both_fire_one_wins():
-    # Simulate transition_ticket_to_closed idempotency: second call returns None
-    from unittest.mock import AsyncMock
+    # CF5 remediation: real transition_ticket_to_closed idempotency via production
+    # TicketService.close_ticket against a stateful DB fake (not a self-fulfilling
+    # mock). First close wins (Ticket), second raises ValueError (already_closed).
+    from datetime import UTC, datetime
 
-    db = MagicMock()
-    # First succeeds, second returns None (already closed)
-    db.transition_ticket_to_closed = AsyncMock(side_effect=[{"id": "t1", "status": "closed"}, None])
-    # If both AUTO_CLOSE and scheduled loop fire, exactly one mutation
-    r1 = await db.transition_ticket_to_closed("g1", "t1")
-    r2 = await db.transition_ticket_to_closed("g1", "t1")
-    assert r1 is not None and r2 is None
+    from bot.core.cache import TTLCache
+    from bot.core.database import Database
+    from bot.services.ticket_service import TicketService
+    from tests.test_database import FakeQueryBuilder, FakeSupabaseClient
+
+    class _StatefulTicket(FakeQueryBuilder):
+        def __init__(self, row):
+            super().__init__(result_data=[row])
+            self._n = 0
+
+        async def execute(self):
+            self._n += 1
+            resp = MagicMock()
+            if self._n <= 2:  # 1st close: SELECT match + UPDATE succeeds
+                resp.data = [
+                    {
+                        **row,
+                        "status": "closed" if self._n == 2 else row["status"],
+                        "closedAt": datetime.now(UTC).isoformat() if self._n == 2 else None,
+                    }
+                ]
+            else:  # 2nd close: SELECT matches 0 rows (already closed)
+                resp.data = []
+            return resp
+
+    row = {
+        "id": "t1",
+        "guildId": "g1",
+        "channelId": "500",
+        "ticketNumber": 1,
+        "authorId": "a",
+        "status": "open",
+        "createdAt": datetime.now(UTC),
+        "lastActivity": datetime.now(UTC),
+    }
+    fake = FakeSupabaseClient()
+    fake._tables["ticket"] = _StatefulTicket(row)
+    db = Database(url="https://test.supabase.co", key="test-key")
+    db._client = fake
+
+    svc = TicketService(db, TTLCache())
+    winner = await svc.close_ticket("t1", "auto", guild_id="g1", close_reason="zombie:auto")
+    assert winner.status == "closed"  # exactly one winner via real transition
+    with pytest.raises(ValueError, match="already closed"):
+        await svc.close_ticket("t1", "auto:scheduled", guild_id="g1", close_reason="zombie:scheduled")
 
 
 def test_scheduled_loop_silent_no_5_to_1_countdown():
