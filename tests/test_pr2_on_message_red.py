@@ -220,6 +220,7 @@ async def test_embed_has_r_and_f():
 @pytest.mark.asyncio
 async def test_scheduled_loop_batch_50_silent():
     from bot.cogs.tickets import TicketsCog
+    from bot.models.ticket import Ticket
 
     bot = _make_bot()
     guild = MagicMock(spec=discord.Guild)
@@ -240,6 +241,12 @@ async def test_scheduled_loop_batch_50_silent():
     ]
     # First 50 are due
     bot.ticket_service.get_due_scheduled_tickets = AsyncMock(return_value=rows[:50])
+    # Round 3: the cog delegates the row fetch + status branch to the service;
+    # wire resolve_due_ticket_for_close to resolve each open row to a Ticket so
+    # the cog proceeds to close_ticket_full.
+    bot.ticket_service.resolve_due_ticket_for_close = AsyncMock(
+        side_effect=lambda gid, r: Ticket.from_db_row(r) if r["id"].startswith("t") else None
+    )
     bot.db.get_ticket = AsyncMock(
         side_effect=lambda tid, guild_id=None: next((r for r in rows if r["id"] == tid), None)
     )

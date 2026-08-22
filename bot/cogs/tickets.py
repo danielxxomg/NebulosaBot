@@ -22,7 +22,6 @@ from bot.cogs.ticket_lifecycle_flow import TicketLifecycleFlow
 from bot.cogs.ticket_notes_flow import TicketNotesFlow
 from bot.core.context import NebulosaContext
 from bot.core.i18n import t
-from bot.models.ticket import Ticket
 from bot.utils.brand import SUCCESS, WARNING
 from bot.utils.checks import can_check, can_member, is_admin
 from bot.utils.embeds import build_ticket_embed, info_embed
@@ -119,11 +118,11 @@ class TicketsCog(commands.Cog, name="Tickets"):
 
         The service owns fetching the full ticket row, the status state-machine,
         and clearing stale scheduled fields; the cog only resolves the Discord
-        channel (a Discord-API concern unavailable to the service layer).
+        channel (a Discord-API concern unavailable to the service layer) and
+        drives the close via :meth:`TicketService.close_ticket_full`.
         """
-        db = self.bot.db
         ticket_service = self.bot.ticket_service
-        if db is None or ticket_service is None:
+        if ticket_service is None:
             return
         ticket_id = row.get("id")
         channel_id = row.get("channelId")
@@ -133,19 +132,12 @@ class TicketsCog(commands.Cog, name="Tickets"):
         if not isinstance(channel, discord.TextChannel):
             logger.warning("Scheduled ticket %s channel %s not found — skipping", ticket_id, channel_id)
             return
-        # Fetch full ticket row for close_ticket_full (service owns this too,
-        # but close_ticket_full takes a Ticket — cog builds it from the row).
-        full_row = await db.get_ticket(ticket_id, guild_id=gid)
-        if full_row is None:
-            return
-        ticket = Ticket.from_db_row(full_row)
-        if ticket.status not in ("open", "claimed"):
-            # Already closed: clear stale scheduled fields (service owns this write).
-            # Round 2: log failures instead of contextlib.suppress(Exception).
-            try:
-                await db.update_ticket(ticket_id, guild_id=gid, scheduledCloseAt=None, scheduledCloseBy=None)
-            except Exception:
-                logger.error("scheduled-close clear failed for ticket %s", ticket_id, exc_info=True)
+        # Delegate the row fetch + status branch + stale-field clear to the
+        # service — the cog MUST NOT touch the DB directly (AGENTS.md: cogs
+        # handle Discord interaction only). Returns the Ticket when still
+        # open/claimed, or None when already closed (stale fields cleared).
+        ticket = await ticket_service.resolve_due_ticket_for_close(gid, row)
+        if ticket is None:
             return
         await ticket_service.close_ticket_full(channel, ticket, "auto:scheduled", bot=self.bot, manual=False)
 
@@ -385,11 +377,16 @@ class TicketsCog(commands.Cog, name="Tickets"):
                 desc = t(gid, "tickets.timer.confirm_success_description")
                 if desc.startswith("tickets.timer"):
                     desc = "Scheduled close set."
-                with contextlib.suppress(Exception):
+                # Confirm feedback is best-effort: the schedule already succeeded.
+                # Round 3: catch narrow discord.HTTPException + log instead of
+                # contextlib.suppress(Exception) (a semantically bare except).
+                try:
                     await interaction.response.edit_message(
                         embed=discord.Embed(title=title, description=desc, color=discord.Color(SUCCESS)),
                         view=None,
                     )
+                except discord.HTTPException:
+                    logger.warning("Failed to send timer confirm feedback for ticket %s", ticket_id, exc_info=True)
 
             view = ConfirmCancelView(guild_id=gid, owner_id=owner_id, on_confirm=_on_confirm, timeout=30)
             await message.channel.send(

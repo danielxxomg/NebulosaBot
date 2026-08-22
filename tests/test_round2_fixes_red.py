@@ -261,32 +261,29 @@ async def test_close_ticket_full_logs_when_scheduled_clear_fails(
 async def test_close_due_scheduled_ticket_logs_when_stale_clear_fails(
     caplog: pytest.LogCaptureFixture, mock_db: AsyncMock
 ) -> None:
-    """Fix 2 RED: tickets cog _close_due_scheduled_ticket MUST log when the
-    stale scheduled-field clear raises (was silently suppressed).
+    """Fix 2 RED: the stale scheduled-field clear on an already-closed due
+    ticket MUST log when the DB write raises (was silently suppressed).
 
-    The already-closed branch clears stale scheduled fields via the DB.
+    Round 3: the clear moved from the cog into the service
+    (``TicketRepairService.resolve_due_ticket_for_close`` delegates to
+    ``cancel_scheduled_close``). The failure logging now belongs to the
+    service layer — the cog no longer touches the DB for this path. This
+    test drives the SERVICE path so the round-2 "log, don't suppress"
+    contract is still enforced at the new owner.
     """
-    from bot.cogs.tickets import TicketsCog
-
-    bot = MagicMock()
-    bot.db = mock_db
-    bot.ticket_service = MagicMock()
-
     closed_row = {**_open_row(), "status": "closed", "closedAt": "2026-08-22T12:00:00+00:00"}
     mock_db.get_ticket = AsyncMock(return_value=closed_row)
     mock_db.update_ticket = AsyncMock(side_effect=RuntimeError("stale clear db down"))
 
-    channel = MagicMock(spec=discord.TextChannel)
-    channel.id = 888888888
-    bot.get_channel = MagicMock(return_value=channel)
+    lifecycle = _lifecycle(mock_db)
+    repair = _repair(mock_db, lifecycle)
 
-    cog = TicketsCog(bot=bot)
-    gid = "123456789"
-    row = {"id": "sched-uuid-0001", "channelId": "888888888"}
+    with caplog.at_level(logging.ERROR, logger="bot.services.ticket_repair_service"):
+        ticket = await repair.resolve_due_ticket_for_close("123456789", {"id": closed_row["id"]})
 
-    with caplog.at_level(logging.ERROR, logger="bot.cogs.tickets"):
-        await cog._close_due_scheduled_ticket(gid, row)
-
+    # Already closed → service returns None (cog skips the close).
+    assert ticket is None
+    # The stale-clear failure MUST be logged (was swallowed by suppress(Exception)).
     assert any("scheduled" in r.message.lower() or "clear" in r.message.lower() for r in caplog.records), (
         f"expected a scheduled-clear failure log, got: {[r.message for r in caplog.records]}"
     )

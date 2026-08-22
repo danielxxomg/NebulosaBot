@@ -897,11 +897,50 @@ class TicketRepairService:
         """Return due scheduled-close candidate rows for *guild_id* (guild-scoped).
 
         Encapsulates the DB query so the cog loop stays a thin facade. Each row
-        is the raw camelCase DB row; the cog resolves the channel and fetches
-        the full row for :meth:`close_ticket_full` (or clears stale fields if
-        the ticket is no longer active).
+        is the raw camelCase DB row; the cog resolves the channel and delegates
+        the row resolution + status branch to
+        :meth:`resolve_due_ticket_for_close`.
         """
         return await self._db.get_scheduled_close_candidates(guild_id, batch_size=batch_size)
+
+    async def resolve_due_ticket_for_close(
+        self,
+        guild_id: str,
+        candidate_row: dict[str, Any],
+    ) -> Ticket | None:
+        """Resolve a due scheduled-close candidate into a closable Ticket.
+
+        Owns the row fetch + status state-machine the cog loop used to perform
+        directly against the DB:
+
+        1. Fetch the full ticket row (the candidate carries only scheduled-close
+           columns).
+        2. If the ticket is no longer open/claimed (closed out-of-band), clear
+           stale scheduled fields via :meth:`cancel_scheduled_close` and
+           return ``None`` — the cog skips the close.
+        3. If the ticket is still open/claimed, build and return the
+           :class:`Ticket` so the cog can resolve the Discord channel and call
+           :meth:`close_ticket_full`.
+
+        The cog MUST NOT touch ``db.get_ticket`` / ``db.update_ticket`` directly
+        for this path — the write belongs to the service layer.
+        """
+        ticket_id = candidate_row.get("id")
+        if not ticket_id:
+            return None
+        full_row = await self._db.get_ticket(ticket_id, guild_id=guild_id)
+        if full_row is None:
+            return None
+        ticket = Ticket.from_db_row(full_row)
+        if ticket.status not in _ACTIVE_TICKET_STATUSES:
+            # Already closed out-of-band: clear stale scheduled fields.
+            # Round 2: log failures instead of contextlib.suppress(Exception).
+            try:
+                await self.cancel_scheduled_close(guild_id, ticket_id)
+            except Exception:
+                logger.error("scheduled-close clear failed for ticket %s", ticket_id, exc_info=True)
+            return None
+        return ticket
 
     async def upsert_timer_embed(
         self,
@@ -932,19 +971,36 @@ class TicketRepairService:
         if desc.startswith("tickets.timer"):
             desc = f"Cierre programado {remaining} — <t:{unix}:F>"
         embed = discord.Embed(title=title, description=desc, color=WARNING)
-        with contextlib.suppress(Exception):
+        # Pin scan + pinned-edit are best-effort: if reading/editing existing
+        # pinned timer embeds fails, fall through to sending a fresh embed.
+        # Round 3: catch narrow discord.HTTPException + log instead of
+        # contextlib.suppress(Exception) (a semantically bare except).
+        try:
             pins = await channel.pins()
-            for m in pins:
-                if m.embeds and m.embeds[0].title and "<t:" in (m.embeds[0].title or ""):
-                    with contextlib.suppress(Exception):
-                        await m.edit(embed=embed)
-                        return
+        except discord.HTTPException:
+            logger.warning("Failed to scan pins for existing timer embed (ticket %s)", ticket_id, exc_info=True)
+            pins = []
+        for m in pins:
+            if m.embeds and m.embeds[0].title and "<t:" in (m.embeds[0].title or ""):
+                try:
+                    await m.edit(embed=embed)
+                except discord.HTTPException:
+                    logger.warning(
+                        "Failed to edit existing pinned timer embed (ticket %s)",
+                        ticket_id,
+                        exc_info=True,
+                    )
+                else:
+                    return
         try:
             msg = await channel.send(embed=embed)
-            with contextlib.suppress(Exception):
-                await msg.pin(reason="Scheduled close by timer")
-        except Exception:
+        except discord.HTTPException:
             logger.exception("Failed to send timer embed for ticket %s", ticket_id)
+            return
+        try:
+            await msg.pin(reason="Scheduled close by timer")
+        except discord.HTTPException:
+            logger.warning("Failed to pin timer embed (ticket %s)", ticket_id, exc_info=True)
 
     @staticmethod
     def _confirm_prompt_title(guild_id: str) -> str:

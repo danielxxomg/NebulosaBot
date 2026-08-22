@@ -12,6 +12,7 @@ async def test_scheduled_loop_is_silent_no_countdown():
     from datetime import UTC, datetime
 
     from bot.cogs.tickets import TicketsCog
+    from bot.models.ticket import Ticket
 
     bot = MagicMock()
     bot.db = MagicMock()
@@ -29,6 +30,9 @@ async def test_scheduled_loop_is_silent_no_countdown():
         is_ticket_channel=MagicMock(return_value=True),
         close_ticket_full=AsyncMock(),
         get_due_scheduled_tickets=AsyncMock(return_value=[row]),
+        # Round 3: the cog delegates the row fetch + status branch to the
+        # service; return the open Ticket so the cog proceeds to close.
+        resolve_due_ticket_for_close=AsyncMock(return_value=Ticket.from_db_row(row)),
     )
     bot.db.get_ticket = AsyncMock(return_value=row)
     # Need guild + channel

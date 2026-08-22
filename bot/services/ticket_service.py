@@ -308,6 +308,20 @@ class TicketService:
         """Return due scheduled-close candidate rows for *guild_id* (delegates to repair service)."""
         return await self._repair.get_due_scheduled_tickets(guild_id, batch_size=batch_size)
 
+    async def resolve_due_ticket_for_close(
+        self,
+        guild_id: str,
+        candidate_row: dict[str, Any],
+    ) -> Ticket | None:
+        """Resolve a due candidate into a closable Ticket (delegates to repair service).
+
+        The cog loop resolves the Discord channel and calls this to fetch the
+        full row + branch on status. Returns the Ticket when still open/claimed,
+        or ``None`` when already closed (stale scheduled fields cleared by the
+        service).
+        """
+        return await self._repair.resolve_due_ticket_for_close(guild_id, candidate_row)
+
     async def upsert_timer_embed(
         self,
         channel: discord.TextChannel,
