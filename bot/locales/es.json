@@ -808,6 +808,7 @@
     "not_owner_description": "Solo la persona que ejecutó este comando puede usar estos botones.",
     "cancelled_title": "Cancelado",
     "cancelled_description": "La acción ha sido cancelada.",
+    "confirmed_title": "Confirmado",
     "timeout_title": "Tiempo Agotado",
     "timeout_description": "El diálogo de confirmación ha expirado. Ejecuta el comando de nuevo si es necesario.",
     "kick_confirm_title": "Confirmar Expulsión",
@@ -815,7 +816,8 @@
     "ban_confirm_title": "Confirmar Baneo",
     "ban_confirm_description": "¿Estás seguro de que quieres banear a {mention}?\n**Razón:** {reason}\n**Eliminar mensajes:** {delete_days} día(s)",
     "tempban_confirm_title": "Confirmar Baneo Temporal",
-    "tempban_confirm_description": "¿Estás seguro de que quieres banear temporalmente a {mention} por {duration}?\n**Razón:** {reason}"
+    "tempban_confirm_description": "¿Estás seguro de que quieres banear temporalmente a {mention} por {duration}?\n**Razón:** {reason}",
+    "tempban_confirmed_description": "Acción de baneo temporal confirmada para {mention}. El resultado se publicó en el canal."
   },
   "voice": {
     "join_title": "Entrada a voz",

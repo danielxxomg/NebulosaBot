@@ -146,15 +146,11 @@ class TestDecayRed:
         mock_db.update_member_warnings = AsyncMock()
         count = await svc.decay_warnings(GUILD_ID)
         assert count == 1
-        # Row deactivated
+        # Row deactivated even when counter is already 0 (decay still runs).
         mock_db.deactivate_infraction.assert_awaited_once()
-        # Must NOT go negative — service must clamp so warnings stays 0
-        # Either no update_member_warnings call, or it was clamped
-        # If update_member_warnings was called, warnings must not go negative
-        # We assert it was either not called or called with floor logic
-        # For this RED, we require the method exists and the row was deactivated;
-        # floor assertion is triangulated in next test via RPC check
-        assert True
+        # Floor: warnings stays 0 — service must NOT call update_member_warnings
+        # when current == 0 (clamps delta so warnings never goes negative).
+        mock_db.update_member_warnings.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_decay_then_warn_no_spurious_escalation(self, mock_db: AsyncMock) -> None:

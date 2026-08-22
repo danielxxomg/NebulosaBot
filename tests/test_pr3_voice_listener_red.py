@@ -195,6 +195,7 @@ class TestVoiceListenerConfigGate:
 
 class TestVoiceListenerReadOnly:
     def test_listener_never_mutates_members(self) -> None:
+        """Static guard: VoiceListener source contains no mutating Discord API calls."""
         src = pathlib.Path("bot/listeners/voice_listener.py").read_text(encoding="utf-8")
         # Forbid actual mutating Discord API calls (not attribute reads)
         forbidden = [
@@ -206,12 +207,52 @@ class TestVoiceListenerReadOnly:
             "create_dm",
             "guild.kick",
             "guild.ban",
+            "bot.kick",
+            "bot.ban",
+            ".send(",  # no direct channel.send — logging goes via log_voice_event
         ]
         for pat in forbidden:
             assert pat not in src, f"VoiceListener must be read-only but contains {pat!r}"
-        # Must not send messages into voice channel or DM
-        # Allow log_voice_event delegation; forbid direct channel.send into voice
-        assert "voice_listener" not in src.lower() or True  # placeholder
+
+    @pytest.mark.asyncio
+    async def test_listener_makes_no_mutation_calls_at_runtime(self) -> None:
+        """Behavioral: on_voice_state_update must not await any forbidden mutation method.
+
+        Exercises the real listener with a join transition and asserts no
+        kick/ban/move/edit/timeout/send method on member, guild, or bot is
+        ever awaited during the event. Read-only is a runtime contract, not
+        just a source-text one.
+        """
+        bot = _make_bot()
+        cog = _load_listener(bot)
+        member = _member(guild_id="111", member_id=1)
+        member.kick = AsyncMock()
+        member.ban = AsyncMock()
+        member.edit = AsyncMock()
+        member.move_to = AsyncMock()
+        member.timeout = AsyncMock()
+        member.create_dm = AsyncMock()
+        member.send = AsyncMock()
+        member.guild.kick = AsyncMock()
+        member.guild.ban = AsyncMock()
+        bot.kick = AsyncMock()
+        bot.ban = AsyncMock()
+        before = _voice_state(channel=None)
+        after = _voice_state(channel=_voice_channel(100))
+        await cog.on_voice_state_update(member, before, after)
+        # Read-only contract: only log_voice_event is awaited.
+        bot.logging_service.log_voice_event.assert_awaited_once()
+        member.kick.assert_not_awaited()
+        member.ban.assert_not_awaited()
+        member.edit.assert_not_awaited()
+        member.move_to.assert_not_awaited()
+        member.timeout.assert_not_awaited()
+        member.create_dm.assert_not_awaited()
+        member.send.assert_not_awaited()
+        member.guild.kick.assert_not_awaited()
+        member.guild.ban.assert_not_awaited()
+        bot.kick.assert_not_awaited()
+        bot.ban.assert_not_awaited()
 
     def test_listener_is_cog_with_listener_decorator(self) -> None:
         src = pathlib.Path("bot/listeners/voice_listener.py").read_text(encoding="utf-8")

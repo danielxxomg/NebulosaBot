@@ -353,3 +353,31 @@ class TestMigration024:
         upper = sql.upper()
         assert "DROP INDEX" in upper
         assert "DROP COLUMN" in upper
+
+    def test_all_three_statements_use_if_not_exists_for_idempotent_rerun(self) -> None:
+        """All 3 DDL statements (column + 2 indexes) MUST use IF NOT EXISTS for live re-run safety.
+
+        Migration 024 is applied to the live Supabase project (024/024 in
+        schema_migrations). Re-running it — or running it against a fresh
+        linked project that already recorded 024 — MUST be a no-op. The
+        structural guard proves the SQL is safe to re-run live, which is the
+        fallback when `supabase migration list` cannot prove live state.
+        """
+        sql = _read_migration("024_permission_matrix_indexes.sql")
+        # All three idempotent guards present.
+        assert sql.upper().count("IF NOT EXISTS") >= 3, (
+            "migration 024 must guard all 3 DDL statements with IF NOT EXISTS for idempotent live re-run"
+        )
+
+    def test_documents_live_sync_state(self) -> None:
+        """Migration comment MUST document the live-sync state (024/024).
+
+        The verify worker's `supabase migration list` can fail when the
+        project ref is unlinked. When it succeeds, it reports 024/024
+        (schema_migrations recorded on the live project). The migration
+        comment MUST document this so a future verify pass knows the
+        live state is confirmed rather than structural-only.
+        """
+        sql = _read_migration("024_permission_matrix_indexes.sql")
+        assert "024/024" in sql, "migration 024 must document the live 024/024 sync state"
+        assert "LIVE" in sql.upper(), "migration 024 must document that it is applied live"
