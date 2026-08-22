@@ -24,6 +24,7 @@ from bot.core.context import NebulosaContext
 from bot.core.i18n import t
 from bot.models.greeting_config import GreetingConfig
 from bot.services.greeting_service import _resolve_avatar_url
+from bot.utils.checks import can
 from bot.utils.embeds import error_embed, info_embed
 
 if TYPE_CHECKING:
@@ -268,18 +269,18 @@ class GreetingsCog(commands.Cog, name="Greetings"):
     # ------------------------------------------------------------------
 
     async def _admin_guard(self, ctx: NebulosaContext) -> bool:
-        """Check admin permission and send error if denied. Returns True if OK."""
-        if not isinstance(ctx.author, discord.Member) or not ctx.author.guild_permissions.administrator:
-            guild_id = str(ctx.guild.id) if ctx.guild else ""
-            await ctx.send(
-                embed=error_embed(
-                    t(guild_id, "greetings.permission_denied_title"),
-                    t(guild_id, "greetings.permission_denied_description"),
-                ),
-                ephemeral=True,
-            )
-            return False
-        return True
+        """Check greeting.manage permission and send error if denied. Returns True if OK."""
+        if await can("greeting.manage", ctx):
+            return True
+        guild_id = str(ctx.guild.id) if ctx.guild else ""
+        await ctx.send(
+            embed=error_embed(
+                t(guild_id, "greetings.permission_denied_title"),
+                t(guild_id, "greetings.permission_denied_description"),
+            ),
+            ephemeral=True,
+        )
+        return False
 
     def _config_embed(
         self,

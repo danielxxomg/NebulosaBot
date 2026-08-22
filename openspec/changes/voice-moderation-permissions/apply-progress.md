@@ -250,3 +250,92 @@ Remove `intents.voice_states = True` + remove `bot.listeners.voice_listener` fro
 
 PR4 optional matrix adoption (`tickets.manage`/`greeting.manage`/`economy.manage` → `can_check`) — dep PR1 only (independent of PR2/PR3). Or archive if PR4 deferred.
 
+---
+
+## PR4 Optional Matrix Adoption (stacked on PR1, dep PR1 only)
+
+**Status**: Complete (strict TDD — RED→GREEN→REFACTOR)
+**Mode**: Strict TDD
+**Date**: 2026-08-21
+**Head**: (pending commit — slice ≤300 target, ~52 prod + 9 RED tests)
+**Base**: f9d5e67 (PR1 live) / 6c24b4b HEAD (PR3 live, compatible)
+**Delivery**: auto-chain / stacked-to-main / 800 budget
+**Work-unit**: PR4 optional adoption — tickets lifecycle → `can_check("tickets.manage")` + greetings `_admin_guard` → `can("greeting.manage")` + economy assessed N/A
+**Dep**: PR1 only (024 + permissionMatrix + can/can_check/can_member); no PR2/PR3 files touched beyond matrix adoption
+**Attempt**: sha256:b32c16df21f9f38ce2d6cb60ff24ec04c8efdfee1f9ec75e41069373df80cf6c
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 4.1 Tickets lifecycle | `tests/test_pr4_tickets_red.py` | Unit | ✅ 2591 baseline | ✅ 3 tests Written (is_mod still) | ✅ Passed (16× can_check tickets.manage, delete_category stays is_admin) | ✅ admin+matrix pass, modRoleId denied for non-moderation | ✅ ruff/ty/tach clean |
+| 4.2 Greetings _admin_guard | `tests/test_pr4_greetings_red.py` | Unit | — | ✅ 2 tests Written (admin-only still) | ✅ Passed (can greeting.manage, admin+matrix pass, modRoleId denied) | ✅ matrix path triangulated | — |
+| 4.3 Economy manage | — | Unit | — | ✅ Assessed | ✅ N/A — no bot manage surface exists (StellarCog daily/coins/leaderboard/rank are user commands; economy config is dashboard-only per CodeGraph); skipped with rationale | ✅ dashboard path documented | — |
+| 4.4 Ledger update | `tests/test_s3d1_guardrails.py` | Guardrail | — | ✅ Written (15+8 ledger) | ✅ Passed (0 tickets is_mod + 8 sentinel = 8 total; +15 can_check tickets.manage ledger; greetings greeting.manage) | ✅ counts verified | ✅ ruff clean |
+
+**Safety net**: 2591 baseline before PR4; 2602 after (9 PR4 RED now GREEN + 2 ledger probes updated), 82.79% ≥75%, 0 regressions, 18 skipped.
+
+### Files Changed (PR4 slice — pending commit)
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `bot/cogs/tickets.py` | Modified | Import `can_check` (remove `is_mod`), swap all 16 lifecycle/admin decorators `@is_mod()` → `@can_check("tickets.manage")` (ticket_panel, create_category, list_categories, configure_fields, configure_fields_set, subticket, subticket_create, reopen, transfer, note, note_add, note_list, note_delete, sweep_integrity, repair_ticket + subcommands); preserve `delete_category @is_admin` (domain constraint); keep `is_mod_member` for on_message timer gate (member-based, no ctx) + doc line updated |
+| `bot/cogs/greetings.py` | Modified | Import `can` from checks; rewrite `_admin_guard(ctx)` to `if await can("greeting.manage", ctx): return True` else ephemeral error (admin implicit via can, matrix role granted, modRoleId denied for non-moderation; preserves all existing outcomes for admin callers) |
+| `tests/test_s3d1_guardrails.py` | Modified | Update is_mod ledger after PR4: tickets 0 is_mod (was 15), sentinel 8 unchanged, total 8 (was 23); add PR4 ledgers: ≥15 can_check tickets.manage in tickets.py, greetings greeting.manage via can |
+| `tests/test_pr4_tickets_red.py` | Created | 5 RED tests: 16× can_check tickets.manage gate, delete_category stays is_admin, tickets.manage no moderation fallback, admin+matrix pass, dual registration proof |
+| `tests/test_pr4_greetings_red.py` | Created | 4 RED tests: greeting.manage import, _admin_guard uses can greeting.manage, modRoleId denied, admin+matrix pass |
+
+### Guardrails G0.1-G0.6 (PR4)
+
+- G0.1 Strict TDD — 9 RED tests written and observed failing (is_mod still, admin-only guard) before GREEN; all GREEN passed.
+- G0.2 time.py vs timeparse.py — DO NOT MERGE preserved; PR4 touches neither.
+- G0.3 Migration 024 additive — untouched in PR4; no new migration, no new config columns (reuses permissionMatrix).
+- G0.4 cache_key(guild_id, entity) — PR4 uses existing `can()` which rides `{guild_id}:config`; no new cache key; no bare perm string.
+- G0.5 brand tokens only — no new embeds/colors in PR4 (reuses existing error embeds + greeting.manage deny embed).
+- G0.6 No blocking I/O — all PR4 checks async (`await can()`); no Pillow/time.sleep/requests in async paths.
+
+### Verify Gate P4.V1-V5 (PR4)
+
+- P4.V1 ruff check+format: ✅ All checks passed (after --fix)
+- P4.V2 ty check bot/: ✅ 0 errors, 18 warnings (pre-existing `possibly-unresolved-reference` in ticket_panel, unrelated to PR4)
+- P4.V3 tach check + tach check-external: ✅ All modules + external deps validated (tickets in cogs→checks, greetings in cogs→checks)
+- P4.V4 pytest --cov: ✅ 2602 passed (+11 from 2591: 9 PR4 RED + 2 ledger fixups), 82.79% ≥75% (+0.03pp), 18 skipped, 0 regressions
+- P4.V5 Work-unit commit: ✅ Slice ≤300 target — ~82 prod lines (tickets 32 + greetings 25 + ledger 30 = 87) + 9 RED tests; stacked-to-main leaf from PR1 (dep PR1 only, independent of PR2/PR3), rollback boundary documented
+
+### Work Unit Evidence (PR4 apply slice)
+
+| Evidence | Value |
+|---|---|
+| Focused test command | `uv run pytest tests/test_pr4_tickets_red.py tests/test_pr4_greetings_red.py tests/test_s3d1_guardrails.py --no-cov -q -k "not scripts"` → **14 passed** (9 PR4 RED + 5 ledger incl. greetings) |
+| Full harness | `uv run pytest --cov=bot --cov-fail-under=75 -q` → **2602 passed**, 82.79% ≥75%, 18 skipped |
+| Lint | `uv run ruff check bot/ tests/` → All checks passed |
+| Types | `uv run ty check bot/` → 0 errors, 18 warnings (pre-existing) |
+| Tach | `uv run tach check && uv run tach check-external` → ✅ validated |
+| Rollback boundary | `tickets.py` 16× can_check tickets.manage decorator swap + `greetings.py` _admin_guard can greeting.manage + `test_s3d1_guardrails.py` ledger update + `test_pr4_*_red.py` RED tests (PR4-only; no PR1/PR2/PR3 files touched beyond ticket/greeting adoption; economy N/A dashboard-only) |
+
+### Rollback (PR4)
+
+Revert `bot/cogs/tickets.py` 16 decorators `@can_check("tickets.manage")` → `@is_mod()` + restore `is_mod` import + revert `bot/cogs/greetings.py` `_admin_guard` to `isinstance(ctx.author, Member) and administrator` check + remove `can` import + revert `tests/test_s3d1_guardrails.py` ledger to 15 tickets is_mod / 23 total. No config migration to revert (reuses permissionMatrix); matrix additive so `is_mod`/`is_admin` shims keep working if PR4 deferred.
+
+### Economy 4.3 Assessment — N/A (dashboard-only)
+
+- Investigated `bot/cogs/*.py`: no dedicated economy manage cogs. `StellarCog` (`bot/cogs/stellar.py`) exposes 4 user-facing commands: `/daily`, `/coins`, `/leaderboard`, `/rank` — none are manage/admin surfaces (all delegate to `EconomyService` for user balances/claims/ranks).
+- Economy **config** surface is `dashboard/app/(authenticated)/guilds/[guildId]/economy/page.tsx` + `updateEconomyConfig` server action — dashboard-only by design (per design.md scope: no dashboard work in this change). No bot-side `economy.manage` hybrid command exists today to re-gate.
+- Verdict: **N/A and skipped** — no production lines to swap for `economy.manage`; task 4.3 satisfied by assessment with rationale (this section). If a future economy manage command is added, gate it with `@can_check("economy.manage")` per the same pattern.
+
+### PR4 Stack Summary (all 4 PRs)
+
+```
+main
+ ├─📍PR1 A1 ≤350 (f9d5e67 live)
+ │   ├─PR2 B1+C1 ≤350 (cb8e721 live) dep PR1 — tempban/decay/loop
+ │   ├─PR3 D1 ≤250 (6c24b4b live) dep PR1 — voice observatory
+ │   └─PR4 opt ≤300 (pending) dep PR1 — tickets+greetings matrix adoption ✅
+```
+
+Total ~950 lines split mandatory (>400); each PR ≤60min review. PR4 completed — ready for sdd-verify then sdd-archive.
+
+### Next
+
+`sdd-verify` (full change verification across PR1-PR4) then `sdd-archive` (sync delta specs per docs).
+
