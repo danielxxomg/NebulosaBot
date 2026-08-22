@@ -270,6 +270,10 @@ Los tickets sin actividad por **48 horas** se cierran automáticamente. El bot r
 | Probar tarjeta de bienvenida | `/welcome_test` | Genera y envía una tarjeta de ejemplo (ephemeral) |
 | Probar tarjeta de despedida | `/goodbye_test` | Genera y envía una tarjeta de ejemplo (ephemeral) |
 
+### Voice observatory (solo lectura)
+
+El bot registra transiciones de voz (join, leave, move, mute/deafen) en el canal de logs configurado cuando `logEnabled` y `logChannelId` están activos. Requiere el intent **Voice States** — you MUST enable the Voice States intent in the Discord Developer Portal (Bot → Privileged Gateway Intents → Voice States) o `on_voice_state_update` nunca se disparará (silencioso, no es un bug). Ver `bot/__main__.py` para el flag `intents.voice_states = True`.
+
 ### Administración
 
 | Tarea | Comando | Resultado |

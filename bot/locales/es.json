@@ -816,5 +816,17 @@
     "ban_confirm_description": "¿Estás seguro de que quieres banear a {mention}?\n**Razón:** {reason}\n**Eliminar mensajes:** {delete_days} día(s)",
     "tempban_confirm_title": "Confirmar Baneo Temporal",
     "tempban_confirm_description": "¿Estás seguro de que quieres banear temporalmente a {mention} por {duration}?\n**Razón:** {reason}"
+  },
+  "voice": {
+    "join_title": "Entrada a voz",
+    "join_description": "{mention} se unió a **{channel}**",
+    "leave_title": "Salida de voz",
+    "leave_description": "{mention} salió de **{channel}**",
+    "move_title": "Movimiento de voz",
+    "move_description": "{mention} se movió de **{from}** a **{to}**",
+    "mute_title": "Silencio en voz",
+    "mute_description": "{mention} {state} en **{channel}**",
+    "deafen_title": "Ensordecimiento en voz",
+    "deafen_description": "{mention} {state} en **{channel}**"
   }
 }

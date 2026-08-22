@@ -37,9 +37,14 @@ async def main() -> None:
     config = BotConfig.from_env()
 
     # Intents — message_content is required for prefix commands to work.
+    # Voice observatory (PR3 D1): requires Voice States intent. Prerequisite:
+    # you MUST enable the Voice States intent in the Discord Developer Portal
+    # (Bot → Privileged Gateway Intents → Voice States) or on_voice_state_update
+    # will silently never fire. See docs/MANUAL.md § Voice Observatory.
     intents = discord.Intents.default()
     intents.message_content = True
     intents.members = True  # needed for is_mod/is_admin role checks
+    intents.voice_states = True
 
     logger.info("Creating NebulosaBot ...")
     bot = NebulosaBot(config=config, intents=intents)

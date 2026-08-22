@@ -57,6 +57,7 @@ EXTENSIONS: tuple[str, ...] = (
     "bot.cogs.setup",
     "bot.listeners.xp_listener",
     "bot.listeners.audit_listener",
+    "bot.listeners.voice_listener",
 )
 
 # -- Sentry for missing guild config (used by get_prefix fallback) ----------
