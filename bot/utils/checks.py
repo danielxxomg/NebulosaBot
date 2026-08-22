@@ -138,17 +138,41 @@ async def can(permission: str, ctx: Any) -> bool:
 
 
 async def can_member(permission: str, member: Any, guild_id: str | None) -> bool:
-    """Listener-form permission check — async mirror of can() for on_message etc."""
+    """Listener-form permission check — async mirror of :func:`can` for ``on_message`` etc.
+
+    Mirrors :func:`can` for callers that hold a :class:`discord.Member` but no
+    ``Context``/``Interaction`` (e.g. read-only listeners, ticket-view
+    callbacks). Resolves the bot client from the member's connection state
+    (``member._state._get_client()``) so the moderation fallback path can read
+    ``bot._guild_mod_role_cache`` at runtime — tests override
+    :func:`_get_guild_service` so ``bot_ref`` is not consulted there.
+    """
     if guild_id is None:
         return False
     # member may be None in edge cases
     if member is None:
         return False
-    # Try to resolve bot from member.guild or passed lookup? We rely on _get_guild_service override in tests.
-    # Runtime: try member.bot if present
-    bot_ref = getattr(member, "bot", None)
-    # Also check if member has a guild with bot? Not needed — service override handles it.
-    return await _can_core(permission, member, str(guild_id) if guild_id is not None else None, bot_ref=bot_ref)
+    # Resolve the bot client from the member's connection state. In discord.py
+    # the bot is reachable as ``member._state._get_client()`` (a callable bound
+    # in ``Client.__init__``); ``member.bot`` is a *bool* ("is bot account")
+    # and MUST NOT be used as the client. Fall back to ``None`` so the deny
+    # path stays safe when the member is detached from a live connection.
+    bot_ref: Any = None
+    state = getattr(member, "_state", None)
+    if state is not None:
+        get_client = getattr(state, "_get_client", None)
+        if callable(get_client):
+            try:
+                bot_ref = get_client()
+            except Exception:
+                logger.debug("can_member: member._state._get_client() failed", exc_info=True)
+                bot_ref = None
+    return await _can_core(
+        permission,
+        member,
+        str(guild_id) if guild_id is not None else None,
+        bot_ref=bot_ref,
+    )
 
 
 def can_check(permission: str) -> Any:

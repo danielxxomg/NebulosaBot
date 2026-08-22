@@ -23,7 +23,7 @@
 - Never hardcode prefixes, channel IDs, or role IDs — read from guild config
 - Use `app_commands.check()` for custom permission checks, compose with `has_permissions()`
 - **Permission decorators**: `@can_check("<perm>")` (matrix-gated, 7 keys: `moderation.{warn,mute,kick,ban}`, `tickets.manage`, `economy.manage`, `greeting.manage`); `@is_mod()` (mod-role fallback); `@is_admin()` (admin-only). All three dual-register prefix+slash. Use `can()`/`can_member()` for non-decorator call sites
-- **Command visibility**: admin/config → ephemeral; mod-action → permanent; fun → permanent; personal/info → ephemeral (see `ephemeral-standard` spec)
+- **Command visibility**: admin/config → ephemeral; mod-action → permanent; fun → permanent (exception: ocio `/banana` and `/8ball` are ephemeral per `ocio-commands` spec — they reply only to the invoking user and MUST NOT write to the DB); personal/info → ephemeral (see `ephemeral-standard` spec)
 - **Background loops**: `@tasks.loop()` MUST be DB-sourced for restart durability (scan each iteration, no in-memory timers), with `before_loop` (wait ready) + `cog_unload()` (cancel)
 - Sync tree: `await tree.sync()` in `setup_hook()`, not in `on_ready()`
 
