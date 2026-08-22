@@ -30,6 +30,8 @@
       "unmute": "Eliminar el silenciamiento de un miembro.",
       "kick": "Expulsar a un miembro del servidor.",
       "ban": "Prohibir a un miembro del servidor.",
+      "tempban": "Prohibir temporalmente a un miembro.",
+      "unban": "Desbanear a un usuario.",
       "lock": "Bloquear un canal (denegar enviar mensajes a @everyone).",
       "unlock": "Desbloquear un canal (permitir enviar mensajes a @everyone).",
       "modlogs": "Ver el historial de moderación de un miembro.",
@@ -109,6 +111,14 @@
         "member": "El miembro a prohibir",
         "reason": "Razón de la prohibición",
         "delete_days": "Días de mensajes a eliminar (0-7, predeterminado: 0)"
+      },
+      "tempban": {
+        "member": "El miembro a prohibir temporalmente",
+        "duration": "Duración (ej. \"24h\", \"7d\"). Requerido.",
+        "reason": "Razón de la prohibición temporal"
+      },
+      "unban": {
+        "user_id": "ID del usuario a desbanear"
       },
       "lock": {
         "channel": "El canal a bloquear (predeterminado: canal actual)"
@@ -664,6 +674,22 @@
       "success_title": "Miembro Baneado",
       "success_description": "{mention} ha sido baneado.\n**Razón:** {reason}"
     },
+    "tempban": {
+      "invalid_duration_title": "Duración Inválida",
+      "invalid_duration_description": "No se pudo interpretar la duración '{duration}'. Ejemplos: 24h, 7d, 30m.",
+      "success_title": "Miembro Baneado Temporalmente",
+      "success_description": "{mention} ha sido baneado temporalmente.\n**Razón:** {reason}",
+      "failed_title": "Tempban Fallido",
+      "failed_description": "No se pudo banear temporalmente al miembro. Intenta de nuevo."
+    },
+    "unban": {
+      "no_ban_title": "Sin Baneo Activo",
+      "no_ban_description": "No se encontró baneo activo para el usuario {user_id}.",
+      "success_title": "Usuario Desbaneado",
+      "success_description": "El usuario {user_id} ha sido desbaneado.",
+      "failed_title": "Desbaneo Fallido",
+      "failed_description": "No se pudo desbanear al usuario. Intenta de nuevo."
+    },
     "lock": {
       "permission_denied_title": "Permiso Denegado",
       "permission_denied_description": "No tengo permiso para bloquear {channel}. Verifica mis permisos de rol.",
@@ -787,6 +813,8 @@
     "kick_confirm_title": "Confirmar Expulsión",
     "kick_confirm_description": "¿Estás seguro de que quieres expulsar a {mention}?\n**Razón:** {reason}",
     "ban_confirm_title": "Confirmar Baneo",
-    "ban_confirm_description": "¿Estás seguro de que quieres banear a {mention}?\n**Razón:** {reason}\n**Eliminar mensajes:** {delete_days} día(s)"
+    "ban_confirm_description": "¿Estás seguro de que quieres banear a {mention}?\n**Razón:** {reason}\n**Eliminar mensajes:** {delete_days} día(s)",
+    "tempban_confirm_title": "Confirmar Baneo Temporal",
+    "tempban_confirm_description": "¿Estás seguro de que quieres banear temporalmente a {mention} por {duration}?\n**Razón:** {reason}"
   }
 }

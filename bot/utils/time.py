@@ -104,6 +104,31 @@ def parse_duration_strict(text: str) -> int | None:
     return total
 
 
+def parse_duration_optional(text: str) -> int | None:
+    """Parse a human duration string to seconds, or None if unparseable.
+
+    Reuses :data:`_UNIT_TO_SECONDS` (s/m/h/d) and :data:`_DURATION_RE`.
+    Returns ``None`` when the input contains no recognisable
+    ``(number)(unit)`` pairs — unlike :func:`parse_duration` which falls
+    back to 3600. Compound strings like ``"1h30m"`` are supported.
+
+    NOTE: This module is distinct from :mod:`bot.utils.timeparse` (DB
+    timestamp → datetime parsing). They serve different domains and MUST
+    NOT be merged — DO NOT MERGE with ``timeparse.py``. See
+    ``bot/utils/timeparse.py`` for the separate domain.
+    """
+    raw = text.strip().lower() if isinstance(text, str) else ""
+    if not raw:
+        return None
+    matches = _DURATION_RE.findall(raw)
+    if not matches:
+        return None
+    total = 0
+    for value_str, unit in matches:
+        total += int(value_str) * _UNIT_TO_SECONDS[unit]
+    return total
+
+
 def format_remaining(seconds: int, *, guild_id: str | int | None = None) -> str:
     """Format *seconds* as a localized human duration string.
 

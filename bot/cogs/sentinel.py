@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 from bot.core.context import NebulosaContext
 from bot.core.i18n import t
@@ -29,7 +29,7 @@ from bot.utils.embeds import (
     success_embed,
 )
 from bot.utils.paginator import EmbedPaginator
-from bot.utils.time import parse_duration
+from bot.utils.time import parse_duration, parse_duration_optional
 from bot.views.confirmation import ConfirmCancelView
 
 if TYPE_CHECKING:
@@ -52,6 +52,72 @@ class SentinelCog(commands.Cog, name="Sentinel"):
 
     def __init__(self, bot: NebulosaBot) -> None:
         self.bot: NebulosaBot = bot
+
+    async def cog_unload(self) -> None:
+        """Cancel the hourly decay+expiry loop when the cog is unloaded."""
+        try:
+            if hasattr(self, "decay_expiry_loop") and self.decay_expiry_loop.is_running():
+                self.decay_expiry_loop.cancel()
+        except Exception:
+            logger.debug("cog_unload cancel failed", exc_info=True)
+
+    def _collect_guild_ids(self) -> list[str]:
+        """Collect guild IDs from bot.guilds (best-effort, no throw)."""
+        ids: list[str] = []
+        for g in getattr(self.bot, "guilds", []) or []:
+            gid = getattr(g, "id", None)
+            if gid is not None:
+                ids.append(str(gid))
+        return ids
+
+    async def _expire_tempbans_for_guild(self, guild_id: str) -> None:
+        """DB-sourced tempban expiry for one guild (unban + deactivate)."""
+        try:
+            expired = await self.bot.db.get_expired_tempbans(guild_id)  # type: ignore[union-attr]
+        except Exception:
+            logger.exception("tempban expiry scan failed for guild %s", guild_id)
+            return
+        for row in expired:
+            target_id = row.get("targetId") or row.get("target_id") or ""
+            guild_obj = None
+            try:
+                getter = getattr(self.bot, "get_guild", None)
+                guild_obj = getter(int(guild_id)) if callable(getter) and guild_id.isdigit() else None
+            except Exception:
+                guild_obj = None
+            if guild_obj is not None and target_id:
+                try:
+                    uid = int(target_id) if target_id.isdigit() else None
+                    if uid is not None:
+                        await guild_obj.unban(discord.Object(id=uid), reason="Tempban expired")
+                except Exception:
+                    logger.exception("guild.unban failed for %s in %s", target_id, guild_id)
+            try:
+                db = getattr(self.bot, "db", None)
+                if db is not None:
+                    await db.deactivate_infraction(guild_id, row["id"])
+            except Exception:
+                logger.exception("deactivate_infraction failed for %s", row.get("id"))
+            if self.bot.logging_service is not None:
+                logger.info("tempban expired guild=%s target=%s", guild_id, target_id)
+
+    @tasks.loop(hours=1)
+    async def decay_expiry_loop(self) -> None:
+        """Hourly: decay 30d WARNs then expire tempbans (DB-sourced, restart-durable)."""
+        if self.bot.db is None or self.bot.infraction_service is None:
+            return
+        for gid in self._collect_guild_ids():
+            try:
+                decayed = await self.bot.infraction_service.decay_warnings(gid)
+                if decayed and self.bot.logging_service is not None:
+                    logger.info("decay_warnings guild=%s decayed=%s", gid, decayed)
+            except Exception:
+                logger.exception("decay_warnings failed for guild %s", gid)
+            await self._expire_tempbans_for_guild(gid)
+
+    @decay_expiry_loop.before_loop
+    async def _before_decay_expiry_loop(self) -> None:
+        await self.bot.wait_until_ready()
 
     # ==================================================================
     # Internal helpers
@@ -965,6 +1031,200 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         else:
             view = EmbedPaginator(pages, guild_id=guild_id, custom_id_prefix="modlogs:")
             await ctx.send(embed=pages[0], view=view, ephemeral=True)
+
+    # ==================================================================
+    # PR2 — /tempban + /unban (2.10-2.13)
+    # ==================================================================
+
+    @commands.hybrid_command(
+        name="tempban",
+        description=app_commands.locale_str(
+            "Prohibir temporalmente a un miembro.",
+            key="slash.descriptions.tempban",
+        ),
+    )
+    @app_commands.describe(
+        member=app_commands.locale_str("El miembro a prohibir temporalmente", key="slash.describes.tempban.member"),
+        duration=app_commands.locale_str(
+            'Duración (ej. "24h", "7d"). Requerido.',
+            key="slash.describes.tempban.duration",
+        ),
+        reason=app_commands.locale_str("Razón de la prohibición temporal", key="slash.describes.tempban.reason"),
+    )
+    @app_commands.default_permissions(ban_members=True)
+    @can_check("moderation.ban")
+    async def tempban(
+        self,
+        ctx: NebulosaContext,
+        member: discord.Member,
+        duration: str,
+        *,
+        reason: str = "No reason provided",
+    ) -> None:
+        """Tempban *member* for *duration* after confirmation."""
+        if not await self._validate_target(ctx, member, "tempban"):
+            return
+
+        guild_id = self._guild_id(ctx)
+        seconds = parse_duration_optional(duration)
+        if seconds is None:
+            await ctx.send(
+                embed=error_embed(
+                    t(guild_id, "sentinel.tempban.invalid_duration_title"),
+                    t(guild_id, "sentinel.tempban.invalid_duration_description", duration=duration),
+                ),
+                ephemeral=True,
+            )
+            return
+
+        expires_at = (datetime.now(UTC) + timedelta(seconds=seconds)).isoformat()
+
+        async def _do_tempban(interaction: discord.Interaction) -> None:
+            safe_reason = discord.utils.escape_markdown(reason)
+            target_id = str(member.id)
+            moderator_id = str(ctx.author.id)
+            try:
+                await member.ban(reason=reason)
+            except Exception as exc:
+                await self._handle_mod_error(ctx, exc, "tempban", member)
+                return
+            if self.bot.infraction_service is None:
+                msg = "InfractionService initialised in setup_hook"
+                raise RuntimeError(msg)
+            try:
+                await self.bot.infraction_service.tempban(
+                    guild_id, target_id, moderator_id, reason, expires_at=expires_at
+                )
+            except Exception:
+                logger.exception("tempban infraction insert failed (non-fatal)")
+
+            if self.bot.logging_service is None:
+                msg = "LoggingService initialised in setup_hook"
+                raise RuntimeError(msg)
+            if not isinstance(ctx.author, discord.Member):
+                msg = "ctx.author must be discord.Member"
+                raise TypeError(msg)
+            await self.bot.logging_service.log_moderation_action(guild_id, "Tempban", member, ctx.author, reason)
+            await interaction.response.edit_message(
+                embed=success_embed(
+                    t(guild_id, "sentinel.tempban.success_title"),
+                    t(guild_id, "sentinel.tempban.success_description", mention=member.mention, reason=safe_reason),
+                ),
+                view=None,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+
+        view = ConfirmCancelView(guild_id=guild_id, owner_id=ctx.author.id, on_confirm=_do_tempban)
+        msg = await ctx.send(
+            embed=discord.Embed(
+                title=t(guild_id, "confirm.tempban_confirm_title"),
+                description=t(
+                    guild_id,
+                    "confirm.tempban_confirm_description",
+                    mention=member.mention,
+                    duration=duration,
+                    reason=discord.utils.escape_markdown(reason),
+                ),
+                color=INFO,
+            ),
+            view=view,
+            ephemeral=True,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+        view.message = msg
+
+    @commands.hybrid_command(
+        name="unban",
+        description=app_commands.locale_str(
+            "Levantar la prohibición de un usuario.",
+            key="slash.descriptions.unban",
+        ),
+    )
+    @app_commands.describe(
+        user_id=app_commands.locale_str("ID del usuario a desbanear", key="slash.describes.unban.user_id"),
+    )
+    @app_commands.default_permissions(ban_members=True)
+    @can_check("moderation.ban")
+    async def unban(
+        self,
+        ctx: NebulosaContext,
+        user_id: str,
+    ) -> None:
+        """Unban a user by ID (idempotent)."""
+        guild_id = self._guild_id(ctx)
+        if ctx.guild is None:
+            return
+        if self.bot.infraction_service is None:
+            msg = "InfractionService initialised in setup_hook"
+            raise RuntimeError(msg)
+        try:
+            result = await self.bot.infraction_service.unban(guild_id, user_id)
+        except Exception:
+            logger.exception("InfractionService.unban() failed")
+            await ctx.send(
+                embed=error_embed(
+                    t(guild_id, "sentinel.unban.failed_title"),
+                    t(guild_id, "sentinel.unban.failed_description"),
+                ),
+                ephemeral=True,
+            )
+            return
+
+        if result is None:
+            await ctx.send(
+                embed=info_embed(
+                    t(guild_id, "sentinel.unban.no_ban_title"),
+                    t(guild_id, "sentinel.unban.no_ban_description", user_id=user_id),
+                ),
+                ephemeral=True,
+            )
+            return
+
+        # Lift Discord ban
+        try:
+            user_obj = discord.Object(id=int(user_id)) if user_id.isdigit() else discord.Object(id=0)
+            await ctx.guild.unban(user_obj, reason=f"Unbanned by {ctx.author}")
+        except Exception:
+            # Log but still confirm DB deactivation
+            logger.exception("guild.unban failed for %s", user_id)
+            await ctx.send(
+                embed=error_embed(
+                    t(guild_id, "sentinel.unban.failed_title"),
+                    t(guild_id, "sentinel.unban.failed_description"),
+                ),
+                ephemeral=True,
+            )
+            return
+
+        if self.bot.logging_service is None:
+            msg = "LoggingService initialised in setup_hook"
+            raise RuntimeError(msg)
+        if not isinstance(ctx.author, discord.Member):
+            msg = "ctx.author must be discord.Member"
+            raise TypeError(msg)
+        # Log without requiring a Member object for target — construct minimal User-like
+        try:
+            uid_int = int(user_id) if user_id.isdigit() else 0
+            fake_user = discord.Object(id=uid_int)
+            # discord.Object lacks mention; attach it for logging display
+            fake_user.mention = f"<@{user_id}>"  # type: ignore[attr-defined]
+            # log_moderation_action expects Member|User; Object suffices at runtime
+            await self.bot.logging_service.log_moderation_action(
+                guild_id,
+                "Unban",
+                fake_user,
+                ctx.author,
+                f"Unbanned {user_id}",  # type: ignore[arg-type]
+            )
+        except Exception:
+            logger.exception("log_moderation_action failed for unban (non-fatal)")
+
+        await ctx.send(
+            embed=success_embed(
+                t(guild_id, "sentinel.unban.success_title"),
+                t(guild_id, "sentinel.unban.success_description", user_id=user_id),
+            ),
+        )
 
 
 # ======================================================================

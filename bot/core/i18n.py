@@ -335,6 +335,8 @@ SLASH_DESCRIPTIONS: dict[str, str] = {
     "unmute": "slash.descriptions.unmute",
     "kick": "slash.descriptions.kick",
     "ban": "slash.descriptions.ban",
+    "tempban": "slash.descriptions.tempban",
+    "unban": "slash.descriptions.unban",
     "lock": "slash.descriptions.lock",
     "unlock": "slash.descriptions.unlock",
     "modlogs": "slash.descriptions.modlogs",
@@ -402,6 +404,12 @@ SLASH_DESCRIBES: dict[str, dict[str, str]] = {
         "reason": "slash.describes.ban.reason",
         "delete_days": "slash.describes.ban.delete_days",
     },
+    "tempban": {
+        "member": "slash.describes.tempban.member",
+        "duration": "slash.describes.tempban.duration",
+        "reason": "slash.describes.tempban.reason",
+    },
+    "unban": {"user_id": "slash.describes.unban.user_id"},
     "lock": {"channel": "slash.describes.lock.channel"},
     "unlock": {"channel": "slash.describes.unlock.channel"},
     "modlogs": {
