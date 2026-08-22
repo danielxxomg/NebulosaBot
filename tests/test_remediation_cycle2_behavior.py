@@ -380,7 +380,7 @@ class TestCooldownBehavioral:
 
     @pytest.mark.asyncio
     async def test_cooldown_handler_emits_localized_retry_after(self) -> None:
-        """on_command_error turns CommandOnCooldown into an ephemeral embed with retry_after."""
+        """cog_command_error turns CommandOnCooldown into an ephemeral embed with retry_after."""
         from discord.ext import commands
 
         from bot.cogs.ocio import OcioCog
@@ -392,7 +392,7 @@ class TestCooldownBehavioral:
         ctx.send = AsyncMock()
 
         err = commands.CommandOnCooldown(commands.Cooldown(1, 5.0), 3.5, commands.BucketType.user)
-        await cog.on_command_error(ctx, err)
+        await cog.cog_command_error(ctx, err)
         ctx.send.assert_awaited_once()
         kwargs = ctx.send.call_args.kwargs
         assert kwargs.get("ephemeral") is True

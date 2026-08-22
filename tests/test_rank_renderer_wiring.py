@@ -81,8 +81,7 @@ class TestRankRendererWiring:
         src = _cog_source()
         assert src, "bot/cogs/stellar.py not found"
         assert "from bot.services.rank_renderer import RankRenderer" not in src, (
-            "bot/cogs/stellar.py must not lazily import RankRenderer inside "
-            "rank() — the renderer is owned by the bot."
+            "bot/cogs/stellar.py must not lazily import RankRenderer inside rank() — the renderer is owned by the bot."
         )
 
     def test_cog_has_no_image_service_fallback_branch(self) -> None:

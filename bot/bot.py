@@ -417,6 +417,19 @@ class NebulosaBot(commands.Bot):
         if hasattr(ctx.command, "on_error"):
             return
 
+        # Defer to the cog's cog_command_error handler when the cog owns one
+        # (mirrors the app-command deferral above at on_app_command_error).
+        # discord.py's dispatch_error runs cog_command_error FIRST, then
+        # always dispatches the command_error event here — without this
+        # deferral the user gets two messages (the cog's embed + our DM).
+        # Scoped to CommandOnCooldown: cogs that handle cooldown own that
+        # surface; other errors still flow through here so they are not
+        # silently swallowed (AGENTS.md: all commands MUST handle errors).
+        if isinstance(error, commands.CommandOnCooldown) and ctx.command is not None:
+            cog = getattr(ctx.command, "cog", None)
+            if cog is not None and cog.has_error_handler():
+                return
+
         # Ignore some common, harmless errors.
         ignored = (
             commands.CommandNotFound,

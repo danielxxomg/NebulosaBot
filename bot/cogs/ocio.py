@@ -124,21 +124,29 @@ class OcioCog(commands.Cog, name="Ocio"):
         return self.eight_ball
 
     # ==================================================================
-    # Error handler — cooldown
+    # Error handler — cooldown (cog-scoped via cog_command_error)
     # ==================================================================
 
-    @commands.Cog.listener()
-    async def on_command_error(self, ctx: NebulosaContext, error: Exception) -> None:
+    async def cog_command_error(
+        self,
+        ctx: commands.Context[NebulosaBot],
+        error: Exception,
+    ) -> None:
+        """Cog-scoped prefix/hybrid error handler — cooldown feedback.
+
+        Unlike ``@commands.Cog.listener() on_command_error`` (which fires for
+        ANY command bot-wide), ``cog_command_error`` is auto-scoped by
+        discord.py to this cog's commands — only /banana and /8ball cooldowns
+        produce the localized retry_after embed, not cooldowns from other
+        cogs.  The global ``NebulosaBot.on_command_error`` defers to cog
+        handlers for CommandOnCooldown so the user gets exactly one message.
+        """
         if isinstance(error, commands.CommandOnCooldown):
             guild_id = ctx.guild.id if ctx.guild else None
             retry_after = getattr(error, "retry_after", 5.0)
             title = t(guild_id, "ocio.cooldown.title")
             desc = t(guild_id, "ocio.cooldown.description", retry_after=retry_after)
             await ctx.send(embed=error_embed(title, desc, guild_id=guild_id), ephemeral=True)
-            return
-        # not our error — let global handler deal (re-raise for next handler)
-        # Cog listeners don't suppress; but for prefix hybrid cooldown we handled above.
-        return
 
     async def cog_app_command_error(
         self, interaction: discord.Interaction, error: discord.app_commands.AppCommandError

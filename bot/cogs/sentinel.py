@@ -61,6 +61,18 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         except Exception:
             logger.debug("cog_unload cancel failed", exc_info=True)
 
+    async def cog_load(self) -> None:
+        """Start the hourly decay+expiry loop when the cog loads.
+
+        Mirrors :meth:`TicketsCog.cog_load` guard style: only start when the
+        loop attribute exists and is not already running. Without this the
+        ``@tasks.loop(hours=1) decay_expiry_loop`` is dead code — tempban
+        auto-expiry + 30d warn decay never run in production.
+        """
+        if hasattr(self, "decay_expiry_loop") and not self.decay_expiry_loop.is_running():
+            self.decay_expiry_loop.start()
+            logger.info("Sentinel decay+expiry loop started (interval: 1h)")
+
     def _collect_guild_ids(self) -> list[str]:
         """Collect guild IDs from bot.guilds (best-effort, no throw)."""
         ids: list[str] = []
