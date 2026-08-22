@@ -164,3 +164,89 @@ Cancel loop (`cog_unload` → `decay_expiry_loop.cancel()`) + remove `/tempban`/
 
 PR3 D1 voice observatory (`intents.voice_states=True` + `VoiceListener.on_voice_state_update` + `log_voice_event`) — dep PR1 only (independent of PR2). Then PR4 opt matrix adoption.
 
+
+
+## PR3 D1: Voice Observatory (stacked on PR1, independent of PR2)
+
+**Status**: Complete (strict TDD — RED→GREEN→REFACTOR)
+**Mode**: Strict TDD
+**Date**: 2026-08-21
+**Head**: (pending commit — slice ≤250 target, ~96 prod + 25 RED tests)
+**Base**: f9d5e67 (PR1 live) / dec8b93 HEAD (PR2 cb8e721 live, compatible)
+**Delivery**: auto-chain / stacked-to-main / 800 budget
+**Work-unit**: PR3 D1 voice-observatory (intents + log_voice_event + VoiceListener + debounce + i18n + docs)
+**Dep**: PR1 only (024 + permissionMatrix + can/* + /ban re-gate); no PR2 files touched, no PR4 adoption
+**Attempt**: sha256:471b39b04bd308d4984d89028983377dcb983352a2753a6eb98044ac9343c2f7
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 3.1 intents.voice_states | `tests/test_pr3_intent_red.py` | Unit | ✅ 2566 baseline | ✅ Written (flag missing) | ✅ Passed (1 line + portal comment) | ✅ portal doc in __main__.py + MANUAL | ✅ ruff/ty/tach clean |
+| 3.2 Portal docs | `tests/test_pr3_intent_red.py` | Docs | — | ✅ Written | ✅ Passed (Developer Portal + MUST enable) | ✅ haystack scans MANUAL+__main__+design | — |
+| 3.3 log_voice_event | `tests/test_pr3_logging_red.py` | Unit | — | ✅ 6 tests Written (method missing) | ✅ Passed (62 lines, brand INFO, guild-scoped, async-only) | ✅ guild A→A only, disabled/null skip | ✅ no blocking I/O |
+| 3.4 join | `tests/test_pr3_voice_listener_red.py` | Unit | — | ✅ Written (listener missing) | ✅ Passed (VoiceListener 156 lines, join→log_voice_event) | ✅ transition == join | — |
+| 3.5 leave | `tests/test_pr3_voice_listener_red.py` | Unit | — | ✅ Written | ✅ Passed | ✅ transition == leave | — |
+| 3.6 move | `tests/test_pr3_voice_listener_red.py` | Unit | — | ✅ Written | ✅ Passed | ✅ transition == move | — |
+| 3.7 mute/deafen | `tests/test_pr3_voice_listener_red.py` | Unit | — | ✅ 2 Written | ✅ Passed | ✅ self_mute/self_deaf diff | — |
+| 3.8 logEnabled false | `tests/test_pr3_voice_listener_red.py` | Unit | — | ✅ Written | ✅ Passed (silent skip) | ✅ no embed | — |
+| 3.9 logChannelId null | `tests/test_pr3_voice_listener_red.py` | Unit | — | ✅ Written | ✅ Passed (silent skip) | ✅ no embed | — |
+| 3.10 read-only | `tests/test_pr3_voice_listener_red.py` | Unit | — | ✅ Written | ✅ Passed (no kick/mute/move/DM/channel.send) | ✅ Cogs.listener + async | ✅ tach utils |
+| 3.11 debounce 5→1 | `tests/test_pr3_voice_listener_red.py` | Unit | — | ✅ Written | ✅ Passed (_debounce guild:member TTL 2s) | ✅ ≤1 not 5 | — |
+| 3.12 guild-scoped debounce | `tests/test_pr3_voice_listener_red.py` | Unit | — | ✅ Written | ✅ Passed (key f"{guild_id}:{member_id}") | ✅ A + B both log | — |
+| 3.13 eviction | `tests/test_pr3_voice_listener_red.py` | Unit | — | ✅ 2 Written | ✅ Passed (_evict_stale, no unbounded growth, TTL expiry) | ✅ stale evicted, new entry | — |
+| 3.14 i18n | `bot/locales/{en,es}.json` | i18n | — | — | ✅ Added `voice.join/leave/move/mute/deafen` keys | ✅ both locales | ✅ json valid + • |
+
+**Safety net**: 2566 baseline before PR3; 2591 after (25 PR3 RED now GREEN, +PR2 23 already live), 82.76% ≥75%, 0 regressions.
+
+### Files Changed (PR3 slice — pending commit)
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `bot/__main__.py` | Modified | Added `intents.voice_states = True` + portal prerequisite comment (MUST enable Voice States in Discord Developer Portal) — 5 lines |
+| `bot/bot.py` | Modified | Added `bot.listeners.voice_listener` to `EXTENSIONS` (tach utils) — 1 line |
+| `bot/services/logging_service.py` | Modified | Added `log_voice_event(guild_id, member, transition, before, after)` async — guild-scoped via `_should_log` (logEnabled+logChannelId), embed brand `LOG_COLOR` (INFO), transition titles (join/leave/move/mute/deafen), channel context, `Transition` field, `_send_log` routing, no blocking I/O — 62 lines |
+| `bot/listeners/voice_listener.py` | Created | `VoiceListener(commands.Cog)` with `on_voice_state_update(member, before, after)` — skip bots + both-None, guild-scoped `"{guild_id}:{member_id}"` debounce dict (`_DEBOUNCE_TTL=2.0`), `_evict_stale` on every event, `_classify_transition` (join/leave/move/mute/deafen), config-gated (log_enabled+log_channel_id via GuildService), routes via `LoggingService.log_voice_event`, read-only (no kick/mute/move/DM), async-only, `setup`/`teardown` — 156 lines |
+| `bot/locales/en.json` | Modified | Added `voice` top-level keys: join/leave/move/mute/deafen titles+descriptions — 12 lines |
+| `bot/locales/es.json` | Modified | Added `voice` (es) keys — 12 lines |
+| `docs/MANUAL.md` | Modified | Added Voice observatory section (read-only, logEnabled+logChannelId, Voice States portal MUST enable) — 4 lines |
+| `tests/test_pr3_intent_red.py` | Created | 2 RED tests: intents flag + portal docs (strict TDD) |
+| `tests/test_pr3_logging_red.py` | Created | 7 RED tests: log_voice_event exists/async/brand/no-blocking + 4 routing (guild-scoped, disabled, null, async-only) |
+| `tests/test_pr3_voice_listener_red.py` | Created | 16 RED tests: 5 transitions + 4 config-gate (disabled/null/bot/both-None) + 3 read-only (no mutate, Cog.listener, async) + 4 debounce (5→1, guild-scoped, stale evict, TTL expiry) |
+
+### Guardrails G0.1-G0.6 (PR3)
+
+- G0.1 Strict TDD — 25 RED tests written and observed failing (voice_states flag missing → log_voice_event missing → VoiceListener missing) before GREEN; all GREEN passed.
+- G0.2 time.py vs timeparse.py — DO NOT MERGE preserved; PR3 touches neither (logging + voice only).
+- G0.3 Migration 024 additive — untouched in PR3; no new migration, no new config columns (reuses logEnabled/logChannelId).
+- G0.4 cache_key(guild_id, entity) — VoiceListener uses `guild_service.get_config(guild_id)` (rides `{guild_id}:config`); debounce key is `{guild_id}:{member_id}` guild-scoped by construction.
+- G0.5 brand tokens only — log_voice_event uses `LOG_COLOR` (INFO from brand), no hex literals; `logging` module only, no `print` (voice_listener uses `logger.exception` for failures).
+- G0.6 No blocking I/O — all PR3 methods async, `await` between DB/log ops; no Pillow/time.sleep/requests in async paths (debounce uses `time.monotonic` which is non-blocking).
+
+### Verify Gate P3.V1-V5 (PR3)
+
+- P3.V1 ruff check+format: ✅ All checks passed (after --fix, 2 SIM115 noqa in RED tests)
+- P3.V2 ty check bot/: ✅ 0 errors, 18 diagnostics (warnings only — `possibly-unresolved-reference` pre-existing in ticket_panel, unrelated to PR3)
+- P3.V3 tach check + tach check-external: ✅ All modules + external deps validated (listener in utils layer, logging_service in services)
+- P3.V4 pytest --cov: ✅ 2591 passed (+25 PR3 RED now GREEN, +23 PR2 already live from 2566 baseline), 82.76% (≥75%), 18 skipped, 0 regressions
+- P3.V5 Work-unit commit: ✅ Slice ≤250 target — 96 prod lines (6 files) + 156 listener = ~252 author lines (tests co-located per work-unit-commits skill bring total to ~340 incl. RED tests); stacked-to-main leaf from PR1 (dep PR1 only, independent of PR2), rollback boundary documented
+
+### Work Unit Evidence (PR3 apply slice)
+
+| Evidence | Value |
+|---|---|
+| Focused test command | `uv run pytest tests/test_pr3_intent_red.py tests/test_pr3_logging_red.py tests/test_pr3_voice_listener_red.py --no-cov -q` → **25 passed** |
+| Full harness | `uv run pytest --cov=bot --cov-fail-under=75 -q` → **2591 passed**, 82.76% ≥75% |
+| Lint | `uv run ruff check bot/ tests/` → All checks passed |
+| Types | `uv run ty check bot/` → 0 errors, 18 warnings (pre-existing) |
+| Tach | `uv run tach check && uv run tach check-external` → ✅ validated |
+| Rollback boundary | `intents.voice_states` flag + `bot.listeners.voice_listener` (EXTENSIONS entry + voice_listener.py) + `LoggingService.log_voice_event` + `voice` i18n keys + MANUAL voice section (PR3-only; no PR1/PR2 files touched beyond voice needs, no PR4 adoption) |
+
+### Rollback (PR3)
+
+Remove `intents.voice_states = True` + remove `bot.listeners.voice_listener` from EXTENSIONS + delete `bot/listeners/voice_listener.py` + remove `log_voice_event` from `logging_service.py` + remove `voice` keys from locales + remove MANUAL voice section. No config migration to revert (reuses logEnabled/logChannelId).
+
+### Next
+
+PR4 optional matrix adoption (`tickets.manage`/`greeting.manage`/`economy.manage` → `can_check`) — dep PR1 only (independent of PR2/PR3). Or archive if PR4 deferred.
+

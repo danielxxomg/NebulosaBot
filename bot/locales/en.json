@@ -803,6 +803,18 @@
     "next": "Next ▶",
     "stop": "⏹ Stop"
   },
+  "voice": {
+    "join_title": "Voice Join",
+    "join_description": "{mention} joined **{channel}**",
+    "leave_title": "Voice Leave",
+    "leave_description": "{mention} left **{channel}**",
+    "move_title": "Voice Move",
+    "move_description": "{mention} moved from **{from}** to **{to}**",
+    "mute_title": "Voice Mute",
+    "mute_description": "{mention} {state} in **{channel}**",
+    "deafen_title": "Voice Deafen",
+    "deafen_description": "{mention} {state} in **{channel}**"
+  },
   "confirm": {
     "not_owner_title": "Not Allowed",
     "not_owner_description": "Only the person who ran this command can use these buttons.",

@@ -420,6 +420,68 @@ class LoggingService:
 
         await self._send_log(guild_id, embed)
 
+    async def log_voice_event(
+        self,
+        guild_id: str,
+        member: discord.Member,
+        transition: str,
+        before: discord.VoiceState,
+        after: discord.VoiceState,
+    ) -> None:
+        """Log a voice-state transition to the guild's configured log channel.
+
+        Guild-scoped, async-only, brand-token colored, config-gated via
+        ``_should_log`` (logEnabled + logChannelId). No blocking I/O.
+        Routes strictly to guild G's logChannelId.
+
+        Args:
+            guild_id: Guild snowflake as string.
+            member: Member whose voice state changed.
+            transition: One of ``join|leave|move|mute|deafen``.
+            before: Voice state before the change.
+            after: Voice state after the change.
+        """
+        if not await self._should_log(guild_id):
+            return
+
+        # Build human-readable title per transition (brand token, no hex).
+        titles: dict[str, str] = {
+            "join": f"🔊 {member.mention} joined voice",
+            "leave": f"🔇 {member.mention} left voice",
+            "move": f"🔀 {member.mention} moved voice",
+            "mute": f"🎙️ {member.mention} {'muted' if getattr(after, 'self_mute', False) else 'unmuted'}",
+            "deafen": f"🎧 {member.mention} {'deafened' if getattr(after, 'self_deaf', False) else 'undeafened'}",
+        }
+        title = titles.get(transition, f"🔊 {member.mention} voice update ({transition})")
+
+        embed = discord.Embed(
+            title=title,
+            color=LOG_COLOR,
+            timestamp=datetime.now(UTC),
+        )
+        # Member field always useful.
+        embed.add_field(name="Member", value=f"{member.mention} ({member.name})", inline=True)
+
+        # Channel context per transition.
+        before_ch = getattr(before, "channel", None)
+        after_ch = getattr(after, "channel", None)
+        if transition == "join" and after_ch is not None:
+            embed.add_field(name="Channel", value=getattr(after_ch, "name", str(after_ch)), inline=True)
+        elif transition == "leave" and before_ch is not None:
+            embed.add_field(name="Channel", value=getattr(before_ch, "name", str(before_ch)), inline=True)
+        elif transition == "move" and before_ch is not None and after_ch is not None:
+            embed.add_field(
+                name="Channel",
+                value=f"{getattr(before_ch, 'name', str(before_ch))} → {getattr(after_ch, 'name', str(after_ch))}",
+                inline=True,
+            )
+        elif transition in {"mute", "deafen"} and after_ch is not None:
+            embed.add_field(name="Channel", value=getattr(after_ch, "name", str(after_ch)), inline=True)
+
+        embed.add_field(name="Transition", value=transition, inline=True)
+
+        await self._send_log(guild_id, embed)
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
