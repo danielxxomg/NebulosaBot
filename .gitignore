@@ -52,3 +52,6 @@ htmlcov/
 
 # Supabase local cache (supabase link)
 supabase/.temp/
+
+# Local audit report (GGA cycles) — not tracked
+AUDITORIA-GGA-C1-C3.md
