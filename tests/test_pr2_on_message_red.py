@@ -1,7 +1,7 @@
 """RED for PR2 2.8-2.11 on_message ,12h/,cancel, embed, confirm, loop, cancel, silence."""
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
@@ -267,3 +267,120 @@ async def test_cog_unload_cancels_scheduled():
     cog.integrity_sweep_loop = MagicMock(is_running=MagicMock(return_value=False), cancel=MagicMock())
     await cog.cog_unload()
     cog.scheduled_close_loop.cancel.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — timer gate honors permissionMatrix via can_member("tickets.manage")
+# ---------------------------------------------------------------------------
+
+
+def _make_ticket_manager_message(
+    *,
+    role_id: int | None = None,
+    administrator: bool = False,
+    guild_id: int = 123,
+    channel_id: int = 444,
+    content: str = ",12h",
+) -> MagicMock:
+    """Build a Message whose author is a non-admin, non-modRole member.
+
+    When ``role_id`` is given the author carries that role — used to simulate a
+    matrix-granted ticket manager (``permissionMatrix["tickets.manage"]``).
+    """
+    msg = MagicMock(spec=discord.Message)
+    msg.content = content
+    author = MagicMock(spec=discord.Member)
+    author.bot = False
+    author.id = 999
+    author.guild_permissions.administrator = administrator
+    roles: list[MagicMock] = []
+    if role_id is not None:
+        role = MagicMock(spec=discord.Role)
+        role.id = role_id
+        roles.append(role)
+    author.roles = roles
+    msg.author = author
+    msg.guild = MagicMock(spec=discord.Guild)
+    msg.guild.id = guild_id
+    msg.channel = MagicMock(spec=discord.TextChannel)
+    msg.channel.id = channel_id
+    msg.channel.send = AsyncMock()
+    msg.channel.send.return_value = AsyncMock(pin=AsyncMock(), edit=AsyncMock())
+    msg.channel.pins = AsyncMock(return_value=[])
+    return msg
+
+
+@pytest.mark.asyncio
+async def test_on_message_matrix_granted_ticket_manager_passes_gate() -> None:
+    """A member granted ``tickets.manage`` via permissionMatrix MUST pass the timer gate.
+
+    RED: the gate currently uses ``is_mod_member`` (admin/modRole only), so a
+    non-admin, non-modRole member with a matrix-granted ticket-manager role is
+    denied. After GREEN the gate uses ``can_member("tickets.manage", ...)`` and
+    the matrix grant lets the timer command through.
+    """
+    from bot.cogs.tickets import TicketsCog
+
+    ticket_manager_role = 4242
+    bot = _make_bot()
+    row = {"id": "t1", "status": "open", "guildId": "123", "channelId": "444"}
+    bot.db.get_ticket_by_channel = AsyncMock(return_value=row)
+    bot.ticket_service.handle_timer_message = AsyncMock(return_value=_scheduled_result())
+
+    guild_service = MagicMock()
+    guild_service.get_config = AsyncMock(
+        return_value=MagicMock(
+            permission_matrix={"tickets.manage": [str(ticket_manager_role)]},
+            mod_role_id=None,
+        )
+    )
+    cog = TicketsCog(bot)
+    msg = _make_ticket_manager_message(role_id=ticket_manager_role, administrator=False)
+
+    with patch("bot.utils.checks._get_guild_service", return_value=guild_service):
+        await cog.on_message(msg)
+
+    bot.ticket_service.handle_timer_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_on_message_plain_member_denied_timer_gate() -> None:
+    """A plain member (no admin, no modRole, no matrix grant) MUST be denied."""
+    from bot.cogs.tickets import TicketsCog
+
+    bot = _make_bot()
+    row = {"id": "t1", "status": "open", "guildId": "123", "channelId": "444"}
+    bot.db.get_ticket_by_channel = AsyncMock(return_value=row)
+    bot.ticket_service.handle_timer_message = AsyncMock(return_value=_scheduled_result())
+
+    guild_service = MagicMock()
+    guild_service.get_config = AsyncMock(return_value=MagicMock(permission_matrix={}, mod_role_id=None))
+    cog = TicketsCog(bot)
+    msg = _make_ticket_manager_message(role_id=None, administrator=False)
+
+    with patch("bot.utils.checks._get_guild_service", return_value=guild_service):
+        await cog.on_message(msg)
+
+    bot.ticket_service.handle_timer_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_on_message_admin_still_passes_timer_gate() -> None:
+    """An administrator MUST still pass the timer gate (implicit admin pass)."""
+    from bot.cogs.tickets import TicketsCog
+
+    bot = _make_bot()
+    row = {"id": "t1", "status": "open", "guildId": "123", "channelId": "444"}
+    bot.db.get_ticket_by_channel = AsyncMock(return_value=row)
+    bot.ticket_service.handle_timer_message = AsyncMock(return_value=_scheduled_result())
+
+    # Empty matrix — admin passes via the implicit admin short-circuit.
+    guild_service = MagicMock()
+    guild_service.get_config = AsyncMock(return_value=MagicMock(permission_matrix={}, mod_role_id=None))
+    cog = TicketsCog(bot)
+    msg = _make_ticket_manager_message(role_id=None, administrator=True)
+
+    with patch("bot.utils.checks._get_guild_service", return_value=guild_service):
+        await cog.on_message(msg)
+
+    bot.ticket_service.handle_timer_message.assert_awaited_once()

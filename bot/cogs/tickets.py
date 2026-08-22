@@ -24,7 +24,7 @@ from bot.core.context import NebulosaContext
 from bot.core.i18n import t
 from bot.models.ticket import Ticket
 from bot.utils.brand import SUCCESS, WARNING
-from bot.utils.checks import can_check, is_admin, is_mod_member
+from bot.utils.checks import can_check, can_member, is_admin
 from bot.utils.embeds import build_ticket_embed, info_embed
 from bot.views.confirmation import ConfirmCancelView
 from bot.views.tickets import (
@@ -257,9 +257,12 @@ class TicketsCog(commands.Cog, name="Tickets"):
         content = (message.content or "").strip()
         if not content.startswith(","):
             return
-        # mod gate (member-based; no Interaction available in on_message)
+        # tickets.manage gate (member-based; no Interaction available in on_message).
+        # Honors permissionMatrix via can_member — matrix-granted ticket managers
+        # pass even without the mod role; admins pass implicitly. Non-moderation
+        # perm has NO modRole fallback (matrix is the source of truth).
         author = message.author
-        if not isinstance(author, discord.Member) or not is_mod_member(author, self.bot, message.guild.id):
+        if not isinstance(author, discord.Member) or not await can_member("tickets.manage", author, gid):
             return
         ticket_row = await self._fetch_active_ticket_row(message.channel.id, gid)
         if ticket_row is None:
