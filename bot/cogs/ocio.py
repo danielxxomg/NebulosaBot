@@ -119,7 +119,8 @@ class OcioCog(commands.Cog, name="Ocio"):
 
     # alias so RED's hasattr checks and cog_commands name all pass
     @property
-    def eightball(self):
+    def eightball(self) -> commands.HybridCommand:
+        """Alias for :attr:`eight_ball` — RED ``hasattr`` + cog-name probes."""
         return self.eight_ball
 
     # ==================================================================

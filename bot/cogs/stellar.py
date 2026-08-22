@@ -296,7 +296,8 @@ class StellarCog(commands.Cog, name="Stellar"):
             rank_renderer = getattr(self.bot, "rank_renderer", None)
             if rank_renderer is None:
                 rank_renderer = RankRenderer()
-        except Exception:
+        except (ImportError, AttributeError):
+            logger.exception("Rank renderer unavailable, falling back to ImageService")
             rank_renderer = None
 
         if rank_renderer is not None:
