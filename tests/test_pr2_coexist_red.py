@@ -48,13 +48,18 @@ async def test_scheduled_loop_is_silent_no_countdown():
 
 @pytest.mark.asyncio
 async def test_auto_close_clears_scheduled_fields():
-    # AUTO_CLOSE sweep should clear scheduledCloseAt/By via lifecycle/service
+    # AUTO_CLOSE sweep should clear scheduledCloseAt/By via lifecycle/service.
+    # Round 2: the clear was extracted into _clear_scheduled_fields (DRY across
+    # both close_ticket branches); assert close_ticket still triggers it, and
+    # the helper itself carries the scheduledCloseAt field clear.
     import inspect
 
     from bot.services.ticket_lifecycle_service import TicketLifecycleService
 
-    src = inspect.getsource(TicketLifecycleService.close_ticket)
-    assert "scheduledCloseAt" in src or "scheduled_close" in src.lower()
+    close_src = inspect.getsource(TicketLifecycleService.close_ticket)
+    helper_src = inspect.getsource(TicketLifecycleService._clear_scheduled_fields)
+    assert "_clear_scheduled_fields" in close_src, "close_ticket MUST call _clear_scheduled_fields"
+    assert "scheduledCloseAt" in helper_src or "scheduled_close" in helper_src.lower()
 
 
 @pytest.mark.asyncio

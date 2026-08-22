@@ -204,9 +204,12 @@ def can_check(permission: str) -> Any:
             return True
         # For prefix, distinguish mod-role configured? Generic failure keeps spec simple.
         # Tests expect CheckFailure for non-admin/non-granted; MissingRole is for is_mod only.
-        # can_check raises CheckFailure for deny.
+        # can_check raises commands.CheckFailure (NOT app_commands.CheckFailure) on the
+        # prefix path so discord.py's Bot.invoke routes the denial to
+        # on_command_error and the user gets a message — app_commands.CheckFailure
+        # derives from AppCommandError/DiscordException, not commands.CommandError.
         msg = f"Missing permission: {permission}"
-        raise app_commands.CheckFailure(msg)
+        raise _commands.CheckFailure(msg)
 
     def decorator(func: Any) -> Any:
         return _commands.check(_prefix_predicate)(app_commands.check(_app_predicate)(func))

@@ -67,9 +67,11 @@ class OcioService:
             data = await asyncio.to_thread(_pillow_banana_placeholder)
             return data, "dorada.webp", _DORADA_CM
 
-        # 99% pool path
+        # 99% pool path — glob is blocking filesystem I/O: run it off the
+        # event loop via asyncio.to_thread (sibling read_bytes calls already do).
+        # sorted() gives a deterministic order so random.choice is stable across calls.
         try:
-            pool = list(self._banana_dir.glob("*.webp"))
+            pool = await asyncio.to_thread(lambda: sorted(self._banana_dir.glob("*.webp")))
         except Exception:
             pool = []
         if not pool:
