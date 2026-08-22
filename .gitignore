@@ -49,3 +49,6 @@ htmlcov/
 *.tar.gz
 *.tgz
 *.tar.xz
+
+# Supabase local cache (supabase link)
+supabase/.temp/
