@@ -71,46 +71,64 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         return ids
 
     async def _expire_tempbans_for_guild(self, guild_id: str) -> None:
-        """DB-sourced tempban expiry for one guild (unban + deactivate)."""
+        """DB-sourced tempban expiry for one guild — thin orchestration.
+
+        Business logic (scan + deactivate + count) lives in
+        ``InfractionService.expire_tempbans``; this cog only resolves the
+        guild object, builds the Discord ``unban`` callback, logs the phase
+        through ``LoggingService.log_sentinel_loop``, and keeps restart
+        durability via the DB source of truth.
+        """
+        if self.bot.infraction_service is None:
+            return
+
+        guild_obj = None
         try:
-            expired = await self.bot.db.get_expired_tempbans(guild_id)  # type: ignore[union-attr]
+            getter = getattr(self.bot, "get_guild", None)
+            guild_obj = getter(int(guild_id)) if callable(getter) and guild_id.isdigit() else None
+        except Exception:
+            guild_obj = None
+
+        async def _unban_target(target_id: str) -> None:
+            """Lift the Discord ban for an expired tempban (cog side-effect)."""
+            if guild_obj is None or not target_id:
+                return
+            uid = int(target_id) if target_id.isdigit() else None
+            if uid is None:
+                return
+            await guild_obj.unban(discord.Object(id=uid), reason="Tempban expired")
+
+        try:
+            expired_count = await self.bot.infraction_service.expire_tempbans(
+                guild_id,
+                unban_fn=_unban_target,
+            )
         except Exception:
             logger.exception("tempban expiry scan failed for guild %s", guild_id)
             return
-        for row in expired:
-            target_id = row.get("targetId") or row.get("target_id") or ""
-            guild_obj = None
+
+        if self.bot.logging_service is not None:
             try:
-                getter = getattr(self.bot, "get_guild", None)
-                guild_obj = getter(int(guild_id)) if callable(getter) and guild_id.isdigit() else None
+                await self.bot.logging_service.log_sentinel_loop(guild_id, "expiry", expired_count)
             except Exception:
-                guild_obj = None
-            if guild_obj is not None and target_id:
-                try:
-                    uid = int(target_id) if target_id.isdigit() else None
-                    if uid is not None:
-                        await guild_obj.unban(discord.Object(id=uid), reason="Tempban expired")
-                except Exception:
-                    logger.exception("guild.unban failed for %s in %s", target_id, guild_id)
-            try:
-                db = getattr(self.bot, "db", None)
-                if db is not None:
-                    await db.deactivate_infraction(guild_id, row["id"])
-            except Exception:
-                logger.exception("deactivate_infraction failed for %s", row.get("id"))
-            if self.bot.logging_service is not None:
-                logger.info("tempban expired guild=%s target=%s", guild_id, target_id)
+                logger.exception("log_sentinel_loop(expiry) failed for %s (non-fatal)", guild_id)
 
     @tasks.loop(hours=1)
     async def decay_expiry_loop(self) -> None:
-        """Hourly: decay 30d WARNs then expire tempbans (DB-sourced, restart-durable)."""
+        """Hourly: decay 30d WARNs then expire tempbans (DB-sourced, restart-durable).
+
+        Each phase (decay then expiry) logs through ``LoggingService.log_sentinel_loop``
+        so loop activity is auditable in the guild's log channel. Business logic
+        (scan + deactivate + count) stays in ``InfractionService``; this cog only
+        orchestrates per-guild iteration and injects the Discord unban callback.
+        """
         if self.bot.db is None or self.bot.infraction_service is None:
             return
         for gid in self._collect_guild_ids():
             try:
                 decayed = await self.bot.infraction_service.decay_warnings(gid)
-                if decayed and self.bot.logging_service is not None:
-                    logger.info("decay_warnings guild=%s decayed=%s", gid, decayed)
+                if self.bot.logging_service is not None:
+                    await self.bot.logging_service.log_sentinel_loop(gid, "decay", decayed)
             except Exception:
                 logger.exception("decay_warnings failed for guild %s", gid)
             await self._expire_tempbans_for_guild(gid)
@@ -1105,12 +1123,28 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                 msg = "ctx.author must be discord.Member"
                 raise TypeError(msg)
             await self.bot.logging_service.log_moderation_action(guild_id, "Tempban", member, ctx.author, reason)
+            # Ephemeral-standard: the confirmation dialog is ephemeral, but the
+            # final action result MUST be permanent (visible to the channel).
+            # Edit the ephemeral confirm to a closed notice, then send the
+            # permanent action embed to the channel.
             await interaction.response.edit_message(
+                embed=discord.Embed(
+                    title=t(guild_id, "confirm.confirmed_title"),
+                    description=t(
+                        guild_id,
+                        "confirm.tempban_confirmed_description",
+                        mention=member.mention,
+                    ),
+                    color=INFO,
+                ),
+                view=None,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+            await ctx.channel.send(
                 embed=success_embed(
                     t(guild_id, "sentinel.tempban.success_title"),
                     t(guild_id, "sentinel.tempban.success_description", mention=member.mention, reason=safe_reason),
                 ),
-                view=None,
                 allowed_mentions=discord.AllowedMentions.none(),
             )
 
@@ -1206,15 +1240,16 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         try:
             uid_int = int(user_id) if user_id.isdigit() else 0
             fake_user = discord.Object(id=uid_int)
-            # discord.Object lacks mention; attach it for logging display
+            # discord.Object lacks mention/name; attach both for logging display
+            # so the moderation log embed is not degraded (target.name + target.mention).
             fake_user.mention = f"<@{user_id}>"  # type: ignore[attr-defined]
-            # log_moderation_action expects Member|User; Object suffices at runtime
+            fake_user.name = user_id  # type: ignore[attr-defined]
             await self.bot.logging_service.log_moderation_action(
                 guild_id,
                 "Unban",
-                fake_user,
+                fake_user,  # type: ignore[arg-type]  # banned user not a Member; runtime-structurally compatible
                 ctx.author,
-                f"Unbanned {user_id}",  # type: ignore[arg-type]
+                f"Unbanned {user_id}",
             )
         except Exception:
             logger.exception("log_moderation_action failed for unban (non-fatal)")

@@ -8,6 +8,7 @@ warning should trigger an automatic escalation (mute / kick).
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -185,11 +186,45 @@ class InfractionService:
                 member_row = await self._db.get_member(guild_id, target_id)
                 current = int(member_row.get("warnings", 0)) if member_row else 0
             except Exception:
-                current = 1  # assume positive so we still decrement once
+                # Lookup failed — assume 0 so the floor guarantee holds: we
+                # deactivate the stale WARN row but never drive warnings
+                # negative. Defense in depth with the RPC's GREATEST floor.
+                current = 0
             if current > 0:
                 await self._db.update_member_warnings(guild_id, target_id, delta=-1)
             decayed += 1
         return decayed
+
+    async def expire_tempbans(
+        self,
+        guild_id: str,
+        unban_fn: Callable[[str], Awaitable[None]] | None = None,
+    ) -> int:
+        """Expire past-expiry tempbans: scan → unban (via callback) → deactivate.
+
+        DB-sourced (restart-durable): scans ``get_expired_tempbans`` each
+        call so a bot restart recovers pending unbans without an in-memory
+        timer. Business logic (scan + deactivate + count) stays in the
+        service; the caller injects ``unban_fn(target_id)`` to lift the
+        Discord ban (Discord side-effect belongs to the cog). Returns the
+        number of expired tempbans processed.
+        """
+        expired = await self._db.get_expired_tempbans(guild_id)
+        if not expired:
+            return 0
+        count = 0
+        for row in expired:
+            target_id = row.get("targetId") or row.get("target_id") or ""
+            if not target_id:
+                continue
+            if unban_fn is not None:
+                try:
+                    await unban_fn(target_id)
+                except Exception:
+                    logger.exception("unban callback failed for %s (non-fatal)", target_id)
+            await self._db.deactivate_infraction(guild_id, row["id"])
+            count += 1
+        return count
 
     async def check_escalation(self, guild_id: str, target_id: str) -> EscalationAction | None:
         """Evaluate whether the member's warning count triggers auto-escalation.

@@ -239,6 +239,38 @@ class LoggingService:
 
         await self._send_log(guild_id, embed)
 
+    async def log_sentinel_loop(
+        self,
+        guild_id: str,
+        phase: str,
+        count: int,
+    ) -> None:
+        """Log a SentinelCog decay/expiry loop phase (hourly task).
+
+        Each loop phase (``decay`` and ``expiry``) MUST log through this
+        method so loop activity is auditable in the guild's log channel
+        alongside other moderation actions. Brand-token colored, config-gated
+        via ``_should_log`` (logEnabled + logChannelId), async-only.
+
+        Args:
+            guild_id: Guild snowflake as string.
+            phase: ``"decay"`` (warning decay) or ``"expiry"`` (tempban expiry).
+            count: Number of rows the phase processed (may be 0).
+        """
+        if not await self._should_log(guild_id):
+            return
+
+        embed = discord.Embed(
+            title=f"⏱️ Sentinel loop: {phase}",
+            description=f"Processed {count} row(s) this cycle.",
+            color=LOG_COLOR,
+            timestamp=datetime.now(UTC),
+        )
+        embed.add_field(name="Phase", value=phase, inline=True)
+        embed.add_field(name="Guild", value=guild_id, inline=True)
+
+        await self._send_log(guild_id, embed)
+
     async def log_message_edit(
         self,
         guild_id: str,
