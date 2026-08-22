@@ -22,6 +22,9 @@
 - Error handling: ephemeral embeds for slash, channel embeds for prefix
 - Never hardcode prefixes, channel IDs, or role IDs — read from guild config
 - Use `app_commands.check()` for custom permission checks, compose with `has_permissions()`
+- **Permission decorators**: `@can_check("<perm>")` (matrix-gated, 7 keys: `moderation.{warn,mute,kick,ban}`, `tickets.manage`, `economy.manage`, `greeting.manage`); `@is_mod()` (mod-role fallback); `@is_admin()` (admin-only). All three dual-register prefix+slash. Use `can()`/`can_member()` for non-decorator call sites
+- **Command visibility**: admin/config → ephemeral; mod-action → permanent; fun → permanent; personal/info → ephemeral (see `ephemeral-standard` spec)
+- **Background loops**: `@tasks.loop()` MUST be DB-sourced for restart durability (scan each iteration, no in-memory timers), with `before_loop` (wait ready) + `cog_unload()` (cancel)
 - Sync tree: `await tree.sync()` in `setup_hook()`, not in `on_ready()`
 
 ## Architecture
@@ -32,8 +35,9 @@
 - **Cache-first reads**: check RAM cache → DB fallback → populate cache
 - **Guild-scoped keys**: cache keys MUST include guild_id (e.g., `{guild_id}:config`); new caches MUST use `cache_key(guild_id, entity)` from `bot.core.cache` so keys are `{guild_id}:{entity}` and cannot leak across guilds
 - **No blocking I/O in event loop**: use `asyncio.to_thread()` for Pillow, file I/O, etc.
-- **Supabase**: use `create_client()` with `ClientOptions`, async operations preferred
-- **Pterodactyl `python:3.11-slim` without apt**: `cairosvg` requires `libcairo` (`cairocffi` → C library) and is NOT available in slim; renderer default is `Pillow` procedural with `brand.ACCENT` tokens. SVG path is behind a probe+fallback (`import cairosvg` at boot → `ImportError` logs WARNING and injects `PillowGreetingRenderer`); Cycle 2 swaps one injection line when `libcairo` is provisioned
+- **Supabase**: `create_client()` with `AsyncClientOptions(schema="public", auto_refresh_token=False, persist_session=False)`; async is MUST
+- **Renderer**: `Pillow` is the default (procedural, `brand.ACCENT`); `cairosvg` optional behind a boot probe (`ImportError` → WARNING + Pillow injection). Do NOT hard-depend on `cairosvg`
+- **Listeners are read-only**: `bot/listeners/*.py` cogs MUST NOT kick/mute/move/DM/send-into-voice. They observe + log via `LoggingService`. Per-member debounce is guild-scoped (`f"{guild_id}:{member_id}"`) with TTL + stale eviction
 
 ## Naming
 
@@ -77,6 +81,8 @@
 - ❌ Using `on_ready` for cog loading or tree sync
 - ❌ `timeout=None` without `custom_id` on persistent views
 - ❌ Bare `except:` — always catch specific exceptions
+- ❌ Using `is_mod()`/`is_admin()` when `can_check()` applies (matrix-gated permissions)
+- ❌ Listeners that mutate state (kick/mute/move/DM) — listeners are read-only
 
 ## GGA Review Discipline
 
