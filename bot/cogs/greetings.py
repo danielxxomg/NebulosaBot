@@ -94,36 +94,6 @@ class GreetingsCog(commands.Cog, name="Greetings"):
     # /welcome_test
     # ------------------------------------------------------------------
 
-    def _resolve_renderer(self) -> Any:
-        """Resolve the greeting renderer (prefer image_service for cog test paths)."""
-        # Prefer image_service so tests that mock only image_service keep working.
-        # MagicMock auto-creates attrs, so check __dict__ for explicit assignment.
-        import unittest.mock as _mock_mod
-
-        def _explicit(obj: Any, name: str) -> bool:
-            if isinstance(obj, _mock_mod.MagicMock):
-                return name in obj.__dict__ or name in obj.__dict__.get("_mock_children", {})
-            return hasattr(obj, name)
-
-        # If image_service has an explicitly configured generate_greeting_card/render, prefer it.
-        img_svc = getattr(self.bot, "image_service", None)
-        if img_svc is not None and (_explicit(img_svc, "generate_greeting_card") or _explicit(img_svc, "render")):
-            return img_svc
-
-        if getattr(self.bot, "greeting_service", None) is not None:
-            renderer = getattr(self.bot.greeting_service, "_greeting_renderer", None)
-            # For MagicMock, check explicit
-            if renderer is not None and not isinstance(renderer, _mock_mod.MagicMock):
-                return renderer
-            if isinstance(renderer, _mock_mod.MagicMock):
-                # Only if explicitly set (not auto-created)
-                if _explicit(self.bot.greeting_service, "_greeting_renderer"):
-                    return renderer
-                return img_svc
-            if renderer is not None:
-                return renderer
-        return img_svc
-
     def _greeting_kwargs(
         self,
         ctx: NebulosaContext,
@@ -159,32 +129,11 @@ class GreetingsCog(commands.Cog, name="Greetings"):
 
         await ctx.defer(ephemeral=True)
 
-        renderer = self._resolve_renderer()
-        if renderer is None:
-            msg = "Greeting renderer initialised in setup_hook"
+        if self.bot.greeting_service is None:
+            msg = "GreetingService initialised in setup_hook"
             raise RuntimeError(msg)
-        # Prefer generate_greeting_card if explicitly configured (test mock), else render.
-        import unittest.mock as _mock_mod2
-
-        def _explicit_render(obj: Any, name: str) -> bool:
-            if isinstance(obj, _mock_mod2.MagicMock):
-                return name in obj.__dict__ or name in obj.__dict__.get("_mock_children", {})
-            return hasattr(obj, name)
-
-        has_gen = _explicit_render(renderer, "generate_greeting_card")
-        has_render = _explicit_render(renderer, "render")
-        if has_gen and not has_render:
-            render_fn = renderer.generate_greeting_card
-        elif has_render and not has_gen:
-            render_fn = renderer.render
-        elif has_gen and has_render:
-            # Both explicitly set — prefer generate for legacy test compat
-            render_fn = renderer.generate_greeting_card
-        else:
-            render_fn = getattr(renderer, "render", None) or getattr(renderer, "generate_greeting_card", None)
-        if render_fn is None:
-            msg = "Greeting renderer missing render method"
-            raise RuntimeError(msg)
+        # Renderer-dispatch policy lives in the service (single copy, DRY).
+        render_fn = self.bot.greeting_service.resolve_renderer()
         try:
             kwargs = self._greeting_kwargs(ctx, "welcome", "greetings.card.welcome_title")
             buffer: io.BytesIO = await asyncio.to_thread(render_fn, **kwargs)
@@ -222,30 +171,11 @@ class GreetingsCog(commands.Cog, name="Greetings"):
 
         await ctx.defer(ephemeral=True)
 
-        renderer = self._resolve_renderer()
-        if renderer is None:
-            msg = "Greeting renderer initialised in setup_hook"
+        if self.bot.greeting_service is None:
+            msg = "GreetingService initialised in setup_hook"
             raise RuntimeError(msg)
-        import unittest.mock as _mock_mod3
-
-        def _explicit_render2(obj: Any, name: str) -> bool:
-            if isinstance(obj, _mock_mod3.MagicMock):
-                return name in obj.__dict__ or name in obj.__dict__.get("_mock_children", {})
-            return hasattr(obj, name)
-
-        has_gen2 = _explicit_render2(renderer, "generate_greeting_card")
-        has_render2 = _explicit_render2(renderer, "render")
-        if has_gen2 and not has_render2:
-            render_fn = renderer.generate_greeting_card
-        elif has_render2 and not has_gen2:
-            render_fn = renderer.render
-        elif has_gen2 and has_render2:
-            render_fn = renderer.generate_greeting_card
-        else:
-            render_fn = getattr(renderer, "render", None) or getattr(renderer, "generate_greeting_card", None)
-        if render_fn is None:
-            msg = "Greeting renderer missing render method"
-            raise RuntimeError(msg)
+        # Renderer-dispatch policy lives in the service (single copy, DRY).
+        render_fn = self.bot.greeting_service.resolve_renderer()
         try:
             kwargs = self._greeting_kwargs(ctx, "goodbye", "greetings.card.goodbye_title")
             buffer: io.BytesIO = await asyncio.to_thread(render_fn, **kwargs)

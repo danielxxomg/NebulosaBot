@@ -72,10 +72,18 @@ def mock_image_service() -> MagicMock:
 
 @pytest.fixture
 def mock_bot(mock_greeting_service: MagicMock, mock_image_service: MagicMock) -> MagicMock:
-    """Return a mock NebulosaBot with greeting_service and image_service."""
+    """Return a mock NebulosaBot with greeting_service and image_service.
+
+    The cog resolves the render callable via ``greeting_service.resolve_renderer()``
+    (Phase 2: renderer-dispatch policy lives in the service, single copy). Wire
+    the mock so the resolver returns the image_service's ``generate_greeting_card``
+    — tests that assert on its ``call_args`` keep working, and error-side tests
+    that set ``side_effect`` on it still propagate through the cog.
+    """
     bot = MagicMock(spec=commands.Bot)
     bot.greeting_service = mock_greeting_service
     bot.image_service = mock_image_service
+    mock_greeting_service.resolve_renderer = MagicMock(return_value=mock_image_service.generate_greeting_card)
     return bot
 
 

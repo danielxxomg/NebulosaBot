@@ -104,6 +104,35 @@ class GreetingService:
         ck = cache_key(config.guild_id, "greeting_config")
         self._cache.invalidate(ck)
 
+    def resolve_renderer(self) -> Any:
+        """Resolve the render callable for greeting cards — single source of truth.
+
+        Returns the callable that produces an ``io.BytesIO`` PNG.  Selection
+        policy (no mock introspection — decides by real protocol attributes):
+
+            1. If the injected renderer implements the ``GreetingRenderer``
+               protocol (i.e. exposes ``render``), use ``renderer.render``.
+               This is the canonical path (``PillowGreetingRenderer``).
+            2. Else if the renderer exposes ``generate_greeting_card`` (the
+               deprecated :class:`~bot.services.image_service.ImageService`
+               shim), use that.
+            3. Else raise ``AttributeError``.
+
+        The cog test commands (``/welcome_test``, ``/goodbye_test``) and
+        :meth:`dispatch_greeting` both go through this resolver so the policy
+        exists in exactly one place (DRY — AGENTS.md: "business logic in
+        services, not cogs").
+        """
+        renderer = self._greeting_renderer
+        render_fn = getattr(renderer, "render", None)
+        if render_fn is not None:
+            return render_fn
+        gen_fn = getattr(renderer, "generate_greeting_card", None)
+        if gen_fn is not None:
+            return gen_fn
+        msg = "GreetingRenderer missing render/generate_greeting_card"
+        raise AttributeError(msg)
+
     async def dispatch_greeting(  # noqa: C901  -- branching is cache/card/compat migration; will simplify when image_service shim is removed
         self, member: discord.Member, kind: Literal["welcome", "goodbye"]
     ) -> None:
@@ -166,49 +195,9 @@ class GreetingService:
             return
 
         avatar_url = _resolve_avatar_url(member)
-        # Resolve the callable: prefer the explicitly-configured attribute.
-        # MagicMock auto-creates any attribute, so we inspect __dict__ to see
-        # which was explicitly set by the test/fixture.
-        import unittest.mock as _mock_mod
-
-        def _explicit_attr(obj: Any, name: str) -> bool:
-            if isinstance(obj, _mock_mod.MagicMock):
-                # For MagicMock, check if attr was explicitly assigned (in __dict__)
-                # or if its mock children have been configured with side_effect.
-                if name in obj.__dict__:
-                    return True
-                # Also check _mock_children if render was set via attribute access
-                try:
-                    child = obj.__dict__.get("_mock_children", {}).get(name)
-                    if child is not None:
-                        return True
-                except Exception:  # noqa: S110  -- try-except-pass is intentional for mock introspection
-                    pass
-                # Check via mock_calls? Simpler: if generate_greeting_card was set but render wasn't, prefer generate.
-                return False
-            return hasattr(obj, name)
-
-        # Prefer render if explicitly configured; otherwise fallback to generate_greeting_card.
-        has_render_explicit = _explicit_attr(self._greeting_renderer, "render")
-        has_gen_explicit = _explicit_attr(self._greeting_renderer, "generate_greeting_card")
-        # Also consider the common case: fixture sets generate_greeting_card explicitly, render is auto-created.
-        # In that case, has_render_explicit=False, has_gen_explicit=True → use generate.
-        if has_render_explicit and not has_gen_explicit:
-            render_fn = self._greeting_renderer.render
-        elif has_gen_explicit and not has_render_explicit:
-            render_fn = self._greeting_renderer.generate_greeting_card  # ty: ignore[unresolved-attribute]  # MagicMock compat
-        elif has_render_explicit and has_gen_explicit:
-            # Both explicitly set (compat test sets generate after init) — use generate for that test.
-            render_fn = self._greeting_renderer.generate_greeting_card  # ty: ignore[unresolved-attribute]  # MagicMock compat
-            pass
-        else:
-            # Neither explicitly set — real renderer (PillowGreetingRenderer) has render, not generate.
-            render_fn = getattr(self._greeting_renderer, "render", None) or getattr(
-                self._greeting_renderer, "generate_greeting_card", None
-            )
-        if render_fn is None:
-            msg = "GreetingRenderer missing render/generate_greeting_card"
-            raise AttributeError(msg)
+        # Single source of truth: resolve the render callable via the protocol
+        # resolver (no mock introspection — decides by real attributes).
+        render_fn = self.resolve_renderer()
         # Shard: avatar cache 60s guild-scoped via cache_key(gid,"greeting_avatar")
         # Populate on first fetch; used only to satisfy cache-key contract + isolation.
         # Actual avatar bytes are still fetched via _resolve_avatar_url each dispatch
