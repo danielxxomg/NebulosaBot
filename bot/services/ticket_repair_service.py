@@ -1088,10 +1088,14 @@ class TicketRepairService:
             ticket.id, closed_by=closed_by, transcript_url=transcript_url, guild_id=ticket.guild_id
         )
         # PR2: clear scheduled timer fields on close so no stale timer lingers.
-        with contextlib.suppress(Exception):
+        # Round 2: log failures instead of contextlib.suppress(Exception) —
+        # suppress is a semantically bare except that hides write failures.
+        try:
             await self._db.update_ticket(
                 ticket.id, guild_id=ticket.guild_id, scheduledCloseAt=None, scheduledCloseBy=None
             )
+        except Exception:
+            logger.error("scheduled-close clear failed for ticket %s", ticket.id, exc_info=True)
 
         if manual:
             await self._countdown_and_delete(channel, closed_by)

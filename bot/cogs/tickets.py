@@ -141,8 +141,11 @@ class TicketsCog(commands.Cog, name="Tickets"):
         ticket = Ticket.from_db_row(full_row)
         if ticket.status not in ("open", "claimed"):
             # Already closed: clear stale scheduled fields (service owns this write).
-            with contextlib.suppress(Exception):
+            # Round 2: log failures instead of contextlib.suppress(Exception).
+            try:
                 await db.update_ticket(ticket_id, guild_id=gid, scheduledCloseAt=None, scheduledCloseBy=None)
+            except Exception:
+                logger.error("scheduled-close clear failed for ticket %s", ticket_id, exc_info=True)
             return
         await ticket_service.close_ticket_full(channel, ticket, "auto:scheduled", bot=self.bot, manual=False)
 
@@ -284,6 +287,12 @@ class TicketsCog(commands.Cog, name="Tickets"):
             try:
                 ticket_row = await db.get_active_ticket_by_channel(gid, str(channel_id))
             except Exception:
+                logger.warning(
+                    "active-ticket fallback lookup failed for channel %s (guild %s)",
+                    channel_id,
+                    gid,
+                    exc_info=True,
+                )
                 ticket_row = None
         if ticket_row is None:
             return None

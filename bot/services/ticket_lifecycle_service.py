@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -161,10 +160,10 @@ class TicketLifecycleService:
                 f" (transcript: {transcript_url})" if transcript_url else "",
                 f" (reason: {close_reason})" if close_reason else "",
             )
-            with contextlib.suppress(Exception):
-                await self._db.update_ticket(
-                    ticket_id, guild_id=resolved_gid, scheduledCloseAt=None, scheduledCloseBy=None
-                )
+            # PR2 round 2: clear scheduled timer fields on close (best-effort).
+            # Log failures instead of contextlib.suppress(Exception) — suppress is a
+            # semantically bare except that leaves operators blind to write failures.
+            await self._clear_scheduled_fields(ticket_id, resolved_gid)
             return ticket
         pre = await self._db.get_ticket(ticket_id)
         guild_id = pre.get("guildId", "") if isinstance(pre, dict) else ""
@@ -202,9 +201,21 @@ class TicketLifecycleService:
             f" (transcript: {transcript_url})" if transcript_url else "",
             f" (reason: {close_reason})" if close_reason else "",
         )
-        with contextlib.suppress(Exception):
-            await self._db.update_ticket(ticket_id, guild_id=guild_id, scheduledCloseAt=None, scheduledCloseBy=None)
+        # PR2 round 2: clear scheduled timer fields on close (best-effort, logged).
+        await self._clear_scheduled_fields(ticket_id, guild_id)
         return ticket
+
+    async def _clear_scheduled_fields(self, ticket_id: str, guild_id: str) -> None:
+        """Clear scheduledCloseAt/By on close (best-effort, logged).
+
+        PR2 round 2: replaces ``contextlib.suppress(Exception)`` — suppress is a
+        semantically bare except that left operators blind to write failures.
+        Never raises so the close flow stays intact.
+        """
+        try:
+            await self._db.update_ticket(ticket_id, guild_id=guild_id, scheduledCloseAt=None, scheduledCloseBy=None)
+        except Exception:
+            logger.error("scheduled-close clear failed for ticket %s", ticket_id, exc_info=True)
 
     async def claim_ticket(self, ticket_id: str, claimed_by: str, *, guild_id: str | None = None) -> Ticket:
         pre = await self._db.get_ticket(ticket_id, guild_id=guild_id)
