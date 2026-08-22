@@ -24,7 +24,7 @@ from bot.core.context import NebulosaContext
 from bot.core.i18n import t
 from bot.models.ticket import Ticket
 from bot.utils.brand import SUCCESS, WARNING
-from bot.utils.checks import is_admin, is_mod, is_mod_member
+from bot.utils.checks import can_check, is_admin, is_mod_member
 from bot.utils.embeds import build_ticket_embed, info_embed
 from bot.views.confirmation import ConfirmCancelView
 from bot.views.tickets import (
@@ -407,7 +407,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         ),
     )
     @app_commands.default_permissions(administrator=True)
-    @is_mod()
+    @can_check("tickets.manage")
     async def ticket_panel(
         self,
         ctx: NebulosaContext,
@@ -431,7 +431,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         position=app_commands.locale_str("Orden de visualización", key="slash.describes.create_category.position"),
     )
     @app_commands.default_permissions(administrator=True)
-    @is_mod()
+    @can_check("tickets.manage")
     async def create_category(
         self,
         ctx: NebulosaContext,
@@ -450,7 +450,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         ),
     )
     @app_commands.default_permissions(administrator=True)
-    @is_mod()
+    @can_check("tickets.manage")
     async def list_categories(self, ctx: NebulosaContext) -> None:
         await self._admin_flow.list_categories(ctx)
 
@@ -481,7 +481,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         ),
     )
     @app_commands.default_permissions(administrator=True)
-    @is_mod()
+    @can_check("tickets.manage")
     async def configure_fields(self, ctx: NebulosaContext) -> None:
         await self._admin_flow.configure_fields(ctx)
 
@@ -503,7 +503,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         ),
     )
     @app_commands.default_permissions(administrator=True)
-    @is_mod()
+    @can_check("tickets.manage")
     async def configure_fields_set(
         self,
         ctx: NebulosaContext,
@@ -522,7 +522,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             key="slash.descriptions.subticket._",
         ),
     )
-    @is_mod()
+    @can_check("tickets.manage")
     async def subticket(self, ctx: NebulosaContext) -> None:
         await self._lifecycle_flow.subticket(ctx)
 
@@ -539,7 +539,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             key="slash.describes.subticket.create.parent_id",
         )
     )
-    @is_mod()
+    @can_check("tickets.manage")
     async def subticket_create(self, ctx: NebulosaContext, parent_id: str | None = None) -> None:
         # guild_id=gid — parent lookup is guild-scoped (568 + flow does guild_id=gid)
         await self._lifecycle_flow.subticket_create(ctx, parent_id=parent_id)
@@ -557,7 +557,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             key="slash.describes.reopen.ticket_ref",
         )
     )
-    @is_mod()
+    @can_check("tickets.manage")
     async def reopen(self, ctx: NebulosaContext, *, ticket_ref: str | None = None) -> None:
         await self._lifecycle_flow.reopen(ctx, ticket_ref=ticket_ref)
 
@@ -574,7 +574,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             key="slash.describes.transfer.member",
         )
     )
-    @is_mod()
+    @can_check("tickets.manage")
     async def transfer(self, ctx: NebulosaContext, member: discord.Member) -> None:
         # guild_id=gid — transfer lookup is guild-scoped (685 + flow does guild_id=gid)
         await self._lifecycle_flow.transfer(ctx, member)
@@ -600,7 +600,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             key="slash.descriptions.note._",
         ),
     )
-    @is_mod()
+    @can_check("tickets.manage")
     async def note(self, ctx: NebulosaContext) -> None:
         await self._notes_flow.note(ctx)
 
@@ -617,7 +617,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             key="slash.describes.note.add.content",
         )
     )
-    @is_mod()
+    @can_check("tickets.manage")
     async def note_add(self, ctx: NebulosaContext, content: str) -> None:
         await self._notes_flow.note_add(ctx, content=content)
 
@@ -628,7 +628,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             key="slash.descriptions.note.list",
         ),
     )
-    @is_mod()
+    @can_check("tickets.manage")
     async def note_list(self, ctx: NebulosaContext) -> None:
         await self._notes_flow.note_list(ctx)
 
@@ -645,7 +645,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             key="slash.describes.note.delete.note_id",
         )
     )
-    @is_mod()
+    @can_check("tickets.manage")
     async def note_delete(self, ctx: NebulosaContext, note_id: str) -> None:
         await self._notes_flow.note_delete(ctx, note_id=note_id)
 
@@ -658,7 +658,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             key="slash.descriptions.sweep_integrity",
         ),
     )
-    @is_mod()
+    @can_check("tickets.manage")
     async def sweep_integrity(self, ctx: NebulosaContext) -> None:
         await self._integrity_flow.sweep_integrity(ctx)
 
@@ -675,7 +675,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
             key="slash.describes.repair_ticket.ticket_ref",
         ),
     )
-    @is_mod()
+    @can_check("tickets.manage")
     async def repair_ticket(self, ctx: NebulosaContext, *, ticket_ref: str) -> None:
         await self._integrity_flow.repair_ticket(ctx, ticket_ref=ticket_ref)
 

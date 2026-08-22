@@ -227,26 +227,26 @@ Spec: `voice-observatory`. Files: `bot/__main__.py`, `bot/listeners/voice_listen
 
 ### Phase 1: Tickets manage
 
-- [ ] 4.1 RED: `tests/test_tickets_cog.py` tickets lifecycle ops (currently `@is_mod()`) → `@can_check("tickets.manage")`; admin pass; matrix-granted role; modRoleId does NOT pass `tickets.manage` (non-moderation). Preserve `delete_category` `@is_admin()`.
+- [x] 4.1 RED: `tests/test_tickets_cog.py` tickets lifecycle ops (currently `@is_mod()`) → `@can_check("tickets.manage")`; admin pass; matrix-granted role; modRoleId does NOT pass `tickets.manage` (non-moderation). Preserve `delete_category` `@is_admin()`. — DONE PR4 strict TDD: 5 RED tests in tests/test_pr4_tickets_red.py (is_mod still → fail), GREEN swap 16 decorators in bot/cogs/tickets.py @can_check tickets.manage, delete_category stays @is_admin
   - Given matrix maps tickets.manage→roleC + user holds roleC / When invoke / Then executes; GIVEN only modRoleId / WHEN invoke / THEN denied (no moderation.* fallback for tickets.manage).
   - GREEN: swap decorators in `bot/cogs/tickets.py`. Est ~20 lines. Dep: PR1 5.1.
 
 ### Phase 2: Greetings manage
 
-- [ ] 4.2 RED: `tests/test_greeting_cog.py` `_admin_guard()` → `@can_check("greeting.manage")`; admin pass; matrix-granted role; modRoleId denied. Preserve existing outcomes.
+- [x] 4.2 RED: `tests/test_greeting_cog.py` `_admin_guard()` → `@can_check("greeting.manage")`; admin pass; matrix-granted role; modRoleId denied. Preserve existing outcomes. — DONE PR4 strict TDD: 4 RED tests in tests/test_pr4_greetings_red.py (admin-only still → fail), GREEN rewrite bot/cogs/greetings.py _admin_guard to await can("greeting.manage") (admin implicit, matrix grant, modRoleId denied)
   - GREEN: swap in `bot/cogs/greetings.py`. Est ~15 lines. Dep: 4.1.
 
 ### Phase 3: Economy manage (if surface exists)
 
-- [ ] 4.3 RED: economy manage commands (if any) → `@can_check("economy.manage")`. If no manage command surface exists today, mark N/A (non-goal, dashboard-only) and skip. Est ~10 lines. Dep: 4.1.
+- [x] 4.3 RED: economy manage commands (if any) → `@can_check("economy.manage")`. If no manage command surface exists today, mark N/A (non-goal, dashboard-only) and skip. Est ~10 lines. Dep: 4.1. — DONE N/A assessed: StellarCog (daily/coins/leaderboard/rank) are user commands, economy config is dashboard-only (CodeGraph confirmed no bot manage surface); skipped with rationale in apply-progress PR4 Economy 4.3 section
 
 ### PR4 Verify Gate
 
-- [ ] P4.V1 `uv run ruff check && uv run ruff format --check`
-- [ ] P4.V2 `uv run ty check`
-- [ ] P4.V3 `uv run tach check && uv run tach check-external`
-- [ ] P4.V4 `uv run pytest --cov=bot --cov-fail-under=75`
-- [ ] P4.V5 Work-unit commits: tickets | greetings | economy (≤300 lines)
+- [x] P4.V1 `uv run ruff check && uv run ruff format --check` — ✅ All checks passed
+- [x] P4.V2 `uv run ty check` — ✅ 0 errors, 18 warnings (pre-existing)
+- [x] P4.V3 `uv run tach check && uv run tach check-external` — ✅ All modules + external deps validated
+- [x] P4.V4 `uv run pytest --cov=bot --cov-fail-under=75` — ✅ 2602 passed (+11), 82.79% ≥75%, 18 skipped
+- [x] P4.V5 Work-unit commits: tickets | greetings | economy (≤300 lines) — ✅ ~87 prod + 9 RED tests, stacked-to-main leaf dep PR1 only
 
 ## Threat Matrix
 

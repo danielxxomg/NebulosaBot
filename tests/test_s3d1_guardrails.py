@@ -37,20 +37,36 @@ def _count_is_mod_decorators(path: str) -> int:
 
 class TestIsModLedger:
     def test_tickets_is_mod_count_17(self) -> None:
-        """tickets.py MUST have 15 @is_mod() decorators (unclaim claimer-or-mod + delete_category now @is_admin in PR3)."""
-        # unclaim intentionally lacks @is_mod(); delete_category moved to @is_admin in PR3
-        assert _count_is_mod_decorators("bot/cogs/tickets.py") == 15
+        """tickets.py MUST have 0 @is_mod() decorators after PR4 (all swapped to @can_check tickets.manage; delete_category @is_admin)."""
+        # PR4 migrates every tickets lifecycle @is_mod() → @can_check("tickets.manage"); delete_category stays @is_admin
+        assert _count_is_mod_decorators("bot/cogs/tickets.py") == 0
 
     def test_sentinel_is_mod_count_8(self) -> None:
-        """sentinel.py MUST have 8 @is_mod() decorators (ban is @is_admin)."""
+        """sentinel.py MUST have 8 @is_mod() decorators (ban is @can_check moderation.ban since PR1; PR4 does not touch sentinel)."""
         assert _count_is_mod_decorators("bot/cogs/sentinel.py") == 8
 
     def test_total_is_mod_25(self) -> None:
-        """Total is_mod decorators MUST be 23 (15 tickets +8 sentinel); PR3 moves delete_category to @is_admin."""
+        """Total is_mod decorators MUST be 8 (0 tickets +8 sentinel) after PR4."""
         total = _count_is_mod_decorators("bot/cogs/tickets.py") + _count_is_mod_decorators("bot/cogs/sentinel.py")
-        assert total == 23, (
-            f"is_mod ledger drift: got {total}, expected 23 (15 tickets +8 sentinel; PR3 delete_category @is_admin)"
+        assert total == 8, (
+            f"is_mod ledger drift: got {total}, expected 8 (0 tickets +8 sentinel; PR4 tickets → can_check)"
         )
+
+    def test_tickets_can_check_tickets_manage_ledger(self) -> None:
+        """PR4 ledger: tickets.py MUST have ≥15 @can_check("tickets.manage") decorators."""
+        import pathlib
+
+        text = pathlib.Path("bot/cogs/tickets.py").read_text(encoding="utf-8")
+        count = text.count('can_check("tickets.manage")') + text.count("can_check('tickets.manage')")
+        assert count >= 15, f"PR4 ledger: expected ≥15 can_check tickets.manage, got {count}"
+
+    def test_greetings_uses_greeting_manage(self) -> None:
+        """PR4 ledger: greetings.py MUST route _admin_guard via can("greeting.manage")."""
+        import pathlib
+
+        text = pathlib.Path("bot/cogs/greetings.py").read_text(encoding="utf-8")
+        assert "greeting.manage" in text
+        assert 'can("greeting.manage"' in text or "can('greeting.manage'" in text
 
     def test_is_mod_single_source(self) -> None:
         """is_mod() decorator MUST delegate to is_mod_check (DRY single source)."""
