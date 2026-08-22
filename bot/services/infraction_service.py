@@ -123,6 +123,74 @@ class InfractionService:
         )
         return [Infraction.from_db_row(r) for r in rows]
 
+    async def tempban(
+        self,
+        guild_id: str,
+        target_id: str,
+        moderator_id: str,
+        reason: str,
+        expires_at: str,
+    ) -> Infraction:
+        """Insert a BAN infraction with ``expiresAt`` (tempban).
+
+        Persists the infraction via ``insert_infraction(expires_at=...)``
+        and returns the :class:`Infraction`. The caller (SentinelCog)
+        is responsible for ``member.ban()`` and logging.
+        """
+        row = await self._db.insert_infraction(
+            guild_id=guild_id,
+            target_id=target_id,
+            moderator_id=moderator_id,
+            type="BAN",
+            reason=reason,
+            expires_at=expires_at,
+        )
+        return Infraction.from_db_row(row)
+
+    async def unban(self, guild_id: str, target_id: str) -> Infraction | None:
+        """Deactivate the active BAN for *target* in *guild* (idempotent).
+
+        Returns the deactivated :class:`Infraction`, or ``None`` when no
+        active BAN exists (no mutation, no error).
+        """
+        rows = await self._db.get_infractions(guild_id, target_id, type="BAN")
+        active = [r for r in rows if r.get("active")]
+        if not active:
+            return None
+        most_recent = active[0]
+        await self._db.deactivate_infraction(guild_id, most_recent["id"])
+        return Infraction.from_db_row(most_recent)
+
+    async def decay_warnings(self, guild_id: str) -> int:
+        """Deactivate 30d-old WARNs and decrement ``member.warnings``.
+
+        For each expired WARN row: deactivates the infraction and
+        decrements ``member.warnings`` by 1 via
+        ``update_member_warnings(delta=-1)``. Floors at 0 — when the
+        member's counter is already 0, the delta is clamped so warnings
+        never goes negative (RPC also has GREATEST, service clamps as
+        defense in depth). Returns the number of rows decayed.
+        """
+        expired = await self._db.get_expired_warns(guild_id)
+        if not expired:
+            return 0
+        decayed = 0
+        for row in expired:
+            target_id = row.get("targetId") or row.get("target_id") or ""
+            if not target_id:
+                continue
+            await self._db.deactivate_infraction(guild_id, row["id"])
+            # Floor clamp: read current warnings, only decrement if >0
+            try:
+                member_row = await self._db.get_member(guild_id, target_id)
+                current = int(member_row.get("warnings", 0)) if member_row else 0
+            except Exception:
+                current = 1  # assume positive so we still decrement once
+            if current > 0:
+                await self._db.update_member_warnings(guild_id, target_id, delta=-1)
+            decayed += 1
+        return decayed
+
     async def check_escalation(self, guild_id: str, target_id: str) -> EscalationAction | None:
         """Evaluate whether the member's warning count triggers auto-escalation.
 

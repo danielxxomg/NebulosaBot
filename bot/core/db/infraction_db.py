@@ -136,3 +136,65 @@ class InfractionDBMixin:
             .eq("id", infraction_id)
             .execute()
         )
+
+    async def get_expired_warns(self: Any, guild_id: str) -> list[dict[str, Any]]:
+        """Return WARN infractions older than 30 days for a guild.
+
+        Guild-scoped; only ``type='WARN'`` + ``active`` rows with
+        ``createdAt < NOW() - 30d`` are returned. Uses explicit column
+        selection (no ``select("*")``) for the partial index path.
+        """
+        if self._client is None:
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
+
+        from datetime import UTC, datetime, timedelta
+
+        cutoff = (datetime.now(UTC) - timedelta(days=30)).isoformat()
+        logger.debug("DB get_expired_warns(guild=%s, cutoff=%s)", guild_id, cutoff)
+        response = await (
+            self._client
+            .table("infraction")
+            .select("id", "guildId", "targetId", "type", "active", "createdAt")
+            .eq("guildId", guild_id)
+            .eq("type", "WARN")
+            .eq("active", True)
+            .lt("createdAt", cutoff)
+            .execute()
+        )
+        return _unwrap(response)
+
+    async def get_expired_tempbans(self: Any, guild_id: str) -> list[dict[str, Any]]:
+        """Return active BAN infractions whose ``expiresAt <= NOW()``.
+
+        Guild-scoped; only ``type='BAN'`` + ``active`` rows with a
+        non-null ``expiresAt`` at or before now are returned. Uses
+        explicit column selection (no ``select("*")``).
+        """
+        if self._client is None:
+            msg = "Database.connect() must be called first"
+            raise RuntimeError(msg)
+
+        from datetime import UTC, datetime
+
+        now_iso = datetime.now(UTC).isoformat()
+        logger.debug("DB get_expired_tempbans(guild=%s, now=%s)", guild_id, now_iso)
+        import contextlib
+
+        builder = self._client.table("infraction").select("id", "guildId", "targetId", "type", "active", "expiresAt")
+        builder = builder.eq("guildId", guild_id).eq("type", "BAN").eq("active", True)
+        # lte preferred; lt fallback for FakeQueryBuilder in tests
+        lte_fn = getattr(builder, "lte", None)
+        lt_fn = getattr(builder, "lt", None)
+        if callable(lte_fn):
+            builder = lte_fn("expiresAt", now_iso)
+        elif callable(lt_fn):
+            builder = lt_fn("expiresAt", now_iso)
+        else:
+            builder = builder.eq("expiresAt", now_iso)
+        neq_fn = getattr(builder, "neq", None)
+        if callable(neq_fn):
+            with contextlib.suppress(Exception):
+                builder = neq_fn("expiresAt", None)
+        response = await builder.execute()
+        return _unwrap(response)

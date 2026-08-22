@@ -30,6 +30,8 @@
       "unmute": "Remove a member's timeout.",
       "kick": "Kick a member from the server.",
       "ban": "Ban a member from the server.",
+      "tempban": "Temporarily ban a member.",
+      "unban": "Unban a user.",
       "lock": "Lock a channel (deny send_messages for @everyone).",
       "unlock": "Unlock a channel (allow send_messages for @everyone).",
       "modlogs": "View moderation history for a member.",
@@ -89,6 +91,14 @@
       "warn": {
         "member": "The member to warn",
         "reason": "Reason for the warning"
+      },
+      "tempban": {
+        "member": "The member to temporarily ban",
+        "duration": "Duration (e.g. \"24h\", \"7d\"). Required.",
+        "reason": "Reason for the temporary ban"
+      },
+      "unban": {
+        "user_id": "ID of the user to unban"
       },
       "unwarn": {
         "member": "The member to unwarn"
@@ -664,6 +674,22 @@
       "success_title": "Member Banned",
       "success_description": "{mention} has been banned.\n**Reason:** {reason}"
     },
+    "tempban": {
+      "invalid_duration_title": "Invalid Duration",
+      "invalid_duration_description": "Could not parse duration '{duration}'. Examples: 24h, 7d, 30m.",
+      "success_title": "Member Tempbanned",
+      "success_description": "{mention} has been tempbanned.\n**Reason:** {reason}",
+      "failed_title": "Tempban Failed",
+      "failed_description": "Could not tempban the member. Please try again."
+    },
+    "unban": {
+      "no_ban_title": "No Active Ban",
+      "no_ban_description": "No active ban found for user {user_id}.",
+      "success_title": "User Unbanned",
+      "success_description": "User {user_id} has been unbanned.",
+      "failed_title": "Unban Failed",
+      "failed_description": "Could not unban the user. Please try again."
+    },
     "lock": {
       "permission_denied_title": "Permission Denied",
       "permission_denied_description": "I don't have permission to lock {channel}. Check my role permissions.",
@@ -787,6 +813,8 @@
     "kick_confirm_title": "Confirm Kick",
     "kick_confirm_description": "Are you sure you want to kick {mention}?\n**Reason:** {reason}",
     "ban_confirm_title": "Confirm Ban",
-    "ban_confirm_description": "Are you sure you want to ban {mention}?\n**Reason:** {reason}\n**Delete messages:** {delete_days} day(s)"
+    "ban_confirm_description": "Are you sure you want to ban {mention}?\n**Reason:** {reason}\n**Delete messages:** {delete_days} day(s)",
+    "tempban_confirm_title": "Confirm Tempban",
+    "tempban_confirm_description": "Are you sure you want to tempban {mention} for {duration}?\n**Reason:** {reason}"
   }
 }

@@ -177,6 +177,8 @@ Las claves de caché incluyen `guild_id` para aislar datos entre servidores.
 | Expulsar | `/kick @usuario razón` | Expulsa al miembro (con confirmación) |
 | Banear | `/ban @usuario razón` | Banea al miembro (solo admin, con confirmación) |
 | Bloquear canal | `/lock` o `/lock #canal` | Deniega `send_messages` para @everyone |
+| Ban temporal | `/tempban @usuario 24h razón` | Banea temporalmente (requiere `moderation.ban`) |
+| Desbanear | `/unban <user_id>` | Levanta un baneo activo (idempotente) |
 | Desbloquear canal | `/unlock` o `/unlock #canal` | Restaura `send_messages` para @everyone |
 | Ver historial | `/modlogs @usuario` | Historial de infracciones paginado |
 | Filtrar historial | `/modlogs @usuario WARN 2026-01-01` | Filtra por tipo y/o fecha |
@@ -315,6 +317,8 @@ Los tickets sin actividad por **48 horas** se cierran automáticamente. El bot r
 | Comando | Parámetros | Permiso | Resultado |
 |---------|------------|---------|-----------|
 | `/ban` | `<@usuario> <razón> [días_borrar]` | Admin | Banea con confirmación (0-7 días de mensajes) |
+| `/tempban` | `<@usuario> <duración> <razón>` | Mod (`moderation.ban`) | Banea temporalmente con confirmación |
+| `/unban` | `<user_id>` | Mod (`moderation.ban`) | Desbanea (idempotente) |
 | `/sync` | — | Admin | Sincroniza árbol de comandos |
 | `/setup` | `<categoría_tickets> [rol_mod] [canal_logs] [idioma]` | Admin | Configura el servidor |
 
