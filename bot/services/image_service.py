@@ -20,7 +20,6 @@ import io
 
 from PIL import Image, ImageDraw  # noqa: F401 -- re-exported for tests that patch bot.services.image_service.ImageDraw
 
-from bot.services import shared_assets
 from bot.services.greeting_renderer import PillowGreetingRenderer
 from bot.services.rank_renderer import RankRenderer
 
@@ -105,52 +104,17 @@ class ImageService:
             greeting_title = "Welcome," if card_type == "welcome" else "Goodbye,"
         if member_count_text is None:
             member_count_text = f"Member #{member_count:,}"
-        # Honor patches to ImageService._fetch_avatar (legacy tests) by forwarding
-        # to shared_assets for the duration of this call.
-        orig_fetch = shared_assets._fetch_avatar
-        orig_safe = shared_assets._safe_fetch_avatar
-        # If the class-level _fetch_avatar has been patched (MagicMock), use it.
-        cls_fetch = getattr(self.__class__, "_fetch_avatar", None)
-        # Detect if _fetch_avatar is mocked (has call tracking)
-        from unittest.mock import MagicMock
-
-        use_cls_fetch = isinstance(cls_fetch, MagicMock) and cls_fetch is not orig_fetch  # type: ignore[arg-type]
-        if use_cls_fetch:
-            shared_assets._fetch_avatar = cls_fetch  # type: ignore[assignment]
-
-            def _patched_safe(url: str | None):  # type: ignore[no-untyped-def]
-                try:
-                    return cls_fetch(url)  # type: ignore[operator]
-                except Exception:
-                    import logging
-
-                    logging.getLogger(__name__).debug(
-                        "Greeting card asset fetch failed — using placeholder", exc_info=True
-                    )
-                    return None
-
-            shared_assets._safe_fetch_avatar = _patched_safe  # type: ignore[assignment]
-        try:
-            return self._greeting_renderer.render(
-                username=username,
-                avatar_url=avatar_url,
-                guild_name=guild_name,
-                member_count=member_count,
-                card_type=card_type,
-                greeting_title=greeting_title,
-                member_count_text=member_count_text,
-                guild_icon_url=guild_icon_url,
-            )
-        finally:
-            if use_cls_fetch:
-                shared_assets._fetch_avatar = orig_fetch
-                shared_assets._safe_fetch_avatar = orig_safe
-
-    # Back-compat for tests that patch ImageService._fetch_avatar
-    @staticmethod
-    def _fetch_avatar(avatar_url: str | None):  # type: ignore[no-untyped-def]
-        return shared_assets._fetch_avatar(avatar_url)
-
-    @staticmethod
-    def _safe_fetch_avatar(avatar_url: str | None):  # type: ignore[no-untyped-def]
-        return shared_assets._safe_fetch_avatar(avatar_url)
+        # The renderer calls shared_assets._safe_fetch_avatar / _fetch_avatar
+        # directly. Legacy tests that need to stub avatar fetching MUST patch
+        # bot.services.shared_assets._fetch_avatar (the real call target), not
+        # the deprecated ImageService._fetch_avatar shim.
+        return self._greeting_renderer.render(
+            username=username,
+            avatar_url=avatar_url,
+            guild_name=guild_name,
+            member_count=member_count,
+            card_type=card_type,
+            greeting_title=greeting_title,
+            member_count_text=member_count_text,
+            guild_icon_url=guild_icon_url,
+        )

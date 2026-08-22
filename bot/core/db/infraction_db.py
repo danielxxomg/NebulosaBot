@@ -179,7 +179,6 @@ class InfractionDBMixin:
 
         now_iso = datetime.now(UTC).isoformat()
         logger.debug("DB get_expired_tempbans(guild=%s, now=%s)", guild_id, now_iso)
-        import contextlib
 
         builder = self._client.table("infraction").select("id", "guildId", "targetId", "type", "active", "expiresAt")
         builder = builder.eq("guildId", guild_id).eq("type", "BAN").eq("active", True)
@@ -194,7 +193,9 @@ class InfractionDBMixin:
             builder = builder.eq("expiresAt", now_iso)
         neq_fn = getattr(builder, "neq", None)
         if callable(neq_fn):
-            with contextlib.suppress(Exception):
-                builder = neq_fn("expiresAt", None)
+            # Exclude permanent bans (NULL expiresAt). The callable() guard above
+            # proves neq is a real builder method; let any error propagate rather
+            # than swallowing it with a broad suppress.
+            builder = neq_fn("expiresAt", None)
         response = await builder.execute()
         return _unwrap(response)

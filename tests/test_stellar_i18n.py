@@ -149,6 +149,12 @@ def mock_bot() -> MagicMock:
     bot.economy_service.get_rank_info = AsyncMock()
     bot.image_service = MagicMock()
     bot.image_service.generate_rank_card = MagicMock()
+    # rank_renderer is owned by the bot (stored in setup_hook) and used
+    # directly by stellar.rank(); mock it for parity with the real bot shape.
+    from bot.services.rank_renderer import RankRenderer
+
+    bot.rank_renderer = MagicMock(spec=RankRenderer)
+    bot.rank_renderer.generate_rank_card = MagicMock()
     return bot
 
 

@@ -110,6 +110,7 @@ class NebulosaBot(commands.Bot):
         transcript_service: HTML transcript :class:`~bot.services.transcript_service.TranscriptService` instance.
         economy_service: Economy system :class:`~bot.services.economy_service.EconomyService` instance.
         image_service: Rank card :class:`~bot.services.image_service.ImageService` instance (PR 3).
+        rank_renderer: Shared :class:`~bot.services.rank_renderer.RankRenderer` instance for /rank.
     """
 
     __slots__ = (
@@ -124,6 +125,7 @@ class NebulosaBot(commands.Bot):
         "image_service",
         "infraction_service",
         "logging_service",
+        "rank_renderer",
         "ticket_service",
         "transcript_service",
     )
@@ -147,6 +149,7 @@ class NebulosaBot(commands.Bot):
         self.greeting_service: GreetingService | None = None
         self.image_service: ImageService | None = None
         self.logging_service: LoggingService | None = None
+        self.rank_renderer: RankRenderer | None = None
 
         # Used by bot/utils/checks.py is_mod() to resolve the moderator
         # role without a DB query.  Populated by GuildService.
@@ -232,9 +235,11 @@ class NebulosaBot(commands.Bot):
         if _cairosvg_available:
             logger.info("cairosvg available but Cycle 1 uses PillowGreetingRenderer (probe acknowledged)")
 
-        # Keep RankRenderer import exercised (tach layer check) without requiring a live caller yet.
-        _rank_renderer = RankRenderer()  # noqa: F841 -- ensures rank_renderer module is importable and layer-valid
-        _ = _rank_renderer
+        # Store the RankRenderer on the bot so cog code uses a single shared
+        # instance (self.bot.rank_renderer) instead of building one per /rank.
+        # ImageService.generate_rank_card already delegates to RankRenderer, so
+        # the cog no longer needs a lazy-import or ImageService fallback branch.
+        self.rank_renderer = RankRenderer()
 
         # --- 3f. GreetingService ---
         self.greeting_service = GreetingService(

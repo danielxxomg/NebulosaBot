@@ -41,6 +41,12 @@ def mock_bot() -> MagicMock:
     bot.economy_service.get_rank_info = AsyncMock()
     bot.image_service = MagicMock()
     bot.image_service.generate_rank_card = MagicMock()
+    # rank_renderer is owned by the bot (stored in setup_hook) and used
+    # directly by stellar.rank(); mock it so /rank tests don't hit Pillow.
+    from bot.services.rank_renderer import RankRenderer
+
+    bot.rank_renderer = MagicMock(spec=RankRenderer)
+    bot.rank_renderer.generate_rank_card = MagicMock()
     return bot
 
 
@@ -351,11 +357,11 @@ class TestRankCommand:
         ctx.author.display_avatar = MagicMock()
         ctx.author.display_avatar.read = AsyncMock(return_value=b"fake-avatar-bytes")
 
-        # Mock image_service.generate_rank_card
+        # Mock rank_renderer.generate_rank_card (owned by the bot).
         import io
 
         fake_png = io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
-        mock_bot.image_service.generate_rank_card.return_value = fake_png
+        mock_bot.rank_renderer.generate_rank_card.return_value = fake_png
 
         await cog.rank.callback(cog, ctx, member=None)
 
@@ -403,7 +409,7 @@ class TestRankCommand:
         import io
 
         fake_png = io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
-        mock_bot.image_service.generate_rank_card.return_value = fake_png
+        mock_bot.rank_renderer.generate_rank_card.return_value = fake_png
 
         await cog.rank.callback(cog, ctx, member=target)
 

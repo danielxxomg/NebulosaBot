@@ -414,7 +414,7 @@ class TestGenerateGreetingCard:
         def fetch_asset(url: str | None) -> Image.Image | None:
             return guild_icon if url == "guild-icon" else member_avatar
 
-        with patch("bot.services.image_service.ImageService._fetch_avatar", side_effect=fetch_asset) as fetch:
+        with patch("bot.services.shared_assets._fetch_avatar", side_effect=fetch_asset) as fetch:
             buffer = self.service.generate_greeting_card(
                 username="Usuario",
                 avatar_url="member-avatar",
@@ -445,7 +445,7 @@ class TestGenerateGreetingCard:
 
     def test_missing_assets_use_deterministic_placeholders(self) -> None:
         """Missing guild/member assets must render the same visible fallback."""
-        with patch("bot.services.image_service.ImageService._fetch_avatar", return_value=None):
+        with patch("bot.services.shared_assets._fetch_avatar", return_value=None):
             first = self.service.generate_greeting_card(
                 username="Fallback",
                 avatar_url=None,
@@ -474,7 +474,7 @@ class TestGenerateGreetingCard:
         """Avatar download failures must not remove localized card content."""
         with (
             patch(
-                "bot.services.image_service.ImageService._fetch_avatar",
+                "bot.services.shared_assets._fetch_avatar",
                 side_effect=RuntimeError("network"),
             ),
             patch("bot.services.image_service.ImageDraw.ImageDraw.text", autospec=True) as draw_text,
