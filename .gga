@@ -2,7 +2,7 @@
 # Provider: Fx Gateway — GLM 5.2
 # Model: glm-5.2 via opencode (vercel-fx/zai)
 
-PROVIDER="opencode:openrouter/ox-alpha"
+PROVIDER="opencode:openrouter/stealth/ox-alpha"
 
 FILE_PATTERNS="*.py"
 EXCLUDE_PATTERNS="__pycache__,*.pyc,.mypy_cache,.pytest_cache,tests/"
