@@ -125,6 +125,31 @@ class Test8BallLocalizedMembership:
         # at least one es localized response appears in the rendered answer
         assert any(resp in desc for resp in es_set), "embed MUST carry a real es 8ball answer"
 
+    @pytest.mark.asyncio
+    async def test_eight_ball_embed_title_is_localized_not_raw(self) -> None:
+        """S2 — embed title comes from ocio.8ball.embed_title (no raw key, no hardcode).
+
+        Spec ocio-commands: the title MUST be the localized key value in each
+        guild's language; a raw 'ocio.8ball.embed_title' key or a hardcoded
+        fallback MUST never be rendered.
+        """
+        from bot.cogs.ocio import OcioCog
+
+        cog = OcioCog(MagicMock())
+        ctx = MagicMock()
+        ctx.guild = MagicMock(id=int(_ES_GUILD))
+        ctx.send = AsyncMock()
+
+        await cog.eight_ball.callback(cog, ctx, question="will it pass?")
+
+        kwargs = ctx.send.call_args.kwargs
+        embed = kwargs.get("embed")
+        assert embed is not None
+        expected = t(_ES_GUILD, "ocio.8ball.embed_title")
+        assert embed.title == expected, f"embed title must be t(ocio.8ball.embed_title)={expected!r}, got {embed.title!r}"
+        assert not embed.title.startswith("ocio.8ball"), "raw key must never reach users"
+        assert embed.title != "🎱 8ball", "hardcoded fallback must be gone"
+
 
 # ===========================================================================
 # 2. Ocio banana S1 — returned filename is a real pool member (99% path)

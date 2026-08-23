@@ -146,15 +146,16 @@ def _format_compact(seconds: int, guild_id: str | int | None) -> str:
     # The spec requires "12h"-style via t() — generate via units.
     parts: list[str] = []
     remaining = seconds
-    for unit, secs in (("d", 86400), ("h", 3600), ("m", 60), ("s", 1)):
+    for unit, secs in (("day", 86400), ("hour", 3600), ("minute", 60), ("second", 1)):
         if remaining >= secs:
             count = remaining // secs
             remaining %= secs
-            # Localized unit label: try key tickets.timer.unit_{unit}, fallback to compact.
+            # Localized unit label: try key tickets.timer.unit_{unit}; fall back
+            # to the compact letter when the key is missing.
             label = t(guild_id, f"tickets.timer.unit_{unit}")
             # t() falls back to raw key when missing; detect and use compact.
             if label.startswith("tickets.timer"):
-                label = unit
+                label = unit[0]
             parts.append(f"{count}{label}")
             if len(parts) >= 2:
                 break

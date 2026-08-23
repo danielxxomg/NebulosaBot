@@ -584,6 +584,20 @@
       "repair_result_title": "Repair Result",
       "repair_result_description": "Outcome: `{outcome}`{reason}",
       "repair_result_reason": " · Reason: `{reason}`"
+    },
+    "timer": {
+      "scheduled_title": "⏳ Closes <t:{unix}:R> (<t:{unix}:F>)",
+      "scheduled_description": "Scheduled close in {remaining} — <t:{unix}:F>",
+      "confirm_title": "Confirm Scheduled Close",
+      "confirm_description": "The close will be scheduled on confirm. You have 30 seconds.",
+      "cancel_title": "Timer Cancelled",
+      "cancel_description": "Scheduled close cancelled.",
+      "confirm_success_title": "Timer Set",
+      "confirm_success_description": "Scheduled close set.",
+      "unit_second": "s",
+      "unit_minute": "m",
+      "unit_hour": "h",
+      "unit_day": "d"
     }
   },
   "ocio": {
@@ -598,6 +612,7 @@
       "error_description": "The banana image asset is not available. Please contact the bot owner."
     },
     "8ball": {
+      "embed_title": "🎱 Magic 8-Ball",
       "r1": "It is certain.",
       "r2": "It is decidedly so.",
       "r3": "Without a doubt.",

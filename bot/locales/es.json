@@ -584,6 +584,20 @@
       "repair_result_title": "Resultado de Reparación",
       "repair_result_description": "Resultado: `{outcome}`{reason}",
       "repair_result_reason": " · Razón: `{reason}`"
+    },
+    "timer": {
+      "scheduled_title": "⏳ Cierra <t:{unix}:R> (<t:{unix}:F>)",
+      "scheduled_description": "Cierre programado en {remaining} — <t:{unix}:F>",
+      "confirm_title": "Confirmar Cierre Programado",
+      "confirm_description": "El cierre se programará al confirmar. Tienes 30 segundos.",
+      "cancel_title": "Temporizador Cancelado",
+      "cancel_description": "Cierre programado cancelado.",
+      "confirm_success_title": "Temporizador Activado",
+      "confirm_success_description": "Cierre programado establecido.",
+      "unit_second": "s",
+      "unit_minute": "m",
+      "unit_hour": "h",
+      "unit_day": "d"
     }
   },
   "ocio": {
@@ -598,6 +612,7 @@
       "error_description": "La imagen de banana no está disponible. Contacta al dueño del bot."
     },
     "8ball": {
+      "embed_title": "🎱 Bola 8",
       "r1": "Sí, definitivamente.",
       "r2": "Sin duda.",
       "r3": "Sin lugar a dudas.",

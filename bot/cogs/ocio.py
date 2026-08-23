@@ -109,9 +109,7 @@ class OcioCog(commands.Cog, name="Ocio"):
         safe_q = dutils.escape_markdown(question or "")
         answer = self.ocio_service.get_8ball_response(guild_id=str(guild_id) if guild_id else None, question=question)
         embed = info_embed(
-            t(guild_id, "ocio.8ball.embed_title")
-            if not t(guild_id, "ocio.8ball.embed_title").startswith("ocio.8ball")
-            else "🎱 8ball",
+            t(guild_id, "ocio.8ball.embed_title"),
             f"**Q:** {safe_q}\n**A:** {dutils.escape_markdown(answer)}",
             guild_id=guild_id,
         )
