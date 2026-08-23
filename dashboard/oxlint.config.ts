@@ -9,6 +9,19 @@ export default defineConfig({
   extends: [core],
   ignorePatterns: core.ignorePatterns,
 
+  // Scoped severities (2026-08-23): test ergonomics vs production signal.
+  // In __tests__, `async` callbacks without await and non-null assertions
+  // are idiomatic; in lib/app they stay errors (real bug surface).
+  overrides: [
+    {
+      files: ["**/__tests__/**"],
+      rules: {
+        "require-await": "warn",
+        "typescript/no-non-null-assertion": "warn",
+      },
+    },
+  ],
+
   // ── Commented out: NOT confident yet — revisit in dashboard-QA SDD ──
   // Type-aware linting requires tsgolint (separate binary, experimental):
   // import { defineConfig as tsgo } from ... — see oxc-project/tsgolint docs.
