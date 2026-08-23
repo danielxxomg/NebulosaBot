@@ -137,9 +137,6 @@ class VoiceListener(commands.Cog):
 
         # Record debounce before logging so rapid bursts coalesce.
         self._debounce[key] = now
-        # Opportunistic second eviction after insert keeps the store bounded.
-        # (Stale entries already evicted at the top; this is a no-op in the
-        # common case.)
         try:
             await self._logging.log_voice_event(guild_id, member, transition, before, after)
         except Exception:

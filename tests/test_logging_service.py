@@ -827,3 +827,37 @@ class TestDuplicateEventLogging:
         successes = sum(1 for r in (first, second) if r.outcome == "repaired")
         assert successes == 1
         assert first.mutated is True and second.mutated is False
+
+
+# ---------------------------------------------------------------------------
+# log_sentinel_loop — zero-count digest suppression (spec logging-service)
+# ---------------------------------------------------------------------------
+
+
+class TestLogSentinelLoopZeroCount:
+    """Digest embeds driven by periodic loops MUST skip zero-count cycles."""
+
+    @pytest.mark.asyncio
+    async def test_zero_count_sends_nothing(self) -> None:
+        """count == 0 → no digest embed reaches the log channel."""
+        service, _mock_bot, mock_log_channel = await _setup_service_and_config()
+        mock_log_channel.send = AsyncMock()
+
+        await service.log_sentinel_loop("123", "expiry", 0)
+
+        mock_log_channel.send.assert_not_awaited()
+        # The zero-count cycle must not even resolve the log channel.
+        _mock_bot.get_channel.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_nonzero_count_still_delivers(self) -> None:
+        """count > 0 → the digest embed is sent as before."""
+        service, _mock_bot, mock_log_channel = await _setup_service_and_config()
+        mock_log_channel.send = AsyncMock()
+
+        await service.log_sentinel_loop("123", "decay", 3)
+
+        mock_log_channel.send.assert_awaited_once()
+        embed = mock_log_channel.send.await_args.kwargs.get("embed")
+        assert embed is not None
+        assert "3" in embed.description

@@ -3576,3 +3576,34 @@ class TestIntegritySweepOrchestration:
         await tickets_cog.integrity_sweep_loop()
 
         assert ticket_bot.ticket_service.sweep_integrity.await_count == 2
+
+
+# ---------------------------------------------------------------------------
+# C12 — scheduled-close loop progress line is DEBUG, not INFO
+# ---------------------------------------------------------------------------
+
+
+class TestScheduledCloseLoopLogNoise:
+    """Routine per-cycle progress MUST be DEBUG (spec logging-service)."""
+
+    @pytest.mark.asyncio
+    async def test_checking_due_tickets_is_debug_not_info(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        import logging
+
+        from bot.cogs.tickets import TicketsCog
+
+        bot = MagicMock()
+        bot.ticket_service = None
+        bot.db = None
+        cog = TicketsCog(bot=bot)
+
+        with caplog.at_level(logging.DEBUG, logger="bot.cogs.tickets"):
+            await cog.scheduled_close_loop()
+
+        infos = [r for r in caplog.records if r.levelno == logging.INFO and "checking due tickets" in r.message]
+        debugs = [r for r in caplog.records if r.levelno == logging.DEBUG and "checking due tickets" in r.message]
+        assert not infos, "per-cycle progress must NOT be INFO"
+        assert debugs, "per-cycle progress must appear at DEBUG"

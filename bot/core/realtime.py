@@ -742,16 +742,10 @@ class RealtimeCacheSubscriber:
         greeting_builder = (
             client.table("greeting_config").select("guildId").or_(f"updatedAt.gt.{self._last_check},updatedAt.is.null")
         )
-        # Fallback for builders that use gt+or syntax variations — ensure updatedAt filter is applied.
-        # If .or_ is not available, fall back to gt + manual null inclusion via builder inspection.
-        # The builder above uses PostgREST or_ syntax: updatedAt > last_check OR updatedAt is null.
         for row in await self._safe_rows(greeting_builder):
             guild_id = _row_value(row, "guildId")
             if guild_id is not None:
                 self._cache.invalidate_guild(guild_id)
-
-        # Backward compatibility: if .or_ produced no rows due to mock lacking or_, also try gt variant
-        # (real Supabase builder supports or_ for null-inclusive filtering)
 
         self._last_check = window_end
 

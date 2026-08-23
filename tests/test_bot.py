@@ -551,3 +551,57 @@ class TestValidatePanels:
         assert "backfill:222" in call_order
         assert call_order.index("validate") > call_order.index("backfill:111")
         assert call_order.index("validate") > call_order.index("backfill:222")
+
+
+# ---------------------------------------------------------------------------
+# C4 — global error handlers log the full exception BEFORE user response
+# ---------------------------------------------------------------------------
+
+
+class TestGlobalErrorHandlersLogExceptions:
+    """Spec logging-service: handlers MUST log exc with traceback before responding."""
+
+    @pytest.mark.asyncio
+    async def test_app_command_error_logs_full_exception_before_embed(self) -> None:
+        """Slash handler logs exc_info=error, then sends the standard error embed."""
+        bot = _make_bot()
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.command = None
+        interaction.guild = None
+        interaction.response.is_done.return_value = False
+        interaction.response.send_message = AsyncMock()
+        order: list[str] = []
+        error = RuntimeError("slash boom")
+
+        def _respond(**kw: object) -> None:
+            order.append("respond")
+
+        with patch("bot.bot.logger") as logger_mock:
+            logger_mock.error.side_effect = lambda *a, **kw: order.append("log")
+            interaction.response.send_message.side_effect = _respond
+            await bot.on_app_command_error(interaction, error)
+
+        logger_mock.error.assert_called_once()
+        assert logger_mock.error.call_args.kwargs.get("exc_info") is error
+        interaction.response.send_message.assert_awaited_once()
+        assert order == ["log", "respond"], "logging MUST precede the user-facing embed"
+
+    @pytest.mark.asyncio
+    async def test_prefix_command_error_logs_full_exception_before_response(self) -> None:
+        """Prefix handler logs exc_info=error before any DM/channel delivery."""
+        bot = _make_bot()
+        ctx = MagicMock()
+        ctx.command = None
+        ctx.guild = None
+        order: list[str] = []
+        error = commands.CommandError("prefix boom")
+
+        with patch("bot.bot.logger") as logger_mock:
+            logger_mock.error.side_effect = lambda *a, **kw: order.append("log")
+            ctx.send = AsyncMock(side_effect=lambda **kw: order.append("respond"))
+            await bot.on_command_error(ctx, error)
+
+        logger_mock.error.assert_called_once()
+        assert logger_mock.error.call_args.kwargs.get("exc_info") is error
+        ctx.send.assert_awaited_once()
+        assert order == ["log", "respond"], "logging MUST precede the user-facing embed"

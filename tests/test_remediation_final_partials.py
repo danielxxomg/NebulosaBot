@@ -146,7 +146,9 @@ class Test8BallLocalizedMembership:
         embed = kwargs.get("embed")
         assert embed is not None
         expected = t(_ES_GUILD, "ocio.8ball.embed_title")
-        assert embed.title == expected, f"embed title must be t(ocio.8ball.embed_title)={expected!r}, got {embed.title!r}"
+        assert embed.title == expected, (
+            f"embed title must be t(ocio.8ball.embed_title)={expected!r}, got {embed.title!r}"
+        )
         assert not embed.title.startswith("ocio.8ball"), "raw key must never reach users"
         assert embed.title != "🎱 8ball", "hardcoded fallback must be gone"
 

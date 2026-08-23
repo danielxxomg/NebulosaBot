@@ -47,9 +47,11 @@ class Test8BallExists:
             assert len(flat) >= 20 or len(keys) >= 20 or any("8ball" in str(v) for v in ocio.values()), (
                 f"{lang} missing 20 ocio.8ball.* keys"
             )
-            # also check expected shape
+            # Expected shape: r1-r20 + the localized embed_title (cycle-4 C1b).
             if flat:
-                assert len(flat) == 20
+                assert {f"r{i}" for i in range(1, 21)} <= set(flat), f"{lang} missing r1-r20 responses"
+                assert "embed_title" in flat, f"{lang} missing ocio.8ball.embed_title"
+                assert len(flat) == 21
 
     def test_8ball_ephemeral_no_db(self):
         src = Path("bot/cogs/ocio.py").read_text(encoding="utf-8")

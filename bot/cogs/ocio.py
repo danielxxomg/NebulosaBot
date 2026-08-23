@@ -5,6 +5,7 @@ Thin cog — delegates to :class:`bot.services.ocio_service.OcioService`.
 
 from __future__ import annotations
 
+import io
 import logging
 from typing import TYPE_CHECKING
 
@@ -83,7 +84,7 @@ class OcioCog(commands.Cog, name="Ocio"):
         )
         # data is PNG bytes (placeholder) or WEBP bytes; send as file
         file = discord.File(
-            fp=__import__("io").BytesIO(data),
+            fp=io.BytesIO(data),
             filename=filename,
         )
         embed.set_image(url=f"attachment://{filename}")

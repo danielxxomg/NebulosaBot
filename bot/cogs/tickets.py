@@ -97,7 +97,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
 
     @tasks.loop(seconds=60)
     async def scheduled_close_loop(self) -> None:
-        logger.info("Scheduled-close loop: checking due tickets ...")
+        logger.debug("Scheduled-close loop: checking due tickets ...")
         if self.bot.ticket_service is None or self.bot.db is None:
             return
         for guild in self.bot.guilds:

@@ -220,18 +220,6 @@ def cog_info(gid: str | None, key: str, **kw: object) -> discord.Embed:
     return info_embed(t(gid, f"{key}_title"), t(gid, f"{key}_description", **kw), guild_id=gid)
 
 
-def _err(gid: str | None, key: str, **kw: object) -> discord.Embed:  # noqa: F811
-    return cog_err(gid, key, **kw)
-
-
-def _ok(gid: str | None, key: str, **kw: object) -> discord.Embed:  # noqa: F811
-    return cog_ok(gid, key, **kw)
-
-
-def _info(gid: str | None, key: str, **kw: object) -> discord.Embed:  # noqa: F811
-    return cog_info(gid, key, **kw)
-
-
 def _escape_md(text: str) -> str:
     try:
         return discord.utils.escape_markdown(text)

@@ -237,7 +237,7 @@ class NebulosaBot(commands.Bot):
         # the cog no longer needs a lazy-import or ImageService fallback branch.
         self.rank_renderer = RankRenderer()
 
-        # --- 3f. GreetingService ---
+        # --- 3g. GreetingService ---
         self.greeting_service = GreetingService(
             db=self.db,
             cache=self.cache,
@@ -245,20 +245,20 @@ class NebulosaBot(commands.Bot):
         )
         logger.info("GreetingService initialised")
 
-        # --- 3g. LoggingService ---
+        # --- 3h. LoggingService ---
         self.logging_service = LoggingService(self)
         logger.info("LoggingService initialised")
 
-        # --- 3h. InfractionService (needs LoggingService for escalation audit) ---
+        # --- 3i. InfractionService (needs LoggingService for escalation audit) ---
         self.infraction_service = InfractionService(db=self.db, logging_service=self.logging_service)
         logger.info("InfractionService initialised")
 
-        # --- 3d. Register persistent views ---
+        # --- 3j. Register persistent views ---
         self.add_view(TicketPanelView())
         self.add_view(TicketActionsView())
         logger.info("Persistent ticket views registered")
 
-        # --- 3h. Load i18n locales ---
+        # --- 3k. Load i18n locales ---
         load_locales(Path("bot/locales"))
         logger.info("i18n locales loaded")
 
@@ -374,19 +374,30 @@ class NebulosaBot(commands.Bot):
     async def on_app_command_error(
         self,
         interaction: discord.Interaction,
-        _error: discord.app_commands.AppCommandError,
+        error: discord.app_commands.AppCommandError,
     ) -> None:
         """Global slash-command error handler — ephemeral embeds.
 
         Catches every unhandled app-command error and presents it to the
-        user as a red embed.  Specific cogs can still override per-command
-        error handling with ``@command.error``.
+        user as a red embed.  The full exception is logged with traceback
+        BEFORE any user-facing response (spec logging-service). Specific
+        cogs can still override per-command error handling with
+        ``@command.error``.
         """
         # Delegate to per-command handlers if they exist.
         if interaction.command is not None:
             cog = interaction.command.cog  # type: ignore[union-attr]  # both Command and ContextMenu have .cog
             if cog is not None and cog.has_app_command_error_handler():
                 return
+
+        # Log first (spec logging-service): full exception + traceback must
+        # be on record before the user-facing embed is produced.
+        logger.error(
+            "Unhandled app-command error (guild=%s, command=%s)",
+            interaction.guild_id,
+            getattr(interaction.command, "qualified_name", None),
+            exc_info=error,
+        )
 
         guild_id = interaction.guild.id if interaction.guild else None
         title = t(guild_id, "common.error.unexpected_title")
@@ -437,6 +448,15 @@ class NebulosaBot(commands.Bot):
         )
         if isinstance(error, ignored):
             return
+
+        # Log first (spec logging-service): full exception + traceback must
+        # be on record before any user-facing response is produced.
+        logger.error(
+            "Unhandled command error (guild=%s, command=%s)",
+            ctx.guild.id if ctx.guild else None,
+            getattr(ctx.command, "qualified_name", None),
+            exc_info=error,
+        )
 
         guild_id = ctx.guild.id if ctx.guild else None
         embed = error_embed(

@@ -156,10 +156,7 @@ def test_both_locales_define_identical_key_sets() -> None:
     dynamic = {leaf for leaf in es_keys | en_keys if _is_dynamic(leaf)}
     # The unit_* families are composed dynamically per language but MUST be
     # defined in BOTH locale files — so they are NOT exempt here.
-    required_dynamic_units = {
-        f"tickets.timer.unit_{unit}"
-        for unit in ("second", "minute", "hour", "day")
-    }
+    required_dynamic_units = {f"tickets.timer.unit_{unit}" for unit in ("second", "minute", "hour", "day")}
     exempt = dynamic - required_dynamic_units
 
     es_only = (es_keys - en_keys) - exempt
@@ -240,7 +237,7 @@ def test_scheduled_description_interpolates_remaining_and_unix() -> None:
 def test_format_remaining_uses_full_name_unit_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     """format_remaining composes tickets.timer.unit_{second..day} keys (not letters).
 
-    Pins the spec's ``unit_second``–``unit_day`` naming at the real composition
+    Pins the spec's ``unit_second``-``unit_day`` naming at the real composition
     site in bot/utils/time.py while keeping compact output ("12h"-style).
     """
     import bot.utils.time as time_mod

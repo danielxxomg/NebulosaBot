@@ -101,10 +101,7 @@ class OcioService:
     def get_8ball_response(self, guild_id: str | None = None, question: str | None = None) -> str:  # noqa: ARG002
         """Return one of 20 localized 8ball responses (uniform random)."""
         key = random.choice(_8BALL_KEYS)  # noqa: S311
-        resp = t(guild_id, key)
-        if resp == key:
-            resp = key
-        return resp
+        return t(guild_id, key)
 
     def get_eight_ball_response(self, guild_id: str | None = None, question: str | None = None) -> str:
         """Alias for RED alternative name."""

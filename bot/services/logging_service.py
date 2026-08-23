@@ -273,6 +273,11 @@ class LoggingService:
             phase: ``"decay"`` (warning decay) or ``"expiry"`` (tempban expiry).
             count: Number of rows the phase processed (may be 0).
         """
+        # Zero-count digest suppression (spec logging-service): an idle
+        # cycle produces no embed at all.
+        if count <= 0:
+            return
+
         if not await self._should_log(guild_id):
             return
 

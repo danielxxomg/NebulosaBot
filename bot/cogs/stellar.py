@@ -6,8 +6,10 @@ Provides hybrid commands for the guild economy system:
   - /leaderboard <xp|coins> — top-10 leaderboard embed
   - /rank [member] — generate and send a rank card image
 
-NOTE: Slash command descriptions are Discord UI metadata, not runtime responses.
-They remain in English; t() localizes runtime responses only.
+NOTE: Slash command descriptions use locale_str with Spanish default
+messages (Discord UI metadata); the LocaleTranslator resolves them to the
+user's client language via the locale JSON files. Runtime responses are
+localized through t().
 """
 
 from __future__ import annotations

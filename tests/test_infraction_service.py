@@ -420,7 +420,9 @@ async def test_apply_escalation_kick_kicks_inserts_and_logs(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("escalation", [pytest.param(_mute_escalation(), id="mute"), pytest.param(_kick_escalation(), id="kick")])
+@pytest.mark.parametrize(
+    "escalation", [pytest.param(_mute_escalation(), id="mute"), pytest.param(_kick_escalation(), id="kick")]
+)
 async def test_apply_escalation_forbidden_returns_failure_without_persisting(
     escalation_service: InfractionService,
     mock_db: AsyncMock,
