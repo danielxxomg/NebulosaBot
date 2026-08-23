@@ -181,9 +181,11 @@ class TestPrekPrePush:
 
     def test_uv_check_prepush(self) -> None:
         hooks = self._prepush_hooks()
-        h = hooks.get("uv-check")
-        assert h is not None, f"missing uv-check pre-push, got {list(hooks.keys())}"
-        assert "uv check" in h.get("entry", ""), f"uv-check entry wrong: {h}"
+        # S3.1 (cycle-4-debt-zero): `uv check` is now experimental type-checking
+        # upstream, so the pre-push hook verifies lockfile sync instead.
+        h = hooks.get("uv-lock-check")
+        assert h is not None, f"missing uv-lock-check pre-push, got {list(hooks.keys())}"
+        assert "uv lock --check" in h.get("entry", ""), f"uv-lock-check entry wrong: {h}"
         assert h.get("always_run") is True
         assert h.get("pass_filenames") is False
         assert "pre-push" in h.get("stages", [])
