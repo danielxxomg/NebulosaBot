@@ -402,7 +402,7 @@ class TicketActionsView(discord.ui.View):
         except ImportError:
             from bot.views.ticket_category_select import _EditCategoryView as _edit_category_view_cls2
 
-        _ecls = _edit_category_view_cls if "_edit_category_view_cls" in dir() else _edit_category_view_cls2
+        _ecls = _edit_category_view_cls if "_edit_category_view_cls" in dir() else _edit_category_view_cls2  # ty: ignore[possibly-unresolved-reference]
         view = _ecls(options, guild, categories, ticket_row)
         await interaction.response.send_message(
             _t(guild_id, "tickets.open.select_category"),

@@ -1130,7 +1130,7 @@ class TicketRepairService:
                     except (ValueError, TypeError):
                         logger.warning(
                             "Invalid log_channel_id %r in guild %s config",
-                            config.log_channel_id,
+                            config.log_channel_id,  # ty: ignore[possibly-unresolved-reference]  # guarded by enclosing try/except
                             guild.id,
                         )
                 if log_channel is not None:

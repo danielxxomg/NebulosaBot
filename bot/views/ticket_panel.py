@@ -246,7 +246,7 @@ async def _create_ticket_after_modal(  # noqa: C901 -- modal orchestration: vali
     except ImportError:
         from bot.views.ticket_actions import TicketActionsView as _actions_view_cls2  # noqa: N813
 
-    _cls = _actions_view_cls if "_actions_view_cls" in dir() else _actions_view_cls2
+    _cls = _actions_view_cls if "_actions_view_cls" in dir() else _actions_view_cls2  # ty: ignore[possibly-unresolved-reference]
     actions_view = _cls(guild_id=guild_id)
     from bot.utils.embeds import build_ticket_embed
 
@@ -485,6 +485,6 @@ class TicketPanelView(discord.ui.View):
         except ImportError:
             from bot.views.ticket_category_select import _CategorySelectView as _category_select_view_cls2
 
-        _ccls = _category_select_view_cls if "_category_select_view_cls" in dir() else _category_select_view_cls2
+        _ccls = _category_select_view_cls if "_category_select_view_cls" in dir() else _category_select_view_cls2  # ty: ignore[possibly-unresolved-reference]
         view = _ccls(options, guild, categories)
         await interaction.response.send_message(_t(guild_id, "tickets.open.select_category"), view=view, ephemeral=True)

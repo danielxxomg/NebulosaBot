@@ -272,7 +272,7 @@ class TicketLifecycleFlow:
                     "client": self.bot,
                 },
             )()
-            actor_is_mod = await is_mod_check(_interaction)
+            actor_is_mod = await is_mod_check(_interaction)  # ty: ignore[invalid-argument-type]  # _Interaction duck-typed stand-in
         try:
             ticket = await self.bot.ticket_service.unclaim_ticket(
                 row["id"], actor_id, is_mod=actor_is_mod, guild_id=gid

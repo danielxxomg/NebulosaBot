@@ -171,7 +171,7 @@ possibly-unresolved-reference = "warn"
 unused-ignore-comment = "error"
 
 [[tool.ty.overrides]]
-include = ["bot/cogs/**"]
+include = ["bot/cogs/ticket_lifecycle_flow.py"]
 
 [tool.ty.overrides.rules]
 invalid-argument-type = "warn"
@@ -179,7 +179,643 @@ possibly-missing-import = "warn"
 possibly-unresolved-reference = "warn"
 
 [[tool.ty.overrides]]
-include = ["tests/**"]
+include = ["bot/services/ticket_repair_service.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+
+[[tool.ty.overrides]]
+include = ["bot/views/ticket_actions.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+
+[[tool.ty.overrides]]
+include = ["bot/views/ticket_category_select.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+
+[[tool.ty.overrides]]
+include = ["bot/views/ticket_panel.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_audit_listener.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_bot.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_checks.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_ci_config.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_confirm_view.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_core_cog.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_core_help_builder.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_greeting_db.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_greeting_neon_renderer.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_greeting_renderer.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_greeting_service.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_greeting_service_native_kwargs.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_greetings_cog.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_guild_scope_gaps.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_live_catalog.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_logging_service.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_ocio_cog.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_paginator.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_pr2_context_cache_dry.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_pr3_service_role_rls.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_pr3_voice_listener_red.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_production_live_close_s5_tdd.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_rank_renderer.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_rank_renderer_concurrency.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_remediation_cycle2_behavior.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_remediation_final7_untested.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_repair_convergence.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_round3_fixes_red.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_round5_fixes_red.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_s2d1_context_typing_chars.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_s3_final_strict_contracts.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_s3d1_guardrails.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_s4d1_polish.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_schema_inventory_verifier.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_sentinel_cog.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_setup_cog.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_stellar_cog.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_ticket_field_service.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_ticket_invariants.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_ticket_lifecycle_service_facade.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_ticket_query_service_facade.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_ticket_repair_service_facade.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_ticket_service.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_ticket_views.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_ticket_views_split_facade.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_tickets_cog.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_tickets_cog_facade.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_timeparse.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_transcript_service.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_utility_cog.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_verify_remediation_5_findings.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "warn"
+possibly-missing-attribute = "warn"
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+not-subscriptable = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/test_xp_listener.py"]
 
 [tool.ty.overrides.rules]
 possibly-unresolved-reference = "warn"

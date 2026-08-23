@@ -100,7 +100,7 @@ class _CategorySelect(discord.ui.Select[discord.ui.View]):
         except ImportError:
             from bot.views.ticket_panel import TicketIntakeModal as _modal_cls2  # noqa: N813
 
-        _mcls = _modal_cls if "_modal_cls" in dir() else _modal_cls2
+        _mcls = _modal_cls if "_modal_cls" in dir() else _modal_cls2  # ty: ignore[possibly-unresolved-reference]
         await interaction.response.send_modal(
             _mcls(guild, category_id, category_name, field_definitions=field_definitions)
         )
