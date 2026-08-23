@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import discord
 
@@ -60,16 +60,22 @@ class TicketIntegrityFlow:
         is_admin = isinstance(actor, discord.Member) and actor.guild_permissions.administrator
         has_mod_role = False
         if isinstance(actor, discord.Member):
-            _interaction = type(
-                "_Interaction",
-                (),
-                {
-                    "user": actor,
-                    "guild": ctx.guild,
-                    "guild_id": int(gid),
-                    "client": self.bot,
-                },
-            )()
+            # Minimal duck-typed Interaction stand-in for is_mod_check: it only
+            # reads user/guild/guild_id/client. cast() satisfies the static
+            # signature without altering runtime behaviour.
+            _interaction = cast(
+                "discord.Interaction",
+                type(
+                    "_Interaction",
+                    (),
+                    {
+                        "user": actor,
+                        "guild": ctx.guild,
+                        "guild_id": int(gid),
+                        "client": self.bot,
+                    },
+                )(),
+            )
             has_mod_role = await is_mod_check(_interaction) and not is_admin
         authority = RepairAuthority(
             actor_id=str(actor.id),
