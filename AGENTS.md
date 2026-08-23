@@ -1,4 +1,4 @@
-# NebulosaBot — Code Review Rules
+# NebulosaBot — Code Review Rules — V3
 
 ## Python General
 
@@ -22,6 +22,7 @@
 - Error handling: ephemeral embeds for slash, channel embeds for prefix
 - Never hardcode prefixes, channel IDs, or role IDs — read from guild config
 - Use `app_commands.check()` for custom permission checks, compose with `has_permissions()`
+- **i18n**: user-facing strings in cogs MUST go through `t(guild_id, "<key>")` — no hardcoded literals (see `bot/utils/i18n.py`; every `t()` literal must exist in `bot/locales/{es,en}.json`; scan via `tests/test_i18n_key_coverage.py`)
 - **Permission decorators**: `@can_check("<perm>")` (matrix-gated, 7 keys: `moderation.{warn,mute,kick,ban}`, `tickets.manage`, `economy.manage`, `greeting.manage`); `@is_mod()` (mod-role fallback); `@is_admin()` (admin-only). All three dual-register prefix+slash. Use `can()`/`can_member()` for non-decorator call sites
 - **Command visibility**: admin/config → ephemeral; mod-action → permanent; fun → permanent (exception: ocio `/banana` and `/8ball` are ephemeral per `ocio-commands` spec — they reply only to the invoking user and MUST NOT write to the DB); personal/info → ephemeral (see `ephemeral-standard` spec)
 - **Background loops**: `@tasks.loop()` MUST be DB-sourced for restart durability (scan each iteration, no in-memory timers), with `before_loop` (wait ready) + `cog_unload()` (cancel)
@@ -62,6 +63,7 @@
 - Application-level FK validation (Supabase Transaction Mode has no FK enforcement)
 - Idempotent operations — double-click must not create duplicates
 - Soft deletes for Guild (`active` flag), hard deletes only when explicitly required
+- Migrations: DDL MUST use `IF NOT EXISTS` (`ADD COLUMN IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`) for idempotent live re-runs; check via `tests/test_migrations.py`
 
 ## Testing
 
@@ -83,6 +85,9 @@
 - ❌ Bare `except:` — always catch specific exceptions
 - ❌ Using `is_mod()`/`is_admin()` when `can_check()` applies (matrix-gated permissions)
 - ❌ Listeners that mutate state (kick/mute/move/DM) — listeners are read-only
+- ❌ Hardcoded user-facing strings in cogs — use `t(guild_id, "<key>")`
+- ❌ Hand-built guild-scoped cache keys — use `cache_key(guild_id, entity)` from `bot.core.cache`
+- ❌ DDL without `IF NOT EXISTS` — migrations must guard `ADD COLUMN`/`CREATE INDEX`
 
 ## GGA Review Discipline
 
