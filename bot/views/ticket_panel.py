@@ -108,7 +108,7 @@ async def _create_ticket_after_modal(  # noqa: C901 -- modal orchestration: vali
 
     try:
         config = await bot.guild_service.get_config(guild_id)
-    except ImportError:
+    except Exception:  # noqa: BLE001 -- config fetch boundary; any failure shows config_error embed
         logger.exception("Failed to fetch guild config for ticket creation (guild=%s)", guild.id)
         await interaction.followup.send(
             embed=error_embed(

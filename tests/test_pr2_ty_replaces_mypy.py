@@ -86,61 +86,63 @@ class TestTyOverrides:
         return data.get("tool", {}).get("ty", {}).get("overrides", [])
 
     def test_cogs_override_exists(self) -> None:
-        """[[tool.ty.overrides]] include=["bot/cogs/**"] MUST exist."""
+        """[[tool.ty.overrides]] include MUST cover bot/cogs/** per-file after S3.6 narrowing."""
         overrides = self._overrides()
-        found = any("bot/cogs/**" in o.get("include", []) for o in overrides)
-        assert found, f"no bot/cogs/** override in {overrides}"
+        found = any(
+            any(inc.startswith("bot/cogs/") or inc == "bot/cogs/**" for inc in o.get("include", [])) for o in overrides
+        )
+        assert found, f"no bot/cogs per-file override in {overrides}"
 
     def test_cogs_override_invalid_argument_type_warn(self) -> None:
         """cogs override invalid-argument-type MUST be warn (discord.py decorator gap)."""
         for o in self._overrides():
-            if "bot/cogs/**" in o.get("include", []):
+            if any(inc.startswith("bot/cogs/") for inc in o.get("include", [])):
                 rules = o.get("rules", {})
-                assert rules.get("invalid-argument-type") == "warn", f"got {rules}"
-                return
-        pytest.fail("bot/cogs/** override not found")
+                if rules.get("invalid-argument-type") == "warn":
+                    return
+        pytest.fail("no bot/cogs per-file override with invalid-argument-type=warn")
 
     def test_cogs_override_possibly_missing_import_warn(self) -> None:
         """cogs override possibly-missing-import MUST be warn."""
         for o in self._overrides():
-            if "bot/cogs/**" in o.get("include", []):
+            if any(inc.startswith("bot/cogs/") for inc in o.get("include", [])):
                 rules = o.get("rules", {})
-                assert rules.get("possibly-missing-import") == "warn", f"got {rules}"
-                return
-        pytest.fail("bot/cogs/** override not found")
+                if rules.get("possibly-missing-import") == "warn":
+                    return
+        pytest.fail("no bot/cogs per-file override with possibly-missing-import=warn")
 
     def test_cogs_override_possibly_unresolved_reference_warn(self) -> None:
         """cogs override possibly-unresolved-reference MUST be warn."""
         for o in self._overrides():
-            if "bot/cogs/**" in o.get("include", []):
+            if any(inc.startswith("bot/cogs/") for inc in o.get("include", [])):
                 rules = o.get("rules", {})
-                assert rules.get("possibly-unresolved-reference") == "warn", f"got {rules}"
-                return
-        pytest.fail("bot/cogs/** override not found")
+                if rules.get("possibly-unresolved-reference") == "warn":
+                    return
+        pytest.fail("no bot/cogs per-file override with possibly-unresolved-reference=warn")
 
     def test_tests_override_exists(self) -> None:
-        """[[tool.ty.overrides]] include=["tests/**"] MUST exist."""
+        """[[tool.ty.overrides]] include MUST cover tests/** per-file after S3.6 narrowing."""
         overrides = self._overrides()
-        found = any("tests/**" in o.get("include", []) for o in overrides)
-        assert found, f"no tests/** override in {overrides}"
+        found = any(any(inc.startswith("tests/") for inc in o.get("include", [])) for o in overrides)
+        assert found, f"no tests per-file override in {overrides}"
 
     def test_tests_override_possibly_unresolved_reference_warn(self) -> None:
         """tests override possibly-unresolved-reference MUST be warn."""
         for o in self._overrides():
-            if "tests/**" in o.get("include", []):
+            if any(inc.startswith("tests/") for inc in o.get("include", [])):
                 rules = o.get("rules", {})
-                assert rules.get("possibly-unresolved-reference") == "warn", f"got {rules}"
-                return
-        pytest.fail("tests/** override not found")
+                if rules.get("possibly-unresolved-reference") == "warn":
+                    return
+        pytest.fail("no tests per-file override with possibly-unresolved-reference=warn")
 
     def test_tests_override_possibly_missing_attribute_warn(self) -> None:
         """tests override possibly-missing-attribute MUST be warn."""
         for o in self._overrides():
-            if "tests/**" in o.get("include", []):
+            if any(inc.startswith("tests/") for inc in o.get("include", [])):
                 rules = o.get("rules", {})
-                assert rules.get("possibly-missing-attribute") == "warn", f"got {rules}"
-                return
-        pytest.fail("tests/** override not found")
+                if rules.get("possibly-missing-attribute") == "warn":
+                    return
+        pytest.fail("no tests per-file override with possibly-missing-attribute=warn")
 
     def test_cogs_findings_are_warnings(self) -> None:
         """bot/cogs/ findings MUST be warn-tier after override (not error)."""

@@ -1,16 +1,9 @@
-name: Code Quality (Report Only)
+name: Code Quality
 
 # Hygiene spec H-6: every external GitHub Action step is SHA-pinned
 # (see actions/checkout, actions/setup-node, actions/setup-python below).
-# Third-party *report-only* tools (jscpd, vulture) run via npx/pip in a run
-# block with continue-on-error: true — they emit duplication and dead-code
-# reports but never block the PR. npx/pip resolve from the package registry
-# by version, not by a git-object SHA the way Actions pin their steps; they
-# cannot be SHA-pinned inline. To stay closest to H-6 these tools are
-# version-pinned (not latest) and the jobs are non-blocking. Moving them to
-# a SHA-verified lockfile (npm ci with package-lock resolved SHAs; pip install
-# --require-hashes) is tracked as a follow-up; the report-only posture keeps
-# this deviation safe.
+# jscpd budget gate uses the same pinned npx jscpd@4.0.1 + baseline
+# via scripts/jscpd_check.py — its failure is blocking (no continue-on-error).
 
 on:
   pull_request:
@@ -31,11 +24,13 @@ jobs:
         with:
           node-version: "20"
 
-      - name: jscpd — duplication report
-        continue-on-error: true
+      - name: jscpd — duplication report (advisory)
         run: |
           npx jscpd@4.0.1 bot/ --threshold 5 --reporters console
           npx jscpd@4.0.1 tests/ --threshold 10 --reporters console
+
+      - name: jscpd — duplication budget gate
+        run: python scripts/jscpd_check.py
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:

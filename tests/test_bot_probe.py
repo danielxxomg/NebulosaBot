@@ -1,32 +1,43 @@
-"""RED tests for bot probe — 4.6.
+"""Probe tests for GreetingRenderer injection via real setup_hook — C14.
 
 Strict TDD: cairosvg ImportError → Pillow + WARNING, no abort;
 cairosvg present → Pillow still default (Cycle 1).
+Uses real NebulosaBot.setup_hook with DB/cache mocked per D4.
 """
 
 from __future__ import annotations
 
 import logging
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
+import discord
 import pytest
 
+from bot.bot import NebulosaBot
+from bot.config import BotConfig
 
-def _make_bot_config(*, supabase_url: str = "https://example.supabase.co", supabase_key: str = "test-key"):
-    """Build minimal BotConfig-like object for setup_hook."""
-    cfg = MagicMock()
-    cfg.supabase_url = supabase_url
-    cfg.supabase_key = supabase_key
-    cfg.log_level = "INFO"
-    return cfg
+
+def _make_config() -> BotConfig:
+    return BotConfig(
+        discord_token="t",
+        supabase_url="https://x.supabase.co",
+        supabase_key="test-key",
+    )
+
+
+def _patch_setup_hook_env(bot: NebulosaBot, monkeypatch_bundle: dict) -> None:
+    """Apply common patches for setup_hook (DB, cache, cogs, tree)."""
+    # Returns a dict of patches for caller to manage via context
+    _ = monkeypatch_bundle  # placeholder for future extensibility
 
 
 @pytest.mark.asyncio
 async def test_probe_import_error_falls_back_to_pillow_and_logs_warning(caplog):
     """ImportError on cairosvg must inject PillowGreetingRenderer and log WARNING, no abort."""
+    from bot.services.greeting_renderer import PillowGreetingRenderer
 
-    # Patch import to raise ImportError only for cairosvg, keep others.
     real_import = __import__
 
     def fake_import(name, *args, **kwargs):
@@ -35,65 +46,67 @@ async def test_probe_import_error_falls_back_to_pillow_and_logs_warning(caplog):
         return real_import(name, *args, **kwargs)
 
     caplog.set_level(logging.WARNING)
+    bot = NebulosaBot(config=_make_config(), intents=discord.Intents.default())
+
+    mock_sync = AsyncMock()
     with (
         patch("builtins.__import__", side_effect=fake_import),
         patch.dict(sys.modules, {"cairosvg": None}, clear=False),
+        patch("bot.bot.Database") as mock_db_cls,
+        patch("bot.bot.RealtimeCacheSubscriber") as mock_sub_cls,
+        patch.object(bot, "load_extension", new=AsyncMock()),
+        patch.object(type(bot.tree), "sync", mock_sync),
+        patch("bot.bot.load_locales"),
+        patch("bot.bot.validate_slash_localizations"),
+        patch.object(type(bot.tree), "set_translator", new=AsyncMock()),
     ):
+        mock_db_cls.return_value.connect = AsyncMock()
+        mock_sub_cls.return_value.start = AsyncMock()
         sys.modules.pop("cairosvg", None)
-        # We need to mock DB/cache so setup_hook doesn't hit network.
-        # Use a helper that calls only the probe injection path.
-        # Import the probe helper directly: bot.bot should expose a function
-        # that returns a renderer. If not, we test setup_hook wiring via patch.
-        from bot.services.greeting_renderer import PillowGreetingRenderer
+        with caplog.at_level(logging.WARNING, logger="bot.bot"):
+            await bot.setup_hook()
 
-        # Simulate the probe function: import cairosvg → fallback.
-        # This test expects bot.py to perform the probe at ~line 215.
-        # Call the probe logic in isolation.
-        try:
-            import cairosvg  # type: ignore  # noqa: F401
-
-            renderer = PillowGreetingRenderer()  # Cycle 1 still Pillow even if present
-        except ImportError:
-            renderer = PillowGreetingRenderer()
-            logging.getLogger("bot.bot").warning("cairosvg not available — using PillowGreetingRenderer")
-        assert isinstance(renderer, PillowGreetingRenderer)
-
-    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
-    assert any("cairosvg" in r.getMessage().lower() or "PillowGreetingRenderer" in r.getMessage() for r in warnings)
+        # Must have injected Pillow renderer even though probe raised ImportError
+        assert isinstance(bot.greeting_service._greeting_renderer, PillowGreetingRenderer)  # type: ignore[union-attr]
+        assert isinstance(bot.rank_renderer, object)
+        # WARNING must have been logged
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert any("cairosvg" in r.getMessage().lower() for r in warnings)
+        # No abort — tree.sync still ran
+        mock_sync.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_probe_success_still_injects_pillow_cycle1():
     """When cairosvg import succeeds, Cycle 1 still injects Pillow."""
-    # Simulate probe success: import succeeds but injector still chooses Pillow.
-    # The production probe should not branch to SVG in Cycle 1.
-    # We assert the injector's choice is Pillow regardless of probe result.
-    # If bot.bot exposes a factory, test it; otherwise assert Pillow is default.
-    # Minimal probe simulation (side-effect only — existence check via bot.py source below).
-    import contextlib
-
     from bot.services.greeting_renderer import PillowGreetingRenderer
 
-    with contextlib.suppress(ImportError):
-        import cairosvg  # type: ignore  # noqa: F401
+    bot = NebulosaBot(config=_make_config(), intents=discord.Intents.default())
+    mock_sync = AsyncMock()
+    with (
+        patch("bot.bot.Database") as mock_db_cls,
+        patch("bot.bot.RealtimeCacheSubscriber") as mock_sub_cls,
+        patch.object(bot, "load_extension", new=AsyncMock()),
+        patch.object(type(bot.tree), "sync", mock_sync),
+        patch("bot.bot.load_locales"),
+        patch("bot.bot.validate_slash_localizations"),
+        patch.object(type(bot.tree), "set_translator", new=AsyncMock()),
+    ):
+        mock_db_cls.return_value.connect = AsyncMock()
+        mock_sub_cls.return_value.start = AsyncMock()
+        await bot.setup_hook()
 
-    # In Cycle 1, both branches yield Pillow.
-    from bot.services.greeting_renderer import PillowGreetingRenderer as Pillow
-
-    renderer = Pillow()
-    assert isinstance(renderer, PillowGreetingRenderer)
-
-    # Additionally, verify bot.py source mentions both cairosvg probe and PillowGreetingRenderer
-    from pathlib import Path
-
-    src = Path("bot/bot.py").read_text(encoding="utf-8")
-    assert "cairosvg" in src, "bot.py must probe cairosvg"
-    assert "PillowGreetingRenderer" in src, "bot.py must inject PillowGreetingRenderer"
+        # Cycle 1: both branches yield Pillow regardless of cairosvg presence
+        assert isinstance(bot.greeting_service._greeting_renderer, PillowGreetingRenderer)  # type: ignore[union-attr]
+        # Source still probes cairosvg and injects PillowGreetingRenderer
+        src = Path("bot/bot.py").read_text(encoding="utf-8")
+        assert "cairosvg" in src
+        assert "PillowGreetingRenderer" in src
 
 
 @pytest.mark.asyncio
 async def test_greeting_service_receives_renderer_interface():
-    """GreetingService constructed at bot.py:215 must receive a GreetingRenderer instance."""
+    """GreetingService constructed via setup_hook must receive a GreetingRenderer."""
     from bot.core.cache import TTLCache
     from bot.services.greeting_renderer import GreetingRenderer, PillowGreetingRenderer
     from bot.services.greeting_service import GreetingService
@@ -103,5 +116,4 @@ async def test_greeting_service_receives_renderer_interface():
     renderer = PillowGreetingRenderer()
     svc = GreetingService(db=db, cache=cache, greeting_renderer=renderer)
     assert isinstance(svc._greeting_renderer, PillowGreetingRenderer)
-    # Must satisfy Protocol (runtime_checkable)
     assert isinstance(renderer, GreetingRenderer)
