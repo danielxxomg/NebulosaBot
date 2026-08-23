@@ -78,28 +78,50 @@ A `prek.toml` in repo root MUST be the hook source of truth. Legacy `.pre-commit
 - WHEN the developer commits staged files
 - THEN `.gga` executes after ruff and ty, and a non-zero exit aborts the commit
 
-### Requirement: Pre-push stage runs uv check and tach
+### Requirement: Pre-push stage runs uv lock check and tach
 
-`prek.toml` MUST include pre-push hooks: `uv check`, `tach check`, `tach check-external`, with `stages = ["pre-push"]`. Tests MUST NOT run per-commit.
+`prek.toml` MUST include pre-push hooks: `uv-lock-check` (local id, entry `uv lock --check`), `tach check`, and `tach check-external`, each with `stages = ["pre-push"]`. Tests MUST NOT run per-commit.
 
-#### Scenario: Pre-push runs uv check and tach
+#### Scenario: Pre-push runs lock check and tach
 
-- GIVEN pre-push hooks run `uv check`, `tach check`, `tach check-external`
+- GIVEN pre-push hooks run `uv-lock-check`, `tach check`, `tach check-external`
 - WHEN `git push` runs
-- THEN uv validates the environment and module boundaries are enforced
+- THEN lockfile freshness is verified and module boundaries are enforced
 
-#### Scenario: Tests not run per-commit
+#### Scenario: Stale lock blocks push
 
-- GIVEN no pytest hook exists in pre-commit stage
-- WHEN the developer commits
-- THEN the test suite is not invoked
+- GIVEN `pyproject.toml` changed without regenerating `uv.lock`
+- WHEN the developer pushes
+- THEN `uv-lock-check` fails and the push is aborted
 
 ### Requirement: Hook priorities and ordering
 
-`prek.toml` MAY define `[priorities]`. Effective order: builtin → ruff check → ruff format → ty → GGA (pre-commit); uv check → tach check → tach check-external (pre-push).
+`prek.toml` MAY define `[priorities]`. Effective order: builtin → ruff check → ruff format → ty → GGA (pre-commit); uv-lock-check → jscpd-check → tach check → tach check-external (pre-push).
+
+(Previously: the pre-push order referenced `uv check` and had no duplication hook.)
 
 #### Scenario: Hooks execute in priority order
 
 - GIVEN `prek.toml` defines priorities or relies on list order
-- WHEN prek runs the pre-commit stage
-- THEN hooks execute in the specified order
+- WHEN prek runs the pre-push stage
+- THEN hooks execute in the specified order (lock check, duplication, tach)
+
+<!-- BEGIN DELTA: cycle-4-debt-zero (pre-commit-config-file) -->
+## ADDED Requirements
+
+### Requirement: jscpd-check pre-push hook
+
+`prek.toml` MUST include a local `jscpd-check` hook in the pre-push stage scoped to `^(bot/|tests/)` that invokes the duplication budget checker (see the duplication-budget specification). A push MUST abort on any non-zero checker exit.
+
+#### Scenario: Push blocked above duplication ceiling
+
+- GIVEN duplication exceeds a committed baseline ceiling
+- WHEN the developer pushes
+- THEN `jscpd-check` exits non-zero and the push is aborted
+
+#### Scenario: Push proceeds within ceiling
+
+- GIVEN duplication is within all ceilings
+- WHEN the developer pushes
+- THEN `jscpd-check` passes and the push proceeds
+<!-- END DELTA: cycle-4-debt-zero (pre-commit-config-file) -->
