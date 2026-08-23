@@ -96,8 +96,10 @@ bot = ["*.py"]
 target-version = "py311"
 line-length = 120
 preview = true
+required-version = "0.15.20"
 
 [tool.ruff.lint]
+explicit-preview-rules = true
 select = [
     "E",    # pycodestyle errors
     "W",    # pycodestyle warnings
@@ -122,9 +124,15 @@ select = [
     "FLY",  # flynt
     "PERF", # perflint
     "FURB", # refurb
-    "ANN",  # flake8-annotations (38 Any — deferred, see per-file-ignores)
-    "PYI",  # flake8-pyi (preview)
-    "PGH",  # pygrep-hooks (preview, PGH003)
+    "ANN",  # flake8-annotations — ty alignment (preview, explicit)
+    "PYI",  # flake8-pyi — ty alignment (preview, explicit)
+    "PGH003",  # pygrep-hooks blanket-type-ignore — ty alignment (preview, explicit)
+    "ASYNC",  # flake8-async
+    "BLE",  # flake8-blind-except
+    "G",    # flake8-logging
+    "A",    # flake8-builtins
+    "PT011",  # flake8-pytest-style single rule (PT rest deferred)
+    # PLC0415 requested import not top-level — advisory only, NEVER in select (PLR/PTH/SLF deferred)
 ]
 
 [tool.ruff.lint.mccabe]
