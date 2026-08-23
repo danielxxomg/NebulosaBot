@@ -215,7 +215,7 @@ class TicketLifecycleService:
         try:
             await self._db.update_ticket(ticket_id, guild_id=guild_id, scheduledCloseAt=None, scheduledCloseBy=None)
         except Exception:
-            logger.error("scheduled-close clear failed for ticket %s", ticket_id, exc_info=True)
+            logger.exception("scheduled-close clear failed for ticket %s", ticket_id)
 
     async def claim_ticket(self, ticket_id: str, claimed_by: str, *, guild_id: str | None = None) -> Ticket:
         pre = await self._db.get_ticket(ticket_id, guild_id=guild_id)

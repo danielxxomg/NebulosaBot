@@ -938,7 +938,7 @@ class TicketRepairService:
             try:
                 await self.cancel_scheduled_close(guild_id, ticket_id)
             except Exception:
-                logger.error("scheduled-close clear failed for ticket %s", ticket_id, exc_info=True)
+                logger.exception("scheduled-close clear failed for ticket %s", ticket_id)
             return None
         return ticket
 
@@ -1151,7 +1151,7 @@ class TicketRepairService:
                 ticket.id, guild_id=ticket.guild_id, scheduledCloseAt=None, scheduledCloseBy=None
             )
         except Exception:
-            logger.error("scheduled-close clear failed for ticket %s", ticket.id, exc_info=True)
+            logger.exception("scheduled-close clear failed for ticket %s", ticket.id)
 
         if manual:
             await self._countdown_and_delete(channel, closed_by)
