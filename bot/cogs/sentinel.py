@@ -1,9 +1,10 @@
 """SentinelCog — moderation commands for NebulosaBot.
 
 Provides 9 hybrid moderation commands: warn, unwarn, mute, unmute, kick,
-ban, lock, unlock, and modlogs.  All commands are permission-gated via
-``@is_mod()`` or ``@is_admin()`` and log actions to the configured
-mod-log channel when enabled.
+ban, lock, unlock, and modlogs.  Moderation commands are gated by the
+permission matrix via ``@can_check("moderation.<key>")``; lock/unlock/
+modlogs keep ``@is_mod()`` and sync stays ``@is_admin()``.  Actions log
+to the configured mod-log channel when enabled.
 
 NOTE: Slash command descriptions are Discord UI metadata, not runtime responses.
 They remain in English; t() localizes runtime responses only.
@@ -282,7 +283,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         reason=app_commands.locale_str("Razón de la advertencia", key="slash.describes.warn.reason"),
     )
     @app_commands.default_permissions(moderate_members=True)
-    @is_mod()
+    @can_check("moderation.warn")
     async def warn(self, ctx: NebulosaContext, member: discord.Member, *, reason: str) -> None:
         """Issue a warning and check for auto-escalation."""
         if not await self._validate_target(ctx, member, "warn"):
@@ -295,8 +296,9 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         if self.bot.infraction_service is None:
             msg = "InfractionService initialised in setup_hook"
             raise RuntimeError(msg)
+        infraction_service = self.bot.infraction_service
         try:
-            _infraction, escalation = await self.bot.infraction_service.warn(
+            _infraction, escalation = await infraction_service.warn(
                 guild_id,
                 target_id,
                 moderator_id,
@@ -315,95 +317,27 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         if self.bot.logging_service is None:
             msg = "LoggingService initialised in setup_hook"
             raise RuntimeError(msg)
-        if not isinstance(ctx.author, discord.Member):
+        moderator = ctx.author
+        if not isinstance(moderator, discord.Member):
             msg = "ctx.author must be discord.Member"
             raise TypeError(msg)
         await self.bot.logging_service.log_moderation_action(
             guild_id,
             "Warn",
             member,
-            ctx.author,
+            moderator,
             reason,
         )
 
-        # Report escalation if triggered.
+        # Execute escalation side-effects through the service (cycle-4-debt-zero D1).
         escalation_msg = ""
         if escalation is not None:
-            if escalation.action == "MUTE":
-                try:
-                    await member.timeout(
-                        timedelta(seconds=escalation.duration),
-                        reason=f"Auto-escalation: {escalation.threshold} warnings",
-                    )
-                    if self.bot.db is None:
-                        msg = "Database initialised in setup_hook"
-                        raise RuntimeError(msg)
-                    await self.bot.db.insert_infraction(
-                        guild_id=guild_id,
-                        target_id=target_id,
-                        moderator_id=moderator_id,
-                        type="MUTE",
-                        reason=(f"Auto-escalation after {escalation.threshold} warnings"),
-                    )
-                    if self.bot.logging_service is None:
-                        msg = "LoggingService initialised in setup_hook"
-                        raise RuntimeError(msg)
-                    await self.bot.logging_service.log_moderation_action(
-                        guild_id,
-                        "Mute (Auto-escalation)",
-                        member,
-                        ctx.author,
-                        f"{escalation.threshold} warnings reached",
-                    )
-                    escalation_msg = t(
-                        guild_id,
-                        "sentinel.warn.auto_mute_description",
-                        mention=member.mention,
-                        threshold=escalation.threshold,
-                    )
-                except discord.Forbidden:
-                    escalation_msg = t(
-                        guild_id,
-                        "sentinel.warn.auto_mute_failed_description",
-                        mention=member.mention,
-                    )
-            elif escalation.action == "KICK":
-                try:
-                    await member.kick(
-                        reason=(f"Auto-escalation: {escalation.threshold} warnings"),
-                    )
-                    if self.bot.db is None:
-                        msg = "Database initialised in setup_hook"
-                        raise RuntimeError(msg)
-                    await self.bot.db.insert_infraction(
-                        guild_id=guild_id,
-                        target_id=target_id,
-                        moderator_id=moderator_id,
-                        type="KICK",
-                        reason=(f"Auto-escalation after {escalation.threshold} warnings"),
-                    )
-                    if self.bot.logging_service is None:
-                        msg = "LoggingService initialised in setup_hook"
-                        raise RuntimeError(msg)
-                    await self.bot.logging_service.log_moderation_action(
-                        guild_id,
-                        "Kick (Auto-escalation)",
-                        member,
-                        ctx.author,
-                        f"{escalation.threshold} warnings reached",
-                    )
-                    escalation_msg = t(
-                        guild_id,
-                        "sentinel.warn.auto_kick_description",
-                        mention=member.mention,
-                        threshold=escalation.threshold,
-                    )
-                except discord.Forbidden:
-                    escalation_msg = t(
-                        guild_id,
-                        "sentinel.warn.auto_kick_failed_description",
-                        mention=member.mention,
-                    )
+            escalation_msg = await infraction_service.apply_escalation(
+                guild_id=guild_id,
+                member=member,
+                moderator=moderator,
+                escalation=escalation,
+            )
 
         await ctx.send(
             embed=success_embed(
@@ -432,7 +366,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         )
     )
     @app_commands.default_permissions(moderate_members=True)
-    @is_mod()
+    @can_check("moderation.warn")
     async def unwarn(self, ctx: NebulosaContext, member: discord.Member) -> None:
         """Deactivate the most recent active warning."""
         if not await self._validate_target(ctx, member, "unwarn"):
@@ -511,7 +445,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         ),
     )
     @app_commands.default_permissions(moderate_members=True)
-    @is_mod()
+    @can_check("moderation.mute")
     async def mute(
         self,
         ctx: NebulosaContext,
@@ -594,7 +528,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         )
     )
     @app_commands.default_permissions(moderate_members=True)
-    @is_mod()
+    @can_check("moderation.mute")
     async def unmute(self, ctx: NebulosaContext, member: discord.Member) -> None:
         """Remove the timeout from *member*."""
         if not await self._validate_target(ctx, member, "unmute"):
@@ -645,7 +579,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         reason=app_commands.locale_str("Razón de la expulsión", key="slash.describes.kick.reason"),
     )
     @app_commands.default_permissions(moderate_members=True)
-    @is_mod()
+    @can_check("moderation.kick")
     async def kick(self, ctx: NebulosaContext, member: discord.Member, *, reason: str) -> None:
         """Kick *member* from the guild after confirmation."""
         if not await self._validate_target(ctx, member, "kick"):

@@ -1,8 +1,9 @@
-"""S3.1 RED — Guardrails: is_mod 25, guild denial at 568/685/722, sb_secret probe, scripts ruff.
+"""S3.1 RED — Guardrails: is_mod 3, guild denial at 568/685/722, sb_secret probe, scripts ruff.
 
-Strict TDD: this file MUST fail before GREEN (S3.1.1). Gates: is_mod ledger 25
-(17 tickets +8 sentinel), guild-scoped DB at tickets.py:568/685/722, sb_secret
-opaque probe via RLS SELECT not JWT decode, and scripts ruff 11→0.
+Strict TDD: this file MUST fail before GREEN (S3.1.1). Gates: is_mod ledger 3
+(0 tickets +3 sentinel lock/unlock/modlogs after cycle-4-debt-zero S1 migrated
+the moderation commands to can_check), guild-scoped DB at tickets.py:568/685/722,
+sb_secret opaque probe via RLS SELECT not JWT decode, and scripts ruff 11→0.
 No DDL in this slice.
 """
 
@@ -41,15 +42,16 @@ class TestIsModLedger:
         # PR4 migrates every tickets lifecycle @is_mod() → @can_check("tickets.manage"); delete_category stays @is_admin
         assert _count_is_mod_decorators("bot/cogs/tickets.py") == 0
 
-    def test_sentinel_is_mod_count_8(self) -> None:
-        """sentinel.py MUST have 8 @is_mod() decorators (ban is @can_check moderation.ban since PR1; PR4 does not touch sentinel)."""
-        assert _count_is_mod_decorators("bot/cogs/sentinel.py") == 8
+    def test_sentinel_is_mod_count_3(self) -> None:
+        """sentinel.py MUST have 3 @is_mod() decorators (lock/unlock/modlogs; ban/tempban/unban + warn/unwarn/mute/unmute/kick are @can_check since PR1/cycle-4-debt-zero)."""
+        assert _count_is_mod_decorators("bot/cogs/sentinel.py") == 3
 
-    def test_total_is_mod_25(self) -> None:
-        """Total is_mod decorators MUST be 8 (0 tickets +8 sentinel) after PR4."""
+    def test_total_is_mod_3(self) -> None:
+        """Total is_mod decorators MUST be 3 (0 tickets +3 sentinel) after cycle-4-debt-zero S1."""
         total = _count_is_mod_decorators("bot/cogs/tickets.py") + _count_is_mod_decorators("bot/cogs/sentinel.py")
-        assert total == 8, (
-            f"is_mod ledger drift: got {total}, expected 8 (0 tickets +8 sentinel; PR4 tickets → can_check)"
+        assert total == 3, (
+            f"is_mod ledger drift: got {total}, expected 3 "
+            "(0 tickets +3 sentinel lock/unlock/modlogs; moderation commands → can_check)"
         )
 
     def test_tickets_can_check_tickets_manage_ledger(self) -> None:

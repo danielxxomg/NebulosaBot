@@ -807,3 +807,107 @@ async def test_is_mod_shim_dm_raises_no_private_message_shim() -> None:
     ctx.guild = None
     with pytest.raises(commands.NoPrivateMessage):
         await predicate(ctx)
+
+
+# ---------------------------------------------------------------------------
+# Sentinel matrix gates (cycle-4-debt-zero S1.3) — warn/unwarn/mute/unmute/kick
+# MUST be gated by @can_check("moderation.<key>") with denial raising
+# CheckFailure naming the missing permission (sentinel-commands spec).
+# ---------------------------------------------------------------------------
+
+SENTINEL_MATRIX_GATES = [
+    pytest.param("warn", "moderation.warn", id="warn"),
+    pytest.param("unwarn", "moderation.warn", id="unwarn"),
+    pytest.param("mute", "moderation.mute", id="mute"),
+    pytest.param("unmute", "moderation.mute", id="unmute"),
+    pytest.param("kick", "moderation.kick", id="kick"),
+]
+
+
+def _sentinel_command(command_name: str) -> Any:
+    """Build a SentinelCog and return the hybrid command *command_name*."""
+    from bot.cogs.sentinel import SentinelCog
+
+    bot = MagicMock()
+    cog = SentinelCog(bot=bot)
+    cmd = getattr(cog, command_name)
+    assert cmd is not None, f"SentinelCog.{command_name} must exist"
+    return cmd
+
+
+@pytest.mark.parametrize(("command_name", "permission"), SENTINEL_MATRIX_GATES)
+def test_sentinel_command_gated_by_can_check(command_name: str, permission: str) -> None:
+    """Each of the 5 commands MUST carry @can_check("moderation.<key>") in source."""
+    import pathlib
+
+    src = pathlib.Path("bot/cogs/sentinel.py").read_text(encoding="utf-8")
+    lines = src.splitlines()
+    idx = next(i for i, line in enumerate(lines) if f"async def {command_name}(" in line)
+    window = "\n".join(lines[max(0, idx - 12) : idx])
+    assert "can_check" in window, f"{command_name} must be gated by @can_check, got:\n{window}"
+    assert f'"{permission}"' in window, f"{command_name} must gate {permission}, got:\n{window}"
+    assert "@is_mod()" not in window, f"{command_name} must NOT use @is_mod() anymore"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("command_name", "permission"), SENTINEL_MATRIX_GATES)
+async def test_sentinel_command_prefix_denial_names_permission(command_name: str, permission: str) -> None:
+    """Prefix-path denial MUST raise commands.CheckFailure naming the permission.
+
+    Exercises the REAL check attached to the command (not a standalone
+    predicate) so the test fails while the command is still gated by
+    @is_mod(), which raises MissingRole / "No moderator role" instead.
+    """
+    cmd = _sentinel_command(command_name)
+    assert len(cmd.checks) > 0, f"{command_name} must have prefix checks"
+    predicate = cmd.checks[-1]
+
+    member = _make_member_with_roles(123456789, [])
+    ctx = _make_ctx_with_member(MagicMock(spec=discord.Guild), member)
+    ctx.bot._guild_mod_role_cache = {}
+    ctx.bot.guild_service = None
+
+    with (
+        patch("bot.utils.checks._get_guild_service", return_value=None),
+        pytest.raises(commands.CheckFailure, match=f"Missing permission: {permission}"),
+    ):
+        await predicate(ctx)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("command_name", "permission"), SENTINEL_MATRIX_GATES)
+async def test_sentinel_command_slash_denial_names_permission(command_name: str, permission: str) -> None:
+    """Slash-path denial MUST raise app_commands.CheckFailure naming the permission."""
+    cmd = _sentinel_command(command_name)
+    assert cmd.app_command is not None, f"{command_name} must have a slash command"
+    assert len(cmd.app_command.checks) > 0, f"{command_name} must have slash checks"
+    predicate = cmd.app_command.checks[-1]
+
+    member = _make_member_with_roles(123456789, [])
+    interaction = MagicMock(spec=discord.Interaction)
+    interaction.guild = MagicMock(spec=discord.Guild)
+    interaction.user = member
+    interaction.client = MagicMock()
+    interaction.client._guild_mod_role_cache = {}
+
+    with (
+        patch("bot.utils.checks._get_guild_service", return_value=None),
+        pytest.raises(app_commands.CheckFailure, match=f"Missing permission: {permission}"),
+    ):
+        await predicate(interaction)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("command_name", "permission"), SENTINEL_MATRIX_GATES)
+async def test_sentinel_command_matrix_grant_passes_gate(command_name: str, permission: str) -> None:
+    """A user holding the matrix role for the key MUST pass the command's gate."""
+    cmd = _sentinel_command(command_name)
+    predicate = cmd.checks[-1]
+
+    granted_role = 424242
+    member = _make_member_with_roles(123456789, [granted_role])
+    ctx = _make_ctx_with_member(MagicMock(spec=discord.Guild), member)
+    cfg = MagicMock(permission_matrix={permission: [str(granted_role)]}, mod_role_id=None)
+    with patch("bot.utils.checks._get_guild_service") as gs_mock:
+        gs_mock.return_value.get_config = AsyncMock(return_value=cfg)
+        assert await predicate(ctx) is True

@@ -790,12 +790,17 @@ class TestHandleModError:
 
 
 def test_warn_is_mod_dual_path_gated(sentinel_cog: SentinelCog) -> None:
-    """warn MUST register BOTH prefix (cmd.checks) and slash (app_command.checks) gates."""
+    """warn MUST register BOTH prefix (cmd.checks) and slash (app_command.checks) gates.
+
+    Since cycle-4-debt-zero S1, the gate is ``@can_check("moderation.warn")``
+    (matrix-gated) instead of ``@is_mod()`` — dual registration is intrinsic
+    to can_check, so both check lists must stay non-empty.
+    """
     cmd: object = sentinel_cog.warn
     assert cmd is not None
-    assert len(cmd.checks) > 0, "warn must have prefix checks from @is_mod()"
+    assert len(cmd.checks) > 0, "warn must have prefix checks from @can_check(moderation.warn)"
     assert hasattr(cmd, "app_command") and cmd.app_command is not None
-    assert len(cmd.app_command.checks) > 0, "warn must have slash checks from @is_mod()"
+    assert len(cmd.app_command.checks) > 0, "warn must have slash checks from @can_check(moderation.warn)"
 
 
 # ---------------------------------------------------------------------------
