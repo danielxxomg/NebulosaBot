@@ -165,9 +165,7 @@ class TestClaimTicketDomainErrorStillShowsEmbed:
         ticket_row = _open_ticket_row()
         interaction = _make_claim_interaction(ticket_row=ticket_row)
         # Simulate race: service raises ValueError (already claimed)
-        interaction.client.ticket_service.claim_ticket = AsyncMock(
-            side_effect=ValueError("already claimed")
-        )
+        interaction.client.ticket_service.claim_ticket = AsyncMock(side_effect=ValueError("already claimed"))
 
         view = TicketActionsView(guild_id="123456789")
         # Should NOT raise; must send ephemeral error_embed
@@ -191,9 +189,7 @@ class TestClaimTicketDomainErrorStillShowsEmbed:
 
         ticket_row = _open_ticket_row()
         interaction = _make_claim_interaction(ticket_row=ticket_row)
-        interaction.client.ticket_service.claim_ticket = AsyncMock(
-            side_effect=RuntimeError("DB write failed")
-        )
+        interaction.client.ticket_service.claim_ticket = AsyncMock(side_effect=RuntimeError("DB write failed"))
 
         view = TicketActionsView(guild_id="123456789")
         await view.claim_button.callback(interaction)
@@ -347,9 +343,7 @@ class TestCreateTicketChannelFallbackStillShowsEmbed:
         interaction.followup = MagicMock()
         interaction.followup.send = AsyncMock()
 
-        await _create_ticket_after_modal(
-            interaction, guild, "cat-uuid", "Support", "Help", "desc"
-        )
+        await _create_ticket_after_modal(interaction, guild, "cat-uuid", "Support", "Help", "desc")
 
         interaction.followup.send.assert_awaited_once()
         kwargs = interaction.followup.send.call_args.kwargs
