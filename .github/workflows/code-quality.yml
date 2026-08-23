@@ -41,3 +41,69 @@ jobs:
         run: |
           pip install vulture==2.14
           vulture bot/ --min-confidence 80
+
+  security-advisory:
+    # Supply-chain + secrets scanning. Advisory until triaged; flip
+    # continue-on-error to false once baselines are accepted (see
+    # cycle-4 residual-debt.md and the dashboard-QA SDD).
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # betterleaks history scan needs full refs
+
+      - name: OSV-Scanner — CVE gate (uv.lock + package-lock.json)
+        run: |
+          curl -sL -o osv-scanner https://github.com/google/osv-scanner/releases/download/v2.5.1/osv-scanner_linux_amd64
+          chmod +x osv-scanner
+          ./osv-scanner scan source . --format table
+
+      - name: Betterleaks — secrets (full dir, config-triaged)
+        run: |
+          curl -sL https://github.com/betterleaks/betterleaks/releases/download/v1.8.1/betterleaks_1.8.1_linux_x64.tar.gz | tar xz betterleaks
+          ./betterleaks dir . --redact --no-banner
+
+      # ── Commented out: enable after baseline acceptance ──
+      # Blocking variant: remove `continue-on-error: true` from the job above.
+      # History scan (expensive; schedule weekly, not per-PR):
+      #   ./betterleaks git . --redact --log-opts="--all"
+
+  dashboard-lint-advisory:
+    # Oxlint (via Ultracite core preset) over dashboard/. Advisory phase:
+    # baseline 288 findings on 2026-08-23 (mostly style: sort-keys, func-style,
+    # unicorn). Triage → fix or rule-tune in the dedicated dashboard-QA SDD,
+    # then flip continue-on-error to false.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "20"
+
+      - name: Install dashboard deps (npm ci)
+        working-directory: dashboard
+        run: npm ci
+
+      - name: Oxlint (Ultracite core) — advisory
+        working-directory: dashboard
+        run: npm run lint:ox
+
+      - name: ESLint (existing flat config) — advisory parity check
+        continue-on-error: true
+        working-directory: dashboard
+        run: npm run lint
+
+      # ── Commented out: NOT adopted yet — revisit in dashboard-QA SDD ──
+      # Knip — unused files/exports/deps (needs knip.json + baseline):
+      #   npx knip --strict
+      # Next typegen + build as final framework gate (blocking candidate):
+      #   npx next typegen && npx next build
+      # Oxlint type-aware via tsgolint (experimental upstream):
+      #   see oxc-project/tsgolint before enabling.
+      # Blocking variant: remove `continue-on-error: true` from this job.
