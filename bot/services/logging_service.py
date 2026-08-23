@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 import discord
 
@@ -27,6 +27,20 @@ logger = logging.getLogger(__name__)
 
 LOG_COLOR = INFO
 MAX_FIELD_LENGTH = 1024
+
+
+class ModerationTarget(Protocol):
+    """Structural target accepted by :meth:`LoggingService.log_moderation_action`.
+
+    ``discord.Member``/``discord.User`` satisfy it natively; cogs may pass
+    their own typed value objects (e.g. an unban target dataclass) instead
+    of fabricating attributes on framework objects.
+    """
+
+    id: int
+    name: str
+    mention: str
+
 
 # Outcomes that represent a real ticket mutation (a conditional close executed).
 _MUTATING_OUTCOMES = frozenset({"repaired"})
@@ -211,7 +225,7 @@ class LoggingService:
         self,
         guild_id: str,
         action: str,
-        target: discord.Member | discord.User,
+        target: discord.Member | discord.User | ModerationTarget,
         moderator: discord.Member,
         reason: str,
     ) -> None:
@@ -220,7 +234,9 @@ class LoggingService:
         Args:
             guild_id: Discord guild snowflake.
             action: Human-readable action name (e.g. ``"Warn"``).
-            target: The user or member who received the action.
+            target: The user or member who received the action. May also be
+                any :class:`ModerationTarget`-compatible value object (e.g.
+                ``SentinelCog.UnbanTarget``) carrying id/name/mention.
             moderator: The moderator who performed the action.
             reason: Free-text reason for the action.
         """

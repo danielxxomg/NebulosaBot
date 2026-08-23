@@ -22,7 +22,7 @@ import discord
 import pytest
 
 from bot.cogs.sentinel import SentinelCog
-from bot.core.i18n import load_locales, set_guild_language
+from bot.core.i18n import load_locales, set_guild_language, t
 from bot.services.infraction_service import InfractionService
 from bot.services.logging_service import LoggingService
 from bot.utils.paginator import EmbedPaginator
@@ -45,6 +45,9 @@ def _make_ctx(
     ctx.guild = guild
     ctx.author = author
     ctx.channel = channel or MagicMock()
+    # Confirm-flow commands post the final result to ctx.channel — the send
+    # must be awaitable in mocks (C2 permanence contract).
+    ctx.channel.send = AsyncMock()
     ctx.send = AsyncMock()
     return ctx
 
@@ -545,6 +548,196 @@ class TestBanCommand:
         embed = call_kwargs.kwargs.get("embed") or call_kwargs[1].get("embed")
         assert embed is not None
         assert "Timed Out" in embed.title
+
+
+class TestKickBanPermanentResult:
+    """C2 (spec ephemeral-standard): final kick/ban result MUST be permanent.
+
+    The ephemeral ConfirmCancelView gets a closed notice; the success result
+    MUST be posted to the channel as a permanent message (tempban two-step).
+    """
+
+    @pytest.mark.asyncio
+    async def test_kick_final_result_posted_permanently_to_channel(
+        self,
+        sentinel_cog: SentinelCog,
+        sentinel_bot: MagicMock,
+        sentinel_ctx: MagicMock,
+        target_member: MagicMock,
+    ) -> None:
+        """kick confirm → ephemeral edit is a closed notice; success goes permanent."""
+        target_member.kick = AsyncMock()
+
+        with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
+            await sentinel_cog.kick.callback(sentinel_cog, sentinel_ctx, target_member, reason="trolling")
+
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.user = MagicMock(spec=discord.Member)
+        interaction.user.id = sentinel_ctx.author.id
+        interaction.response.edit_message = AsyncMock()
+        view = sentinel_ctx.send.call_args.kwargs.get("view")
+        confirm_button = next(
+            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
+        )
+        await confirm_button.callback(interaction)
+
+        # Ephemeral dialog must NOT carry the final success result.
+        interaction.response.edit_message.assert_awaited_once()
+        edited_embed = interaction.response.edit_message.await_args.kwargs.get("embed")
+        assert edited_embed is not None
+        assert edited_embed.title != t("123456789", "sentinel.kick.success_title"), (
+            "ephemeral dialog must not double as the permanent record"
+        )
+
+        # Final result MUST be a permanent channel message (no ephemeral flag).
+        sentinel_ctx.channel.send.assert_awaited_once()
+        channel_kwargs = sentinel_ctx.channel.send.await_args.kwargs
+        assert channel_kwargs.get("ephemeral") is not True, "final result must be permanent"
+        result_embed = channel_kwargs.get("embed")
+        assert result_embed is not None
+        assert result_embed.title == t("123456789", "sentinel.kick.success_title")
+
+    @pytest.mark.asyncio
+    async def test_ban_final_result_posted_permanently_to_channel(
+        self,
+        sentinel_cog: SentinelCog,
+        sentinel_bot: MagicMock,
+        sentinel_ctx: MagicMock,
+        target_member: MagicMock,
+    ) -> None:
+        """ban confirm → ephemeral edit is a closed notice; success goes permanent."""
+        target_member.ban = AsyncMock()
+
+        with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
+            await sentinel_cog.ban.callback(
+                sentinel_cog, sentinel_ctx, target_member, reason="harassment", delete_days=0
+            )
+
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.user = MagicMock(spec=discord.Member)
+        interaction.user.id = sentinel_ctx.author.id
+        interaction.response.edit_message = AsyncMock()
+        view = sentinel_ctx.send.call_args.kwargs.get("view")
+        confirm_button = next(
+            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
+        )
+        await confirm_button.callback(interaction)
+
+        interaction.response.edit_message.assert_awaited_once()
+        edited_embed = interaction.response.edit_message.await_args.kwargs.get("embed")
+        assert edited_embed is not None
+        assert edited_embed.title != t("123456789", "sentinel.ban.success_title"), (
+            "ephemeral dialog must not double as the permanent record"
+        )
+
+        sentinel_ctx.channel.send.assert_awaited_once()
+        channel_kwargs = sentinel_ctx.channel.send.await_args.kwargs
+        assert channel_kwargs.get("ephemeral") is not True, "final result must be permanent"
+        result_embed = channel_kwargs.get("embed")
+        assert result_embed is not None
+        assert result_embed.title == t("123456789", "sentinel.ban.success_title")
+
+
+class TestTempbanNoDrift:
+    """C11 (spec tempban 'no drift'): expires_at computed once AFTER Confirm."""
+
+    @pytest.mark.asyncio
+    async def test_expires_at_computed_at_execution_not_invocation(
+        self,
+        sentinel_cog: SentinelCog,
+        sentinel_bot: MagicMock,
+        sentinel_ctx: MagicMock,
+        target_member: MagicMock,
+        mock_db,
+    ) -> None:
+        """30s+ dialog latency must NOT drift expiresAt from real ban start."""
+        from freezegun import freeze_time
+
+        row = {
+            "id": "inf-tempban-001",
+            "guildId": "123456789",
+            "targetId": "555555555",
+            "moderatorId": "111111111",
+            "type": "BAN",
+            "reason": "spam",
+            "active": True,
+            "createdAt": datetime.now(UTC),
+            "expiresAt": None,
+        }
+        mock_db.insert_infraction = AsyncMock(return_value=row)
+        target_member.ban = AsyncMock()
+
+        with (
+            patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)),
+            freeze_time("2024-06-15 12:00:00") as ft,
+        ):
+            await sentinel_cog.tempban.callback(
+                sentinel_cog, sentinel_ctx, target_member, duration="24h", reason="spam"
+            )
+            # Moderator deliberates past the 30s dialog window.
+            ft.tick(delta=timedelta(seconds=35))
+
+            interaction = MagicMock(spec=discord.Interaction)
+            interaction.user = MagicMock(spec=discord.Member)
+            interaction.user.id = sentinel_ctx.author.id
+            interaction.response.edit_message = AsyncMock()
+            view = sentinel_ctx.send.call_args.kwargs.get("view")
+            confirm_button = next(
+                c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
+            )
+            await confirm_button.callback(interaction)
+
+        kwargs = mock_db.insert_infraction.await_args.kwargs
+        assert kwargs["expires_at"] == "2024-06-16T12:00:35+00:00", (
+            f"expiresAt must be execution-time + 24h, got {kwargs.get('expires_at')!r}"
+        )
+
+
+class TestUnbanTypedTarget:
+    """C10 (spec unban): typed UnbanTarget value object replaces Object+patching."""
+
+    @pytest.mark.asyncio
+    async def test_unban_resolves_typed_target_without_monkey_patching(
+        self,
+        sentinel_cog: SentinelCog,
+        sentinel_bot: MagicMock,
+        sentinel_ctx: MagicMock,
+        mock_db,
+        mock_guild,
+    ) -> None:
+        """unban → guild.unban + logging receive an UnbanTarget; no attr fabrication."""
+        from bot.cogs.sentinel import UnbanTarget
+
+        ban_row = {
+            "id": "inf-ban-active",
+            "guildId": "123456789",
+            "targetId": "555000111",
+            "moderatorId": "111111111",
+            "type": "BAN",
+            "reason": "tempban",
+            "active": True,
+            "createdAt": datetime.now(UTC),
+            "expiresAt": None,
+        }
+        mock_db.get_infractions = AsyncMock(return_value=[ban_row])
+        mock_db.deactivate_infraction = AsyncMock()
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = 123456789
+        guild.unban = AsyncMock()
+        sentinel_ctx.guild = guild
+
+        await sentinel_cog.unban.callback(sentinel_cog, sentinel_ctx, user_id="555000111")
+
+        guild.unban.assert_awaited_once()
+        unban_arg = guild.unban.await_args.args[0]
+        assert isinstance(unban_arg, UnbanTarget), "target must be a typed UnbanTarget"
+        assert not isinstance(unban_arg, discord.Object), "discord.Object must not be used"
+        assert unban_arg.id == 555000111
+
+        logged_target = sentinel_bot.logging_service.log_moderation_action.await_args.args[2]
+        assert type(logged_target) is UnbanTarget, "logging must receive the same typed value object"
+        assert logged_target.mention == "<@555000111>"
+        assert logged_target.name == "555000111"
 
 
 # ---------------------------------------------------------------------------

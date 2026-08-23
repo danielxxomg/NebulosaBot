@@ -13,6 +13,7 @@ They remain in English; t() localizes runtime responses only.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -39,6 +40,21 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 MODLOGS_PER_PAGE = 5
+
+
+@dataclass(slots=True)
+class UnbanTarget:
+    """Typed ``/unban`` target value object (spec sentinel-commands).
+
+    Carries the user id plus display metadata (mention/name) so
+    ``guild.unban`` (Snowflake) and moderation-log embeds render correctly
+    WITHOUT fabricating attributes on framework objects like
+    ``discord.Object``.
+    """
+
+    id: int
+    name: str
+    mention: str
 
 
 # ======================================================================
@@ -625,12 +641,23 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                 reason,
             )
 
+            # Ephemeral-standard: the confirmation dialog is ephemeral, but
+            # the final action result MUST be permanent (visible to the
+            # channel). Edit the ephemeral confirm to a closed notice, then
+            # send the permanent action embed to the channel (tempban pattern).
             await interaction.response.edit_message(
+                embed=discord.Embed(
+                    title=t(guild_id, "confirm.confirmed_title"),
+                    color=INFO,
+                ),
+                view=None,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+            await ctx.channel.send(
                 embed=success_embed(
                     t(guild_id, "sentinel.kick.success_title"),
                     t(guild_id, "sentinel.kick.success_description", mention=member.mention, reason=safe_reason),
                 ),
-                view=None,
                 allowed_mentions=discord.AllowedMentions.none(),
             )
 
@@ -729,12 +756,21 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                 reason,
             )
 
+            # Ephemeral-standard: dialog ephemeral, final result permanent
+            # (tempban two-step pattern — see _do_kick).
             await interaction.response.edit_message(
+                embed=discord.Embed(
+                    title=t(guild_id, "confirm.confirmed_title"),
+                    color=INFO,
+                ),
+                view=None,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+            await ctx.channel.send(
                 embed=success_embed(
                     t(guild_id, "sentinel.ban.success_title"),
                     t(guild_id, "sentinel.ban.success_description", mention=member.mention, reason=safe_reason),
                 ),
-                view=None,
                 allowed_mentions=discord.AllowedMentions.none(),
             )
 
@@ -1041,9 +1077,11 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             )
             return
 
-        expires_at = (datetime.now(UTC) + timedelta(seconds=seconds)).isoformat()
-
         async def _do_tempban(interaction: discord.Interaction) -> None:
+            # C11 (no-drift): compute expires_at exactly once at EXECUTION
+            # time — after the moderator confirms — so the DB value and all
+            # logs reflect the real ban start, not invocation + dialog latency.
+            expires_at = (datetime.now(UTC) + timedelta(seconds=seconds)).isoformat()
             safe_reason = discord.utils.escape_markdown(reason)
             target_id = str(member.id)
             moderator_id = str(ctx.author.id)
@@ -1160,10 +1198,13 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             )
             return
 
-        # Lift Discord ban
+        # Lift Discord ban — typed value object (spec sentinel-commands):
+        # UnbanTarget satisfies the Snowflake protocol structurally and
+        # carries display metadata, so no framework object is ever patched.
+        uid = int(user_id) if user_id.isdigit() else 0
+        target = UnbanTarget(id=uid, name=user_id, mention=f"<@{user_id}>")
         try:
-            user_obj = discord.Object(id=int(user_id)) if user_id.isdigit() else discord.Object(id=0)
-            await ctx.guild.unban(user_obj, reason=f"Unbanned by {ctx.author}")
+            await ctx.guild.unban(target, reason=f"Unbanned by {ctx.author}")
         except Exception:
             # Log but still confirm DB deactivation
             logger.exception("guild.unban failed for %s", user_id)
@@ -1182,18 +1223,12 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         if not isinstance(ctx.author, discord.Member):
             msg = "ctx.author must be discord.Member"
             raise TypeError(msg)
-        # Log without requiring a Member object for target — construct minimal User-like
+        # Log with the same typed target — mention/name come from UnbanTarget.
         try:
-            uid_int = int(user_id) if user_id.isdigit() else 0
-            fake_user = discord.Object(id=uid_int)
-            # discord.Object lacks mention/name; attach both for logging display
-            # so the moderation log embed is not degraded (target.name + target.mention).
-            fake_user.mention = f"<@{user_id}>"  # type: ignore[attr-defined]
-            fake_user.name = user_id  # type: ignore[attr-defined]
             await self.bot.logging_service.log_moderation_action(
                 guild_id,
                 "Unban",
-                fake_user,  # type: ignore[arg-type]  # banned user not a Member; runtime-structurally compatible
+                target,
                 ctx.author,
                 f"Unbanned {user_id}",
             )
