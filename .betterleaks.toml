@@ -1,0 +1,36 @@
+# Betterleaks configuration — gitleaks-compatible format.
+# Extends the built-in default ruleset; only silences verified noise.
+# Audit 2026-08-23: full-dir scan = 835 hits, all triaged:
+#   ~815 dashboard/.next build caches, 8 gitignored .env files,
+#   7 synthetic localhost URIs in test fixtures, rest compiled .pyc.
+
+[extend]
+useDefault = true
+
+# Build artifacts and local-only files — never committed (gitignored)
+[[allowlists]]
+description = "Next.js build output, local env files, bytecode"
+paths = [
+    '''^dashboard/\.next/''',
+    '''^\.env$''',
+    '''^dashboard/\.env\.local$''',
+    '''\.pyc$''',
+]
+
+# Synthetic fixture URIs in tests — silence ONLY generic-credential-uri there
+[[allowlists]]
+description = "test fixtures embed fake postgres URIs (user:pass@localhost)"
+paths = ['''^tests/(test_live_catalog|test_s4d2b_018_live)\.py$''']
+rules = ['''generic-credential-uri''']
+
+# .env.example ships the public Supabase local-stack defaults (postgres:postgres@localhost)
+[[allowlists]]
+description = "documented local-supabase default credentials in the example env template"
+paths = ['''^\.env\.example$''']
+rules = ['''generic-credential-uri''']
+
+# Audit docs cite our own content digests (sha256:<64hex>) — not API keys
+[[allowlists]]
+description = "sha256 content digests cited in archived audit docs"
+paths = ['''^openspec/changes/archive/''']
+regexes = ['''[0-9a-f]{64}''']

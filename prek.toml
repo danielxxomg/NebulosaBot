@@ -1,4 +1,5 @@
 [priorities]
+secrets = 5
 builtin = 0
 format = 10
 lint = 20
@@ -18,6 +19,7 @@ hooks = [
 [[repos]]
 repo = "local"
 hooks = [
+  { id = "betterleaks", name = "betterleaks (staged secrets)", language = "system", entry = "betterleaks git . --staged --redact", always_run = true, pass_filenames = false, stages = ["pre-commit"], priority = "secrets" },
   { id = "ruff-check", name = "ruff check", language = "system", entry = "uv run ruff check --fix", files = "^(bot/|tests/)", types = ["python"], stages = ["pre-commit"], priority = "lint" },
   { id = "ruff-format", name = "ruff format", language = "system", entry = "uv run ruff format --check", files = "^(bot/|tests/)", types = ["python"], stages = ["pre-commit"], priority = "format" },
   { id = "ty", name = "ty", language = "system", entry = "uv run ty check bot/ tests/", files = "^(bot/|tests/)", types = ["python"], stages = ["pre-commit"], priority = "type" },
