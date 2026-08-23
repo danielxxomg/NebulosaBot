@@ -6,16 +6,22 @@ Covers the infraction-service spec scenarios:
     - unwarn returns None when there are no active warnings
     - check_escalation: count==2→None, 3→MUTE, 4→None, 5→KICK
     - warn includes escalation action when threshold is hit
+    - apply_escalation: MUTE/KICK success chain, Forbidden failure without
+      persistence, unexpected errors propagate
 """
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from datetime import timedelta
+from unittest.mock import AsyncMock, MagicMock
 
+import discord
 import pytest
 
+from bot.core.i18n import t
 from bot.models.infraction import Infraction
 from bot.services.infraction_service import (
+    EscalationAction,
     InfractionService,
 )
 
@@ -53,6 +59,39 @@ def mock_db() -> AsyncMock:
 def service(mock_db: AsyncMock) -> InfractionService:
     """Return an InfractionService backed by the mocked database."""
     return InfractionService(db=mock_db)
+
+
+@pytest.fixture
+def mock_logging() -> AsyncMock:
+    """Return an AsyncMock standing in for LoggingService."""
+    logging_mock = AsyncMock()
+    logging_mock.log_moderation_action = AsyncMock()
+    return logging_mock
+
+
+@pytest.fixture
+def escalation_service(mock_db: AsyncMock, mock_logging: AsyncMock) -> InfractionService:
+    """Return an InfractionService wired with mocked DB and LoggingService."""
+    return InfractionService(db=mock_db, logging_service=mock_logging)
+
+
+@pytest.fixture
+def target_member() -> MagicMock:
+    """Return a mock guild member for escalation actions."""
+    member = MagicMock(spec=discord.Member)
+    member.id = 444555666
+    member.mention = "<@444555666>"
+    member.timeout = AsyncMock()
+    member.kick = AsyncMock()
+    return member
+
+
+@pytest.fixture
+def moderator_member() -> MagicMock:
+    """Return a mock moderator member."""
+    moderator = MagicMock(spec=discord.Member)
+    moderator.id = 777888999
+    return moderator
 
 
 @pytest.fixture
@@ -282,3 +321,178 @@ async def test_warn_triggers_escalation_at_threshold(
     assert escalation.action == "MUTE"
     assert escalation.duration == 3600
     assert escalation.threshold == 3
+
+
+# ------------------------------------------------------------------
+# apply_escalation (cycle-4-debt-zero / infraction-service spec)
+# ------------------------------------------------------------------
+
+
+def _mute_escalation() -> EscalationAction:
+    """Return the canonical MUTE escalation (1 hour at 3 warnings)."""
+    return EscalationAction(action="MUTE", duration=3600, threshold=3)
+
+
+def _kick_escalation() -> EscalationAction:
+    """Return the canonical KICK escalation (at 5 warnings)."""
+    return EscalationAction(action="KICK", duration=0, threshold=5)
+
+
+@pytest.mark.asyncio
+async def test_apply_escalation_mute_times_out_inserts_and_logs(
+    escalation_service: InfractionService,
+    mock_db: AsyncMock,
+    mock_logging: AsyncMock,
+    target_member: MagicMock,
+    moderator_member: MagicMock,
+) -> None:
+    """MUTE escalation MUST timeout, insert a MUTE row, log, and return the success fragment."""
+    mock_db.insert_infraction.return_value = {"id": "mute-1"}
+
+    fragment = await escalation_service.apply_escalation(
+        guild_id=GUILD_ID,
+        member=target_member,
+        moderator=moderator_member,
+        escalation=_mute_escalation(),
+    )
+
+    # Discord action executed with the escalation duration.
+    target_member.timeout.assert_awaited_once_with(
+        timedelta(seconds=3600),
+        reason="Auto-escalation: 3 warnings",
+    )
+    # Infraction row persisted.
+    mock_db.insert_infraction.assert_awaited_once_with(
+        guild_id=GUILD_ID,
+        target_id=str(target_member.id),
+        moderator_id=str(moderator_member.id),
+        type="MUTE",
+        reason="Auto-escalation after 3 warnings",
+    )
+    # Moderation action logged via LoggingService.
+    mock_logging.log_moderation_action.assert_awaited_once_with(
+        GUILD_ID,
+        "Mute (Auto-escalation)",
+        target_member,
+        moderator_member,
+        "3 warnings reached",
+    )
+    # Localized success fragment returned for the caller to embed.
+    expected = t(GUILD_ID, "sentinel.warn.auto_mute_description", mention=target_member.mention, threshold=3)
+    assert fragment == expected
+
+
+@pytest.mark.asyncio
+async def test_apply_escalation_kick_kicks_inserts_and_logs(
+    escalation_service: InfractionService,
+    mock_db: AsyncMock,
+    mock_logging: AsyncMock,
+    target_member: MagicMock,
+    moderator_member: MagicMock,
+) -> None:
+    """KICK escalation MUST kick, insert a KICK row, log, and return the success fragment."""
+    mock_db.insert_infraction.return_value = {"id": "kick-1"}
+
+    fragment = await escalation_service.apply_escalation(
+        guild_id=GUILD_ID,
+        member=target_member,
+        moderator=moderator_member,
+        escalation=_kick_escalation(),
+    )
+
+    target_member.kick.assert_awaited_once_with(reason="Auto-escalation: 5 warnings")
+    mock_db.insert_infraction.assert_awaited_once_with(
+        guild_id=GUILD_ID,
+        target_id=str(target_member.id),
+        moderator_id=str(moderator_member.id),
+        type="KICK",
+        reason="Auto-escalation after 5 warnings",
+    )
+    mock_logging.log_moderation_action.assert_awaited_once_with(
+        GUILD_ID,
+        "Kick (Auto-escalation)",
+        target_member,
+        moderator_member,
+        "5 warnings reached",
+    )
+    expected = t(GUILD_ID, "sentinel.warn.auto_kick_description", mention=target_member.mention, threshold=5)
+    assert fragment == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("escalation", [pytest.param(_mute_escalation(), id="mute"), pytest.param(_kick_escalation(), id="kick")])
+async def test_apply_escalation_forbidden_returns_failure_without_persisting(
+    escalation_service: InfractionService,
+    mock_db: AsyncMock,
+    mock_logging: AsyncMock,
+    target_member: MagicMock,
+    moderator_member: MagicMock,
+    escalation: EscalationAction,
+) -> None:
+    """discord.Forbidden MUST yield the failure fragment with NO row and NO log."""
+    if escalation.action == "MUTE":
+        target_member.timeout.side_effect = discord.Forbidden(MagicMock(), "missing timeout permission")
+    else:
+        target_member.kick.side_effect = discord.Forbidden(MagicMock(), "missing kick permission")
+
+    fragment = await escalation_service.apply_escalation(
+        guild_id=GUILD_ID,
+        member=target_member,
+        moderator=moderator_member,
+        escalation=escalation,
+    )
+
+    failed_key = (
+        "sentinel.warn.auto_mute_failed_description"
+        if escalation.action == "MUTE"
+        else "sentinel.warn.auto_kick_failed_description"
+    )
+    assert fragment == t(GUILD_ID, failed_key, mention=target_member.mention)
+    mock_db.insert_infraction.assert_not_called()
+    mock_logging.log_moderation_action.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_apply_escalation_unexpected_error_propagates(
+    escalation_service: InfractionService,
+    mock_db: AsyncMock,
+    mock_logging: AsyncMock,
+    target_member: MagicMock,
+    moderator_member: MagicMock,
+) -> None:
+    """Unexpected exceptions from the Discord action MUST propagate (never swallowed)."""
+    target_member.kick.side_effect = RuntimeError("network exploded")
+
+    with pytest.raises(RuntimeError, match="network exploded"):
+        await escalation_service.apply_escalation(
+            guild_id=GUILD_ID,
+            member=target_member,
+            moderator=moderator_member,
+            escalation=_kick_escalation(),
+        )
+
+    mock_db.insert_infraction.assert_not_called()
+    mock_logging.log_moderation_action.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_apply_escalation_db_insert_failure_propagates(
+    escalation_service: InfractionService,
+    mock_db: AsyncMock,
+    mock_logging: AsyncMock,
+    target_member: MagicMock,
+    moderator_member: MagicMock,
+) -> None:
+    """An unexpected exception from the DB insert MUST propagate to the caller."""
+    mock_db.insert_infraction.side_effect = RuntimeError("db down")
+
+    with pytest.raises(RuntimeError, match="db down"):
+        await escalation_service.apply_escalation(
+            guild_id=GUILD_ID,
+            member=target_member,
+            moderator=moderator_member,
+            escalation=_mute_escalation(),
+        )
+
+    # The Discord action already ran; logging must NOT claim success.
+    mock_logging.log_moderation_action.assert_not_called()

@@ -204,11 +204,7 @@ class NebulosaBot(commands.Bot):
             mod_role_cache=self._guild_mod_role_cache,
         )
 
-        # --- 3b. InfractionService ---
-        self.infraction_service = InfractionService(db=self.db)
-        logger.info("InfractionService initialised")
-
-        # --- 3c. TicketService + TranscriptService ---
+        # --- 3b. TicketService + TranscriptService ---
         self.ticket_service = TicketService(db=self.db, cache=self.cache)
         self.transcript_service = TranscriptService()
         logger.info("TicketService and TranscriptService initialised")
@@ -252,6 +248,10 @@ class NebulosaBot(commands.Bot):
         # --- 3g. LoggingService ---
         self.logging_service = LoggingService(self)
         logger.info("LoggingService initialised")
+
+        # --- 3h. InfractionService (needs LoggingService for escalation audit) ---
+        self.infraction_service = InfractionService(db=self.db, logging_service=self.logging_service)
+        logger.info("InfractionService initialised")
 
         # --- 3d. Register persistent views ---
         self.add_view(TicketPanelView())

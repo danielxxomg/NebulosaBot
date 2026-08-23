@@ -1,8 +1,9 @@
 """InfractionService — warning CRUD and auto-escalation logic.
 
 Implements the moderation business layer: creates infractions, keeps the
-denormalised ``Member.warnings`` counter in sync, and determines whether a
-warning should trigger an automatic escalation (mute / kick).
+denormalised ``Member.warnings`` counter in sync, determines whether a
+warning should trigger an automatic escalation (mute / kick), and executes
+the full escalation side-effect chain (Discord action → DB row → log).
 """
 
 from __future__ import annotations
@@ -10,12 +11,17 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
+import discord
+
+from bot.core.i18n import t
 from bot.models.infraction import Infraction
 
 if TYPE_CHECKING:
     from bot.core.database import Database
+    from bot.services.logging_service import LoggingService
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +29,21 @@ logger = logging.getLogger(__name__)
 ESCALATION_MUTE_THRESHOLD = 3
 ESCALATION_KICK_THRESHOLD = 5
 ESCALATION_MUTE_DURATION = 3600  # 1 hour
+
+# i18n fragments per escalation action (success / Forbidden failure).
+_ESCALATION_SUCCESS_KEYS = {
+    "MUTE": "sentinel.warn.auto_mute_description",
+    "KICK": "sentinel.warn.auto_kick_description",
+}
+_ESCALATION_FAILED_KEYS = {
+    "MUTE": "sentinel.warn.auto_mute_failed_description",
+    "KICK": "sentinel.warn.auto_kick_failed_description",
+}
+# Log-channel action titles per escalation action.
+_ESCALATION_LOG_TITLES = {
+    "MUTE": "Mute (Auto-escalation)",
+    "KICK": "Kick (Auto-escalation)",
+}
 
 
 @dataclass
@@ -39,12 +60,16 @@ class InfractionService:
 
     Args:
         db: The bot's :class:`~bot.core.database.Database` instance.
+        logging_service: Optional :class:`~bot.services.logging_service.LoggingService`
+            used by :meth:`apply_escalation` to audit executed escalations.
+            Omitted by tests and callers that never escalate.
     """
 
-    __slots__ = ("_db",)
+    __slots__ = ("_db", "_logging_service")
 
-    def __init__(self, db: Database) -> None:
+    def __init__(self, db: Database, logging_service: LoggingService | None = None) -> None:
         self._db = db
+        self._logging_service = logging_service
 
     # ----------------------------------------------------------------
     # Public API
@@ -258,3 +283,74 @@ class InfractionService:
             )
 
         return None
+
+    async def apply_escalation(
+        self,
+        *,
+        guild_id: str,
+        member: discord.Member,
+        moderator: discord.Member,
+        escalation: EscalationAction,
+    ) -> str:
+        """Execute an escalation's full side-effect chain and report the outcome.
+
+        The service owns the business chain (design D1): execute the Discord
+        action implied by ``escalation.action`` (MUTE → ``timeout(duration)``;
+        KICK → ``kick()``), persist the corresponding infraction row, and log
+        the moderation action via :class:`~bot.services.logging_service.LoggingService`.
+        The caller (cog) keeps input validation and embed delivery only.
+
+        Only :class:`discord.Forbidden` is caught — it means the bot lacks
+        permission for the action, so the localized failure fragment is
+        returned WITHOUT persisting a row or logging success. Any other
+        exception propagates to the caller untouched.
+
+        Args:
+            guild_id: Guild snowflake as string.
+            member: The target member receiving the escalation.
+            moderator: The moderator whose warn triggered the escalation.
+            escalation: The :class:`EscalationAction` returned by
+                :meth:`check_escalation`.
+
+        Returns:
+            The localized result message fragment for the caller to embed.
+        """
+        success_key = _ESCALATION_SUCCESS_KEYS.get(escalation.action)
+        if success_key is None or escalation.action not in _ESCALATION_FAILED_KEYS:
+            msg = f"Unsupported escalation action: {escalation.action}"
+            raise ValueError(msg)
+
+        try:
+            match escalation.action:
+                case "MUTE":
+                    await member.timeout(
+                        timedelta(seconds=escalation.duration),
+                        reason=f"Auto-escalation: {escalation.threshold} warnings",
+                    )
+                case "KICK":
+                    await member.kick(
+                        reason=f"Auto-escalation: {escalation.threshold} warnings",
+                    )
+        except discord.Forbidden:
+            # Permission denied → failure fragment; nothing persisted, nothing logged.
+            logger.info("Escalation %s forbidden for %s in guild %s", escalation.action, member.id, guild_id)
+            return t(guild_id, _ESCALATION_FAILED_KEYS[escalation.action], mention=member.mention)
+
+        await self._db.insert_infraction(
+            guild_id=guild_id,
+            target_id=str(member.id),
+            moderator_id=str(moderator.id),
+            type=escalation.action,
+            reason=f"Auto-escalation after {escalation.threshold} warnings",
+        )
+
+        if self._logging_service is not None:
+            await self._logging_service.log_moderation_action(
+                guild_id,
+                _ESCALATION_LOG_TITLES[escalation.action],
+                member,
+                moderator,
+                f"{escalation.threshold} warnings reached",
+            )
+
+        return t(guild_id, success_key, mention=member.mention, threshold=escalation.threshold)
