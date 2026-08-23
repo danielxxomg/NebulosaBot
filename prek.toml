@@ -22,7 +22,7 @@ hooks = [
   { id = "ruff-format", name = "ruff format", language = "system", entry = "uv run ruff format --check", files = "^(bot/|tests/)", types = ["python"], stages = ["pre-commit"], priority = "format" },
   { id = "ty", name = "ty", language = "system", entry = "uv run ty check bot/ tests/", files = "^(bot/|tests/)", types = ["python"], stages = ["pre-commit"], priority = "type" },
   { id = "gga", name = "GGA", language = "system", entry = "bash .gga", always_run = true, pass_filenames = false, stages = ["pre-commit"], priority = "gga" },
-  { id = "uv-check", name = "uv check", language = "system", entry = "uv check", always_run = true, pass_filenames = false, stages = ["pre-push"], priority = "push" },
+  { id = "uv-lock-check", name = "uv lock --check", language = "system", entry = "uv lock --check", always_run = true, pass_filenames = false, stages = ["pre-push"], priority = "push" },
   { id = "tach-check", name = "tach check", language = "system", entry = "uv run tach check", always_run = true, pass_filenames = false, stages = ["pre-push"], priority = "push" },
   { id = "tach-check-external", name = "tach check-external", language = "system", entry = "uv run tach check-external", always_run = true, pass_filenames = false, stages = ["pre-push"], priority = "push" },
 ]
