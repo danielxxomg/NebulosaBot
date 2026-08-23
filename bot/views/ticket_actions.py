@@ -134,7 +134,7 @@ class TicketActionsView(discord.ui.View):
                         logging_service=getattr(bot, "logging_service", None),
                         guild_id=str(guild.id) if guild else "",
                     )
-                except ImportError:
+                except (ValueError, RuntimeError, discord.DiscordException):
                     logger.exception("Failed to transfer ticket %s", ticket_id)
                     await confirm_interaction.response.edit_message(
                         embed=error_embed(
@@ -205,7 +205,7 @@ class TicketActionsView(discord.ui.View):
             raise RuntimeError(msg)
         try:
             ticket = await bot.ticket_service.claim_ticket(ticket_id, staff_id, guild_id=guild_id)
-        except ImportError:
+        except (ValueError, RuntimeError, discord.DiscordException):
             logger.exception("Failed to claim ticket %s", ticket_id)
             await interaction.response.send_message(
                 embed=error_embed(
@@ -289,7 +289,7 @@ class TicketActionsView(discord.ui.View):
             )
             try:
                 await bot.ticket_service.close_ticket_full(channel, ticket, closer_id, bot=bot, manual=True)
-            except ImportError:
+            except (ValueError, RuntimeError, discord.DiscordException):
                 logger.exception("Failed to close ticket %s", ticket_id)
                 await confirm_interaction.followup.send(
                     embed=error_embed(

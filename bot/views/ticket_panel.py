@@ -224,7 +224,7 @@ async def _create_ticket_after_modal(  # noqa: C901 -- modal orchestration: vali
             ephemeral=True,
         )
         return
-    except ImportError:
+    except (RuntimeError, discord.DiscordException):  # noqa: BLE001 -- ValueError handled above; this is DB/generic fallback
         logger.exception("Failed to create ticket in DB")
         await interaction.followup.send(
             embed=error_embed(
