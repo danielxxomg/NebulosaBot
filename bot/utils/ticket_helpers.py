@@ -202,7 +202,7 @@ async def resolve_category_name(
             row = await db.get_ticket_category(category_id)
         if row is not None:
             return str(row.get("name", fallback))
-    except Exception:
+    except Exception:  # noqa: BLE001 -- category lookup best-effort; any failure returns fallback
         logger.warning("Failed to resolve ticket category %s", category_id)
     return fallback
 

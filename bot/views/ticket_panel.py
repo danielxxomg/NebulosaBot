@@ -27,7 +27,7 @@ logger: logging.Logger = logging.getLogger(__name__)
 def _get_logger() -> logging.Logger:
     try:
         import bot.views.tickets as _facade
-    except Exception:
+    except ImportError:
         return logger
     else:
         return _facade.logger
@@ -52,7 +52,7 @@ async def deploy_ticket_panel(
         import bot.views.tickets as _facade
 
         _t = _facade.t
-    except Exception:
+    except ImportError:
         _t = _i18n_t  # fallback
     resolved_title = title if title is not None else _t(guild_id, "tickets.panel.default_title")
     resolved_description = (
@@ -92,7 +92,7 @@ async def _create_ticket_after_modal(  # noqa: C901 -- modal orchestration: vali
         import bot.views.tickets as _facade
 
         _t = _facade.t
-    except Exception:
+    except ImportError:
         _t = _i18n_t
     bot: NebulosaBot = interaction.client  # type: ignore[assignment]
     guild_id = str(guild.id)
@@ -108,7 +108,7 @@ async def _create_ticket_after_modal(  # noqa: C901 -- modal orchestration: vali
 
     try:
         config = await bot.guild_service.get_config(guild_id)
-    except Exception:
+    except ImportError:
         logger.exception("Failed to fetch guild config for ticket creation (guild=%s)", guild.id)
         await interaction.followup.send(
             embed=error_embed(
@@ -224,7 +224,7 @@ async def _create_ticket_after_modal(  # noqa: C901 -- modal orchestration: vali
             ephemeral=True,
         )
         return
-    except Exception:
+    except ImportError:
         logger.exception("Failed to create ticket in DB")
         await interaction.followup.send(
             embed=error_embed(
@@ -243,7 +243,7 @@ async def _create_ticket_after_modal(  # noqa: C901 -- modal orchestration: vali
         import bot.views.tickets as _facade2
 
         _actions_view_cls = _facade2.TicketActionsView
-    except Exception:
+    except ImportError:
         from bot.views.ticket_actions import TicketActionsView as _actions_view_cls2  # noqa: N813
 
     _cls = _actions_view_cls if "_actions_view_cls" in dir() else _actions_view_cls2
@@ -293,7 +293,7 @@ class TicketIntakeModal(discord.ui.Modal):
             import bot.views.tickets as _facade
 
             _t = _facade.t
-        except Exception:
+        except ImportError:
             _t = _i18n_t
         super().__init__(
             title=_t(guild_id, "tickets.modal.title", category=category_name),
@@ -340,7 +340,7 @@ class TicketIntakeModal(discord.ui.Modal):
             import bot.views.tickets as _facade
 
             _t = _facade.t
-        except Exception:
+        except ImportError:
             _t = _i18n_t
         subject = self.title_input.value.strip()
         if not subject:
@@ -400,7 +400,7 @@ class TicketIntakeModal(discord.ui.Modal):
             import bot.views.tickets as _facade
 
             _t = _facade.t
-        except Exception:
+        except ImportError:
             _t = _i18n_t
         logger.exception("TicketIntakeModal error (guild=%s)", self._guild.id, exc_info=error)
         if not interaction.response.is_done():
@@ -425,7 +425,7 @@ class TicketPanelView(discord.ui.View):
                 import bot.views.tickets as _facade
 
                 _t = _facade.t
-            except Exception:
+            except ImportError:
                 _t = _i18n_t
             for child in self.children:
                 if isinstance(child, discord.ui.Button) and child.custom_id == "ticket:open":
@@ -439,7 +439,7 @@ class TicketPanelView(discord.ui.View):
             import bot.views.tickets as _facade
 
             _t = _facade.t
-        except Exception:
+        except ImportError:
             _t = _i18n_t
         bot: NebulosaBot = interaction.client  # type: ignore[assignment]
         guild = interaction.guild
@@ -482,7 +482,7 @@ class TicketPanelView(discord.ui.View):
             import bot.views.tickets as _facade2
 
             _category_select_view_cls = _facade2._CategorySelectView
-        except Exception:
+        except ImportError:
             from bot.views.ticket_category_select import _CategorySelectView as _category_select_view_cls2
 
         _ccls = _category_select_view_cls if "_category_select_view_cls" in dir() else _category_select_view_cls2

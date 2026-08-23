@@ -241,17 +241,17 @@ def _make_guild(*, default_role: MagicMock | None = None, me: MagicMock | None =
     return guild
 
 
-def _make_member(name: str = "TestUser", id: int = 111) -> MagicMock:
+def _make_member(name: str = "TestUser", member_id: int = 111) -> MagicMock:
     """Create a mock member."""
     member = MagicMock(name=name)
-    member.id = id
+    member.id = member_id
     return member
 
 
-def _make_role(name: str = "ModRole", id: int = 222) -> MagicMock:
+def _make_role(name: str = "ModRole", role_id: int = 222) -> MagicMock:
     """Create a mock role."""
     role = MagicMock(name=name)
-    role.id = id
+    role.id = role_id
     return role
 
 

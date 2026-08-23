@@ -72,7 +72,7 @@ class OcioService:
         # sorted() gives a deterministic order so random.choice is stable across calls.
         try:
             pool = await asyncio.to_thread(lambda: sorted(self._banana_dir.glob("*.webp")))
-        except Exception:
+        except Exception:  # noqa: BLE001 -- banana pool glob best-effort; any failure yields empty pool
             pool = []
         if not pool:
             data = await asyncio.to_thread(_pillow_banana_placeholder)

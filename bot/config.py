@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 import logging
 import os
@@ -32,7 +33,7 @@ def _decode_jwt_role(key: str) -> str | None:
     pad = "=" * (-len(payload_b64) % 4)
     try:
         payload = json.loads(base64.urlsafe_b64decode(payload_b64 + pad).decode())
-    except Exception:
+    except (ValueError, TypeError, json.JSONDecodeError, binascii.Error):
         return None
     role = payload.get("role")
     return str(role) if isinstance(role, str) else None
@@ -51,11 +52,11 @@ def _verify_jwt_signature(key: str) -> str | None:
         return None
     try:
         import jwt as pyjwt
-    except Exception:
+    except ImportError:  # noqa: BLE001 -- optional PyJWT dependency; absence means unverifiable
         return None
     try:
         payload: dict[str, object] = pyjwt.decode(key, secret, algorithms=["HS256"])
-    except Exception:
+    except Exception:  # noqa: BLE001 -- JWT verification boundary; any failure means unverifiable
         return None
     role = payload.get("role")
     return str(role) if isinstance(role, str) else None
@@ -86,7 +87,7 @@ def _verify_jwt_jwks(key: str) -> str | None:
         import jwt as pyjwt
 
         header = pyjwt.get_unverified_header(key)
-    except Exception:
+    except Exception:  # noqa: BLE001 -- JWT header probe; any parse failure means unverifiable
         return None
     alg = str(header.get("alg") or "")
     if alg not in _JWKS_ALGS:
@@ -115,7 +116,7 @@ def _verify_jwt_jwks(key: str) -> str | None:
             role = payload.get("role")
             if not isinstance(role, str) or not role:
                 return None
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- JOSE/JWKS boundary; any JWT/JWK failure handled via retry inspection
             last_exc = exc
             # Bounded kid refresh: retry only on JWK client kid-not-found errors.
             msg = str(exc).lower()
@@ -197,7 +198,7 @@ def validate_supabase_key(key: str) -> None:
                 raise ServiceRoleValidationError(msg)  # noqa: TRY301 -- fail-closed inside try
         except ServiceRoleValidationError:
             raise
-        except Exception:
+        except Exception:  # noqa: BLE001 -- JWT verifier fallback boundary; try next verifier
             logger.debug("Service role validation fallback — trying next verifier", exc_info=True)
         verified_role = _verify_jwt_signature(key)
         if verified_role is not None:

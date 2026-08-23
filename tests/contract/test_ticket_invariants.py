@@ -501,39 +501,39 @@ async def test_ti020_audit_every_denied() -> None:
 
     # claim denied (already claimed)
     db.get_ticket.return_value = _contract_ticket_row(status="claimed", claimed_by="userA")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"already claimed|claim"):
         await service.claim_ticket(ticket_id, claimed_by="userB")
     db.get_ticket.reset_mock(side_effect=True)
 
     # close denied (already closed)
     db.get_ticket.return_value = _contract_ticket_row(status="closed")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"already closed|close"):
         await service.close_ticket(ticket_id, closed_by="999999999")
     db.get_ticket.reset_mock(side_effect=True)
 
     # transfer denied (same user as current claimant)
     db.get_ticket.return_value = _contract_ticket_row(status="claimed", claimed_by="userA")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"same"):
         await service.transfer_ticket(ticket_id, new_claimed_by="userA", actor_id="admin1")
     db.get_ticket.reset_mock(side_effect=True)
 
     # unclaim denied (not claimed)
     db.get_ticket.return_value = _contract_ticket_row(status="open", claimed_by=None)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"not currently claimed|unclaim"):
         await service.unclaim_ticket(ticket_id, actor_id="userA", is_mod=False)
     db.get_ticket.reset_mock(side_effect=True)
 
     # note_add denied (cap reached)
     db.get_ticket.return_value = {"id": ticket_id, "guildId": "123456789"}
     db.get_ticket_notes.return_value = [_contract_note_row() for _ in range(50)]
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"cap"):
         await service.create_note(ticket_id, "999999999", "one too many")
     db.get_ticket_notes.return_value = []
 
     # note_delete denied (non-author)
     db.get_ticket.return_value = {"id": ticket_id, "guildId": "123456789"}
     db.get_ticket_notes.return_value = [_contract_note_row(author_id="userA")]
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"author"):
         await service.delete_note("note-uuid-001", author_id="userB", ticket_id=ticket_id)
     db.get_ticket.reset_mock(side_effect=True)
 
@@ -542,7 +542,7 @@ async def test_ti020_audit_every_denied() -> None:
     db.get_ticket.return_value = open_row
     guild = MagicMock()
     guild.id = 123456789
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"must be closed|reopen|cerrados"):
         await service.reopen_ticket(ticket_id, guild=guild)
     db.get_ticket.reset_mock(side_effect=True)
 

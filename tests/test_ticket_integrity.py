@@ -100,7 +100,7 @@ def test_integrity_bounds_are_finite_and_non_negative() -> None:
 
 def test_repair_result_rejects_invalid_combinations_or_missing_evidence() -> None:
     for value in ("close/already_closed", "close/skipped", "close/error", "no_op/repaired", "close/repaired"):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid|combination|requires"):
             action, outcome = value.split("/")
             RepairResult("t1", "g1", action, outcome, None, None, datetime(2026, 7, 17, tzinfo=UTC))
 

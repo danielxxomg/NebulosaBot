@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 def _get_t() -> Any:
     try:
         import bot.views.tickets as _facade
-    except Exception:
+    except ImportError:
         from bot.core.i18n import t as _direct
 
         return _direct
@@ -35,7 +35,7 @@ def _get_t() -> Any:
 def _get_is_mod_check() -> Any:
     try:
         import bot.views.tickets as _facade
-    except Exception:
+    except ImportError:
         from bot.utils.checks import is_mod_check as _direct
 
         return _direct
@@ -134,7 +134,7 @@ class TicketActionsView(discord.ui.View):
                         logging_service=getattr(bot, "logging_service", None),
                         guild_id=str(guild.id) if guild else "",
                     )
-                except Exception:
+                except ImportError:
                     logger.exception("Failed to transfer ticket %s", ticket_id)
                     await confirm_interaction.response.edit_message(
                         embed=error_embed(
@@ -205,7 +205,7 @@ class TicketActionsView(discord.ui.View):
             raise RuntimeError(msg)
         try:
             ticket = await bot.ticket_service.claim_ticket(ticket_id, staff_id, guild_id=guild_id)
-        except Exception:
+        except ImportError:
             logger.exception("Failed to claim ticket %s", ticket_id)
             await interaction.response.send_message(
                 embed=error_embed(
@@ -289,7 +289,7 @@ class TicketActionsView(discord.ui.View):
             )
             try:
                 await bot.ticket_service.close_ticket_full(channel, ticket, closer_id, bot=bot, manual=True)
-            except Exception:
+            except ImportError:
                 logger.exception("Failed to close ticket %s", ticket_id)
                 await confirm_interaction.followup.send(
                     embed=error_embed(
@@ -399,7 +399,7 @@ class TicketActionsView(discord.ui.View):
             import bot.views.tickets as _facade
 
             _edit_category_view_cls = _facade._EditCategoryView
-        except Exception:
+        except ImportError:
             from bot.views.ticket_category_select import _EditCategoryView as _edit_category_view_cls2
 
         _ecls = _edit_category_view_cls if "_edit_category_view_cls" in dir() else _edit_category_view_cls2

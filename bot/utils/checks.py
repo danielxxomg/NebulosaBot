@@ -54,8 +54,8 @@ def _resolve_member_and_guild_id(ctx: Any) -> tuple[Any, str | None]:
     if guild is None:
         return author, None
     try:
-        gid = str(guild.id)  # type: ignore[union-attr]
-    except Exception:
+        gid = str(guild.id)
+    except Exception:  # noqa: BLE001 -- guild id probe best-effort
         gid = None
     return author, gid
 
@@ -91,7 +91,7 @@ async def _can_core(
         if bot_ref is not None:
             try:
                 mod_id = _resolve_mod_role_id_from_bot(bot_ref, int(guild_id) if guild_id.isdigit() else None)
-            except Exception:
+            except Exception:  # noqa: BLE001 -- mod role cache probe best-effort
                 mod_id = None
         if mod_id is None:
             return False

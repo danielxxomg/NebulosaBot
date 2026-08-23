@@ -223,7 +223,7 @@ def cog_info(gid: str | None, key: str, **kw: object) -> discord.Embed:
 def _escape_md(text: str) -> str:
     try:
         return discord.utils.escape_markdown(text)
-    except Exception:
+    except Exception:  # noqa: BLE001 -- markdown escape best-effort; any failure returns raw text
         return text
 
 

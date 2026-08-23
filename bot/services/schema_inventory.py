@@ -315,7 +315,7 @@ class SchemaInventory:
                     "create unique index if not exists idx_ticket_guild_ticket_number" in normalized
                     and '("guildid", "ticketnumber")' in normalized
                 )
-            except Exception:
+            except Exception:  # noqa: BLE001 -- index definition probe best-effort
                 defines = False
         # Best-effort runtime parity binding from on-disk bytes only (no live DB).
         runtime_resolved: bool | None = None
@@ -332,7 +332,7 @@ class SchemaInventory:
             )
             runtime_resolved = snap.parity.compatible and not snap.reasons
             runtime_reasons = snap.reasons
-        except Exception:
+        except Exception:  # noqa: BLE001 -- parity bind best-effort; any failure marks unavailable
             runtime_reasons = ("parity_bind_unavailable",)
         # Live FK/RLS require DB connection — deferred to S2.
         return cls(

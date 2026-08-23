@@ -115,7 +115,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         try:
             getter = getattr(self.bot, "get_guild", None)
             guild_obj = getter(int(guild_id)) if callable(getter) and guild_id.isdigit() else None
-        except Exception:
+        except Exception:  # noqa: BLE001 -- guild cache best-effort; any lookup failure falls back to None
             guild_obj = None
 
         async def _unban_target(target_id: str) -> None:
@@ -484,7 +484,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                 timedelta(seconds=duration_seconds),
                 reason=reason,
             )
-        except Exception as exc:
+        except discord.DiscordException as exc:
             await self._handle_mod_error(ctx, exc, "mute", member)
             return
 
@@ -554,7 +554,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
 
         try:
             await member.timeout(None, reason=f"Unmuted by {ctx.author}")
-        except Exception as exc:
+        except discord.DiscordException as exc:
             await self._handle_mod_error(ctx, exc, "unmute", member)
             return
 
@@ -609,7 +609,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             moderator_id = str(ctx.author.id)
             try:
                 await member.kick(reason=reason)
-            except Exception as exc:
+            except discord.DiscordException as exc:
                 await self._handle_mod_error(ctx, exc, "kick", member)
                 return
 
@@ -724,7 +724,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             moderator_id = str(ctx.author.id)
             try:
                 await member.ban(reason=reason, delete_message_days=delete_days)
-            except Exception as exc:
+            except discord.DiscordException as exc:
                 await self._handle_mod_error(ctx, exc, "ban", member)
                 return
 
@@ -980,7 +980,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         self,
         ctx: NebulosaContext,
         member: discord.Member,
-        type: str | None = None,
+        type: str | None = None,  # noqa: A002 -- discord slash param `type` is wire contract
         after: str | None = None,
     ) -> None:
         """Display paginated moderation history for *member*."""
@@ -1087,7 +1087,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             moderator_id = str(ctx.author.id)
             try:
                 await member.ban(reason=reason)
-            except Exception as exc:
+            except discord.DiscordException as exc:
                 await self._handle_mod_error(ctx, exc, "tempban", member)
                 return
             if self.bot.infraction_service is None:

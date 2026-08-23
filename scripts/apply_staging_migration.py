@@ -224,7 +224,7 @@ def capture_live_evidence_via_db(db_url: str) -> tuple[Any, Any]:
     try:
         enabled, forced, policy_count = fetch_rls_counts_via_db(db_url)
         bound2: Any = RlsCounts(rls_enabled=enabled, rls_forced=forced, policy_count=policy_count)
-    except Exception:
+    except Exception:  # noqa: BLE001, RUF100 -- DB probe fallback; any failure synthesizes stub report
         # DB unreachable (no live creds) — synthesize stub report so non-live suite stays green
         from bot.services.live_catalog import get_local_migration_names
         from bot.services.schema_inventory import CDC_TABLES as _CDCS2

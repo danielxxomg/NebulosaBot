@@ -963,7 +963,7 @@ class TicketRepairService:
         else:
             try:
                 title = title.format(unix=unix, remaining=remaining)
-            except Exception:
+            except Exception:  # noqa: BLE001 -- title format best-effort; any failure uses fallback
                 title = f"\u23f3 Cierra <t:{unix}:R> (<t:{unix}:F>)"
         if f"<t:{unix}:R>" not in title:
             title = f"\u23f3 Cierra <t:{unix}:R> (<t:{unix}:F>)"

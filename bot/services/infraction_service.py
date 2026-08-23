@@ -210,7 +210,7 @@ class InfractionService:
             try:
                 member_row = await self._db.get_member(guild_id, target_id)
                 current = int(member_row.get("warnings", 0)) if member_row else 0
-            except Exception:
+            except Exception:  # noqa: BLE001 -- DB lookup best-effort; failure assumes 0 warnings
                 # Lookup failed — assume 0 so the floor guarantee holds: we
                 # deactivate the stale WARN row but never drive warnings
                 # negative. Defense in depth with the RPC's GREATEST floor.

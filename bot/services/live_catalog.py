@@ -202,7 +202,7 @@ def _sync_fetch_catalog(  # noqa: C901 -- 4-query provenance fetch; splitting wo
         try:
             cur.execute("SELECT * FROM pg_policies")
             pol_rows = cur.fetchall()
-        except Exception:
+        except Exception:  # noqa: BLE001 -- pg_policies fallback probe; any failure tries pg_policy
             cur.execute("SELECT * FROM pg_policy")
             pol_rows = cur.fetchall()
         live_policies: list[dict[str, Any]] = [dict(r) if isinstance(r, dict) else {"raw": r} for r in pol_rows]
@@ -317,7 +317,7 @@ def fetch_rls_counts_via_db(db_url: str) -> tuple[int, int, int]:
                 "WHERE n.nspname='public'"
             )
             row3 = cur.fetchone()
-        except Exception:
+        except Exception:  # noqa: BLE001 -- pg_policy RLS probe fallback
             cur.execute(
                 "SELECT count(*) FROM pg_policy p "
                 "JOIN pg_class c ON c.oid=p.polrelid "

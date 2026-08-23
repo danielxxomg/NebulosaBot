@@ -22,7 +22,7 @@ class InfractionDBMixin:
         guild_id: str,
         target_id: str,
         moderator_id: str,
-        type: str,
+        type: str,  # noqa: A002 -- DB column `type` is external contract
         reason: str,
         expires_at: str | None = None,
     ) -> dict[str, Any]:
@@ -57,7 +57,7 @@ class InfractionDBMixin:
         self: Any,
         guild_id: str,
         target_id: str,
-        type: str | None = None,
+        type: str | None = None,  # noqa: A002 -- DB column `type` is external contract
         after: str | None = None,
     ) -> list[dict[str, Any]]:
         """Return infraction rows for a guild member, with optional filters.

@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 def _get_t() -> Any:
     try:
         import bot.views.tickets as _facade
-    except Exception:
+    except ImportError:
         from bot.core.i18n import t as _direct
 
         return _direct
@@ -34,7 +34,7 @@ def _get_t() -> Any:
 def _get_is_mod_check() -> Any:
     try:
         import bot.views.tickets as _facade
-    except Exception:
+    except ImportError:
         from bot.utils.checks import is_mod_check as _direct
 
         return _direct
@@ -97,7 +97,7 @@ class _CategorySelect(discord.ui.Select[discord.ui.View]):
             import bot.views.tickets as _facade
 
             _modal_cls = _facade.TicketIntakeModal
-        except Exception:
+        except ImportError:
             from bot.views.ticket_panel import TicketIntakeModal as _modal_cls2  # noqa: N813
 
         _mcls = _modal_cls if "_modal_cls" in dir() else _modal_cls2
