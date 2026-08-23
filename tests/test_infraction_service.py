@@ -13,7 +13,7 @@ Covers the infraction-service spec scenarios:
 from __future__ import annotations
 
 from datetime import timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
@@ -496,3 +496,142 @@ async def test_apply_escalation_db_insert_failure_propagates(
 
     # The Discord action already ran; logging must NOT claim success.
     mock_logging.log_moderation_action.assert_not_called()
+
+
+# ------------------------------------------------------------------
+# expire_tempbans — C5 unban-first semantics (spec infraction-service)
+# ------------------------------------------------------------------
+
+
+def _expired_ban_row(row_id: str = "ban-exp-1", target_id: str = TARGET_ID) -> dict:
+    """Return an active expired-BAN row as returned by get_expired_tempbans."""
+    return {
+        "id": row_id,
+        "guildId": GUILD_ID,
+        "targetId": target_id,
+        "moderatorId": MODERATOR_ID,
+        "type": "BAN",
+        "reason": "tempban 1h",
+        "active": True,
+        "createdAt": "2025-06-15T12:00:00+00:00",
+        "expiresAt": "2025-06-15T11:00:00+00:00",
+    }
+
+
+@pytest.fixture
+def tempban_db(mock_db: AsyncMock) -> AsyncMock:
+    """DB mock with the expired-tempban scan + deactivate methods wired."""
+    mock_db.get_expired_tempbans = AsyncMock(return_value=[])
+    mock_db.deactivate_infraction = AsyncMock()
+    return mock_db
+
+
+@pytest.mark.asyncio
+async def test_expire_tempbans_unban_success_deactivates_and_counts(
+    tempban_db: AsyncMock,
+) -> None:
+    """Unban success → row deactivated AFTER the unban and counted."""
+    tempban_db.get_expired_tempbans.return_value = [_expired_ban_row()]
+    unban_fn = AsyncMock()
+    service = InfractionService(db=tempban_db)
+
+    count = await service.expire_tempbans(GUILD_ID, unban_fn)
+
+    unban_fn.assert_awaited_once_with(TARGET_ID)
+    tempban_db.deactivate_infraction.assert_awaited_once_with(GUILD_ID, "ban-exp-1")
+    assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_expire_tempbans_not_found_treated_as_success(
+    tempban_db: AsyncMock,
+) -> None:
+    """NotFound (manual /unban race) counts as success: deactivates, no warning."""
+    tempban_db.get_expired_tempbans.return_value = [_expired_ban_row()]
+
+    async def raise_not_found(target_id: str) -> None:
+        raise discord.NotFound(MagicMock(), "Unknown Ban")
+
+    service = InfractionService(db=tempban_db)
+
+    with patch("bot.services.infraction_service.logger") as logger_mock:
+        count = await service.expire_tempbans(GUILD_ID, raise_not_found)
+
+    tempban_db.deactivate_infraction.assert_awaited_once_with(GUILD_ID, "ban-exp-1")
+    assert count == 1
+    logger_mock.warning.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_expire_tempbans_failed_unban_keeps_row_active(
+    tempban_db: AsyncMock,
+) -> None:
+    """Non-NotFound failure: row stays ACTIVE, warning logged, NOT deactivated."""
+    tempban_db.get_expired_tempbans.return_value = [_expired_ban_row()]
+
+    async def raise_http(target_id: str) -> None:
+        raise discord.HTTPException(MagicMock(), "discord down")
+
+    service = InfractionService(db=tempban_db)
+
+    with patch("bot.services.infraction_service.logger") as logger_mock:
+        count = await service.expire_tempbans(GUILD_ID, raise_http)
+
+    tempban_db.deactivate_infraction.assert_not_awaited()
+    assert count == 0
+    logger_mock.warning.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_expire_tempbans_next_scan_retries_failed_row(
+    tempban_db: AsyncMock,
+) -> None:
+    """DB-sourced retry: a row left active is re-selected next scan and processed."""
+    # The scan re-selects the still-active expired row on every call.
+    tempban_db.get_expired_tempbans.side_effect = [
+        [_expired_ban_row()],  # scan 1: transient Discord outage
+        [_expired_ban_row()],  # scan 2: same row still active
+    ]
+    attempts: list[str] = []
+
+    async def flaky_unban(target_id: str) -> None:
+        attempts.append(target_id)
+        if len(attempts) == 1:
+            raise discord.HTTPException(MagicMock(), "transient")
+        return
+
+    service = InfractionService(db=tempban_db)
+
+    first = await service.expire_tempbans(GUILD_ID, flaky_unban)
+    assert first == 0, "failed unban must not count nor deactivate"
+    tempban_db.deactivate_infraction.assert_not_awaited()
+
+    second = await service.expire_tempbans(GUILD_ID, flaky_unban)
+    assert second == 1, "next scan must retry and succeed"
+    tempban_db.deactivate_infraction.assert_awaited_once_with(GUILD_ID, "ban-exp-1")
+
+
+@pytest.mark.asyncio
+async def test_expire_tempbans_without_unban_fn_deactivates_directly(
+    tempban_db: AsyncMock,
+) -> None:
+    """unban_fn=None keeps the legacy path: scan rows are deactivated directly."""
+    tempban_db.get_expired_tempbans.return_value = [_expired_ban_row(), _expired_ban_row("ban-exp-2", "999")]
+    service = InfractionService(db=tempban_db)
+
+    count = await service.expire_tempbans(GUILD_ID, None)
+
+    assert tempban_db.deactivate_infraction.await_count == 2
+    assert count == 2
+
+
+@pytest.mark.asyncio
+async def test_expire_tempbans_empty_scan_returns_zero(tempban_db: AsyncMock) -> None:
+    """No expired rows → zero processed, no deactivation attempted."""
+    tempban_db.get_expired_tempbans.return_value = []
+    service = InfractionService(db=tempban_db)
+
+    count = await service.expire_tempbans(GUILD_ID, AsyncMock())
+
+    assert count == 0
+    tempban_db.deactivate_infraction.assert_not_awaited()

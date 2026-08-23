@@ -225,7 +225,7 @@ class InfractionService:
         guild_id: str,
         unban_fn: Callable[[str], Awaitable[None]] | None = None,
     ) -> int:
-        """Expire past-expiry tempbans: scan → unban (via callback) → deactivate.
+        """Expire past-expiry tempbans: scan → unban FIRST → deactivate on success.
 
         DB-sourced (restart-durable): scans ``get_expired_tempbans`` each
         call so a bot restart recovers pending unbans without an in-memory
@@ -233,6 +233,11 @@ class InfractionService:
         service; the caller injects ``unban_fn(target_id)`` to lift the
         Discord ban (Discord side-effect belongs to the cog). Returns the
         number of expired tempbans processed.
+
+        Unban-first ordering (design D3): ``NotFound`` counts as success
+        (manual ``/unban`` race) and deactivates; any other unban failure
+        leaves the row ACTIVE with a warning so the next hourly scan
+        re-selects and retries it — no retry flag or schema change.
         """
         expired = await self._db.get_expired_tempbans(guild_id)
         if not expired:
@@ -245,8 +250,18 @@ class InfractionService:
             if unban_fn is not None:
                 try:
                     await unban_fn(target_id)
+                except discord.NotFound:
+                    # Ban already lifted manually — treat as success.
+                    pass
                 except Exception:
-                    logger.exception("unban callback failed for %s (non-fatal)", target_id)
+                    # Keep the row ACTIVE: the next DB-sourced scan retries it.
+                    logger.warning(
+                        "unban failed for %s in guild %s — infraction kept active for retry",
+                        target_id,
+                        guild_id,
+                        exc_info=True,
+                    )
+                    continue
             await self._db.deactivate_infraction(guild_id, row["id"])
             count += 1
         return count
