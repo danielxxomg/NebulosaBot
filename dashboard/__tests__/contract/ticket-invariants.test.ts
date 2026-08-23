@@ -34,54 +34,54 @@ import type { Ticket, GuildConfig, TicketNote } from "@/lib/types";
 
 function ticketRow(overrides: Partial<Ticket> = {}): Ticket {
   return {
-    id: "ticket-uuid-001",
-    ticketNumber: 1,
-    guildId: "123456789",
     authorId: "111111111",
-    channelId: "444444444",
-    status: "open",
-    createdAt: "2026-01-15T10:00:00.000Z",
-    lastActivity: "2026-01-15T10:00:00.000Z",
     categoryId: null,
+    channelId: "444444444",
     claimedBy: null,
-    transcriptUrl: null,
     closedAt: null,
+    createdAt: "2026-01-15T10:00:00.000Z",
+    guildId: "123456789",
+    id: "ticket-uuid-001",
+    lastActivity: "2026-01-15T10:00:00.000Z",
     parentId: null,
+    status: "open",
+    ticketNumber: 1,
+    transcriptUrl: null,
     ...overrides,
   };
 }
 
 function guildConfig(overrides: Partial<GuildConfig> = {}): GuildConfig {
   return {
-    id: "123456789",
-    prefix: "!",
-    language: "en",
-    modRoleId: null,
-    logChannelId: null,
-    ticketCategoryId: "100000000",
-    ticketPanelMessageId: null,
-    ticketPanelChannelId: null,
-    logEnabled: false,
-    welcomeEnabled: false,
     active: true,
+    id: "123456789",
+    language: "en",
+    logChannelId: null,
+    logEnabled: false,
+    modRoleId: null,
+    prefix: "!",
+    ticketCategoryId: "100000000",
+    ticketPanelChannelId: null,
+    ticketPanelMessageId: null,
+    welcomeEnabled: false,
     ...overrides,
   };
 }
 
 function noteRow(overrides: Partial<TicketNote> = {}): TicketNote {
   return {
-    id: "note-uuid-001",
-    ticketId: "ticket-uuid-001",
     authorId: "111111111",
     content: "hi",
     createdAt: "2026-07-04T12:00:00.000Z",
+    id: "note-uuid-001",
+    ticketId: "ticket-uuid-001",
     ...overrides,
   };
 }
 
 /// Shared `_parentRow` for subticket scenarios (mirrors the Python contract).
 function parentRow(parentId = "parent-1", parentOfParent: string | null = null) {
-  return { id: parentId, guildId: "guildA", parentId: parentOfParent };
+  return { guildId: "guildA", id: parentId, parentId: parentOfParent };
 }
 
 beforeEach(() => {
@@ -235,14 +235,14 @@ describe("Contract TI-019..TI-021 (audit logging — dashboard side)", () => {
     // dashboard can render — the type guarantees action+outcome.
     for (const action of expectedActions) {
       const row = {
-        id: crypto.randomUUID(),
-        guildId: "g",
-        ticketId: "t",
         action,
         actorId: "a",
+        createdAt: new Date().toISOString(),
+        guildId: "g",
+        id: crypto.randomUUID(),
         outcome: "success" as const,
         reason: null,
-        createdAt: new Date().toISOString(),
+        ticketId: "t",
       };
       expect(row.outcome).toBe("success");
       expect(row.action).toBe(action);
@@ -255,14 +255,14 @@ describe("Contract TI-019..TI-021 (audit logging — dashboard side)", () => {
     // dashboard contract: a denied TicketAudit has outcome='denied' and
     // reason is non-null (the AuditPanel renders the reason).
     const deniedRow = {
-      id: "d1",
-      guildId: "g",
-      ticketId: "t",
       action: "claim",
       actorId: "a",
+      createdAt: new Date().toISOString(),
+      guildId: "g",
+      id: "d1",
       outcome: "denied" as const,
       reason: "Cannot claim a ticket that is already claimed (use transfer)",
-      createdAt: new Date().toISOString(),
+      ticketId: "t",
     };
     expect(deniedRow.outcome).toBe("denied");
     expect(deniedRow.reason).toBeTruthy();
@@ -276,8 +276,8 @@ describe("Contract TI-019..TI-021 (audit logging — dashboard side)", () => {
     const guildA = "guildA";
     const guildB = "guildB";
     const rows = [
-      { id: "a1", guildId: guildA, action: "close", outcome: "success" },
-      { id: "a2", guildId: guildA, action: "claim", outcome: "denied", reason: "x" },
+      { action: "close", guildId: guildA, id: "a1", outcome: "success" },
+      { action: "claim", guildId: guildA, id: "a2", outcome: "denied", reason: "x" },
     ];
     expect(rows.every((r) => r.guildId === guildA)).toBe(true);
     expect(rows.every((r) => r.guildId !== guildB)).toBe(true);
@@ -341,7 +341,7 @@ describe("Contract TI-029..TI-030 (dashboard reopen drift)", () => {
     const { getReopenGuidance } = await import("@/lib/actions/ticket-actions");
     expect(typeof getReopenGuidance).toBe("function");
     // The command format: "/reopen ticket:#<zero-padded-number>".
-    const guidance = { ticketNumber: 3, command: "/reopen ticket:#0003" };
+    const guidance = { command: "/reopen ticket:#0003", ticketNumber: 3 };
     expect(guidance.command).toBe(`/reopen ticket:#${String(guidance.ticketNumber).padStart(4, "0")}`);
   });
 

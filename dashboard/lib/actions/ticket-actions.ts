@@ -175,7 +175,7 @@ async function resolveTicketGuild(
     return { error: "Ticket not found." };
   }
 
-  const guildId = (data as { guildId: string }).guildId;
+  const {guildId} = (data as { guildId: string });
   const authError = await verifyGuildAdmin(
     guildId,
     "You must be a server administrator to view this ticket."
@@ -239,16 +239,15 @@ export async function getReopenGuidance(
   // Category gate: the bot /reopen would fail without a configured category,
   // so the dashboard MUST NOT show the command when the category is missing
   // or blank (decision table / dashboard-ticket-view spec).
-  const ticketCategoryId = (guild as { ticketCategoryId: string | null })
-    .ticketCategoryId;
+  const {ticketCategoryId} = (guild as { ticketCategoryId: string | null });
   if (!ticketCategoryId || ticketCategoryId.trim() === "") {
     return { data: null, error: "Ticket category is not configured." };
   }
 
-  const ticketNumber = (ticket as { ticketNumber: number }).ticketNumber;
+  const {ticketNumber} = (ticket as { ticketNumber: number });
   const padded = String(ticketNumber).padStart(4, "0");
   return {
-    data: { ticketNumber, command: `/reopen ticket:#${padded}` },
+    data: { command: `/reopen ticket:#${padded}`, ticketNumber },
     error: null,
   };
 }
@@ -362,8 +361,8 @@ export async function addTicketNote(
   // Cap enforcement — reject before insert.
   try {
     checkCanAddNote(existingNotes.length, NOTE_CAP);
-  } catch (err) {
-    return { data: null, error: (err as Error).message };
+  } catch (error) {
+    return { data: null, error: (error as Error).message };
   }
 
   // Dedup — same author, within the 2s window, normalized content match.
@@ -384,7 +383,7 @@ export async function addTicketNote(
 
   const { error } = await serviceClient
     .from("ticket_note")
-    .insert({ ticketId, content, authorId });
+    .insert({ authorId, content, ticketId });
 
   if (error) {
     return { data: null, error: `Database error: ${error.message}` };
@@ -422,7 +421,7 @@ export async function deleteTicketNote(
   }
 
   const noteRow = note as { ticketId: string; authorId: string };
-  const ticketId = noteRow.ticketId;
+  const {ticketId} = noteRow;
 
   // 2. Resolve + authorize the ticket's guild (admin-only).
   const resolved = await resolveTicketGuild(ticketId);
@@ -434,8 +433,8 @@ export async function deleteTicketNote(
   const actorId = await resolveSessionUserId();
   try {
     checkCanDeleteNote(noteRow.authorId, actorId);
-  } catch (err) {
-    return { data: null, error: (err as Error).message };
+  } catch (error) {
+    return { data: null, error: (error as Error).message };
   }
 
   // 4. Delete the note.

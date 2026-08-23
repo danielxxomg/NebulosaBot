@@ -27,14 +27,14 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/lib/actions/ticket-actions", () => ({
-  getTicketsForGuild: (...args: unknown[]) => mockGetTicketsForGuild(...args),
-  getReopenGuidance: (...args: unknown[]) => mockGetReopenGuidance(...args),
-  transferTicket: (...args: unknown[]) => mockTransferTicket(...args),
-  getTicketNotes: (...args: unknown[]) => mockGetTicketNotes(...args),
   addTicketNote: (...args: unknown[]) => mockAddTicketNote(...args),
   deleteTicketNote: (...args: unknown[]) => mockDeleteTicketNote(...args),
   getCurrentUserId: (...args: unknown[]) => mockGetCurrentUserId(...args),
+  getReopenGuidance: (...args: unknown[]) => mockGetReopenGuidance(...args),
   getTicketAudit: (...args: unknown[]) => mockGetTicketAudit(...args),
+  getTicketNotes: (...args: unknown[]) => mockGetTicketNotes(...args),
+  getTicketsForGuild: (...args: unknown[]) => mockGetTicketsForGuild(...args),
+  transferTicket: (...args: unknown[]) => mockTransferTicket(...args),
 }));
 
 import TicketsPage from "@/app/(authenticated)/guilds/[guildId]/tickets/page";
@@ -50,30 +50,30 @@ const GUILD_ID = "123456789012345678";
 
 function buildTicket(overrides: Partial<Ticket> = {}): Ticket {
   return {
-    id: crypto.randomUUID(),
-    ticketNumber: 100,
-    guildId: GUILD_ID,
     authorId: "999999999999999999",
-    channelId: "888888888888888888",
-    status: "open" satisfies TicketStatus,
-    createdAt: "2025-01-15T10:30:00.000Z",
-    lastActivity: "2025-01-15T10:30:00.000Z",
     categoryId: null,
+    channelId: "888888888888888888",
     claimedBy: null,
-    transcriptUrl: null,
     closedAt: null,
+    createdAt: "2025-01-15T10:30:00.000Z",
+    guildId: GUILD_ID,
+    id: crypto.randomUUID(),
+    lastActivity: "2025-01-15T10:30:00.000Z",
     parentId: null,
+    status: "open" satisfies TicketStatus,
+    ticketNumber: 100,
+    transcriptUrl: null,
     ...overrides,
   };
 }
 
 function buildNote(overrides: Partial<TicketNote> = {}): TicketNote {
   return {
-    id: crypto.randomUUID(),
-    ticketId: "t1",
     authorId: "111",
     content: "Sample note",
     createdAt: "2025-03-01T12:00:00.000Z",
+    id: crypto.randomUUID(),
+    ticketId: "t1",
     ...overrides,
   };
 }
@@ -94,7 +94,7 @@ beforeEach(() => {
   // Defaults: mutation/read actions succeed; notes start empty. Tests that
   // need different shapes override these after clearAllMocks.
   mockGetReopenGuidance.mockResolvedValue({
-    data: { ticketNumber: 3, command: "/reopen ticket:#0003" },
+    data: { command: "/reopen ticket:#0003", ticketNumber: 3 },
     error: null,
   });
   mockTransferTicket.mockResolvedValue({ data: null, error: null });
@@ -117,20 +117,20 @@ describe("TicketsPage — stats cards", () => {
     // text ("5", "3", "7") never collides with a "#NNN" row cell.
     const tickets: Ticket[] = [
       ...Array.from({ length: 5 }, (_, i) =>
-        buildTicket({ ticketNumber: 100 + i, status: "open" })
+        buildTicket({ status: "open", ticketNumber: 100 + i })
       ),
       ...Array.from({ length: 3 }, (_, i) =>
         buildTicket({
-          ticketNumber: 200 + i,
-          status: "claimed",
           claimedBy: "777",
+          status: "claimed",
+          ticketNumber: 200 + i,
         })
       ),
       ...Array.from({ length: 7 }, (_, i) =>
         buildTicket({
-          ticketNumber: 300 + i,
-          status: "closed",
           closedAt: "2025-02-01T00:00:00.000Z",
+          status: "closed",
+          ticketNumber: 300 + i,
         })
       ),
     ];
@@ -166,10 +166,10 @@ describe("TicketsPage — stats cards", () => {
 describe("TicketsPage — ticket table", () => {
   it("renders column headers and a row for a sample ticket", async () => {
     const ticket = buildTicket({
-      ticketNumber: 42,
-      status: "open",
       authorId: "111111111111111111",
       claimedBy: "222222222222222222",
+      status: "open",
+      ticketNumber: 42,
     });
 
     mockGetTicketsForGuild.mockResolvedValue({ data: [ticket], error: null });
@@ -193,7 +193,7 @@ describe("TicketsPage — ticket table", () => {
 
   it("renders an em dash for claimedBy when it is null", async () => {
     // page.tsx:210 — `{ ticket.claimedBy ?? "—" }` (em dash, U+2014).
-    const ticket = buildTicket({ ticketNumber: 9, claimedBy: null });
+    const ticket = buildTicket({ claimedBy: null, ticketNumber: 9 });
 
     mockGetTicketsForGuild.mockResolvedValue({ data: [ticket], error: null });
 
@@ -211,16 +211,16 @@ describe("TicketsPage — status badges render text labels", () => {
   it("renders Open / Claimed / Closed text labels inside the table", async () => {
     // One of each status so every badge label is present.
     const tickets: Ticket[] = [
-      buildTicket({ ticketNumber: 1, status: "open" }),
+      buildTicket({ status: "open", ticketNumber: 1 }),
       buildTicket({
-        ticketNumber: 2,
-        status: "claimed",
         claimedBy: "777",
+        status: "claimed",
+        ticketNumber: 2,
       }),
       buildTicket({
-        ticketNumber: 3,
-        status: "closed",
         closedAt: "2025-02-01T00:00:00.000Z",
+        status: "closed",
+        ticketNumber: 3,
       }),
     ];
 
@@ -243,8 +243,8 @@ describe("TicketsPage — status badges render text labels", () => {
     // outside the typed union (e.g. a future "deleted" status) must fall back
     // to the neutral "Unknown" pill, not crash. Spec: Unknown status fallback.
     const ticket = buildTicket({
-      ticketNumber: 42,
       status: "deleted" as Ticket["status"],
+      ticketNumber: 42,
     });
 
     mockGetTicketsForGuild.mockResolvedValue({ data: [ticket], error: null });
@@ -288,8 +288,8 @@ describe("TicketsPage — error state", () => {
 describe("buildTicketTree — parent/child grouping", () => {
   it("groups children under their parent and keeps the parent as the only root", () => {
     const parent = buildTicket({ id: "p1", ticketNumber: 5 });
-    const childA = buildTicket({ id: "c1", ticketNumber: 6, parentId: "p1" });
-    const childB = buildTicket({ id: "c2", ticketNumber: 7, parentId: "p1" });
+    const childA = buildTicket({ id: "c1", parentId: "p1", ticketNumber: 6 });
+    const childB = buildTicket({ id: "c2", parentId: "p1", ticketNumber: 7 });
 
     const tree = buildTicketTree([parent, childA, childB]);
 
@@ -301,8 +301,8 @@ describe("buildTicketTree — parent/child grouping", () => {
   it("degrades an orphan child (parent not in the set) to a top-level root", () => {
     const orphan = buildTicket({
       id: "o1",
-      ticketNumber: 9,
       parentId: "missing-parent",
+      ticketNumber: 9,
     });
 
     const tree = buildTicketTree([orphan]);
@@ -325,7 +325,7 @@ describe("buildTicketTree — parent/child grouping", () => {
 
   it("still attaches a child to its parent when the child appears first in the input", () => {
     const parent = buildTicket({ id: "p1", ticketNumber: 5 });
-    const child = buildTicket({ id: "c1", ticketNumber: 6, parentId: "p1" });
+    const child = buildTicket({ id: "c1", parentId: "p1", ticketNumber: 6 });
 
     const tree = buildTicketTree([child, parent]);
 
@@ -341,18 +341,18 @@ describe("buildTicketTree — parent/child grouping", () => {
 
 describe("TicketsPage — sub-ticket tree rendering", () => {
   it("renders children indented under their parent with a sub-ticket label", async () => {
-    const parent = buildTicket({ id: "p1", ticketNumber: 5, status: "open" });
+    const parent = buildTicket({ id: "p1", status: "open", ticketNumber: 5 });
     const childA = buildTicket({
       id: "c1",
-      ticketNumber: 6,
       parentId: "p1",
       status: "open",
+      ticketNumber: 6,
     });
     const childB = buildTicket({
       id: "c2",
-      ticketNumber: 7,
       parentId: "p1",
       status: "open",
+      ticketNumber: 7,
     });
 
     mockGetTicketsForGuild.mockResolvedValue({
@@ -376,9 +376,9 @@ describe("TicketsPage — sub-ticket tree rendering", () => {
   it("renders an orphan child as a top-level row with no sub-ticket label", async () => {
     const orphan = buildTicket({
       id: "o1",
-      ticketNumber: 9,
       parentId: "missing",
       status: "open",
+      ticketNumber: 9,
     });
 
     mockGetTicketsForGuild.mockResolvedValue({
@@ -421,25 +421,25 @@ describe("TicketsPage — action buttons gated by auth", () => {
 describe("TicketRowActions — visibility and action calls", () => {
   it("shows Reopen only for a closed ticket and hides it for an open one", () => {
     const closed = buildTicket({
-      id: "t1",
-      ticketNumber: 3,
-      status: "closed",
       closedAt: "2025-02-01T00:00:00.000Z",
+      id: "t1",
+      status: "closed",
+      ticketNumber: 3,
     });
     const { rerender } = render(<TicketRowActions ticket={closed} />);
     expect(screen.queryByRole("button", { name: "Reopen" })).not.toBeNull();
 
-    const open = buildTicket({ id: "t2", ticketNumber: 4, status: "open" });
+    const open = buildTicket({ id: "t2", status: "open", ticketNumber: 4 });
     rerender(<TicketRowActions ticket={open} />);
     expect(screen.queryByRole("button", { name: "Reopen" })).toBeNull();
   });
 
   it("shows a Transfer button for a claimed ticket", () => {
     const claimed = buildTicket({
-      id: "t1",
-      ticketNumber: 5,
-      status: "claimed",
       claimedBy: "777",
+      id: "t1",
+      status: "claimed",
+      ticketNumber: 5,
     });
     render(<TicketRowActions ticket={claimed} />);
     expect(
@@ -449,14 +449,14 @@ describe("TicketRowActions — visibility and action calls", () => {
 
   it("calls getReopenGuidance with the ticket id and shows the command when Reopen is clicked (TI-029)", async () => {
     mockGetReopenGuidance.mockResolvedValue({
-      data: { ticketNumber: 3, command: "/reopen ticket:#0003" },
+      data: { command: "/reopen ticket:#0003", ticketNumber: 3 },
       error: null,
     });
     const ticket = buildTicket({
-      id: "t1",
-      ticketNumber: 3,
-      status: "closed",
       closedAt: "2025-02-01T00:00:00.000Z",
+      id: "t1",
+      status: "closed",
+      ticketNumber: 3,
     });
 
     render(<TicketRowActions ticket={ticket} />);
@@ -474,10 +474,10 @@ describe("TicketRowActions — visibility and action calls", () => {
       error: "Ticket category is not configured.",
     });
     const ticket = buildTicket({
-      id: "t1",
-      ticketNumber: 3,
-      status: "closed",
       closedAt: "2025-02-01T00:00:00.000Z",
+      id: "t1",
+      status: "closed",
+      ticketNumber: 3,
     });
 
     render(<TicketRowActions ticket={ticket} />);
@@ -495,10 +495,10 @@ describe("TicketRowActions — visibility and action calls", () => {
   it("calls transferTicket with the ticket id and entered staff id", async () => {
     mockTransferTicket.mockResolvedValue({ data: null, error: null });
     const ticket = buildTicket({
-      id: "t1",
-      ticketNumber: 5,
-      status: "claimed",
       claimedBy: "777",
+      id: "t1",
+      status: "claimed",
+      ticketNumber: 5,
     });
 
     render(<TicketRowActions ticket={ticket} />);
@@ -524,7 +524,7 @@ describe("TicketRowActions — visibility and action calls", () => {
 
   it("always renders a Notes button that toggles the notes panel open", async () => {
     mockGetTicketNotes.mockResolvedValue({ data: [], error: null });
-    const ticket = buildTicket({ id: "t1", ticketNumber: 1, status: "open" });
+    const ticket = buildTicket({ id: "t1", status: "open", ticketNumber: 1 });
 
     render(<TicketRowActions ticket={ticket} />);
 
@@ -555,11 +555,11 @@ describe("NotesPanel — empty / list / add / delete", () => {
 
   it("lists existing notes with author, content, and timestamp", async () => {
     const note = buildNote({
-      id: "n1",
-      ticketId: "t1",
       authorId: "111",
       content: "Escalating to the dev team",
       createdAt: "2025-03-01T12:00:00.000Z",
+      id: "n1",
+      ticketId: "t1",
     });
     mockGetTicketNotes.mockResolvedValue({ data: [note], error: null });
 
@@ -573,11 +573,11 @@ describe("NotesPanel — empty / list / add / delete", () => {
 
   it("adds a note by calling addTicketNote and refreshing the list", async () => {
     const added = buildNote({
-      id: "n1",
-      ticketId: "t1",
       authorId: "111",
       content: "Looks stale",
       createdAt: "2025-03-02T12:00:00.000Z",
+      id: "n1",
+      ticketId: "t1",
     });
     mockGetTicketNotes
       .mockResolvedValueOnce({ data: [], error: null })
@@ -607,11 +607,11 @@ describe("NotesPanel — empty / list / add / delete", () => {
 
   it("deletes a note by calling deleteTicketNote and refreshing the list", async () => {
     const note = buildNote({
-      id: "n1",
-      ticketId: "t1",
       authorId: "111",
       content: "Old note",
       createdAt: "2025-03-01T12:00:00.000Z",
+      id: "n1",
+      ticketId: "t1",
     });
     mockGetTicketNotes
       .mockResolvedValueOnce({ data: [note], error: null })

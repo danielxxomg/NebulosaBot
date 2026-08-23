@@ -25,7 +25,7 @@ vi.mock("@/lib/discord", () => ({
   fetchUserGuilds: (...args: unknown[]) => mockFetchUserGuilds(...args),
   hasAdministratorPerm: (perm: string) => {
     const permsBigInt = BigInt(perm);
-    const ADMINISTRATOR = BigInt(0x8);
+    const ADMINISTRATOR = 0x8n;
     return (permsBigInt & ADMINISTRATOR) === ADMINISTRATOR;
   },
 }));
@@ -56,44 +56,44 @@ const SESSION_USER_ID = "111222333444555666";
 
 function buildTicket(overrides: Partial<Ticket> = {}): Ticket {
   return {
-    id: crypto.randomUUID(),
-    ticketNumber: 1,
-    guildId: GUILD_ID,
     authorId: "999999999999999999",
-    channelId: "888888888888888888",
-    status: "open" satisfies TicketStatus,
-    createdAt: new Date().toISOString(),
-    lastActivity: new Date().toISOString(),
     categoryId: null,
+    channelId: "888888888888888888",
     claimedBy: null,
-    transcriptUrl: null,
     closedAt: null,
+    createdAt: new Date().toISOString(),
+    guildId: GUILD_ID,
+    id: crypto.randomUUID(),
+    lastActivity: new Date().toISOString(),
     parentId: null,
+    status: "open" satisfies TicketStatus,
+    ticketNumber: 1,
+    transcriptUrl: null,
     ...overrides,
   };
 }
 
 function buildTicketNote(overrides: Partial<TicketNote> = {}): TicketNote {
   return {
-    id: crypto.randomUUID(),
-    ticketId: TICKET_ID,
     authorId: SESSION_USER_ID,
     content: "Internal note text.",
     createdAt: new Date().toISOString(),
+    id: crypto.randomUUID(),
+    ticketId: TICKET_ID,
     ...overrides,
   };
 }
 
 function buildAuditRow(overrides: Partial<TicketAudit> = {}): TicketAudit {
   return {
-    id: crypto.randomUUID(),
-    guildId: GUILD_ID,
-    ticketId: TICKET_ID,
     action: "claim",
     actorId: "900000000000000001",
+    createdAt: new Date().toISOString(),
+    guildId: GUILD_ID,
+    id: crypto.randomUUID(),
     outcome: "success",
     reason: null,
-    createdAt: new Date().toISOString(),
+    ticketId: TICKET_ID,
     ...overrides,
   };
 }
@@ -121,7 +121,7 @@ function setupAuth({
   discordUserId = SESSION_USER_ID,
 } = {}) {
   mockGetSession.mockResolvedValue(
-    buildAuthSession({ hasSession, hasProviderToken, discordUserId })
+    buildAuthSession({ discordUserId, hasProviderToken, hasSession })
   );
 
   const svc = buildMockServiceClient({
@@ -134,6 +134,23 @@ function setupAuth({
           error: null,
         }
       : { data: null, error: null },
+    ticketAuditSelectResult: ticketAuditError
+      ? { data: null, error: ticketAuditError }
+      : { data: ticketAuditData, error: null },
+    ticketNoteDeleteResult: ticketNoteDeleteError
+      ? { data: null, error: ticketNoteDeleteError }
+      : { data: null, error: null },
+    ticketNoteInsertResult: ticketNoteInsertError
+      ? { data: null, error: ticketNoteInsertError }
+      : { data: null, error: null },
+    ticketNoteSelectResult: ticketNoteError
+      ? { data: null, error: ticketNoteError }
+      : { data: ticketNoteData, error: null },
+    ticketNoteSingleResult: ticketNoteSingleError
+      ? { data: null, error: ticketNoteSingleError }
+      : ticketNoteSingle
+        ? { data: ticketNoteSingle, error: null }
+        : { data: null, error: null },
     ticketSelectResult: ticketError
       ? { data: null, error: ticketError }
       : { data: ticketData, error: null },
@@ -145,23 +162,6 @@ function setupAuth({
     ticketUpdateResult: ticketUpdateError
       ? { data: null, error: ticketUpdateError }
       : { data: null, error: null },
-    ticketNoteSelectResult: ticketNoteError
-      ? { data: null, error: ticketNoteError }
-      : { data: ticketNoteData, error: null },
-    ticketNoteSingleResult: ticketNoteSingleError
-      ? { data: null, error: ticketNoteSingleError }
-      : ticketNoteSingle
-        ? { data: ticketNoteSingle, error: null }
-        : { data: null, error: null },
-    ticketNoteInsertResult: ticketNoteInsertError
-      ? { data: null, error: ticketNoteInsertError }
-      : { data: null, error: null },
-    ticketNoteDeleteResult: ticketNoteDeleteError
-      ? { data: null, error: ticketNoteDeleteError }
-      : { data: null, error: null },
-    ticketAuditSelectResult: ticketAuditError
-      ? { data: null, error: ticketAuditError }
-      : { data: ticketAuditData, error: null },
   });
 
   vi.mocked(createServiceClient).mockResolvedValue(
@@ -226,7 +226,7 @@ describe("getReopenGuidance — auth gating", () => {
   it("rejects a non-admin caller and never reads the guild config", async () => {
     const svc = setupAuth({
       isAdmin: false,
-      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID, status: "closed" }),
+      ticketSingle: buildTicket({ guildId: GUILD_ID, id: TICKET_ID, status: "closed" }),
     });
     const result = await getReopenGuidance(TICKET_ID);
 
@@ -239,7 +239,7 @@ describe("getReopenGuidance — auth gating", () => {
   it("rejects cross-guild access: admin of another guild cannot get guidance", async () => {
     setupAuth({
       adminGuildId: OTHER_GUILD_ID,
-      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID, status: "closed" }),
+      ticketSingle: buildTicket({ guildId: GUILD_ID, id: TICKET_ID, status: "closed" }),
     });
     const result = await getReopenGuidance(TICKET_ID);
 
@@ -253,10 +253,10 @@ describe("getReopenGuidance — category gate (TI-030)", () => {
     setupAuth({
       guildTicketCategoryId: null,
       ticketSingle: buildTicket({
-        id: TICKET_ID,
         guildId: GUILD_ID,
-        ticketNumber: 3,
+        id: TICKET_ID,
         status: "closed",
+        ticketNumber: 3,
       }),
     });
     const result = await getReopenGuidance(TICKET_ID);
@@ -269,10 +269,10 @@ describe("getReopenGuidance — category gate (TI-030)", () => {
     setupAuth({
       guildTicketCategoryId: "  ",
       ticketSingle: buildTicket({
-        id: TICKET_ID,
         guildId: GUILD_ID,
-        ticketNumber: 3,
+        id: TICKET_ID,
         status: "closed",
+        ticketNumber: 3,
       }),
     });
     const result = await getReopenGuidance(TICKET_ID);
@@ -286,10 +286,10 @@ describe("getReopenGuidance — guidance shape (TI-029)", () => {
   it("returns the ticket number and the /reopen command, never mutating the ticket", async () => {
     const svc = setupAuth({
       ticketSingle: buildTicket({
-        id: TICKET_ID,
         guildId: GUILD_ID,
-        ticketNumber: 3,
+        id: TICKET_ID,
         status: "closed",
+        ticketNumber: 3,
       }),
     });
     const result = await getReopenGuidance(TICKET_ID);
@@ -320,7 +320,7 @@ describe("transferTicket — auth gating", () => {
   it("rejects a non-admin caller and never updates", async () => {
     const svc = setupAuth({
       isAdmin: false,
-      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
+      ticketSingle: buildTicket({ guildId: GUILD_ID, id: TICKET_ID }),
     });
     const result = await transferTicket(TICKET_ID, CLAIMED_BY);
 
@@ -333,7 +333,7 @@ describe("transferTicket — auth gating", () => {
 describe("transferTicket — updates claimedBy AND status='claimed'", () => {
   it("sets both claimedBy and status='claimed' (decision #3 — implicit re-claim)", async () => {
     const svc = setupAuth({
-      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID, claimedBy: null }),
+      ticketSingle: buildTicket({ claimedBy: null, guildId: GUILD_ID, id: TICKET_ID }),
     });
     const result = await transferTicket(TICKET_ID, CLAIMED_BY);
 
@@ -350,10 +350,10 @@ describe("transferTicket — updates claimedBy AND status='claimed'", () => {
   it("also sets status='claimed' when the source ticket was already claimed", async () => {
     const svc = setupAuth({
       ticketSingle: buildTicket({
-        id: TICKET_ID,
-        guildId: GUILD_ID,
-        status: "claimed",
         claimedBy: "555555555555555555",
+        guildId: GUILD_ID,
+        id: TICKET_ID,
+        status: "claimed",
       }),
     });
     await transferTicket(TICKET_ID, CLAIMED_BY);
@@ -373,7 +373,7 @@ describe("transferTicket — updates claimedBy AND status='claimed'", () => {
 
   it("returns a database error when the update fails", async () => {
     setupAuth({
-      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
+      ticketSingle: buildTicket({ guildId: GUILD_ID, id: TICKET_ID }),
       ticketUpdateError: new Error("nope"),
     });
     const result = await transferTicket(TICKET_ID, CLAIMED_BY);
@@ -389,7 +389,7 @@ describe("transferTicket — updates claimedBy AND status='claimed'", () => {
 describe("getTicketNotes — query shape & return", () => {
   it("queries ticket_note by ticketId, newest-first, with a limit of 50", async () => {
     const svc = setupAuth({
-      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
+      ticketSingle: buildTicket({ guildId: GUILD_ID, id: TICKET_ID }),
     });
     await getTicketNotes(TICKET_ID);
     expect(svc.from).toHaveBeenCalledWith("ticket_note");
@@ -399,12 +399,12 @@ describe("getTicketNotes — query shape & return", () => {
 
   it("returns the notes with error: null on success", async () => {
     const notes: TicketNote[] = [
-      buildTicketNote({ id: "n2", content: "second" }),
-      buildTicketNote({ id: "n1", content: "first" }),
+      buildTicketNote({ content: "second", id: "n2" }),
+      buildTicketNote({ content: "first", id: "n1" }),
     ];
     setupAuth({
-      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
       ticketNoteData: notes,
+      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
     });
     const result = await getTicketNotes(TICKET_ID);
     expect(result.error).toBeNull();
@@ -420,7 +420,7 @@ describe("addTicketNote — auth gating", () => {
   it("rejects a non-admin caller and never inserts", async () => {
     const svc = setupAuth({
       isAdmin: false,
-      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
+      ticketSingle: buildTicket({ guildId: GUILD_ID, id: TICKET_ID }),
     });
     const result = await addTicketNote(TICKET_ID, "hello");
     expect(result.data).toBeNull();
@@ -432,10 +432,10 @@ describe("addTicketNote — auth gating", () => {
 describe("addTicketNote — note cap (TI-031 / TI-034)", () => {
   it("rejects adding when the ticket already has 50 notes (cap reached)", async () => {
     const svc = setupAuth({
-      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
       ticketNoteData: Array.from({ length: NOTE_CAP }, (_, i) =>
         buildTicketNote({ id: `n${i}`, content: `note ${i}`, authorId: "999" })
       ),
+      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
     });
     const result = await addTicketNote(TICKET_ID, "one too many");
 
@@ -446,18 +446,18 @@ describe("addTicketNote — note cap (TI-031 / TI-034)", () => {
 
   it("persists the note when the ticket has fewer than 50 notes (TI-034)", async () => {
     const svc = setupAuth({
-      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
       ticketNoteData: Array.from({ length: 30 }, (_, i) =>
         buildTicketNote({ id: `n${i}`, content: `note ${i}`, authorId: "999" })
       ),
+      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
     });
     const result = await addTicketNote(TICKET_ID, "new note under cap");
 
     expect(result.error).toBeNull();
     expect(svc.ticketNote.insert).toHaveBeenCalledWith({
-      ticketId: TICKET_ID,
-      content: "new note under cap",
       authorId: SESSION_USER_ID,
+      content: "new note under cap",
+      ticketId: TICKET_ID,
     });
   });
 });
@@ -467,16 +467,16 @@ describe("addTicketNote — note dedup (TI-016 normalized hash)", () => {
     const now = new Date();
     const recent: TicketNote[] = [
       buildTicketNote({
-        id: "near",
         authorId: SESSION_USER_ID,
         content: "Hello World",
         createdAt: new Date(now.getTime() - 1000).toISOString(),
+        id: "near",
       }),
     ];
     const svc = setupAuth({
-      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
-      ticketNoteData: recent,
       discordUserId: SESSION_USER_ID,
+      ticketNoteData: recent,
+      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
     });
     // Cosmetic whitespace/case variant of an own note 1s ago → same hash.
     const result = await addTicketNote(TICKET_ID, "  hello   world  ");
@@ -489,7 +489,7 @@ describe("addTicketNote — note dedup (TI-016 normalized hash)", () => {
   it("allows the same content from a different author (TI-018)", async () => {
     const now = new Date();
     const svc = setupAuth({
-      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
+      discordUserId: SESSION_USER_ID,
       ticketNoteData: [
         buildTicketNote({
           id: "other-author",
@@ -498,7 +498,7 @@ describe("addTicketNote — note dedup (TI-016 normalized hash)", () => {
           createdAt: new Date(now.getTime() - 500).toISOString(),
         }),
       ],
-      discordUserId: SESSION_USER_ID,
+      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
     });
     const result = await addTicketNote(TICKET_ID, "hello");
 
@@ -514,9 +514,9 @@ describe("addTicketNote — note dedup (TI-016 normalized hash)", () => {
 describe("deleteTicketNote — author-only ownership (TI-032 / TI-035)", () => {
   it("allows the note author to delete their own note (TI-035)", async () => {
     const svc = setupAuth({
-      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
-      ticketNoteSingle: { ticketId: TICKET_ID, authorId: SESSION_USER_ID },
       discordUserId: SESSION_USER_ID,
+      ticketNoteSingle: { authorId: SESSION_USER_ID, ticketId: TICKET_ID },
+      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
     });
     const result = await deleteTicketNote(NOTE_ID);
 
@@ -529,9 +529,9 @@ describe("deleteTicketNote — author-only ownership (TI-032 / TI-035)", () => {
 
   it("rejects deleting another author's note (TI-032)", async () => {
     const svc = setupAuth({
-      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
-      ticketNoteSingle: { ticketId: TICKET_ID, authorId: "999999999999999999" },
       discordUserId: SESSION_USER_ID,
+      ticketNoteSingle: { authorId: "999999999999999999", ticketId: TICKET_ID },
+      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
     });
     const result = await deleteTicketNote(NOTE_ID);
 
@@ -543,8 +543,8 @@ describe("deleteTicketNote — author-only ownership (TI-032 / TI-035)", () => {
   it("enforces guild isolation: cannot delete a note on another guild's ticket", async () => {
     const svc = setupAuth({
       adminGuildId: OTHER_GUILD_ID,
-      ticketNoteSingle: { ticketId: TICKET_ID, authorId: SESSION_USER_ID },
-      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
+      ticketNoteSingle: { authorId: SESSION_USER_ID, ticketId: TICKET_ID },
+      ticketSingle: buildTicket({ guildId: GUILD_ID, id: TICKET_ID }),
     });
     const result = await deleteTicketNote(NOTE_ID);
 
@@ -592,8 +592,8 @@ describe("getTicketAudit — guild-scoped pagination (TI-038 / TI-021)", () => {
 
   it("returns the rows with error: null on success", async () => {
     const rows: TicketAudit[] = [
-      buildAuditRow({ id: "a2", action: "close", createdAt: "2026-01-02T00:00:00.000Z" }),
-      buildAuditRow({ id: "a1", action: "claim", createdAt: "2026-01-01T00:00:00.000Z" }),
+      buildAuditRow({ action: "close", createdAt: "2026-01-02T00:00:00.000Z", id: "a2" }),
+      buildAuditRow({ action: "claim", createdAt: "2026-01-01T00:00:00.000Z", id: "a1" }),
     ];
     setupAuth({ ticketAuditData: rows });
     const result = await getTicketAudit(GUILD_ID, TICKET_ID, 1);

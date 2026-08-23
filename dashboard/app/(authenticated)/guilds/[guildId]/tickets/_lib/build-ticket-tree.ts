@@ -34,13 +34,13 @@ export function buildTicketTree(tickets: Ticket[]): TicketTreeNode[] {
 
   const nodes = new Map<string, TicketTreeNode>();
   for (const ticket of tickets) {
-    nodes.set(ticket.id, { ticket, children: [] });
+    nodes.set(ticket.id, { children: [], ticket });
   }
 
   const roots: TicketTreeNode[] = [];
   for (const ticket of tickets) {
     const node = nodes.get(ticket.id)!;
-    const parentId = ticket.parentId;
+    const {parentId} = ticket;
     const parent = parentId ? byId.get(parentId) : undefined;
     if (parent && nodes.has(parent.id)) {
       nodes.get(parent.id)!.children.push(ticket);

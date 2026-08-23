@@ -19,26 +19,26 @@ export async function verifyGuildAdmin(
   } = await supabase.auth.getSession();
 
   if (!session) {
-    return { success: false, error: "Not authenticated." };
+    return { error: "Not authenticated.", success: false };
   }
 
   const providerToken = session.provider_token;
   if (!providerToken) {
-    return { success: false, error: "Discord token not available. Please re-login." };
+    return { error: "Discord token not available. Please re-login.", success: false };
   }
 
   const serviceClient = await createServiceClient();
   const { data: guild } = await serviceClient.from("guild").select("active").eq("id", guildId).single();
 
   if (!guild || !guild.active) {
-    return { success: false, error: "Guild not found or inactive." };
+    return { error: "Guild not found or inactive.", success: false };
   }
 
   const userGuilds = await fetchUserGuilds(providerToken);
   const target = userGuilds.find((g) => g.id === guildId);
 
   if (!target || !hasAdministratorPerm(target.permissions)) {
-    return { success: false, error: adminError };
+    return { error: adminError, success: false };
   }
 
   return null;

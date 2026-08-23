@@ -42,21 +42,21 @@ export function Sidebar({ guildId }: SidebarProps) {
 
   const navItems: NavItem[] = guildId
     ? [
-        { href: `/guilds/${guildId}`, label: "Overview", icon: LayoutDashboard },
-        { href: `/guilds/${guildId}/config`, label: "Config", icon: Settings },
-        { href: `/guilds/${guildId}/economy`, label: "Economy", icon: Coins },
+        { href: `/guilds/${guildId}`, icon: LayoutDashboard, label: "Overview" },
+        { href: `/guilds/${guildId}/config`, icon: Settings, label: "Config" },
+        { href: `/guilds/${guildId}/economy`, icon: Coins, label: "Economy" },
         {
           href: `/guilds/${guildId}/greeting`,
-          label: "Greeting",
           icon: MessageSquareHeart,
+          label: "Greeting",
         },
         {
           href: `/guilds/${guildId}/tickets`,
-          label: "Tickets",
           icon: Ticket,
+          label: "Tickets",
         },
       ]
-    : [{ href: "/", label: "Guilds", icon: LayoutDashboard }];
+    : [{ href: "/", icon: LayoutDashboard, label: "Guilds" }];
 
   return (
     <>

@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
 /**
  * Updates the Supabase session in middleware context.
@@ -42,5 +43,5 @@ export async function updateSession(request: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession();
 
-  return { supabaseResponse, supabase, session };
+  return { session, supabase, supabaseResponse };
 }

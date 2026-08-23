@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition, type FormEvent } from "react";
+import { useState, useTransition } from 'react';
+import type { FormEvent } from 'react';
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { getReopenGuidance, transferTicket } from "@/lib/actions/ticket-actions";
@@ -71,7 +72,7 @@ export function TicketRowActions({ ticket }: { ticket: Ticket }) {
   function handleTransfer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const target = transferTarget.trim();
-    if (!target) return;
+    if (!target) {return;}
     setActionError(null);
     startTransferTransition(async () => {
       const result = await transferTicket(ticket.id, target);

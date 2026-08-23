@@ -80,9 +80,9 @@ describe("middleware auth guard", () => {
     // No session -> middleware must redirect (307) to /login carrying the
     // original pathname so login can return the user to where they were.
     vi.mocked(updateSession).mockResolvedValue({
-      supabaseResponse: NextResponse.next(),
-      supabase: {} as SupabaseClient,
       session: null,
+      supabase: {} as SupabaseClient,
+      supabaseResponse: NextResponse.next(),
     });
 
     const request = new NextRequest("http://localhost/guilds/123");
@@ -103,9 +103,9 @@ describe("middleware auth guard", () => {
     // runtime switch happy path: auth pass-through still works.
     const next = NextResponse.next();
     vi.mocked(updateSession).mockResolvedValue({
-      supabaseResponse: next,
-      supabase: {} as SupabaseClient,
       session: { user: { id: "u1" } } as never,
+      supabase: {} as SupabaseClient,
+      supabaseResponse: next,
     });
 
     const request = new NextRequest("http://localhost/guilds/123");

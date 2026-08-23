@@ -32,23 +32,23 @@ const OUTCOME_BADGE: Record<
   AuditOutcome,
   { label: string; className: string }
 > = {
-  success: {
-    label: "Success",
-    className: "bg-green-500/10 text-green-700 ring-green-500/30",
-  },
   denied: {
-    label: "Denied",
     className: "bg-amber-500/10 text-amber-700 ring-amber-500/30",
+    label: "Denied",
   },
   error: {
-    label: "Error",
     className: "bg-red-500/10 text-red-700 ring-red-500/30",
+    label: "Error",
+  },
+  success: {
+    className: "bg-green-500/10 text-green-700 ring-green-500/30",
+    label: "Success",
   },
 };
 
 const OUTCOME_FALLBACK = {
-  label: "Unknown",
   className: "bg-muted text-muted-foreground ring-border",
+  label: "Unknown",
 };
 
 function OutcomeBadge({ outcome }: { outcome: AuditOutcome }) {
@@ -76,7 +76,7 @@ export function AuditPanel({ guildId, ticketId }: AuditPanelProps) {
       setIsLoading(true);
       setLoadError(null);
       const result = await getTicketAudit(guildId, ticketId, page);
-      if (cancelled) return;
+      if (cancelled) {return;}
       if (result.error) {
         setLoadError(result.error);
         setRows([]);

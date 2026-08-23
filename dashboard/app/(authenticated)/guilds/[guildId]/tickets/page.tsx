@@ -30,23 +30,23 @@ const STATUS_BADGE: Record<
   TicketStatus,
   { label: string; className: string }
 > = {
-  open: {
-    label: "Open",
-    className: "bg-green-500/10 text-green-600 ring-green-500/20",
-  },
   claimed: {
-    label: "Claimed",
     className: "bg-yellow-500/10 text-yellow-600 ring-yellow-500/20",
+    label: "Claimed",
   },
   closed: {
-    label: "Closed",
     className: "bg-muted text-muted-foreground ring-border",
+    label: "Closed",
+  },
+  open: {
+    className: "bg-green-500/10 text-green-600 ring-green-500/20",
+    label: "Open",
   },
 };
 
 const NEUTRAL_BADGE = {
-  label: "Unknown",
   className: "bg-muted text-muted-foreground ring-border",
+  label: "Unknown",
 };
 
 function StatusBadge({ status }: { status: TicketStatus }) {

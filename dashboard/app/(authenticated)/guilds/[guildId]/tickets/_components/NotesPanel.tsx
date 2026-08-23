@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from 'react';
+import type { FormEvent } from 'react';
 import { Button } from "@/components/ui/button";
 import {
   getTicketNotes,
@@ -72,7 +73,7 @@ export function NotesPanel({ ticketId }: { ticketId: string }) {
   async function handleAdd(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const content = draft.trim();
-    if (!content || atCap) return;
+    if (!content || atCap) {return;}
     setIsAdding(true);
     const result = await addTicketNote(ticketId, content);
     setIsAdding(false);

@@ -1,5 +1,6 @@
 import { updateSession } from "@/lib/supabase/middleware";
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
 /**
  * Auth guard middleware.
@@ -46,6 +47,6 @@ export async function middleware(request: NextRequest) {
  * This ensures middleware runs for pages but not internal Next.js requests.
  */
 export const config = {
-  runtime: "nodejs",
   matcher: ["/((?!api|_next/static|_next/image|favicon\\.(?:ico|png)).*)"],
+  runtime: "nodejs",
 };

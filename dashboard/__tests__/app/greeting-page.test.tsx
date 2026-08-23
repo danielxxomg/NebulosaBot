@@ -1,8 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const { mockCreateServiceClient, mockConfigForm } = vi.hoisted(() => ({
-  mockCreateServiceClient: vi.fn(),
   mockConfigForm: vi.fn(() => null),
+  mockCreateServiceClient: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase", () => ({
@@ -61,38 +61,38 @@ describe("GreetingConfigPage onboarding setup control", () => {
 
     const page = await GreetingConfigPage({ params: Promise.resolve({ guildId: "guild-1" }) });
 
-    const fields = findConfigForm(page).props.fields as Array<{
+    const fields = findConfigForm(page).props.fields as {
       name: string;
       label: string;
       defaultValue: string;
-    }>;
+    }[];
     const onboarding = fields.find((field) => field.name === "onboardingChannelId");
     expect(onboarding).toMatchObject({
-      name: "onboardingChannelId",
       defaultValue: "",
+      name: "onboardingChannelId",
     });
     expect(onboarding?.label.toLowerCase()).toContain("onboarding");
   });
 
   it("loads the configured onboarding channel into the setup control", async () => {
     setupGreeting({
-      onboardingChannelId: "123456789012345678",
-      welcomeEnabled: false,
-      goodbyeEnabled: false,
-      welcomeChannelId: null,
-      goodbyeChannelId: null,
-      welcomeMessage: null,
-      goodbyeMessage: null,
-      welcomeCardEnabled: true,
       goodbyeCardEnabled: true,
+      goodbyeChannelId: null,
+      goodbyeEnabled: false,
+      goodbyeMessage: null,
+      onboardingChannelId: "123456789012345678",
+      welcomeCardEnabled: true,
+      welcomeChannelId: null,
+      welcomeEnabled: false,
+      welcomeMessage: null,
     });
 
     const page = await GreetingConfigPage({ params: Promise.resolve({ guildId: "guild-1" }) });
 
-    const fields = findConfigForm(page).props.fields as Array<{
+    const fields = findConfigForm(page).props.fields as {
       name: string;
       defaultValue: string;
-    }>;
+    }[];
     expect(fields.find((field) => field.name === "onboardingChannelId")).toMatchObject({
       defaultValue: "123456789012345678",
     });
@@ -109,11 +109,11 @@ describe("GreetingThemeSelector — themeId field (PR1 5.1)", () => {
 
     const page = await GreetingConfigPage({ params: Promise.resolve({ guildId: "guild-1" }) });
 
-    const fields = findConfigForm(page).props.fields as Array<{
+    const fields = findConfigForm(page).props.fields as {
       name: string;
       label: string;
       defaultValue: string;
-    }>;
+    }[];
     const theme = fields.find((field) => field.name === "themeId");
     expect(theme).toBeDefined();
     expect(theme?.defaultValue).toBe("");
@@ -122,23 +122,23 @@ describe("GreetingThemeSelector — themeId field (PR1 5.1)", () => {
 
   it("loads the configured gaming_neon themeId into the selector", async () => {
     setupGreeting({
-      themeId: "gaming_neon",
-      welcomeEnabled: false,
-      goodbyeEnabled: false,
-      welcomeChannelId: null,
-      goodbyeChannelId: null,
-      welcomeMessage: null,
-      goodbyeMessage: null,
-      welcomeCardEnabled: false,
       goodbyeCardEnabled: false,
+      goodbyeChannelId: null,
+      goodbyeEnabled: false,
+      goodbyeMessage: null,
+      themeId: "gaming_neon",
+      welcomeCardEnabled: false,
+      welcomeChannelId: null,
+      welcomeEnabled: false,
+      welcomeMessage: null,
     });
 
     const page = await GreetingConfigPage({ params: Promise.resolve({ guildId: "guild-1" }) });
 
-    const fields = findConfigForm(page).props.fields as Array<{
+    const fields = findConfigForm(page).props.fields as {
       name: string;
       defaultValue: string;
-    }>;
+    }[];
     expect(fields.find((field) => field.name === "themeId")).toMatchObject({
       defaultValue: "gaming_neon",
     });
@@ -146,23 +146,23 @@ describe("GreetingThemeSelector — themeId field (PR1 5.1)", () => {
 
   it("loads a null themeId as an empty string for the form", async () => {
     setupGreeting({
-      themeId: null,
-      welcomeEnabled: false,
-      goodbyeEnabled: false,
-      welcomeChannelId: null,
-      goodbyeChannelId: null,
-      welcomeMessage: null,
-      goodbyeMessage: null,
-      welcomeCardEnabled: false,
       goodbyeCardEnabled: false,
+      goodbyeChannelId: null,
+      goodbyeEnabled: false,
+      goodbyeMessage: null,
+      themeId: null,
+      welcomeCardEnabled: false,
+      welcomeChannelId: null,
+      welcomeEnabled: false,
+      welcomeMessage: null,
     });
 
     const page = await GreetingConfigPage({ params: Promise.resolve({ guildId: "guild-1" }) });
 
-    const fields = findConfigForm(page).props.fields as Array<{
+    const fields = findConfigForm(page).props.fields as {
       name: string;
       defaultValue: string;
-    }>;
+    }[];
     expect(fields.find((field) => field.name === "themeId")).toMatchObject({
       defaultValue: "",
     });

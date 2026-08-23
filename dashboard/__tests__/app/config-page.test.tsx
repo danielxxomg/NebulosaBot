@@ -31,12 +31,12 @@ const GUILD_ID = "123456789012345678";
 function buildGuildRow(overrides: Record<string, unknown> = {}) {
   return {
     id: GUILD_ID,
-    prefix: "nb!",
     language: "es",
-    modRoleId: null,
     logChannelId: null,
-    ticketCategoryId: null,
     logEnabled: false,
+    modRoleId: null,
+    prefix: "nb!",
+    ticketCategoryId: null,
     ...overrides,
   };
 }

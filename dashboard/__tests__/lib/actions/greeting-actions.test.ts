@@ -29,7 +29,7 @@ vi.mock("@/lib/discord", () => ({
   fetchUserGuilds: (...args: unknown[]) => mockFetchUserGuilds(...args),
   hasAdministratorPerm: (perm: string) => {
     const permsBigInt = BigInt(perm);
-    const ADMINISTRATOR = BigInt(0x8);
+    const ADMINISTRATOR = 0x8n;
     return (permsBigInt & ADMINISTRATOR) === ADMINISTRATOR;
   },
 }));
@@ -58,7 +58,7 @@ function setupAuth({
   guildActive?: boolean;
   isAdmin?: boolean;
 } = {}) {
-  mockGetSession.mockResolvedValue(buildAuthSession({ hasSession, hasProviderToken }));
+  mockGetSession.mockResolvedValue(buildAuthSession({ hasProviderToken, hasSession }));
 
   const svc = buildMockServiceClient({
     guildSelectResult: guildActive
@@ -111,33 +111,33 @@ describe("updateGreetingConfig — channel validation", () => {
   });
 
   it("requires welcomeChannelId when welcomeEnabled is on", async () => {
-    const fd = buildFormData({ welcomeEnabled: "on", welcomeChannelId: "" });
+    const fd = buildFormData({ welcomeChannelId: "", welcomeEnabled: "on" });
     const result = await updateGreetingConfig(GUILD_ID, fd);
     assertFieldError(result, "welcomeChannelId");
   });
 
   it("does NOT require welcomeChannelId when welcomeEnabled is off", async () => {
-    const fd = buildFormData({ welcomeEnabled: "off", welcomeChannelId: "" });
+    const fd = buildFormData({ welcomeChannelId: "", welcomeEnabled: "off" });
     const result = await updateGreetingConfig(GUILD_ID, fd);
     assertSuccess(result);
   });
 
   it("requires goodbyeChannelId when goodbyeEnabled is on", async () => {
-    const fd = buildFormData({ goodbyeEnabled: "on", goodbyeChannelId: "" });
+    const fd = buildFormData({ goodbyeChannelId: "", goodbyeEnabled: "on" });
     const result = await updateGreetingConfig(GUILD_ID, fd);
     assertFieldError(result, "goodbyeChannelId");
   });
 
   it("does NOT require goodbyeChannelId when goodbyeEnabled is off", async () => {
-    const fd = buildFormData({ goodbyeEnabled: "off", goodbyeChannelId: "" });
+    const fd = buildFormData({ goodbyeChannelId: "", goodbyeEnabled: "off" });
     const result = await updateGreetingConfig(GUILD_ID, fd);
     assertSuccess(result);
   });
 
   it("rejects non-snowflake welcomeChannelId", async () => {
     const fd = buildFormData({
-      welcomeEnabled: "on",
       welcomeChannelId: "abc-channel",
+      welcomeEnabled: "on",
     });
     const result = await updateGreetingConfig(GUILD_ID, fd);
     assertFieldError(result, "welcomeChannelId");
@@ -145,8 +145,8 @@ describe("updateGreetingConfig — channel validation", () => {
 
   it("rejects too-short snowflake for goodbyeChannelId", async () => {
     const fd = buildFormData({
-      goodbyeEnabled: "on",
       goodbyeChannelId: "123",
+      goodbyeEnabled: "on",
     });
     const result = await updateGreetingConfig(GUILD_ID, fd);
     assertFieldError(result, "goodbyeChannelId");
@@ -154,10 +154,10 @@ describe("updateGreetingConfig — channel validation", () => {
 
   it("accepts valid snowflake for both channels", async () => {
     const fd = buildFormData({
-      welcomeEnabled: "on",
+      goodbyeChannelId: "987654321098765432",
       goodbyeEnabled: "on",
       welcomeChannelId: "123456789012345678",
-      goodbyeChannelId: "987654321098765432",
+      welcomeEnabled: "on",
     });
     const result = await updateGreetingConfig(GUILD_ID, fd);
     assertSuccess(result);
@@ -203,8 +203,8 @@ describe("updateGreetingConfig — message length", () => {
 
   it("accepts short messages without issue", async () => {
     const fd = buildFormData({
-      welcomeMessage: "Welcome {user}!",
       goodbyeMessage: "Goodbye {user}...",
+      welcomeMessage: "Welcome {user}!",
     });
     const result = await updateGreetingConfig(GUILD_ID, fd);
     assertSuccess(result);
@@ -212,8 +212,8 @@ describe("updateGreetingConfig — message length", () => {
 
   it("accepts empty (null) messages", async () => {
     const fd = buildFormData({
-      welcomeMessage: "",
       goodbyeMessage: "",
+      welcomeMessage: "",
     });
     const result = await updateGreetingConfig(GUILD_ID, fd);
     assertSuccess(result);
@@ -228,14 +228,14 @@ describe("updateGreetingConfig — successful update", () => {
   it("saves a full welcome+goodbye config and revalidates", async () => {
     setupAuth();
     const fd = buildFormData({
-      welcomeEnabled: "on",
-      goodbyeEnabled: "on",
-      welcomeChannelId: "123456789012345678",
+      goodbyeCardEnabled: "on",
       goodbyeChannelId: "987654321098765432",
-      welcomeMessage: "Hello {user}!",
+      goodbyeEnabled: "on",
       goodbyeMessage: "Bye {user}!",
       welcomeCardEnabled: "on",
-      goodbyeCardEnabled: "on",
+      welcomeChannelId: "123456789012345678",
+      welcomeEnabled: "on",
+      welcomeMessage: "Hello {user}!",
     });
     const result = await updateGreetingConfig(GUILD_ID, fd);
     assertSuccess(result);
@@ -245,8 +245,8 @@ describe("updateGreetingConfig — successful update", () => {
   it("saves welcome-only config (goodbye disabled)", async () => {
     setupAuth();
     const fd = buildFormData({
-      welcomeEnabled: "on",
       welcomeChannelId: "123456789012345678",
+      welcomeEnabled: "on",
       welcomeMessage: "Hey {user}!",
     });
     const result = await updateGreetingConfig(GUILD_ID, fd);
@@ -256,8 +256,8 @@ describe("updateGreetingConfig — successful update", () => {
   it("saves goodbye-only config (welcome disabled)", async () => {
     setupAuth();
     const fd = buildFormData({
-      goodbyeEnabled: "on",
       goodbyeChannelId: "987654321098765432",
+      goodbyeEnabled: "on",
       goodbyeMessage: "See ya {user}.",
     });
     const result = await updateGreetingConfig(GUILD_ID, fd);

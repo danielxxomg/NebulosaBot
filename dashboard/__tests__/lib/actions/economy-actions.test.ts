@@ -29,7 +29,7 @@ vi.mock("@/lib/discord", () => ({
   fetchUserGuilds: (...args: unknown[]) => mockFetchUserGuilds(...args),
   hasAdministratorPerm: (perm: string) => {
     const permsBigInt = BigInt(perm);
-    const ADMINISTRATOR = BigInt(0x8);
+    const ADMINISTRATOR = 0x8n;
     return (permsBigInt & ADMINISTRATOR) === ADMINISTRATOR;
   },
 }));
@@ -58,7 +58,7 @@ function setupAuth({
   guildActive?: boolean;
   isAdmin?: boolean;
 } = {}) {
-  mockGetSession.mockResolvedValue(buildAuthSession({ hasSession, hasProviderToken }));
+  mockGetSession.mockResolvedValue(buildAuthSession({ hasProviderToken, hasSession }));
 
   const svc = buildMockServiceClient({
     guildSelectResult: guildActive
@@ -87,12 +87,12 @@ describe("updateEconomyConfig — auth rejection", () => {
   it("returns error for unauthorized user", async () => {
     setupAuth({ hasSession: false });
     const fd = buildFormData({
-      dailyReward: "100",
       dailyCooldownHours: "24",
-      xpPerMessage: "10",
-      xpCooldownSeconds: "60",
+      dailyReward: "100",
       levelBaseXp: "100",
       levelMultiplier: "1.5",
+      xpCooldownSeconds: "60",
+      xpPerMessage: "10",
     });
     const result = await updateEconomyConfig(GUILD_ID, fd);
     assertAuthError(result);
@@ -101,12 +101,12 @@ describe("updateEconomyConfig — auth rejection", () => {
   it("returns error when user is not admin", async () => {
     setupAuth({ isAdmin: false });
     const fd = buildFormData({
-      dailyReward: "100",
       dailyCooldownHours: "24",
-      xpPerMessage: "10",
-      xpCooldownSeconds: "60",
+      dailyReward: "100",
       levelBaseXp: "100",
       levelMultiplier: "1.5",
+      xpCooldownSeconds: "60",
+      xpPerMessage: "10",
     });
     const result = await updateEconomyConfig(GUILD_ID, fd);
     if (!result.success) {
@@ -125,12 +125,12 @@ describe("updateEconomyConfig — numeric bounds", () => {
   });
 
   const validDefaults = {
-    dailyReward: "100",
     dailyCooldownHours: "24",
-    xpPerMessage: "10",
-    xpCooldownSeconds: "60",
+    dailyReward: "100",
     levelBaseXp: "100",
     levelMultiplier: "1.5",
+    xpCooldownSeconds: "60",
+    xpPerMessage: "10",
   };
 
   // dailyReward: 1–1,000,000
@@ -250,12 +250,12 @@ describe("updateEconomyConfig — levelRoles", () => {
   });
 
   const validDefaults = {
-    dailyReward: "100",
     dailyCooldownHours: "24",
-    xpPerMessage: "10",
-    xpCooldownSeconds: "60",
+    dailyReward: "100",
     levelBaseXp: "100",
     levelMultiplier: "1.5",
+    xpCooldownSeconds: "60",
+    xpPerMessage: "10",
   };
 
   it("rejects invalid JSON in levelRoles", async () => {
@@ -294,14 +294,14 @@ describe("updateEconomyConfig — successful update", () => {
   it("saves valid config and revalidates", async () => {
     setupAuth();
     const fd = buildFormData({
-      dailyReward: "500",
       dailyCooldownHours: "12",
-      xpPerMessage: "25",
-      xpCooldownSeconds: "30",
+      dailyReward: "500",
       levelBaseXp: "300",
       levelMultiplier: "2.0",
       levelRoles: '{"3": "123456789012345678"}',
       levelUpChannelId: "123456789012345678",
+      xpCooldownSeconds: "30",
+      xpPerMessage: "25",
     });
     const result = await updateEconomyConfig(GUILD_ID, fd);
     assertSuccess(result);
@@ -311,12 +311,12 @@ describe("updateEconomyConfig — successful update", () => {
   it("accepts boundary values", async () => {
     setupAuth();
     const fd = buildFormData({
-      dailyReward: "1000000",
       dailyCooldownHours: "720",
-      xpPerMessage: "1000",
-      xpCooldownSeconds: "3600",
+      dailyReward: "1000000",
       levelBaseXp: "1000000",
       levelMultiplier: "10.0",
+      xpCooldownSeconds: "3600",
+      xpPerMessage: "1000",
     });
     const result = await updateEconomyConfig(GUILD_ID, fd);
     assertSuccess(result);
@@ -325,12 +325,12 @@ describe("updateEconomyConfig — successful update", () => {
   it("accepts minimum values", async () => {
     setupAuth();
     const fd = buildFormData({
-      dailyReward: "1",
       dailyCooldownHours: "1",
-      xpPerMessage: "1",
-      xpCooldownSeconds: "1",
+      dailyReward: "1",
       levelBaseXp: "1",
       levelMultiplier: "1.0",
+      xpCooldownSeconds: "1",
+      xpPerMessage: "1",
     });
     const result = await updateEconomyConfig(GUILD_ID, fd);
     assertSuccess(result);

@@ -15,8 +15,8 @@ import type { ReopenGuidance } from "@/lib/actions/ticket-actions";
  */
 
 const GUIDANCE: ReopenGuidance = {
-  ticketNumber: 3,
   command: "/reopen ticket:#0003",
+  ticketNumber: 3,
 };
 
 describe("ReopenTicketDialog — guidance view (TI-029)", () => {

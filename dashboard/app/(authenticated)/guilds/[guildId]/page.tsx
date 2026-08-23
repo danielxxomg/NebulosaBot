@@ -44,23 +44,23 @@ export default async function GuildOverviewPage({ params }: GuildOverviewProps) 
 
   const configSections = [
     {
-      title: "General Config",
       description: "Prefix, language, roles, and logging",
       href: `/guilds/${guildId}/config`,
       icon: Settings,
+      title: "General Config",
     },
     {
-      title: "Economy",
       description: "Daily rewards, XP, and level roles",
       href: `/guilds/${guildId}/economy`,
       icon: Coins,
+      title: "Economy",
     },
     {
-      title: "Greeting",
       description: "Welcome and goodbye messages",
       href: `/guilds/${guildId}/greeting`,
       icon: MessageSquareHeart,
       status: config.welcomeEnabled ? "Enabled" : "Disabled",
+      title: "Greeting",
     },
   ];
 

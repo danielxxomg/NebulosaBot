@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase";
-import { ConfigForm, type ConfigField } from "@/components/config-form";
+import { ConfigForm } from '@/components/config-form';
+import type { ConfigField } from '@/components/config-form';
 import { updateGreetingConfig } from "@/lib/actions/greeting-actions";
 
 export const metadata = {
@@ -11,16 +12,16 @@ export const metadata = {
  * Card toggles default to false to match bot/models/greeting_config.py (spec GC-4).
  */
 const GREETING_DEFAULTS = {
-  welcomeEnabled: false,
-  goodbyeEnabled: false,
-  welcomeChannelId: null as string | null,
-  goodbyeChannelId: null as string | null,
-  onboardingChannelId: null as string | null,
-  welcomeMessage: null as string | null,
-  goodbyeMessage: null as string | null,
-  welcomeCardEnabled: false,
   goodbyeCardEnabled: false,
+  goodbyeChannelId: null as string | null,
+  goodbyeEnabled: false,
+  goodbyeMessage: null as string | null,
+  onboardingChannelId: null as string | null,
   themeId: null as string | null,
+  welcomeCardEnabled: false,
+  welcomeChannelId: null as string | null,
+  welcomeEnabled: false,
+  welcomeMessage: null as string | null,
 };
 
 interface GreetingConfigPageProps {
@@ -52,83 +53,83 @@ export default async function GreetingConfigPage({
   const fields: ConfigField[] = [
     // ── Welcome ──────────────────────────────────────────────
     {
-      name: "welcomeEnabled",
-      label: "Welcome Messages",
-      type: "switch",
       defaultValue: config.welcomeEnabled,
       hint: "Send a welcome message when a member joins.",
+      label: "Welcome Messages",
+      name: "welcomeEnabled",
+      type: "switch",
     },
     {
-      name: "welcomeChannelId",
-      label: "Welcome Channel ID",
-      type: "text",
       defaultValue: config.welcomeChannelId ?? "",
-      placeholder: "123456789012345678",
       hint: "Discord channel ID where welcome messages are sent. Required when enabled.",
-    },
-    {
-      name: "onboardingChannelId",
-      label: "Onboarding Channel ID",
-      type: "text",
-      defaultValue: config.onboardingChannelId ?? "",
+      label: "Welcome Channel ID",
+      name: "welcomeChannelId",
       placeholder: "123456789012345678",
-      hint: "Optional channel mentioned in welcome messages to help new members get started.",
+      type: "text",
     },
     {
-      name: "welcomeMessage",
-      label: "Welcome Message Template",
-      type: "textarea",
+      defaultValue: config.onboardingChannelId ?? "",
+      hint: "Optional channel mentioned in welcome messages to help new members get started.",
+      label: "Onboarding Channel ID",
+      name: "onboardingChannelId",
+      placeholder: "123456789012345678",
+      type: "text",
+    },
+    {
       defaultValue: config.welcomeMessage ?? "",
+      hint: "Use {user}, {server}, and {count} as placeholders. Max 2,000 characters.",
+      label: "Welcome Message Template",
+      name: "welcomeMessage",
       placeholder:
         "Welcome to {server}, {user}! You are member #{count}.",
-      hint: "Use {user}, {server}, and {count} as placeholders. Max 2,000 characters.",
+      type: "textarea",
     },
     {
-      name: "welcomeCardEnabled",
-      label: "Welcome Image Card",
-      type: "switch",
       defaultValue: config.welcomeCardEnabled,
       hint: "Generate a custom image card for welcome messages.",
+      label: "Welcome Image Card",
+      name: "welcomeCardEnabled",
+      type: "switch",
     },
     // ── Goodbye ──────────────────────────────────────────────
     {
-      name: "goodbyeEnabled",
-      label: "Goodbye Messages",
-      type: "switch",
       defaultValue: config.goodbyeEnabled,
       hint: "Send a goodbye message when a member leaves.",
-    },
-    {
-      name: "goodbyeChannelId",
-      label: "Goodbye Channel ID",
-      type: "text",
-      defaultValue: config.goodbyeChannelId ?? "",
-      placeholder: "123456789012345678",
-      hint: "Discord channel ID where goodbye messages are sent. Required when enabled.",
-    },
-    {
-      name: "goodbyeMessage",
-      label: "Goodbye Message Template",
-      type: "textarea",
-      defaultValue: config.goodbyeMessage ?? "",
-      placeholder: "{user} has left the server. We'll miss you!",
-      hint: "Use {user} and {server} as placeholders. Max 2,000 characters.",
-    },
-    {
-      name: "goodbyeCardEnabled",
-      label: "Goodbye Image Card",
+      label: "Goodbye Messages",
+      name: "goodbyeEnabled",
       type: "switch",
+    },
+    {
+      defaultValue: config.goodbyeChannelId ?? "",
+      hint: "Discord channel ID where goodbye messages are sent. Required when enabled.",
+      label: "Goodbye Channel ID",
+      name: "goodbyeChannelId",
+      placeholder: "123456789012345678",
+      type: "text",
+    },
+    {
+      defaultValue: config.goodbyeMessage ?? "",
+      hint: "Use {user} and {server} as placeholders. Max 2,000 characters.",
+      label: "Goodbye Message Template",
+      name: "goodbyeMessage",
+      placeholder: "{user} has left the server. We'll miss you!",
+      type: "textarea",
+    },
+    {
       defaultValue: config.goodbyeCardEnabled,
       hint: "Generate a custom image card for goodbye messages.",
+      label: "Goodbye Image Card",
+      name: "goodbyeCardEnabled",
+      type: "switch",
     },
     // ── Theme ────────────────────────────────────────────────
     {
-      name: "themeId",
-      label: "Greeting Theme",
-      type: "text",
       defaultValue: (config as { themeId?: string | null }).themeId ?? "",
-      placeholder: "gaming_neon or empty for default",
       hint: "Theme for greeting cards: gaming_neon or default (empty).",
+      label: "Greeting Theme",
+      name: "themeId",
+      placeholder: "gaming_neon or empty for default",
+      type: "text",
     },
   ];
 

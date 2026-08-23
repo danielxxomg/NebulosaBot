@@ -55,7 +55,7 @@ function setupAuth({
   guildActive?: boolean;
   isAdmin?: boolean;
 } = {}) {
-  mockGetSession.mockResolvedValue(buildAuthSession({ hasSession, hasProviderToken }));
+  mockGetSession.mockResolvedValue(buildAuthSession({ hasProviderToken, hasSession }));
 
   const svc = buildMockServiceClient({
     guildSelectResult: guildActive
@@ -71,7 +71,7 @@ function setupAuth({
 
   mockHasAdministratorPerm.mockImplementation((perm: string) => {
     const permsBigInt = BigInt(perm);
-    const ADMINISTRATOR = BigInt(0x8);
+    const ADMINISTRATOR = 0x8n;
     return (permsBigInt & ADMINISTRATOR) === ADMINISTRATOR;
   });
 
@@ -89,14 +89,14 @@ beforeEach(() => {
 describe("updateGuildConfig — auth rejection", () => {
   it("returns error when there is no session", async () => {
     setupAuth({ hasSession: false });
-    const fd = buildFormData({ prefix: "!", language: "en" });
+    const fd = buildFormData({ language: "en", prefix: "!" });
     const result = await updateGuildConfig(GUILD_ID, fd);
     assertAuthError(result);
   });
 
   it("returns error when provider token is missing", async () => {
     setupAuth({ hasProviderToken: false });
-    const fd = buildFormData({ prefix: "!", language: "en" });
+    const fd = buildFormData({ language: "en", prefix: "!" });
     const result = await updateGuildConfig(GUILD_ID, fd);
     if (!result.success) {
       expect(result.error).toMatch(/re-login/i);
@@ -105,7 +105,7 @@ describe("updateGuildConfig — auth rejection", () => {
 
   it("returns error when guild is inactive", async () => {
     setupAuth({ guildActive: false });
-    const fd = buildFormData({ prefix: "!", language: "en" });
+    const fd = buildFormData({ language: "en", prefix: "!" });
     const result = await updateGuildConfig(GUILD_ID, fd);
     if (!result.success) {
       expect(result.error).toMatch(/inactive|not found/i);
@@ -114,7 +114,7 @@ describe("updateGuildConfig — auth rejection", () => {
 
   it("returns error when user lacks ADMINISTRATOR permission", async () => {
     setupAuth({ isAdmin: false });
-    const fd = buildFormData({ prefix: "!", language: "en" });
+    const fd = buildFormData({ language: "en", prefix: "!" });
     const result = await updateGuildConfig(GUILD_ID, fd);
     if (!result.success) {
       expect(result.error).toMatch(/administrator/i);
@@ -132,46 +132,46 @@ describe("updateGuildConfig — validation", () => {
   });
 
   it("rejects prefix shorter than 1 character", async () => {
-    const fd = buildFormData({ prefix: "", language: "en" });
+    const fd = buildFormData({ language: "en", prefix: "" });
     const result = await updateGuildConfig(GUILD_ID, fd);
     assertFieldError(result, "prefix");
   });
 
   it("rejects prefix longer than 10 characters", async () => {
-    const fd = buildFormData({ prefix: "abcdefghijk", language: "en" });
+    const fd = buildFormData({ language: "en", prefix: "abcdefghijk" });
     const result = await updateGuildConfig(GUILD_ID, fd);
     assertFieldError(result, "prefix");
   });
 
   it("accepts prefix exactly 10 characters", async () => {
-    const fd = buildFormData({ prefix: "1234567890", language: "en" });
+    const fd = buildFormData({ language: "en", prefix: "1234567890" });
     const result = await updateGuildConfig(GUILD_ID, fd);
     assertSuccess(result);
   });
 
   it("rejects unsupported language code", async () => {
-    const fd = buildFormData({ prefix: "!", language: "xx" });
+    const fd = buildFormData({ language: "xx", prefix: "!" });
     const result = await updateGuildConfig(GUILD_ID, fd);
     assertFieldError(result, "language");
   });
 
   it("accepts valid language code 'es'", async () => {
-    const fd = buildFormData({ prefix: "nb!", language: "es" });
+    const fd = buildFormData({ language: "es", prefix: "nb!" });
     const result = await updateGuildConfig(GUILD_ID, fd);
     assertSuccess(result);
   });
 
   it("accepts valid language code 'en'", async () => {
-    const fd = buildFormData({ prefix: "nb!", language: "en" });
+    const fd = buildFormData({ language: "en", prefix: "nb!" });
     const result = await updateGuildConfig(GUILD_ID, fd);
     assertSuccess(result);
   });
 
   it("rejects malformed snowflake for modRoleId", async () => {
     const fd = buildFormData({
-      prefix: "!",
       language: "en",
       modRoleId: "not-a-number",
+      prefix: "!",
     });
     const result = await updateGuildConfig(GUILD_ID, fd);
     assertFieldError(result, "modRoleId");
@@ -179,9 +179,9 @@ describe("updateGuildConfig — validation", () => {
 
   it("rejects too-short snowflake for logChannelId", async () => {
     const fd = buildFormData({
-      prefix: "!",
       language: "en",
       logChannelId: "123",
+      prefix: "!",
     });
     const result = await updateGuildConfig(GUILD_ID, fd);
     assertFieldError(result, "logChannelId");
@@ -189,8 +189,8 @@ describe("updateGuildConfig — validation", () => {
 
   it("rejects too-long snowflake for ticketCategoryId", async () => {
     const fd = buildFormData({
-      prefix: "!",
       language: "en",
+      prefix: "!",
       ticketCategoryId: "123456789012345678901",
     });
     const result = await updateGuildConfig(GUILD_ID, fd);
@@ -199,10 +199,10 @@ describe("updateGuildConfig — validation", () => {
 
   it("accepts valid 17-digit snowflake for optional fields", async () => {
     const fd = buildFormData({
-      prefix: "!",
       language: "en",
-      modRoleId: "12345678901234567",
       logChannelId: "12345678901234567",
+      modRoleId: "12345678901234567",
+      prefix: "!",
       ticketCategoryId: "12345678901234567",
     });
     const result = await updateGuildConfig(GUILD_ID, fd);
@@ -211,10 +211,10 @@ describe("updateGuildConfig — validation", () => {
 
   it("accepts empty optional fields (null snowflakes)", async () => {
     const fd = buildFormData({
-      prefix: "!",
       language: "en",
-      modRoleId: "",
       logChannelId: "",
+      modRoleId: "",
+      prefix: "!",
       ticketCategoryId: "",
     });
     const result = await updateGuildConfig(GUILD_ID, fd);
@@ -229,7 +229,7 @@ describe("updateGuildConfig — validation", () => {
 describe("updateGuildConfig — successful update", () => {
   it("calls revalidatePath on success", async () => {
     setupAuth();
-    const fd = buildFormData({ prefix: "nb!", language: "es", logEnabled: "on" });
+    const fd = buildFormData({ language: "es", logEnabled: "on", prefix: "nb!" });
     const result = await updateGuildConfig(GUILD_ID, fd);
 
     assertSuccess(result);
@@ -239,7 +239,7 @@ describe("updateGuildConfig — successful update", () => {
   it("passes logEnabled=false when switch is off", async () => {
     setupAuth();
     // Without the "on" value for logEnabled, the field should be treated as false.
-    const fd = buildFormData({ prefix: "?", language: "de" });
+    const fd = buildFormData({ language: "de", prefix: "?" });
     const result = await updateGuildConfig(GUILD_ID, fd);
     assertSuccess(result);
   });

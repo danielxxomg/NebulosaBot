@@ -131,22 +131,22 @@ describe("checkCanDeleteNote — author-only", () => {
 
 describe("checkSubticketParent — parentId FK invariants (depth max 2)", () => {
   it("allows a valid parent in the same guild with no parentId", () => {
-    const parent = { id: "parent-1", guildId: "guildA", parentId: null };
+    const parent = { guildId: "guildA", id: "parent-1", parentId: null };
     expect(() => checkSubticketParent(parent, "guildA", "guildA", "child-1")).not.toThrow();
   });
   it("rejects a missing parent", () => {
     expect(() => checkSubticketParent(null, "guildA", "guildA", "child-1")).toThrow(/parent/i);
   });
   it("rejects a self-referential parent", () => {
-    const parent = { id: "t-1", guildId: "guildA", parentId: null };
+    const parent = { guildId: "guildA", id: "t-1", parentId: null };
     expect(() => checkSubticketParent(parent, "guildA", "guildA", "t-1")).toThrow(/self/i);
   });
   it("rejects a parent that is itself a subticket (depth limit)", () => {
-    const parent = { id: "parent-1", guildId: "guildA", parentId: "grandparent-1" };
+    const parent = { guildId: "guildA", id: "parent-1", parentId: "grandparent-1" };
     expect(() => checkSubticketParent(parent, "guildA", "guildA", "child-1")).toThrow(/depth|nested|sub/i);
   });
   it("rejects a cross-guild parent", () => {
-    const parent = { id: "parent-1", guildId: "guildA", parentId: null };
+    const parent = { guildId: "guildA", id: "parent-1", parentId: null };
     expect(() => checkSubticketParent(parent, "guildA", "guildB", "child-1")).toThrow(/guild/i);
   });
 });

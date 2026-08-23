@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase";
-import { ConfigForm, type ConfigField } from "@/components/config-form";
+import { ConfigForm } from '@/components/config-form';
+import type { ConfigField } from '@/components/config-form';
 import { updateGuildConfig } from "@/lib/actions/guild-actions";
 
 export const metadata = {
@@ -41,52 +42,52 @@ export default async function GuildConfigPage({ params }: GuildConfigPageProps) 
 
   const fields: ConfigField[] = [
     {
-      name: "prefix",
-      label: "Command Prefix",
-      type: "text",
       defaultValue: guild.prefix,
-      placeholder: "nb!",
       hint: "1–10 characters. Used to invoke bot commands.",
+      label: "Command Prefix",
+      name: "prefix",
+      placeholder: "nb!",
       required: true,
+      type: "text",
     },
     {
-      name: "language",
-      label: "Language",
-      type: "text",
       defaultValue: guild.language,
-      placeholder: "en",
       hint: "Supported: en, es, pt, fr, de, it, ja, ko, ru, zh.",
+      label: "Language",
+      name: "language",
+      placeholder: "en",
       required: true,
+      type: "text",
     },
     {
-      name: "modRoleId",
-      label: "Moderator Role ID",
-      type: "text",
       defaultValue: guild.modRoleId ?? "",
-      placeholder: "123456789012345678",
       hint: "Discord role ID for server moderators.",
+      label: "Moderator Role ID",
+      name: "modRoleId",
+      placeholder: "123456789012345678",
+      type: "text",
     },
     {
-      name: "logChannelId",
-      label: "Log Channel ID",
-      type: "text",
       defaultValue: guild.logChannelId ?? "",
-      placeholder: "123456789012345678",
       hint: "Discord channel ID where audit/action logs are sent.",
-    },
-    {
-      name: "ticketCategoryId",
-      label: "Discord Category Channel ID (right-click \u2192 Copy Channel ID)",
-      type: "text",
-      defaultValue: guild.ticketCategoryId ?? "",
+      label: "Log Channel ID",
+      name: "logChannelId",
       placeholder: "123456789012345678",
+      type: "text",
     },
     {
-      name: "logEnabled",
-      label: "Enable Logging",
-      type: "switch",
+      defaultValue: guild.ticketCategoryId ?? "",
+      label: "Discord Category Channel ID (right-click \u2192 Copy Channel ID)",
+      name: "ticketCategoryId",
+      placeholder: "123456789012345678",
+      type: "text",
+    },
+    {
       defaultValue: guild.logEnabled,
       hint: "When enabled, bot actions are logged to the audit channel.",
+      label: "Enable Logging",
+      name: "logEnabled",
+      type: "switch",
     },
   ];
 

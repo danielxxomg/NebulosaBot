@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase";
-import { ConfigForm, type ConfigField } from "@/components/config-form";
+import { ConfigForm } from '@/components/config-form';
+import type { ConfigField } from '@/components/config-form';
 import { updateEconomyConfig } from "@/lib/actions/economy-actions";
 
 export const metadata = {
@@ -10,14 +11,14 @@ export const metadata = {
  * Sensible defaults used when no economy_config row exists yet.
  */
 const ECONOMY_DEFAULTS = {
-  dailyReward: 100,
   dailyCooldownHours: 24,
-  xpPerMessage: 10,
-  xpCooldownSeconds: 60,
+  dailyReward: 100,
   levelBaseXp: 100,
   levelMultiplier: 1.5,
   levelRoles: {} as Record<string, string>,
   levelUpChannelId: null as string | null,
+  xpCooldownSeconds: 60,
+  xpPerMessage: 10,
 };
 
 interface EconomyConfigPageProps {
@@ -46,68 +47,68 @@ export default async function EconomyConfigPage({
 
   const fields: ConfigField[] = [
     {
-      name: "dailyReward",
-      label: "Daily Reward",
-      type: "number",
       defaultValue: config.dailyReward,
       hint: "Coins awarded for the daily claim (1–1,000,000).",
+      label: "Daily Reward",
+      name: "dailyReward",
       required: true,
+      type: "number",
     },
     {
-      name: "dailyCooldownHours",
-      label: "Daily Cooldown (hours)",
-      type: "number",
       defaultValue: config.dailyCooldownHours,
       hint: "Hours between daily claims (1–720).",
+      label: "Daily Cooldown (hours)",
+      name: "dailyCooldownHours",
       required: true,
+      type: "number",
     },
     {
-      name: "xpPerMessage",
-      label: "XP per Message",
-      type: "number",
       defaultValue: config.xpPerMessage,
       hint: "XP awarded per qualifying message (1–1,000).",
+      label: "XP per Message",
+      name: "xpPerMessage",
       required: true,
+      type: "number",
     },
     {
-      name: "xpCooldownSeconds",
-      label: "XP Cooldown (seconds)",
-      type: "number",
       defaultValue: config.xpCooldownSeconds,
       hint: "Seconds between XP awards per member (1–3,600).",
+      label: "XP Cooldown (seconds)",
+      name: "xpCooldownSeconds",
       required: true,
+      type: "number",
     },
     {
-      name: "levelBaseXp",
-      label: "Level Base XP",
-      type: "number",
       defaultValue: config.levelBaseXp,
       hint: "Base XP required for level 1 (1–1,000,000).",
+      label: "Level Base XP",
+      name: "levelBaseXp",
       required: true,
+      type: "number",
     },
     {
-      name: "levelMultiplier",
-      label: "Level Multiplier",
-      type: "number",
       defaultValue: config.levelMultiplier,
       hint: "Multiplier for level thresholds (1.0–10.0).",
+      label: "Level Multiplier",
+      name: "levelMultiplier",
       required: true,
+      type: "number",
     },
     {
-      name: "levelRoles",
-      label: "Level Roles",
-      type: "textarea",
       defaultValue: JSON.stringify(config.levelRoles, null, 2),
-      placeholder: '{"1": "role_id_1", "5": "role_id_2"}',
       hint: 'JSON mapping of level → Discord role ID. e.g. {"1": "123...", "10": "456..."}. Leave empty for none.',
+      label: "Level Roles",
+      name: "levelRoles",
+      placeholder: '{"1": "role_id_1", "5": "role_id_2"}',
+      type: "textarea",
     },
     {
-      name: "levelUpChannelId",
-      label: "Level-Up Channel ID",
-      type: "text",
       defaultValue: config.levelUpChannelId ?? "",
-      placeholder: "123456789012345678",
       hint: "Discord channel ID where level-up announcements are sent.",
+      label: "Level-Up Channel ID",
+      name: "levelUpChannelId",
+      placeholder: "123456789012345678",
+      type: "text",
     },
   ];
 

@@ -69,16 +69,16 @@ describe("fetchUserGuilds", () => {
   it("returns guilds when the Discord API responds successfully", async () => {
     const mockGuilds = [
       {
+        icon: "abc123",
         id: "123456789012345678",
         name: "Test Guild",
-        icon: "abc123",
         owner: true,
         permissions: "8",
       },
       {
+        icon: null,
         id: "987654321098765432",
         name: "Other Guild",
-        icon: null,
         owner: false,
         permissions: "1024",
       },
@@ -103,7 +103,7 @@ describe("fetchUserGuilds", () => {
   });
 
   it("caches results so a second call does not hit the network", async () => {
-    const mockGuilds = [{ id: "111", name: "Cached", icon: null, owner: true, permissions: "8" }];
+    const mockGuilds = [{ icon: null, id: "111", name: "Cached", owner: true, permissions: "8" }];
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(

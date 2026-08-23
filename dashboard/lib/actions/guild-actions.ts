@@ -16,7 +16,7 @@ const VALID_LANGUAGES = new Set([
  * Validate that a string looks like a Discord snowflake (17-20 digit number).
  */
 function isValidSnowflake(value: string | null): boolean {
-  if (!value) return true; // null/empty is valid (optional field)
+  if (!value) {return true;} // null/empty is valid (optional field)
   return /^\d{17,20}$/.test(value);
 }
 
@@ -35,7 +35,7 @@ export async function updateGuildConfig(
     guildId,
     "You must be a server administrator to change guild settings."
   );
-  if (authError) return authError;
+  if (authError) {return authError;}
 
   // 2. Extract and normalize fields.
   const prefix = (formData.get("prefix") as string)?.trim() ?? "";
@@ -47,23 +47,23 @@ export async function updateGuildConfig(
 
   // 3. Validate.
   if (!prefix || prefix.length < 1 || prefix.length > 10) {
-    return { success: false, error: "Prefix must be 1–10 characters.", field: "prefix" };
+    return { error: "Prefix must be 1–10 characters.", field: "prefix", success: false };
   }
 
   if (!VALID_LANGUAGES.has(language)) {
-    return { success: false, error: `Unsupported language: "${language}".`, field: "language" };
+    return { error: `Unsupported language: "${language}".`, field: "language", success: false };
   }
 
   if (!isValidSnowflake(modRoleId)) {
-    return { success: false, error: "Mod role ID must be a valid Discord snowflake.", field: "modRoleId" };
+    return { error: "Mod role ID must be a valid Discord snowflake.", field: "modRoleId", success: false };
   }
 
   if (!isValidSnowflake(logChannelId)) {
-    return { success: false, error: "Log channel ID must be a valid Discord snowflake.", field: "logChannelId" };
+    return { error: "Log channel ID must be a valid Discord snowflake.", field: "logChannelId", success: false };
   }
 
   if (!isValidSnowflake(ticketCategoryId)) {
-    return { success: false, error: "Ticket category ID must be a valid Discord snowflake.", field: "ticketCategoryId" };
+    return { error: "Ticket category ID must be a valid Discord snowflake.", field: "ticketCategoryId", success: false };
   }
 
   // 4. Persist to Supabase.
@@ -71,21 +71,21 @@ export async function updateGuildConfig(
   const { error } = await serviceClient
     .from("guild")
     .update({
-      prefix,
       language,
-      modRoleId,
       logChannelId,
-      ticketCategoryId,
       logEnabled,
+      modRoleId,
+      prefix,
+      ticketCategoryId,
     })
     .eq("id", guildId);
 
   if (error) {
-    return { success: false, error: `Database error: ${error.message}` };
+    return { error: `Database error: ${error.message}`, success: false };
   }
 
   // 5. Revalidate guild-scoped pages.
   revalidatePath(`/guilds/${guildId}`, "layout");
 
-  return { success: true, message: "Configuration saved." };
+  return { message: "Configuration saved.", success: true };
 }

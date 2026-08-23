@@ -1,5 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase";
-import { createServiceClient } from "@/lib/supabase";
+import { createServerSupabaseClient,createServiceClient } from "@/lib/supabase";
 import { fetchUserGuilds, hasAdministratorPerm } from "@/lib/discord";
 import { GuildCard } from "@/components/guild-card";
 import { redirect } from "next/navigation";

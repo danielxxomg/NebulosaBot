@@ -1,6 +1,5 @@
 import { Sidebar } from "@/components/sidebar";
-import { createServerSupabaseClient } from "@/lib/supabase";
-import { createServiceClient } from "@/lib/supabase";
+import { createServerSupabaseClient,createServiceClient } from "@/lib/supabase";
 import { fetchUserGuilds, hasAdministratorPerm } from "@/lib/discord";
 import { notFound, redirect } from "next/navigation";
 

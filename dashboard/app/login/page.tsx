@@ -25,11 +25,11 @@ export default function LoginPage() {
     const supabase = await createServerSupabaseClient();
 
     const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: "discord",
       options: {
-        scopes: "identify guilds",
         redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/api/auth/callback`,
+        scopes: "identify guilds",
       },
+      provider: "discord",
     });
 
     if (error) {

@@ -28,17 +28,17 @@ describe("GuildConfig shape", () => {
 
     // Build a representative object that satisfies the GuildConfig type.
     const config: Record<string, unknown> = {
-      id: "123456789012345678",
-      prefix: "!",
-      language: "en",
-      modRoleId: null,
-      logChannelId: null,
-      ticketCategoryId: null,
-      ticketPanelMessageId: null,
-      ticketPanelChannelId: null,
-      logEnabled: false,
-      welcomeEnabled: true,
       active: true,
+      id: "123456789012345678",
+      language: "en",
+      logChannelId: null,
+      logEnabled: false,
+      modRoleId: null,
+      prefix: "!",
+      ticketCategoryId: null,
+      ticketPanelChannelId: null,
+      ticketPanelMessageId: null,
+      welcomeEnabled: true,
     };
 
     const actualKeys = Object.keys(config).sort();
@@ -63,15 +63,15 @@ describe("EconomyConfig shape", () => {
     ];
 
     const config: Record<string, unknown> = {
-      guildId: "123456789012345678",
-      dailyReward: 100,
       dailyCooldownHours: 24,
-      xpPerMessage: 10,
-      xpCooldownSeconds: 60,
+      dailyReward: 100,
+      guildId: "123456789012345678",
       levelBaseXp: 100,
       levelMultiplier: 1.5,
       levelRoles: {},
       levelUpChannelId: null,
+      xpCooldownSeconds: 60,
+      xpPerMessage: 10,
     };
 
     const actualKeys = Object.keys(config).sort();
@@ -96,15 +96,15 @@ describe("GreetingConfig shape", () => {
     ];
 
     const config: Record<string, unknown> = {
-      guildId: "123456789012345678",
-      welcomeEnabled: false,
-      goodbyeEnabled: false,
-      welcomeChannelId: null,
-      goodbyeChannelId: null,
-      welcomeMessage: null,
-      goodbyeMessage: null,
-      welcomeCardEnabled: false,
       goodbyeCardEnabled: false,
+      goodbyeChannelId: null,
+      goodbyeEnabled: false,
+      goodbyeMessage: null,
+      guildId: "123456789012345678",
+      welcomeCardEnabled: false,
+      welcomeChannelId: null,
+      welcomeEnabled: false,
+      welcomeMessage: null,
     };
 
     const actualKeys = Object.keys(config).sort();
@@ -130,16 +130,16 @@ describe("Member shape", () => {
     ];
 
     const member: Record<string, unknown> = {
-      guildId: "123",
-      userId: "456",
-      xp: 0,
-      level: 1,
-      warnings: 0,
       coins: 0,
       dailyStreak: 0,
-      lastDailyReset: null,
+      guildId: "123",
       lastDaily: null,
+      lastDailyReset: null,
       lastXpGain: null,
+      level: 1,
+      userId: "456",
+      warnings: 0,
+      xp: 0,
     };
 
     expect(Object.keys(member).sort()).toEqual([...memberKeys].sort());
@@ -149,8 +149,8 @@ describe("Member shape", () => {
 describe("ActionResult discriminated union", () => {
   it("success variant has the expected shape", () => {
     const success: { success: true; message: string } = {
-      success: true,
       message: "Saved.",
+      success: true,
     };
 
     expect(success.success).toBe(true);
@@ -159,9 +159,9 @@ describe("ActionResult discriminated union", () => {
 
   it("error variant has the expected shape", () => {
     const errorWithField: { success: false; error: string; field?: string } = {
-      success: false,
       error: "Invalid prefix.",
       field: "prefix",
+      success: false,
     };
 
     expect(errorWithField.success).toBe(false);
@@ -171,8 +171,8 @@ describe("ActionResult discriminated union", () => {
 
   it("error variant without field is valid", () => {
     const errorWithoutField: { success: false; error: string } = {
-      success: false,
       error: "Not authenticated.",
+      success: false,
     };
 
     expect(errorWithoutField.success).toBe(false);

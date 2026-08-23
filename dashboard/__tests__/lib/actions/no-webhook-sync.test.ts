@@ -17,7 +17,7 @@ import path from "node:path";
  */
 
 const ACTIONS_DIR = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
+  import.meta.dirname,
   "../../../lib/actions"
 );
 
@@ -30,7 +30,7 @@ const ACTION_FILES = [
 describe("cache-sync-realtime PR 2: actions do not depend on webhook-sync", () => {
   for (const file of ACTION_FILES) {
     it(`${file} does not import or call webhook-sync / notifyWebhookSync`, () => {
-      const source = readFileSync(path.resolve(ACTIONS_DIR, file), "utf8");
+      const source = readFileSync(path.resolve(ACTIONS_DIR, file), "utf-8");
       expect(source).not.toContain("webhook-sync");
       expect(source).not.toContain("notifyWebhookSync");
     });

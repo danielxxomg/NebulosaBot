@@ -21,7 +21,7 @@ export async function updateGreetingConfig(
     guildId,
     "You must be a server administrator to change greeting settings."
   );
-  if (authError) return authError;
+  if (authError) {return authError;}
 
   // 2. Extract fields.
   const welcomeEnabled = formData.get("welcomeEnabled") === "on";
@@ -38,27 +38,27 @@ export async function updateGreetingConfig(
 
   // 3. Validate.
   if (welcomeEnabled && !welcomeChannelId) {
-    return { success: false, error: "Welcome channel is required when welcome messages are enabled.", field: "welcomeChannelId" };
+    return { error: "Welcome channel is required when welcome messages are enabled.", field: "welcomeChannelId", success: false };
   }
   if (welcomeChannelId && !/^\d{17,20}$/.test(welcomeChannelId)) {
-    return { success: false, error: "Welcome channel ID must be a valid Discord snowflake.", field: "welcomeChannelId" };
+    return { error: "Welcome channel ID must be a valid Discord snowflake.", field: "welcomeChannelId", success: false };
   }
   if (onboardingChannelId && !/^\d{17,20}$/.test(onboardingChannelId)) {
-    return { success: false, error: "Onboarding channel ID must be a valid Discord snowflake.", field: "onboardingChannelId" };
+    return { error: "Onboarding channel ID must be a valid Discord snowflake.", field: "onboardingChannelId", success: false };
   }
 
   if (goodbyeEnabled && !goodbyeChannelId) {
-    return { success: false, error: "Goodbye channel is required when goodbye messages are enabled.", field: "goodbyeChannelId" };
+    return { error: "Goodbye channel is required when goodbye messages are enabled.", field: "goodbyeChannelId", success: false };
   }
   if (goodbyeChannelId && !/^\d{17,20}$/.test(goodbyeChannelId)) {
-    return { success: false, error: "Goodbye channel ID must be a valid Discord snowflake.", field: "goodbyeChannelId" };
+    return { error: "Goodbye channel ID must be a valid Discord snowflake.", field: "goodbyeChannelId", success: false };
   }
 
   if (welcomeMessage && welcomeMessage.length > 2000) {
-    return { success: false, error: "Welcome message must be 2,000 characters or fewer.", field: "welcomeMessage" };
+    return { error: "Welcome message must be 2,000 characters or fewer.", field: "welcomeMessage", success: false };
   }
   if (goodbyeMessage && goodbyeMessage.length > 2000) {
-    return { success: false, error: "Goodbye message must be 2,000 characters or fewer.", field: "goodbyeMessage" };
+    return { error: "Goodbye message must be 2,000 characters or fewer.", field: "goodbyeMessage", success: false };
   }
 
   // 4. Persist to Supabase (UPSERT).
@@ -66,26 +66,26 @@ export async function updateGreetingConfig(
   const { error } = await serviceClient
     .from("greeting_config")
     .upsert({
-      guildId,
-      welcomeEnabled,
-      goodbyeEnabled,
-      welcomeChannelId,
-      goodbyeChannelId,
-      onboardingChannelId,
-      welcomeMessage,
-      goodbyeMessage,
-      welcomeCardEnabled,
       goodbyeCardEnabled,
+      goodbyeChannelId,
+      goodbyeEnabled,
+      goodbyeMessage,
+      guildId,
+      onboardingChannelId,
       themeId,
+      welcomeCardEnabled,
+      welcomeChannelId,
+      welcomeEnabled,
+      welcomeMessage,
     })
     .eq("guildId", guildId);
 
   if (error) {
-    return { success: false, error: `Database error: ${error.message}` };
+    return { error: `Database error: ${error.message}`, success: false };
   }
 
   // 5. Revalidate guild-scoped pages.
   revalidatePath(`/guilds/${guildId}`, "layout");
 
-  return { success: true, message: "Greeting configuration saved." };
+  return { message: "Greeting configuration saved.", success: true };
 }

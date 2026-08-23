@@ -14,7 +14,7 @@ const cache = new Map<string, CacheEntry<unknown>>();
 
 function getCached<T>(key: string): T | null {
   const entry = cache.get(key) as CacheEntry<T> | undefined;
-  if (!entry) return null;
+  if (!entry) {return null;}
   if (Date.now() > entry.expiresAt) {
     cache.delete(key);
     return null;
@@ -38,7 +38,7 @@ export async function fetchUserGuilds(
   const cacheKey = `guilds:${accessToken.slice(-16)}`;
 
   const cached = getCached<DiscordGuild[]>(cacheKey);
-  if (cached) return cached;
+  if (cached) {return cached;}
 
   const res = await fetch(`${DISCORD_API_BASE}/users/@me/guilds`, {
     headers: {
@@ -73,7 +73,7 @@ export async function fetchGuildInfo(guildId: string): Promise<{
   const cacheKey = `guild:${guildId}`;
 
   const cached = getCached<ReturnType<typeof fetchGuildInfo>>(cacheKey);
-  if (cached) return cached;
+  if (cached) {return cached;}
 
   const res = await fetch(`${DISCORD_API_BASE}/guilds/${guildId}`, {
     headers: {
@@ -98,6 +98,6 @@ export async function fetchGuildInfo(guildId: string): Promise<{
  */
 export function hasAdministratorPerm(permissions: string): boolean {
   const permsBigInt = BigInt(permissions);
-  const ADMINISTRATOR = BigInt(0x8);
+  const ADMINISTRATOR = 0x8n;
   return (permsBigInt & ADMINISTRATOR) === ADMINISTRATOR;
 }

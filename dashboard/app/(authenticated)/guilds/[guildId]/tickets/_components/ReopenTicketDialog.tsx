@@ -47,9 +47,9 @@ export function ReopenTicketDialog({
   // the dialog usable under jsdom and renders it as a non-modal popup in the
   // browser — ESC then isn't handled by the UA, so we do it here.
   useEffect(() => {
-    if (!open) return;
+    if (!open) {return;}
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {onClose();}
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -63,7 +63,7 @@ export function ReopenTicketDialog({
       onClick={(event) => {
         // The backdrop is the dialog element; clicking it (not the panel)
         // closes the modal.
-        if (event.target === ref.current) onClose();
+        if (event.target === ref.current) {onClose();}
       }}
       className="m-auto w-[min(92vw,28rem)] rounded-lg border border-border bg-background p-0 text-foreground shadow-lg backdrop:bg-foreground/50 backdrop:backdrop-blur-[2px]"
     >

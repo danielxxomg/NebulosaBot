@@ -198,9 +198,9 @@ export function buildMockServiceClient(overrides: {
       }
       if (table === "ticket_note") {
         return {
-          select: ticketNoteSelect,
-          insert: ticketNoteInsert,
           delete: ticketNoteDelete,
+          insert: ticketNoteInsert,
+          select: ticketNoteSelect,
         };
       }
       if (table === "ticket_audit") {
@@ -210,31 +210,31 @@ export function buildMockServiceClient(overrides: {
     }),
     // Test-only handle exposing the stable ticket-chain spies for assertions.
     ticket: {
-      select: ticketSelect,
       eq: ticketEq,
-      order: ticketOrder,
       limit: ticketLimit,
+      order: ticketOrder,
+      select: ticketSelect,
       single: ticketSingle,
       update: ticketUpdate,
       updateEq: ticketUpdateEq,
     } satisfies TicketChainSpies,
     // Test-only handle exposing the stable ticket-note-chain spies for assertions.
     ticketNote: {
-      select: ticketNoteSelect,
-      eq: ticketNoteEq,
-      order: ticketNoteOrder,
-      limit: ticketNoteLimit,
-      single: ticketNoteSingle,
-      insert: ticketNoteInsert,
       delete: ticketNoteDelete,
       deleteEq: ticketNoteDeleteEq,
+      eq: ticketNoteEq,
+      insert: ticketNoteInsert,
+      limit: ticketNoteLimit,
+      order: ticketNoteOrder,
+      select: ticketNoteSelect,
+      single: ticketNoteSingle,
     } satisfies TicketNoteChainSpies,
     // Test-only handle exposing the stable ticket-audit-chain spies.
     ticketAudit: {
-      select: ticketAuditSelect,
       eq: ticketAuditEq,
       order: ticketAuditOrder,
       range: ticketAuditRange,
+      select: ticketAuditSelect,
     },
     greeting: {
       upsert: greetingUpsert,
@@ -287,7 +287,7 @@ export function buildDiscordMocks(adminGuildId: string) {
 
   const hasAdministratorPerm = vi.fn((perm: string) => {
     const permsBigInt = BigInt(perm);
-    const ADMINISTRATOR = BigInt(0x8);
+    const ADMINISTRATOR = 0x8n;
     return (permsBigInt & ADMINISTRATOR) === ADMINISTRATOR;
   });
 

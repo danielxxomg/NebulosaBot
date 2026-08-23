@@ -1,5 +1,4 @@
-import { createBrowserClient } from "@supabase/ssr";
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { createBrowserClient,createServerClient,type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 /**
@@ -33,16 +32,16 @@ export async function createServerSupabaseClient() {
           const cookie = cookieStore.get(name);
           return cookie?.value;
         },
-        async set(name: string, value: string, options: CookieOptions) {
+        async remove(name: string, options: CookieOptions) {
           try {
-            cookieStore.set({ name, value, ...options });
+            cookieStore.set({ name, value: "", ...options });
           } catch {
             // Cookie can only be modified in a Server Action or Route Handler.
           }
         },
-        async remove(name: string, options: CookieOptions) {
+        async set(name: string, value: string, options: CookieOptions) {
           try {
-            cookieStore.set({ name, value: "", ...options });
+            cookieStore.set({ name, value, ...options });
           } catch {
             // Cookie can only be modified in a Server Action or Route Handler.
           }
@@ -70,16 +69,16 @@ export async function createServiceClient() {
           const cookie = cookieStore.get(name);
           return cookie?.value;
         },
-        async set(name: string, value: string, options: CookieOptions) {
+        async remove(name: string, options: CookieOptions) {
           try {
-            cookieStore.set({ name, value, ...options });
+            cookieStore.set({ name, value: "", ...options });
           } catch {
             // Cookie can only be modified in a Server Action or Route Handler.
           }
         },
-        async remove(name: string, options: CookieOptions) {
+        async set(name: string, value: string, options: CookieOptions) {
           try {
-            cookieStore.set({ name, value: "", ...options });
+            cookieStore.set({ name, value, ...options });
           } catch {
             // Cookie can only be modified in a Server Action or Route Handler.
           }
