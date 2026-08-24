@@ -5,8 +5,7 @@
       "title": "Error",
       "unexpected_title": "Unexpected Error",
       "unexpected_message": "An unexpected error occurred. Please try again.",
-      "command_error_title": "Command Error",
-      "dm_failed_description": "I couldn't DM you. Please enable DMs to receive command errors privately."
+      "command_error_title": "Command Error"
     },
     "success": {
       "title": "Success"

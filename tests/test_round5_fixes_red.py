@@ -207,8 +207,9 @@ class TestBotOnCommandErrorDeferRed:
     async def test_defers_to_cog_error_handler_for_cooldown(self) -> None:
         """CommandOnCooldown from a cog with an error handler → bot MUST defer.
 
-        Without deferral, the bot sends a DM on top of the cog's cooldown embed
-        — duplicate user-facing messages on rapid /banana or /8ball.
+        Without deferral, the bot sends its own error embed on top of the
+        cog's cooldown embed — duplicate user-facing messages on rapid
+        /banana or /8ball. Deferral means no channel send and no DM.
         """
         bot = _make_bot_real()
         ctx = _make_prefix_ctx()
@@ -219,7 +220,7 @@ class TestBotOnCommandErrorDeferRed:
         error = commands.CommandOnCooldown(commands.Cooldown(1, 5.0), 3.5, commands.BucketType.user)
         await bot.on_command_error(ctx, error)
 
-        # Bot MUST defer — no DM, no channel send.
+        # Bot MUST defer — no channel send, no DM.
         ctx.author.send.assert_not_awaited()
         ctx.send.assert_not_awaited()
 
@@ -240,5 +241,7 @@ class TestBotOnCommandErrorDeferRed:
         error = commands.CommandError("something broke")
         await bot.on_command_error(ctx, error)
 
-        # Non-cooldown error MUST still be handled (DM sent).
-        ctx.author.send.assert_awaited_once()
+        # Non-cooldown error MUST still be handled: channel-direct embed,
+        # zero DM attempts (no DM-first branch exists).
+        ctx.send.assert_awaited_once()
+        ctx.author.send.assert_not_awaited()

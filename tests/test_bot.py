@@ -590,11 +590,14 @@ class TestGlobalErrorHandlersLogExceptions:
 
     @pytest.mark.asyncio
     async def test_prefix_command_error_logs_full_exception_before_response(self) -> None:
-        """Prefix handler logs exc_info=error before any DM/channel delivery."""
+        """Handler logs exc_info=error before channel delivery; never DMs."""
         bot = _make_bot()
         ctx = MagicMock()
         ctx.command = None
-        ctx.guild = None
+        ctx.guild = MagicMock()
+        ctx.guild.id = 123456789
+        ctx.author = MagicMock()
+        ctx.author.send = AsyncMock()
         order: list[str] = []
         error = commands.CommandError("prefix boom")
 
@@ -606,4 +609,6 @@ class TestGlobalErrorHandlersLogExceptions:
         logger_mock.error.assert_called_once()
         assert logger_mock.error.call_args.kwargs.get("exc_info") is error
         ctx.send.assert_awaited_once()
+        # No DM delivery may exist in the handler.
+        ctx.author.send.assert_not_awaited()
         assert order == ["log", "respond"], "logging MUST precede the user-facing embed"

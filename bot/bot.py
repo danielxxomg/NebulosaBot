@@ -405,12 +405,11 @@ class NebulosaBot(commands.Bot):
         ctx: commands.Context[NebulosaBot],
         error: commands.CommandError,
     ) -> None:
-        """Global prefix-command error handler — DM-first with channel fallback.
+        """Global command error handler — single channel-path embed.
 
-        For prefix commands in a guild channel, the error embed is DM'd to the
-        invoking user so it doesn't pollute the channel.  If the DM fails
-        (user has DMs disabled), the embed falls back to the channel with a
-        note.  In DMs (no guild), the error is sent directly.
+        With the prefix surface inert (bot-core spec), this handler defines
+        NO DM delivery path: the error embed goes directly to the channel
+        where the context originated, localized via ``t(guild_id, ...)``.
         """
         # Ignore commands that have local error handlers.
         if hasattr(ctx.command, "on_error"):
@@ -420,7 +419,7 @@ class NebulosaBot(commands.Bot):
         # (mirrors the app-command deferral above at on_app_command_error).
         # discord.py's dispatch_error runs cog_command_error FIRST, then
         # always dispatches the command_error event here — without this
-        # deferral the user gets two messages (the cog's embed + our DM).
+        # deferral the user gets two messages (the cog's embed + ours).
         # Scoped to CommandOnCooldown: cogs that handle cooldown own that
         # surface; other errors still flow through here so they are not
         # silently swallowed (AGENTS.md: all commands MUST handle errors).
@@ -453,32 +452,10 @@ class NebulosaBot(commands.Bot):
             guild_id=guild_id,
         )
 
-        # In a guild channel: try DM first, fall back to channel.
-        if ctx.guild is not None:
-            try:
-                await ctx.author.send(embed=embed)
-            except (discord.HTTPException, discord.Forbidden):
-                logger.debug(
-                    "DM failed for user %s — falling back to channel",
-                    ctx.author.id,
-                )
-                # Channel fallback with a note.
-                fallback_embed = error_embed(
-                    t(guild_id, "common.error.command_error_title"),
-                    t(guild_id, "common.error.dm_failed_description"),
-                    guild_id=guild_id,
-                )
-                try:
-                    await ctx.send(embed=fallback_embed)
-                except discord.HTTPException:
-                    logger.exception("Failed to send command error embed in channel")
-            return
-
-        # In DMs: send directly.
         try:
             await ctx.send(embed=embed)
         except discord.HTTPException:
-            logger.exception("Failed to send command error embed in DM")
+            logger.exception("Failed to send command error embed")
 
     # ==================================================================
     # Events

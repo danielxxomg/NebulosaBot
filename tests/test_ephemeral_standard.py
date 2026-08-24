@@ -51,7 +51,12 @@ def _make_bot(config: BotConfig | None = None) -> NebulosaBot:
 
 
 class TestOnCommandError:
-    """Test error handling routes: slash → ephemeral, prefix → DM → channel."""
+    """Error delivery goes directly to the channel — no DM is ever attempted.
+
+    Adapted for slash-only policy (cycle-5-quality-zero): the former
+    DM-first-with-fallback locks now assert channel-direct delivery and
+    absence of author.send calls.
+    """
 
     @staticmethod
     def _make_prefix_ctx(guild_id: int | None = 123456789) -> MagicMock:
@@ -60,6 +65,7 @@ class TestOnCommandError:
         ctx.command = MagicMock()
         # Must NOT have on_error — hasattr check in handler
         del ctx.command.on_error
+        ctx.command.cog = None
         ctx.guild = MagicMock() if guild_id else None
         if ctx.guild:
             ctx.guild.id = guild_id
@@ -71,26 +77,25 @@ class TestOnCommandError:
         return ctx
 
     @pytest.mark.asyncio
-    async def test_prefix_error_tries_dm_first(self) -> None:
-        """Prefix command error MUST try to DM the author first."""
+    async def test_error_sends_channel_embed_without_dm(self) -> None:
+        """Command error MUST deliver a single embed to the channel, never DM."""
         bot = _make_bot()
         ctx = self._make_prefix_ctx()
 
         error = commands.CommandError("something broke")
         await bot.on_command_error(ctx, error)
 
-        # MUST try DM first
-        ctx.author.send.assert_awaited_once()
-        dm_kwargs = ctx.author.send.call_args.kwargs
-        embed = dm_kwargs.get("embed")
+        # MUST NOT attempt DM delivery (no DM-first branch exists).
+        ctx.author.send.assert_not_awaited()
+
+        # Single channel embed with localized title.
+        ctx.send.assert_awaited_once()
+        embed = ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
 
-        # MUST NOT send to channel if DM succeeded
-        ctx.send.assert_not_awaited()
-
     @pytest.mark.asyncio
-    async def test_prefix_error_dm_failure_falls_back_to_channel(self) -> None:
-        """When DM fails, prefix error MUST send to channel with a note."""
+    async def test_no_dm_attempt_when_author_http_exception_prone(self) -> None:
+        """Delivery is channel-direct even for authors whose DMs would fail."""
         bot = _make_bot()
         ctx = self._make_prefix_ctx()
         ctx.author.send = AsyncMock(side_effect=discord.HTTPException(response=MagicMock(), message="Cannot send DM"))
@@ -98,14 +103,13 @@ class TestOnCommandError:
         error = commands.CommandError("something broke")
         await bot.on_command_error(ctx, error)
 
-        # DM was attempted
-        ctx.author.send.assert_awaited_once()
-        # Fallback to channel
+        # The handler defines no DM path — author.send stays untouched.
+        ctx.author.send.assert_not_awaited()
         ctx.send.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_prefix_error_dm_forbidden_falls_back_to_channel(self) -> None:
-        """When DM fails with Forbidden, prefix error MUST send to channel."""
+    async def test_no_dm_attempt_when_author_dms_forbidden(self) -> None:
+        """Forbidden-DM authors get the channel embed like everyone else."""
         bot = _make_bot()
         ctx = self._make_prefix_ctx()
         ctx.author.send = AsyncMock(side_effect=discord.Forbidden(response=MagicMock(), message="Cannot send DM"))
@@ -113,21 +117,18 @@ class TestOnCommandError:
         error = commands.CommandError("something broke")
         await bot.on_command_error(ctx, error)
 
-        # DM was attempted
-        ctx.author.send.assert_awaited_once()
-        # Fallback to channel
+        ctx.author.send.assert_not_awaited()
         ctx.send.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_prefix_error_in_dm_sends_to_channel(self) -> None:
-        """Prefix error in DM (no guild) MUST send directly (no DM attempt)."""
+    async def test_error_in_dm_sends_via_context_only(self) -> None:
+        """No-guild context → single direct send, still zero author.send calls."""
         bot = _make_bot()
         ctx = self._make_prefix_ctx(guild_id=None)
 
         error = commands.CommandError("something broke")
         await bot.on_command_error(ctx, error)
 
-        # In DM, ctx.send IS the DM — no author.send needed
         ctx.send.assert_awaited_once()
         ctx.author.send.assert_not_awaited()
 
