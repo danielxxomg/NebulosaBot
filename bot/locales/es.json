@@ -818,6 +818,62 @@
     "next": "Siguiente ▶",
     "stop": "⏹ Detener"
   },
+  "log": {
+    "moderation": {
+      "title": "🛡️ Moderación: {action}",
+      "target": "Objetivo",
+      "moderator": "Moderador",
+      "reason": "Razón"
+    },
+    "loop": {
+      "title": "⏱️ Bucle Sentinel: {phase}",
+      "description": "Procesadas {count} fila(s) este ciclo.",
+      "phase": "Fase",
+      "guild": "Servidor"
+    },
+    "message_edit": {
+      "title": "📝 Mensaje editado en #{channel}",
+      "before": "Antes",
+      "after": "Después"
+    },
+    "message_delete": {
+      "title": "🗑️ Mensaje eliminado en #{channel}",
+      "author": "Autor",
+      "content": "Contenido"
+    },
+    "footer": {
+      "message_id": "ID del mensaje: {id}"
+    },
+    "member_join": {
+      "title": "📥 {mention} se unió",
+      "description": "Cuenta creada: {created}",
+      "unknown_created": "Desconocida",
+      "footer": "Miembro #{count}"
+    },
+    "member_leave": {
+      "title": "📤 {mention} salió",
+      "roles": "Roles"
+    },
+    "member_update": {
+      "title": "🔄 Roles de {mention} cambiaron",
+      "added": "Añadidos",
+      "removed": "Removidos"
+    },
+    "channel_create": {
+      "title": "📁 #{channel} creado"
+    },
+    "channel_delete": {
+      "title": "📤 #{channel} eliminado"
+    },
+    "voice": {
+      "member": "Miembro",
+      "channel": "Canal",
+      "transition": "Transición",
+      "unknown_title": "Actualización de voz ({transition})"
+    },
+    "none": "Ninguno",
+    "no_content": "[Sin contenido]"
+  },
   "confirm": {
     "not_owner_title": "No Permitido",
     "not_owner_description": "Solo la persona que ejecutó este comando puede usar estos botones.",
@@ -844,6 +900,10 @@
     "mute_title": "Silencio en voz",
     "mute_description": "{mention} {state} en **{channel}**",
     "deafen_title": "Ensordecimiento en voz",
-    "deafen_description": "{mention} {state} en **{channel}**"
+    "deafen_description": "{mention} {state} en **{channel}**",
+    "state_muted": "silenciado",
+    "state_unmuted": "sin silenciar",
+    "state_deafened": "ensordecido",
+    "state_undeafened": "sin ensordecer"
   }
 }

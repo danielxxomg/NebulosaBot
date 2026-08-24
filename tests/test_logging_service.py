@@ -16,7 +16,13 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from bot.services.logging_service import LoggingService
+from bot.core.i18n import set_guild_language, t
+from bot.services.logging_service import (
+    LoggingService,
+    build_operator_diagnosis_record,
+    build_repair_audit_record,
+)
+from bot.services.ticket_invariants import GlobalMutationGrant
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -286,17 +292,17 @@ class TestLogMessageDelete:
 
     @pytest.mark.asyncio
     async def test_empty_content_shows_placeholder(self) -> None:
-        """Messages with empty content should show a placeholder."""
+        """Messages with empty content show the localized no-content placeholder."""
         service, _, mock_log_channel = await _setup_service_and_config()
         channel = make_mock_channel(name="general")
         msg = make_mock_message(content="", channel=channel)
 
         await service.log_message_delete("123456789", msg)
 
-        embed = mock_log_channel.send.call_args.kwargs["embed"]
+        embed = mock_log_channel.send.call_args.kwargs.get("embed")
         text = _embed_to_str(embed)
-        # Should contain some indicator — e.g. "No content" or "[Empty]"
-        assert any(indicator in text for indicator in ("No content", "Empty", "Attachment"))
+        # Key-based check (design D3): the localized placeholder label.
+        assert t("123456789", "log.no_content") in text
 
 
 # ---------------------------------------------------------------------------
@@ -365,17 +371,17 @@ class TestLogMemberLeave:
         assert "Member" in text
 
     @pytest.mark.asyncio
-    async def test_no_roles_shows_none(self) -> None:
-        """When member has no roles, embed should indicate that."""
+    async def test_no_roles_shows_localized_none(self) -> None:
+        """When member has no roles, embed shows the localized 'none' label (key-based)."""
         service, _, mock_log_channel = await _setup_service_and_config()
         member = make_mock_member(member_id=444, name="NoRolesUser", roles=[])
 
         await service.log_member_leave("123456789", member)
 
-        embed = mock_log_channel.send.call_args.kwargs["embed"]
+        embed = mock_log_channel.send.call_args.kwargs.get("embed")
         text = _embed_to_str(embed)
-        # Should indicate no roles somehow
-        assert any(word in text for word in ("None", "none", "None"))
+        # Key-based check: the resolved log.none label for the guild locale.
+        assert t("123456789", "log.none") in text
 
 
 # ---------------------------------------------------------------------------
@@ -396,10 +402,11 @@ class TestLogMemberUpdate:
         await service.log_member_update("123456789", before, after)
 
         mock_log_channel.send.assert_called_once()
-        embed = mock_log_channel.send.call_args.kwargs["embed"]
+        embed = mock_log_channel.send.call_args.kwargs.get("embed")
         text = _embed_to_str(embed)
         assert "VIP" in text  # Added
-        assert "Added" in text or "added" in text
+        # Key-based check: localized added-roles label (design D3).
+        assert t("123456789", "log.member_update.added") in text
 
     @pytest.mark.asyncio
     async def test_no_role_change_skips(self) -> None:
@@ -618,7 +625,6 @@ class TestBuildRepairAuditRecord:
     )
     def test_mutation_truthfulness(self, outcome: str, mutated: bool) -> None:
         """Only a ``repaired`` outcome reports mutation; every other outcome is a no-op."""
-        from bot.services.logging_service import build_repair_audit_record
 
         record = build_repair_audit_record(guild_id="111", ticket_id="t-1", outcome=outcome)
 
@@ -629,7 +635,6 @@ class TestBuildRepairAuditRecord:
 
     def test_record_carries_reason_source_actor(self) -> None:
         """The record preserves its structured review context (reason/source/actor)."""
-        from bot.services.logging_service import build_repair_audit_record
 
         record = build_repair_audit_record(
             guild_id="111",
@@ -646,7 +651,6 @@ class TestBuildRepairAuditRecord:
 
     def test_record_is_guild_scoped(self) -> None:
         """Each record is bound to exactly one guild."""
-        from bot.services.logging_service import build_repair_audit_record
 
         guild_a = build_repair_audit_record(guild_id="A", ticket_id="t-1", outcome="repaired")
         guild_b = build_repair_audit_record(guild_id="B", ticket_id="t-1", outcome="repaired")
@@ -657,7 +661,6 @@ class TestBuildRepairAuditRecord:
 
     def test_record_serializes_structured_evidence(self) -> None:
         """The record exposes non-empty ticket/guild/outcome in its dict form."""
-        from bot.services.logging_service import build_repair_audit_record
 
         record = build_repair_audit_record(
             guild_id="111", ticket_id="t-1", outcome="error", reason="audit_persistence_failed"
@@ -686,8 +689,6 @@ class TestBuildOperatorDiagnosisRecord:
         self, grant_kwargs: dict | None, expected_mutated: bool, expected_reason: str
     ) -> None:
         """Mutation requires an explicit, confirmed, non-empty-reason grant."""
-        from bot.services.logging_service import build_operator_diagnosis_record
-        from bot.services.ticket_invariants import GlobalMutationGrant
 
         grant = (
             GlobalMutationGrant(actor_id="bot-owner", scope="global", target_guild_id="A", **grant_kwargs)
@@ -702,7 +703,6 @@ class TestBuildOperatorDiagnosisRecord:
 
     def test_identifies_target_guilds_and_findings(self) -> None:
         """The diagnosis names every target guild and carries its findings."""
-        from bot.services.logging_service import build_operator_diagnosis_record
 
         record = build_operator_diagnosis_record(
             target_guild_ids=["A", "B", "C"], findings=["finding-one", "finding-two"]
@@ -713,8 +713,6 @@ class TestBuildOperatorDiagnosisRecord:
 
     def test_grant_actor_mismatch_never_mutates(self) -> None:
         """A confirmed grant naming a different actor MUST NOT set mutated=True."""
-        from bot.services.logging_service import build_operator_diagnosis_record
-        from bot.services.ticket_invariants import GlobalMutationGrant
 
         grant = GlobalMutationGrant(
             actor_id="bot-owner",
@@ -734,8 +732,6 @@ class TestBuildOperatorDiagnosisRecord:
 
     def test_grant_target_mismatch_never_mutates(self) -> None:
         """A confirmed grant for a different target guild MUST NOT set mutated=True."""
-        from bot.services.logging_service import build_operator_diagnosis_record
-        from bot.services.ticket_invariants import GlobalMutationGrant
 
         grant = GlobalMutationGrant(
             actor_id="bot-owner",
@@ -755,8 +751,6 @@ class TestBuildOperatorDiagnosisRecord:
 
     def test_grant_scope_mismatch_never_mutates(self) -> None:
         """A confirmed grant whose scope is not 'global' MUST NOT set mutated=True."""
-        from bot.services.logging_service import build_operator_diagnosis_record
-        from bot.services.ticket_invariants import GlobalMutationGrant
 
         grant = GlobalMutationGrant(
             actor_id="bot-owner",
@@ -776,8 +770,6 @@ class TestBuildOperatorDiagnosisRecord:
 
     def test_grant_requires_actor_argument(self) -> None:
         """Without an actor_id, a non-empty grant cannot be validated and MUST NOT mutate."""
-        from bot.services.logging_service import build_operator_diagnosis_record
-        from bot.services.ticket_invariants import GlobalMutationGrant
 
         grant = GlobalMutationGrant(
             actor_id="bot-owner",
@@ -803,7 +795,6 @@ class TestDuplicateEventLogging:
 
     def test_duplicate_event_builds_one_success_and_one_denied(self) -> None:
         """build_repair_audit_record maps a winner + a deterministic loser distinctly."""
-        from bot.services.logging_service import build_repair_audit_record
 
         winner = build_repair_audit_record(guild_id="111", ticket_id="t-1", outcome="repaired", source="channel_delete")
         loser = build_repair_audit_record(
@@ -821,7 +812,6 @@ class TestDuplicateEventLogging:
 
     def test_duplicate_event_never_double_counts_success(self) -> None:
         """Two records for the same ticket never both report mutation."""
-        from bot.services.logging_service import build_repair_audit_record
 
         first = build_repair_audit_record(guild_id="111", ticket_id="t-1", outcome="repaired")
         second = build_repair_audit_record(guild_id="111", ticket_id="t-1", outcome="already_closed")
@@ -865,3 +855,100 @@ class TestLogSentinelLoopZeroCount:
         embed = await_args.kwargs.get("embed")
         assert embed is not None
         assert "3" in embed.description
+
+
+# ---------------------------------------------------------------------------
+# Logging-service i18n — spec logging-service scenarios (cycle-5 S3)
+# ---------------------------------------------------------------------------
+
+
+_ES_GUILD = "777001"
+_EN_GUILD = "777002"
+
+
+class TestLoggingServiceI18n:
+    """Localized log embeds resolved through t(guild_id, ...) per guild language."""
+
+    @pytest.mark.asyncio
+    async def test_spanish_guild_voice_join_embed_localized(self) -> None:
+        """ES guild: title/description come from the es voice.join_* keys."""
+        set_guild_language(_ES_GUILD, "es")
+        service, _, mock_log_channel = await _setup_service_and_config(guild_id=_ES_GUILD)
+        member = make_mock_member(member_id=333, name="NewUser")
+        before = MagicMock(spec=discord.VoiceState)
+        before.channel = None
+        after = MagicMock(spec=discord.VoiceState)
+        after.channel = make_mock_channel(channel_id=100, name="Voice-A", is_text=False)
+
+        await service.log_voice_event(_ES_GUILD, member, "join", before, after)
+
+        embed = mock_log_channel.send.call_args.kwargs["embed"]
+        assert embed.title == t(_ES_GUILD, "voice.join_title")
+        assert "<@333>" in (embed.description or "")
+        assert "Voice-A" in (embed.description or "")
+
+    @pytest.mark.asyncio
+    async def test_english_guild_voice_join_embed_localized(self) -> None:
+        """EN guild: en voice.join_* keys win over the es default."""
+        set_guild_language(_EN_GUILD, "en")
+        service, _, mock_log_channel = await _setup_service_and_config(guild_id=_EN_GUILD)
+        member = make_mock_member(member_id=333, name="NewUser")
+        before = MagicMock(spec=discord.VoiceState)
+        before.channel = None
+        after = MagicMock(spec=discord.VoiceState)
+        after.channel = make_mock_channel(channel_id=100, name="Voice-A", is_text=False)
+
+        await service.log_voice_event(_EN_GUILD, member, "join", before, after)
+
+        embed = mock_log_channel.send.call_args.kwargs["embed"]
+        assert embed.title == t(_EN_GUILD, "voice.join_title")
+        # The EN title text differs from ES — proves locale selection.
+        assert embed.title == "Voice Join"
+
+    @pytest.mark.asyncio
+    async def test_interpolation_params_substituted(self) -> None:
+        """Voice move: {mention}/{from}/{to} replaced — no raw placeholders remain."""
+        service, _, mock_log_channel = await _setup_service_and_config(guild_id=_ES_GUILD)
+        member = make_mock_member(member_id=333, name="Mover")
+        before = MagicMock(spec=discord.VoiceState)
+        before.channel = make_mock_channel(channel_id=1, name="Lobby", is_text=False)
+        after = MagicMock(spec=discord.VoiceState)
+        after.channel = make_mock_channel(channel_id=2, name="Stage", is_text=False)
+
+        await service.log_voice_event(_ES_GUILD, member, "move", before, after)
+
+        embed = mock_log_channel.send.call_args.kwargs["embed"]
+        desc = embed.description or ""
+        assert "{mention}" not in desc
+        assert "{from}" not in desc
+        assert "{to}" not in desc
+        assert "Lobby → Stage" in _embed_to_str(embed)
+
+    @pytest.mark.asyncio
+    async def test_moderation_action_field_labels_localized(self) -> None:
+        """Moderation embed field names resolve via the guild language (ES default)."""
+        service, _, mock_log_channel = await _setup_service_and_config(guild_id=_ES_GUILD)
+        target = make_mock_member(member_id=555, name="BadUser")
+        moderator = make_mock_member(member_id=111, name="ModUser")
+
+        await service.log_moderation_action(_ES_GUILD, "Warn", target, moderator, "spamming")
+
+        embed = mock_log_channel.send.call_args.kwargs["embed"]
+        field_names = [f.name for f in embed.fields]
+        assert t(_ES_GUILD, "log.moderation.target") in field_names
+        assert t(_ES_GUILD, "log.moderation.moderator") in field_names
+        assert t(_ES_GUILD, "log.moderation.reason") in field_names
+
+    @pytest.mark.asyncio
+    async def test_voice_event_routing_guards_unchanged(self) -> None:
+        """Disabled logging or missing channel → no send even when localized."""
+        service, mock_bot, _ = await _setup_service_and_config(
+            guild_id=_ES_GUILD, log_channel_id=None, log_enabled=False
+        )
+        member = make_mock_member(member_id=333, name="Ghost")
+        state = MagicMock(spec=discord.VoiceState)
+        state.channel = None
+
+        await service.log_voice_event(_ES_GUILD, member, "join", state, state)
+
+        mock_bot.get_channel.assert_not_called()

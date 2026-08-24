@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 import discord
 
+from bot.core.i18n import t
 from bot.utils.brand import INFO
 from bot.utils.embeds import guild_footer_icon
 
@@ -27,6 +28,24 @@ logger = logging.getLogger(__name__)
 
 LOG_COLOR = INFO
 MAX_FIELD_LENGTH = 1024
+
+# Voice-state transition → (title key, description key). Reuses the
+# pre-existing ``voice.*`` locale family (previously orphaned) instead of
+# duplicating it — spec logging-service (cycle-5-quality-zero S3).
+_VOICE_EVENT_KEYS: dict[str, tuple[str, str]] = {
+    "join": ("voice.join_title", "voice.join_description"),
+    "leave": ("voice.leave_title", "voice.leave_description"),
+    "move": ("voice.move_title", "voice.move_description"),
+    "mute": ("voice.mute_title", "voice.mute_description"),
+    "deafen": ("voice.deafen_title", "voice.deafen_description"),
+}
+
+
+def _voice_channel_label(channel: object | None) -> str | None:
+    """Return the display name of a voice channel, or ``None`` if absent."""
+    if channel is None:
+        return None
+    return getattr(channel, "name", str(channel))
 
 
 class ModerationTarget(Protocol):
@@ -243,15 +262,26 @@ class LoggingService:
         if not await self._should_log(guild_id):
             return
 
+        # The ``action`` fragment is a caller-supplied stable token (e.g.
+        # "Warn"/"Mute"); the surrounding label is guild-localized. Audit
+        # asymmetry note: cog callers own this audit call (design D3).
         embed = discord.Embed(
-            title=f"🛡️ Moderation: {action}",
+            title=t(guild_id, "log.moderation.title", action=action),
             color=LOG_COLOR,
             timestamp=datetime.now(UTC),
         )
-        embed.add_field(name="Target", value=f"{target.mention} ({target.name})", inline=True)
-        embed.add_field(name="Moderator", value=f"{moderator.mention} ({moderator.name})", inline=True)
+        embed.add_field(
+            name=t(guild_id, "log.moderation.target"),
+            value=f"{target.mention} ({target.name})",
+            inline=True,
+        )
+        embed.add_field(
+            name=t(guild_id, "log.moderation.moderator"),
+            value=f"{moderator.mention} ({moderator.name})",
+            inline=True,
+        )
         if reason:
-            embed.add_field(name="Reason", value=_truncate(reason), inline=False)
+            embed.add_field(name=t(guild_id, "log.moderation.reason"), value=_truncate(reason), inline=False)
 
         await self._send_log(guild_id, embed)
 
@@ -282,13 +312,13 @@ class LoggingService:
             return
 
         embed = discord.Embed(
-            title=f"⏱️ Sentinel loop: {phase}",
-            description=f"Processed {count} row(s) this cycle.",
+            title=t(guild_id, "log.loop.title", phase=phase),
+            description=t(guild_id, "log.loop.description", count=count),
             color=LOG_COLOR,
             timestamp=datetime.now(UTC),
         )
-        embed.add_field(name="Phase", value=phase, inline=True)
-        embed.add_field(name="Guild", value=guild_id, inline=True)
+        embed.add_field(name=t(guild_id, "log.loop.phase"), value=phase, inline=True)
+        embed.add_field(name=t(guild_id, "log.loop.guild"), value=guild_id, inline=True)
 
         await self._send_log(guild_id, embed)
 
@@ -310,21 +340,22 @@ class LoggingService:
 
         channel_name = getattr(before.channel, "name", "unknown")
         embed = discord.Embed(
-            title=f"📝 Message Edited in #{channel_name}",
+            title=t(guild_id, "log.message_edit.title", channel=channel_name),
             color=LOG_COLOR,
             timestamp=datetime.now(UTC),
         )
+        no_content = t(guild_id, "log.no_content")
         embed.add_field(
-            name="Before",
-            value=_truncate(before.content or "[No content]"),
+            name=t(guild_id, "log.message_edit.before"),
+            value=_truncate(before.content or no_content),
             inline=False,
         )
         embed.add_field(
-            name="After",
-            value=_truncate(after.content or "[No content]"),
+            name=t(guild_id, "log.message_edit.after"),
+            value=_truncate(after.content or no_content),
             inline=False,
         )
-        embed.set_footer(text=f"Message ID: {before.id}")
+        embed.set_footer(text=t(guild_id, "log.footer.message_id", id=before.id))
 
         await self._send_log(guild_id, embed)
 
@@ -344,15 +375,19 @@ class LoggingService:
             return
 
         channel_name = getattr(message.channel, "name", "unknown")
-        content = message.content or "[No content]"
+        content = message.content or t(guild_id, "log.no_content")
         embed = discord.Embed(
-            title=f"🗑️ Message Deleted in #{channel_name}",
+            title=t(guild_id, "log.message_delete.title", channel=channel_name),
             color=LOG_COLOR,
             timestamp=datetime.now(UTC),
         )
-        embed.add_field(name="Author", value=f"{message.author.mention} ({message.author.name})", inline=True)
-        embed.add_field(name="Content", value=_truncate(content), inline=False)
-        embed.set_footer(text=f"Message ID: {message.id}")
+        embed.add_field(
+            name=t(guild_id, "log.message_delete.author"),
+            value=f"{message.author.mention} ({message.author.name})",
+            inline=True,
+        )
+        embed.add_field(name=t(guild_id, "log.message_delete.content"), value=_truncate(content), inline=False)
+        embed.set_footer(text=t(guild_id, "log.footer.message_id", id=message.id))
 
         await self._send_log(guild_id, embed)
 
@@ -368,16 +403,20 @@ class LoggingService:
         if not await self._should_log(guild_id):
             return
 
-        created = member.created_at.strftime("%Y-%m-%d") if member.created_at else "Unknown"
+        created = (
+            member.created_at.strftime("%Y-%m-%d")
+            if member.created_at
+            else t(guild_id, "log.member_join.unknown_created")
+        )
         member_count = getattr(member.guild, "member_count", 0)
         embed = discord.Embed(
-            title=f"📥 {member.mention} joined",
-            description=f"Account created: {created}",
+            title=t(guild_id, "log.member_join.title", mention=member.mention),
+            description=t(guild_id, "log.member_join.description", created=created),
             color=LOG_COLOR,
             timestamp=datetime.now(UTC),
         )
         if member_count:
-            embed.set_footer(text=f"Member #{member_count}")
+            embed.set_footer(text=t(guild_id, "log.member_join.footer", count=member_count))
 
         await self._send_log(guild_id, embed)
 
@@ -394,14 +433,14 @@ class LoggingService:
             return
 
         role_names = [r.name for r in member.roles if r.name != "@everyone"]
-        roles_text = ", ".join(f"@{r}" for r in role_names) if role_names else "None"
+        roles_text = ", ".join(f"@{r}" for r in role_names) if role_names else t(guild_id, "log.none")
 
         embed = discord.Embed(
-            title=f"📤 {member.mention} left",
+            title=t(guild_id, "log.member_leave.title", mention=member.mention),
             color=LOG_COLOR,
             timestamp=datetime.now(UTC),
         )
-        embed.add_field(name="Roles", value=roles_text, inline=False)
+        embed.add_field(name=t(guild_id, "log.member_leave.roles"), value=roles_text, inline=False)
 
         await self._send_log(guild_id, embed)
 
@@ -428,14 +467,22 @@ class LoggingService:
             return  # Nothing changed — skip
 
         embed = discord.Embed(
-            title=f"🔄 {after.mention} roles changed",
+            title=t(guild_id, "log.member_update.title", mention=after.mention),
             color=LOG_COLOR,
             timestamp=datetime.now(UTC),
         )
         if added:
-            embed.add_field(name="Added", value=", ".join(f"@{r}" for r in sorted(added)), inline=True)
+            embed.add_field(
+                name=t(guild_id, "log.member_update.added"),
+                value=", ".join(f"@{r}" for r in sorted(added)),
+                inline=True,
+            )
         if removed:
-            embed.add_field(name="Removed", value=", ".join(f"@{r}" for r in sorted(removed)), inline=True)
+            embed.add_field(
+                name=t(guild_id, "log.member_update.removed"),
+                value=", ".join(f"@{r}" for r in sorted(removed)),
+                inline=True,
+            )
 
         await self._send_log(guild_id, embed)
 
@@ -449,7 +496,7 @@ class LoggingService:
             return
 
         embed = discord.Embed(
-            title=f"📁 #{channel.name} created",
+            title=t(guild_id, "log.channel_create.title", channel=channel.name),
             color=LOG_COLOR,
             timestamp=datetime.now(UTC),
         )
@@ -466,7 +513,7 @@ class LoggingService:
             return
 
         embed = discord.Embed(
-            title=f"📤 #{channel.name} deleted",
+            title=t(guild_id, "log.channel_delete.title", channel=channel.name),
             color=LOG_COLOR,
             timestamp=datetime.now(UTC),
         )
@@ -497,41 +544,68 @@ class LoggingService:
         if not await self._should_log(guild_id):
             return
 
-        # Build human-readable title per transition (brand token, no hex).
-        titles: dict[str, str] = {
-            "join": f"🔊 {member.mention} joined voice",
-            "leave": f"🔇 {member.mention} left voice",
-            "move": f"🔀 {member.mention} moved voice",
-            "mute": f"🎙️ {member.mention} {'muted' if getattr(after, 'self_mute', False) else 'unmuted'}",
-            "deafen": f"🎧 {member.mention} {'deafened' if getattr(after, 'self_deaf', False) else 'undeafened'}",
-        }
-        title = titles.get(transition, f"🔊 {member.mention} voice update ({transition})")
+        # Guild-localized title + description: reuses the pre-existing
+        # voice.* locale family (spec logging-service). The ``{from}``
+        # placeholder is a reserved word, so its kwarg goes through a
+        # dict unpack (valid at runtime).
+        before_ch = getattr(before, "channel", None)
+        after_ch = getattr(after, "channel", None)
+        keys = _VOICE_EVENT_KEYS.get(transition)
+        title = t(guild_id, "log.voice.unknown_title", transition=transition)
+        description: str | None = None
+        channel_value: str | None = None
+
+        if keys is not None:
+            title_key, desc_key = keys
+            title = t(guild_id, title_key)
+            if transition == "join" and after_ch is not None:
+                channel_value = _voice_channel_label(after_ch)
+                description = t(guild_id, desc_key, mention=member.mention, channel=channel_value)
+            elif transition == "leave" and before_ch is not None:
+                channel_value = _voice_channel_label(before_ch)
+                description = t(guild_id, desc_key, mention=member.mention, channel=channel_value)
+            elif transition == "move" and before_ch is not None and after_ch is not None:
+                from_label = _voice_channel_label(before_ch)
+                to_label = _voice_channel_label(after_ch)
+                channel_value = f"{from_label} → {to_label}"
+                description = t(
+                    guild_id,
+                    desc_key,
+                    mention=member.mention,
+                    **{"from": from_label, "to": to_label},
+                )
+            elif transition in {"mute", "deafen"} and after_ch is not None:
+                channel_value = _voice_channel_label(after_ch)
+                if transition == "mute":
+                    state = t(
+                        guild_id,
+                        "voice.state_muted" if getattr(after, "self_mute", False) else "voice.state_unmuted",
+                    )
+                else:
+                    state = t(
+                        guild_id,
+                        "voice.state_deafened" if getattr(after, "self_deaf", False) else "voice.state_undeafened",
+                    )
+                description = t(guild_id, desc_key, mention=member.mention, state=state, channel=channel_value)
 
         embed = discord.Embed(
             title=title,
+            description=description,
             color=LOG_COLOR,
             timestamp=datetime.now(UTC),
         )
         # Member field always useful.
-        embed.add_field(name="Member", value=f"{member.mention} ({member.name})", inline=True)
+        embed.add_field(
+            name=t(guild_id, "log.voice.member"),
+            value=f"{member.mention} ({member.name})",
+            inline=True,
+        )
 
         # Channel context per transition.
-        before_ch = getattr(before, "channel", None)
-        after_ch = getattr(after, "channel", None)
-        if transition == "join" and after_ch is not None:
-            embed.add_field(name="Channel", value=getattr(after_ch, "name", str(after_ch)), inline=True)
-        elif transition == "leave" and before_ch is not None:
-            embed.add_field(name="Channel", value=getattr(before_ch, "name", str(before_ch)), inline=True)
-        elif transition == "move" and before_ch is not None and after_ch is not None:
-            embed.add_field(
-                name="Channel",
-                value=f"{getattr(before_ch, 'name', str(before_ch))} → {getattr(after_ch, 'name', str(after_ch))}",
-                inline=True,
-            )
-        elif transition in {"mute", "deafen"} and after_ch is not None:
-            embed.add_field(name="Channel", value=getattr(after_ch, "name", str(after_ch)), inline=True)
+        if channel_value is not None:
+            embed.add_field(name=t(guild_id, "log.voice.channel"), value=channel_value, inline=True)
 
-        embed.add_field(name="Transition", value=transition, inline=True)
+        embed.add_field(name=t(guild_id, "log.voice.transition"), value=transition, inline=True)
 
         await self._send_log(guild_id, embed)
 

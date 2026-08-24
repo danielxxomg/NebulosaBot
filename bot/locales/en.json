@@ -818,6 +818,62 @@
     "next": "Next ▶",
     "stop": "⏹ Stop"
   },
+  "log": {
+    "moderation": {
+      "title": "🛡️ Moderation: {action}",
+      "target": "Target",
+      "moderator": "Moderator",
+      "reason": "Reason"
+    },
+    "loop": {
+      "title": "⏱️ Sentinel loop: {phase}",
+      "description": "Processed {count} row(s) this cycle.",
+      "phase": "Phase",
+      "guild": "Guild"
+    },
+    "message_edit": {
+      "title": "📝 Message Edited in #{channel}",
+      "before": "Before",
+      "after": "After"
+    },
+    "message_delete": {
+      "title": "🗑️ Message Deleted in #{channel}",
+      "author": "Author",
+      "content": "Content"
+    },
+    "footer": {
+      "message_id": "Message ID: {id}"
+    },
+    "member_join": {
+      "title": "📥 {mention} joined",
+      "description": "Account created: {created}",
+      "unknown_created": "Unknown",
+      "footer": "Member #{count}"
+    },
+    "member_leave": {
+      "title": "📤 {mention} left",
+      "roles": "Roles"
+    },
+    "member_update": {
+      "title": "🔄 {mention} roles changed",
+      "added": "Added",
+      "removed": "Removed"
+    },
+    "channel_create": {
+      "title": "📁 #{channel} created"
+    },
+    "channel_delete": {
+      "title": "📤 #{channel} deleted"
+    },
+    "voice": {
+      "member": "Member",
+      "channel": "Channel",
+      "transition": "Transition",
+      "unknown_title": "Voice update ({transition})"
+    },
+    "none": "None",
+    "no_content": "[No content]"
+  },
   "voice": {
     "join_title": "Voice Join",
     "join_description": "{mention} joined **{channel}**",
@@ -828,7 +884,11 @@
     "mute_title": "Voice Mute",
     "mute_description": "{mention} {state} in **{channel}**",
     "deafen_title": "Voice Deafen",
-    "deafen_description": "{mention} {state} in **{channel}**"
+    "deafen_description": "{mention} {state} in **{channel}**",
+    "state_muted": "muted",
+    "state_unmuted": "unmuted",
+    "state_deafened": "deafened",
+    "state_undeafened": "undeafened"
   },
   "confirm": {
     "not_owner_title": "Not Allowed",
