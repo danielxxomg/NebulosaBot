@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 CACHE_KEY_TEMPLATE = "{guild_id}:greeting_config"
 CACHE_TTL = CORE_GREETING_TTL  # re-export from bot.core.cache (DRY; canonical TTL=300)
 AVATAR_CACHE_TTL = 60  # seconds — greeting avatar dedupe per guild
+RAID_MAX_CONCURRENT = 2  # concurrent Pillow renders allowed per guild (D4 raid guard)
 
 
 class GreetingService:
@@ -42,7 +43,7 @@ class GreetingService:
             backwards compatibility with existing tests.
     """
 
-    __slots__ = ("_cache", "_db", "_greeting_renderer", "_image_service")
+    __slots__ = ("_cache", "_db", "_greeting_renderer", "_image_service", "_raid_semaphores")
 
     def __init__(
         self,
@@ -62,6 +63,9 @@ class GreetingService:
             raise TypeError(msg)
         # Back-compat alias so legacy tests can still access _image_service
         self._image_service = self._greeting_renderer
+        # Guild-scoped render caps (design D4): join raids must not stack an
+        # unbounded number of concurrent Pillow renders.
+        self._raid_semaphores: dict[str, asyncio.Semaphore] = {}
 
     # ------------------------------------------------------------------
     # Public API
@@ -195,80 +199,92 @@ class GreetingService:
             return
 
         avatar_url = _resolve_avatar_url(member)
-        # Single source of truth: resolve the render callable via the protocol
-        # resolver (no mock introspection — decides by real attributes).
-        render_fn = self.resolve_renderer()
-        # Shard: avatar cache 60s guild-scoped via cache_key(gid,"greeting_avatar")
-        # Populate on first fetch; used only to satisfy cache-key contract + isolation.
-        # Actual avatar bytes are still fetched via _resolve_avatar_url each dispatch
-        # (CDN URL may rotate), but the cache entry proves guild isolation.
-        avatar_cache_key = cache_key(guild_id, "greeting_avatar")
-        if self._cache.get(avatar_cache_key) is None and avatar_url is not None:
-            self._cache.set(avatar_cache_key, avatar_url, ttl=AVATAR_CACHE_TTL)
-        # Shim: if the render function is a legacy signature that doesn't accept
-        # localized kwargs, strip them and retry — preserves the compat test.
-        try:
-            buffer: io.BytesIO = await asyncio.to_thread(
-                render_fn,
-                username=member.display_name,
-                avatar_url=avatar_url,
-                guild_name=member.guild.name,
-                member_count=member.guild.member_count or 0,
-                guild_icon_url=_resolve_guild_icon_url(member.guild),
-                greeting_title=t(guild_id, title_key),
-                member_count_text=t(
-                    guild_id,
-                    "greetings.card.member_count",
-                    count=member.guild.member_count or 0,
-                ),
-                card_type=card_type,
-                theme_id=getattr(config, "theme_id", None),
-            )
-        except TypeError as exc:
-            msg = str(exc)
-            if "unexpected keyword argument" in msg and any(
-                k in msg for k in ("greeting_title", "member_count_text", "guild_icon_url", "theme_id")
-            ):
-                # Fallback without theme_id for legacy mocks
-                try:
-                    buffer = await asyncio.to_thread(
-                        render_fn,
-                        username=member.display_name,
-                        avatar_url=avatar_url,
-                        guild_name=member.guild.name,
-                        member_count=member.guild.member_count or 0,
-                        guild_icon_url=_resolve_guild_icon_url(member.guild),
-                        greeting_title=t(guild_id, title_key),
-                        member_count_text=t(
-                            guild_id,
-                            "greetings.card.member_count",
-                            count=member.guild.member_count or 0,
-                        ),
-                        card_type=card_type,
-                    )
-                except TypeError as exc2:
-                    msg2 = str(exc2)
-                    if "unexpected keyword argument" in msg2:
+        # Raid guard (design D4): guild-scoped Semaphore(2), NON-BLOCKING
+        # acquire — a saturated guild drops the greeting with a WARNING
+        # instead of queueing unbounded renders or swallowing distinct
+        # greetings behind a debounce window.
+        sem = self._raid_semaphores.get(guild_id)
+        if sem is None:
+            sem = asyncio.Semaphore(RAID_MAX_CONCURRENT)
+            self._raid_semaphores[guild_id] = sem
+        if sem.locked():
+            logger.warning("greeting dropped: raid saturation guild=%s", guild_id)
+            return
+        async with sem:
+            # Single source of truth: resolve the render callable via the protocol
+            # resolver (no mock introspection — decides by real attributes).
+            render_fn = self.resolve_renderer()
+            # Shard: avatar cache 60s guild-scoped via cache_key(gid,"greeting_avatar")
+            # Populate on first fetch; used only to satisfy cache-key contract + isolation.
+            # Actual avatar bytes are still fetched via _resolve_avatar_url each dispatch
+            # (CDN URL may rotate), but the cache entry proves guild isolation.
+            avatar_cache_key = cache_key(guild_id, "greeting_avatar")
+            if self._cache.get(avatar_cache_key) is None and avatar_url is not None:
+                self._cache.set(avatar_cache_key, avatar_url, ttl=AVATAR_CACHE_TTL)
+            # Shim: if the render function is a legacy signature that doesn't accept
+            # localized kwargs, strip them and retry — preserves the compat test.
+            try:
+                buffer: io.BytesIO = await asyncio.to_thread(
+                    render_fn,
+                    username=member.display_name,
+                    avatar_url=avatar_url,
+                    guild_name=member.guild.name,
+                    member_count=member.guild.member_count or 0,
+                    guild_icon_url=_resolve_guild_icon_url(member.guild),
+                    greeting_title=t(guild_id, title_key),
+                    member_count_text=t(
+                        guild_id,
+                        "greetings.card.member_count",
+                        count=member.guild.member_count or 0,
+                    ),
+                    card_type=card_type,
+                    theme_id=getattr(config, "theme_id", None),
+                )
+            except TypeError as exc:
+                msg = str(exc)
+                if "unexpected keyword argument" in msg and any(
+                    k in msg for k in ("greeting_title", "member_count_text", "guild_icon_url", "theme_id")
+                ):
+                    # Fallback without theme_id for legacy mocks
+                    try:
                         buffer = await asyncio.to_thread(
                             render_fn,
                             username=member.display_name,
                             avatar_url=avatar_url,
                             guild_name=member.guild.name,
                             member_count=member.guild.member_count or 0,
+                            guild_icon_url=_resolve_guild_icon_url(member.guild),
+                            greeting_title=t(guild_id, title_key),
+                            member_count_text=t(
+                                guild_id,
+                                "greetings.card.member_count",
+                                count=member.guild.member_count or 0,
+                            ),
                             card_type=card_type,
                         )
-                    else:
-                        raise
+                    except TypeError as exc2:
+                        msg2 = str(exc2)
+                        if "unexpected keyword argument" in msg2:
+                            buffer = await asyncio.to_thread(
+                                render_fn,
+                                username=member.display_name,
+                                avatar_url=avatar_url,
+                                guild_name=member.guild.name,
+                                member_count=member.guild.member_count or 0,
+                                card_type=card_type,
+                            )
+                        else:
+                            raise
+                else:
+                    raise
+
+            file = discord.File(buffer, filename=filename)
+            if kind == "welcome":
+                content = _compose_welcome_content(member, message, config.onboarding_channel_id)
             else:
-                raise
+                content = _format_template(message or "", member) if message else ""
 
-        file = discord.File(buffer, filename=filename)
-        if kind == "welcome":
-            content = _compose_welcome_content(member, message, config.onboarding_channel_id)
-        else:
-            content = _format_template(message or "", member) if message else ""
-
-        await cast(discord.abc.Messageable, channel).send(content=content or None, file=file)
+            await cast(discord.abc.Messageable, channel).send(content=content or None, file=file)
 
         logger.info(
             "%s: sent for guild %s, channel %s, member %s",
