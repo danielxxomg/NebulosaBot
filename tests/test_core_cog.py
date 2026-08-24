@@ -13,14 +13,17 @@ Strict TDD: RED phase — tests written BEFORE the i18n migration.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
-from discord.ext import commands
+from discord.ext import commands, tasks
 
+import bot.cogs.core
 from bot.cogs.core import CoreCog
+from bot.core import i18n as i18n_mod
 from bot.core.i18n import load_locales, set_guild_language
 
 # ---------------------------------------------------------------------------
@@ -38,8 +41,6 @@ def _load_i18n(tmp_path: Path) -> None:
     text, the migration works; if it contains the old hardcoded text, it
     doesn't.
     """
-    from bot.core import i18n as i18n_mod
-
     i18n_mod._locales.clear()
     i18n_mod._guild_languages.clear()
 
@@ -268,3 +269,62 @@ class TestSyncI18n:
 
         embed = ctx.send.call_args[1]["embed"]
         assert "SYNC_OK" in embed.title
+
+
+# ---------------------------------------------------------------------------
+# S4.6 — resource-log background task
+# ---------------------------------------------------------------------------
+
+
+class TestResourceLogLoop:
+    """CoreCog logs a resource snapshot every 5 minutes (AGENTS.md loop rules)."""
+
+    def test_loop_registered_five_minutes(self, cog: CoreCog) -> None:
+        loop = cog.resource_log_loop
+        assert isinstance(loop, tasks.Loop)
+        # discord.py only materializes the computed interval at start time;
+        # the declared cadence is pinned structurally in the source test below.
+        assert loop.coro.__name__ == "resource_log_loop"
+
+    def test_loop_wiring_structural(self) -> None:
+        """before_loop waits ready; cog_unload cancels the loop."""
+        src = Path(bot.cogs.core.__file__).read_text(encoding="utf-8")
+        assert "@tasks.loop(minutes=5)" in src
+        assert "wait_until_ready" in src
+        assert ".before_loop" in src
+        assert "self.resource_log_loop.cancel()" in src
+
+    @pytest.mark.asyncio
+    async def test_tick_logs_rss_cache_and_guilds(
+        self,
+        cog: CoreCog,
+        mock_bot: MagicMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        mock_bot.cache = MagicMock()
+        mock_bot.cache.size = 7
+        mock_bot.guilds = [MagicMock(), MagicMock(), MagicMock()]
+
+        with caplog.at_level(logging.INFO, logger="bot.cogs.core"):
+            await cog._log_resource_usage()
+
+        messages = [r.getMessage() for r in caplog.records]
+        assert any("ru_maxrss=" in m and "cache_entries=7" in m and "guilds=3" in m for m in messages), messages
+
+    @pytest.mark.asyncio
+    async def test_cog_unload_cancels_running_loop(self, cog: CoreCog) -> None:
+        with (
+            patch.object(cog.resource_log_loop, "is_running", return_value=True),
+            patch.object(cog.resource_log_loop, "cancel") as cancel_mock,
+        ):
+            await cog.cog_unload()
+        cancel_mock.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cog_unload_skips_idle_loop(self, cog: CoreCog) -> None:
+        with (
+            patch.object(cog.resource_log_loop, "is_running", return_value=False),
+            patch.object(cog.resource_log_loop, "cancel") as cancel_mock,
+        ):
+            await cog.cog_unload()
+        cancel_mock.assert_not_called()

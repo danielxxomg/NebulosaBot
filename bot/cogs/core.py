@@ -8,15 +8,16 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import resource
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 from bot.core.context import NebulosaContext
-from bot.core.i18n import SLASH_DESCRIPTIONS, t
+from bot.core.i18n import SLASH_DESCRIPTIONS, t, validate_slash_localizations
 from bot.utils.brand import INFO, SUCCESS
 from bot.utils.checks import is_admin
 from bot.utils.embeds import error_embed, info_embed
@@ -40,6 +41,41 @@ class CoreCog(commands.Cog, name="Core"):
 
     def __init__(self, bot: NebulosaBot) -> None:
         self.bot: NebulosaBot = bot
+
+    # ==================================================================
+    # Background tasks (S4.6 — resource snapshot)
+    # ==================================================================
+
+    @tasks.loop(minutes=5)
+    async def resource_log_loop(self) -> None:
+        """Log a periodic process-resource snapshot (S4.6).
+
+        DB-sourced durability is not applicable: the loop reads live
+        process metrics only, so there is no state to persist across
+        restarts. AGENTS.md background-loop rules honored via
+        ``before_loop`` wait + ``cog_unload`` cancel.
+        """
+        await self._log_resource_usage()
+
+    @resource_log_loop.before_loop
+    async def _before_resource_log(self) -> None:
+        await self.bot.wait_until_ready()
+
+    async def _log_resource_usage(self) -> None:
+        """Emit one resource snapshot: peak RSS, cache entries, guild count."""
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        cache_size = self.bot.cache.size if self.bot.cache is not None else 0
+        logger.info(
+            "resources: ru_maxrss=%dkB cache_entries=%s guilds=%d",
+            usage.ru_maxrss,
+            cache_size,
+            len(self.bot.guilds),
+        )
+
+    async def cog_unload(self) -> None:
+        """Cancel the resource loop when the cog is unloaded."""
+        if self.resource_log_loop.is_running():
+            self.resource_log_loop.cancel()
 
     # ==================================================================
     # Commands
@@ -210,8 +246,6 @@ class CoreCog(commands.Cog, name="Core"):
         Gated behind the Administrator permission via ``@is_admin()``.
         Validates slash localizations before syncing.
         """
-        from bot.core.i18n import validate_slash_localizations
-
         guild_id = ctx.guild.id if ctx.guild else None
         await ctx.defer(ephemeral=True)
         try:
