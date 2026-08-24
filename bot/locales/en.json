@@ -780,6 +780,10 @@
       "description": "{mention} has reached **Level {level}**!"
     }
   },
+  "transcript": {
+    "header_title": "Ticket Transcript — {channel_name}",
+    "no_text_content": "[no text content]"
+  },
   "greetings": {
     "card": {
       "welcome_title": "Welcome to the server!",

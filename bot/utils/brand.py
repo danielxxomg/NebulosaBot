@@ -21,3 +21,24 @@ ACCENT_B: int = 0x00E5FF  # Cyan
 # Greeting card accent — single source of truth for GreetingRenderer.
 # Re-exports ACCENT so the greeting palette is branded, not hardcoded #7289da.
 GREETING_ACCENT: int = ACCENT  # alias; value must stay == ACCENT
+
+# ---------------------------------------------------------------------------
+# Legacy Discord blurple — one hue, three consumed representations.
+# S4 consolidation: legacy surfaces (transcript author color, rank card
+# level/bar colors) keep their historical value under these shared names.
+# ---------------------------------------------------------------------------
+LEGACY_BLURPLE: int = 0x7289DA  # canonical int form
+LEGACY_BLURPLE_CSS: str = "#7289da"  # CSS string form
+LEGACY_BLURPLE_RGBA: tuple[int, int, int, int] = (114, 137, 218, 255)  # Pillow RGBA form
+
+# ---------------------------------------------------------------------------
+# Transcript HTML/CSS palette (S4) — values byte-identical to the original
+# inline CSS; only the source of truth moved into brand.py.
+# ---------------------------------------------------------------------------
+TRANSCRIPT_BG: str = "#36393f"
+TRANSCRIPT_HOVER: str = "#32353b"
+TRANSCRIPT_AUTHOR: str = LEGACY_BLURPLE_CSS  # alias — same legacy blurple
+TRANSCRIPT_MUTED: str = "#72767d"
+TRANSCRIPT_BORDER: str = "#42464d"
+TRANSCRIPT_TEXT: str = "#dcddde"
+TRANSCRIPT_HEADER_TEXT: str = "#fff"

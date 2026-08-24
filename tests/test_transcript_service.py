@@ -10,13 +10,17 @@ Covers:
 
 from __future__ import annotations
 
+import asyncio
 import io
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
 
+from bot.core import i18n as i18n_mod
+from bot.core.i18n import load_locales, set_guild_language
 from bot.services.transcript_service import MAX_MESSAGES, TranscriptService
 
 # ---------------------------------------------------------------------------
@@ -50,10 +54,13 @@ def _make_mock_channel(
     """Return a MagicMock standing in for discord.TextChannel.
 
     The ``history()`` method returns an async iterator over *messages*.
+    The channel is bound to guild ``888888888`` (English in the locale
+    fixture) so t() resolves deterministically.
     """
     channel = MagicMock(spec=discord.TextChannel)
     channel.name = name
     channel.id = channel_id
+    channel.guild.id = 888888888
 
     # discord.TextChannel.history() is NOT an async method — it returns an
     # AsyncIterator directly.  Our mock must mirror that contract.
@@ -85,6 +92,21 @@ class _AsyncIterMock:
 # ---------------------------------------------------------------------------
 # TranscriptService fixture
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _load_real_locales() -> None:
+    """Load real locale files so t() resolves transcript strings.
+
+    The shared helper channels belong to guild ``888888888`` pinned to
+    English so pre-existing assertions keep their expected text.
+    """
+    i18n_mod._locales.clear()
+    i18n_mod._guild_languages.clear()
+    locale_dir = Path("bot/locales")
+    if locale_dir.exists():
+        load_locales(locale_dir)
+        set_guild_language("888888888", "en")
 
 
 @pytest.fixture
@@ -257,3 +279,88 @@ async def test_upload_no_attachment_returns_none(
     url = await transcript_service.upload(file, mock_log_channel)
 
     assert url is None
+
+
+# ---------------------------------------------------------------------------
+# generate — event-loop offload (S4.2)
+# ---------------------------------------------------------------------------
+
+
+class TestToThreadOffload:
+    """S4.2 — ``_build_html`` must run off the event loop via asyncio.to_thread."""
+
+    @pytest.mark.asyncio
+    async def test_generate_offloads_build_html_to_thread(self) -> None:
+        """generate() MUST hand the sync-pure ``_build_html`` to asyncio.to_thread.
+
+        HTML assembly over up to 5000 messages is CPU-bound string work;
+        running it inline blocks the event loop. The recorder wraps the real
+        ``asyncio.to_thread`` and captures every callable handed through it.
+        """
+        captured: list[object] = []
+        real_to_thread = asyncio.to_thread
+
+        async def _recorder(func, *args, **kwargs):
+            captured.append(func)
+            return await real_to_thread(func, *args, **kwargs)
+
+        service = TranscriptService()
+        messages = [_make_mock_message("Alice", "0001", "hello")]
+        channel = _make_mock_channel(name="offload-1", messages=messages)
+
+        # Patching ``asyncio.to_thread`` globally (delegating to the real one)
+        # keeps the RED phase honest: before the production wrap exists, no
+        # call is captured and the assertion below fails cleanly.
+        with patch("asyncio.to_thread", side_effect=_recorder):
+            file = await service.generate(channel)
+
+        assert captured, "_build_html ran inline on the event loop — wrap the call in asyncio.to_thread"
+        handed = captured[0]
+        assert callable(handed), "asyncio.to_thread must receive a callable"
+        assert getattr(handed, "__self__", None) is service, "to_thread must receive the bound _build_html"
+        assert getattr(handed, "__name__", "") == "_build_html"
+        # The rendered artifact is unchanged: a discord.File with the HTML body.
+        assert isinstance(file, discord.File)
+        html = file.fp.read().decode("utf-8")
+        assert "Alice#0001" in html
+
+
+# ---------------------------------------------------------------------------
+# generate — i18n (S4.2 bundled fix: user-facing strings via t())
+# ---------------------------------------------------------------------------
+
+
+def _make_guild_channel(name: str, guild_id: int, messages: list[MagicMock]) -> MagicMock:
+    """Return a mock TextChannel bound to a real guild id (for t() resolution)."""
+    channel = _make_mock_channel(name=name, messages=messages)
+    channel.guild.id = guild_id
+    return channel
+
+
+class TestTranscriptI18n:
+    """Transcript header and empty-content placeholder MUST resolve via t()."""
+
+    @pytest.mark.asyncio
+    async def test_header_localized_spanish(self) -> None:
+        set_guild_language(555000111, "es")
+        channel = _make_guild_channel("soporte-9", 555000111, [_make_mock_message()])
+        file = await TranscriptService().generate(channel)
+        html = file.fp.read().decode("utf-8")
+        assert "Transcripción del ticket — soporte-9" in html
+
+    @pytest.mark.asyncio
+    async def test_header_localized_english(self) -> None:
+        set_guild_language(555000222, "en")
+        channel = _make_guild_channel("support-7", 555000222, [_make_mock_message()])
+        file = await TranscriptService().generate(channel)
+        html = file.fp.read().decode("utf-8")
+        assert "Ticket Transcript — support-7" in html
+
+    @pytest.mark.asyncio
+    async def test_empty_content_placeholder_localized(self) -> None:
+        set_guild_language(555000333, "es")
+        message = _make_mock_message(content="")
+        channel = _make_guild_channel("vacio-1", 555000333, [message])
+        file = await TranscriptService().generate(channel)
+        html = file.fp.read().decode("utf-8")
+        assert "sin contenido de texto" in html
