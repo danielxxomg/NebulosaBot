@@ -9,19 +9,24 @@ Tables / views queried (read-only):
   * pg_constraint            — FK constraints
   * pg_policies / pg_policy  — RLS policies (0 expected)
   * pg_publication_tables    — CDC publication (4 tables)
-  * supabase_migrations.schema_migrations  — 19 live migrations
-  * pg_stat_user_indexes     — index evidence (no drop without EXPLAIN)
+  * supabase_migrations.schema_migrations  — 25 live migrations
 """
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from bot.services.schema_inventory import LiveEvidenceReport
+import psycopg
+
+from bot.services.schema_inventory import LiveEvidenceReport, fetch_live_metadata
+
+logger = logging.getLogger(__name__)
 
 # Explicitly document that PostgREST is NOT used for catalog evidence.
 # PostgREST returns PGRST205 for public.pg_constraint (not in schema cache)
@@ -32,7 +37,6 @@ LOCAL_MIGRATION_STEMS: tuple[str, ...] = (
     "001_initial_schema",
     "002_ticket_categories",
     "003_economy_config",
-    "003_subtickets_notes",
     "004_greeting_config",
     "005_rls_secure_default",
     "006_drop_user_table",
@@ -48,15 +52,27 @@ LOCAL_MIGRATION_STEMS: tuple[str, ...] = (
     "016_greeting_onboarding_channel",
     "017_ticket_audit_repaired_outcome",
     "018_ticket_integrity_fks",
+    "019_subtickets_notes",
+    "020_greeting_updated_at",
+    "021_greeting_theme_id",
+    "022_ticket_scheduled_close",
+    "023_rls_remaining_tables",
+    "024_permission_matrix_indexes",
+    "025_drop_ticket_backup_categoryid_text_20260818",
 )
 
 
 def get_local_migration_names(*, migrations_dir: str = "migrations") -> list[str]:
-    """Return exact 19 local migration stems (no extension) — sorted.
+    """Return exact 25 local migration stems (no extension) — sorted.
 
     The returned names must match ``supabase_migrations.schema_migrations``
     remote entries exactly (version/name pair), not just count equality.
-    Count-only 19 must fail parity.
+    Count-only mismatches must fail parity.
+
+    Cycle 5 (S3): the list was re-synced with the actual ``migrations/``
+    directory — the historical phantom ``003_subtickets_notes`` entry (a
+    pre-renumber artifact; the file lives on as ``019_subtickets_notes``)
+    was dropped and migrations 019-025 were added, matching remote 25/25.
     """
     expected = sorted(LOCAL_MIGRATION_STEMS)
     try:
@@ -64,9 +80,15 @@ def get_local_migration_names(*, migrations_dir: str = "migrations") -> list[str
         if p.exists():
             files = sorted(f.stem for f in p.glob("*.sql"))
             if files and files != expected:
-                pass
+                # Pinned identity is the contract; drift is surfaced loudly so
+                # a new migration without a stems update cannot pass silently.
+                warnings.warn(
+                    f"local migration drift: on-disk {files} != pinned {expected}",
+                    UserWarning,
+                    stacklevel=2,
+                )
     except OSError:
-        pass
+        logger.warning("Could not scan migrations dir %r — returning pinned stems", migrations_dir, exc_info=True)
     return expected
 
 
@@ -80,6 +102,15 @@ def _resolve_db_url() -> str | None:
 
 @dataclass(frozen=True, slots=True)
 class LiveGateResult:
+    """Outcome of :meth:`LiveAcceptanceGate.evaluate`.
+
+    Attributes:
+        passed: True only when every fail-closed check produced no reason.
+        reasons: Human-readable failure reasons (empty when passed).
+        used_real_db: True only when a valid 4-query ProvenanceToken backed
+            the evaluation — never for FakeSupabase or synthetic bools.
+    """
+
     passed: bool
     reasons: tuple[str, ...]
     used_real_db: bool
@@ -104,7 +135,7 @@ class LiveAcceptanceGate:
     Contract (proposal Q4, creds real required):
       * Requires LIVE_SUPABASE=1 AND DB_URL (or SUPABASE_DB_URL)
         AND used_real_db=True AND report.resolved == True
-        AND exact 19 migration identity matches local stems.
+        AND exact 25 migration identity matches local stems.
       * FakeSupabase / PostgREST PGRST205 / count-only → FAIL with warning.
     """
 
@@ -118,6 +149,13 @@ class LiveAcceptanceGate:
         return False
 
     def evaluate(self) -> LiveGateResult:
+        """Evaluate the fail-closed acceptance contract.
+
+        Accumulates a reason for every unmet credential/provenance/parity
+        requirement (LIVE_SUPABASE gate, DB_URL, provenance token, 9/7/0
+        RLS binding, resolved report, exact migration identity) and warns
+        when the real-DB path was not used. PASS requires zero reasons.
+        """
         reasons: list[str] = list(self.report.reasons)
         local = set(get_local_migration_names())
         if os.getenv("LIVE_SUPABASE") != "1":
@@ -151,11 +189,12 @@ class LiveAcceptanceGate:
             reasons.append(f"live evidence unresolved: {', '.join(self.report.reasons) or 'unknown'}")
         remote_names = self._remote_names
         if remote_names is not None and set(remote_names) != set(local):
-            reasons.append("migration_identity_mismatch: remote names != local 19 stems (not count-only)")
+            reasons.append("migration_identity_mismatch: remote names != local 25 stems (not count-only)")
         passed = not reasons
         return LiveGateResult(passed=passed, reasons=tuple(reasons), used_real_db=self._has_provenance())
 
     def with_remote_names(self, remote_names: list[str]) -> LiveAcceptanceGate:
+        """Return a copy bound to the live ``schema_migrations`` names for identity parity."""
         return LiveAcceptanceGate(
             report=self.report,
             used_real_db=self.used_real_db,
@@ -171,7 +210,6 @@ def _sync_fetch_catalog(  # noqa: C901 -- 4-query provenance fetch; splitting wo
     Provenance: every SELECT is a real query against the DB; returns a
     ProvenanceToken with query_count==4 — the only valid used_real_db.
     """
-    import psycopg
 
     with psycopg.connect(url) as conn, conn.cursor() as cur:
         cur.execute(
@@ -220,7 +258,7 @@ def _sync_fetch_catalog(  # noqa: C901 -- 4-query provenance fetch; splitting wo
                     live_publication.append(str(r[0]))
             elif isinstance(r, str):
                 live_publication.append(r)
-        # Migrations — 19 identity
+        # Migrations — 25 identity
         cur.execute("SELECT name FROM supabase_migrations.schema_migrations ORDER BY version")
         mig_rows = cur.fetchall()
         live_migrations: list[str] = []
@@ -253,7 +291,6 @@ async def fetch_catalog_via_db(
     Provenance: ``used_real_db`` must only be True when this function executed
     at least one real query (mocked psycopg connection counts).
     """
-    import asyncio
 
     url = db_url or _resolve_db_url()
     if not url:
@@ -263,16 +300,6 @@ async def fetch_catalog_via_db(
             stacklevel=2,
         )
         return [], [], [], [], ProvenanceToken(query_count=0)
-    try:
-        import psycopg
-    except ImportError:
-        warnings.warn(
-            "psycopg not available — install psycopg[binary] for real DB catalog path",
-            UserWarning,
-            stacklevel=2,
-        )
-        return [], [], [], [], ProvenanceToken(query_count=0)
-    _ = psycopg
     return await asyncio.to_thread(_sync_fetch_catalog, url)
 
 
@@ -282,7 +309,6 @@ def fetch_rls_counts_via_db(db_url: str) -> tuple[int, int, int]:
     Structural 9/7/0 check: 9 tables with rls_enabled, 7 forced, 0 policies.
     Proves catalog not hardcoded 9.
     """
-    import psycopg
 
     with psycopg.connect(db_url) as conn, conn.cursor() as cur:
         cur.execute(
@@ -309,15 +335,16 @@ def fetch_rls_counts_via_db(db_url: str) -> tuple[int, int, int]:
             forced = int(row2.get("count", 0))
         else:
             forced = 0
+        # Policy count MUST be scoped to the public schema: pg_policies is the
+        # standard view; pg_policy is the legacy table some hardened instances
+        # expose instead. The fallback probes a DIFFERENT relation (mirrors
+        # _sync_fetch_catalog) — re-running the identical query would
+        # deterministically re-fail.
         try:
-            cur.execute(
-                "SELECT count(*) FROM pg_policy p "
-                "JOIN pg_class c ON c.oid=p.polrelid "
-                "JOIN pg_namespace n ON n.oid=c.relnamespace "
-                "WHERE n.nspname='public'"
-            )
+            cur.execute("SELECT count(*) FROM pg_policies WHERE schemaname = 'public'")
             row3 = cur.fetchone()
-        except Exception:  # noqa: BLE001 -- pg_policy RLS probe fallback
+        except Exception:
+            logger.warning("pg_policies probe failed — falling back to pg_policy", exc_info=True)
             cur.execute(
                 "SELECT count(*) FROM pg_policy p "
                 "JOIN pg_class c ON c.oid=p.polrelid "
@@ -363,7 +390,5 @@ async def fetch_catalog_evidence(
         fks, pols, pubs, migs, _tok = await fetch_catalog_via_db(db_url)
         return fks, pols, pubs, migs
     if supabase_client is not None:
-        from bot.services.schema_inventory import fetch_live_metadata
-
         return await fetch_live_metadata(supabase_client)
     return [], [], [], []

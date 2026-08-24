@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import os
+import pathlib
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from bot.services.live_catalog import get_local_migration_names
 from bot.services.schema_inventory import (
     CDC_TABLES,
     GUILD_SCOPE_GAPS,
@@ -36,7 +39,6 @@ def _mocked_publication() -> list[str]:
 
 
 def _mocked_migrations() -> list[str]:
-    from bot.services.live_catalog import get_local_migration_names
 
     return get_local_migration_names()
 
@@ -59,7 +61,7 @@ class TestMockedBaselineBinds:
         assert len(report.guild_fk_children) == 6
         assert len(report.publication_tables) == 4
         assert set(report.publication_tables) == set(CDC_TABLES)
-        assert report.migration_count == 19
+        assert report.migration_count == 25
         assert report.guild_scope_gaps == GUILD_SCOPE_GAPS
         assert len(report.guild_scope_gaps) == 12
 
@@ -201,7 +203,7 @@ class TestFetchLiveMetadataSelectPath:
     async def test_fetch_live_metadata_executes_4_selects_and_binds(self) -> None:
         """fetch_live_metadata MUST do 4 SELECTs and produce bindable evidence."""
         fake = FakeSupabaseClient()
-        # Shape rows so the normalizer produces the baseline 6 FKs / 0 policies / 4 pub / 19 migrations.
+        # Shape rows so the normalizer produces the baseline 6 FKs / 0 policies / 4 pub / 25 migrations.
         # FK shape: {child, parent, on_delete} — already bindable.
         fake.set_table_data(
             "pg_constraint",
@@ -239,12 +241,11 @@ class TestFetchLiveMetadataSelectPath:
         assert report.resolved is True, report.reasons
         assert parity.resolved is True
         assert report.no_ddl is True
-        assert report.migration_count == 19
+        assert report.migration_count == 25
 
     @pytest.mark.asyncio
     async def test_fetch_live_metadata_pgrst205_fails_closed(self) -> None:
         """PostgREST PGRST205 (pg_constraint not in schema cache) MUST fail closed (no DDL)."""
-        from unittest.mock import AsyncMock, MagicMock
 
         mock_client = MagicMock()
         mock_client.table.return_value.select.return_value.execute = AsyncMock(
@@ -256,7 +257,6 @@ class TestFetchLiveMetadataSelectPath:
     @pytest.mark.asyncio
     async def test_fetch_live_metadata_documents_db_rpc_fallback(self) -> None:
         """Catalog fallback MUST be documented as DB/RPC staging path (S4) in module docstring."""
-        import pathlib
 
         text = pathlib.Path("bot/services/schema_inventory.py").read_text(encoding="utf-8")
         assert "DB/RPC" in text or "DB / RPC" in text or "staging" in text.lower()
@@ -290,7 +290,7 @@ def test_live_supabase_read_only_when_creds_present() -> None:
     if not db_url or "x/x" in db_url or "example" in db_url:
         pytest.skip("synthetic/missing DB_URL — no real psycopg provenance, warning path verified")
     # When LIVE_SUPABASE=1 the same mocked-evidence assertions prove the binder path is live-ready
-    assert report.migration_count == 19
+    assert report.migration_count == 25
 
 
 @pytest.mark.live
@@ -324,5 +324,5 @@ async def test_live_supabase_select_path_executes_4_selects() -> None:
     inv = SchemaInventory.build()
     report = inv.bind_live_evidence(fks, policies, publication, migrations)
     assert report.resolved is True, report.reasons
-    assert report.migration_count == 19
+    assert report.migration_count == 25
     assert report.no_ddl is True

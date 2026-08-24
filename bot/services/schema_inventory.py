@@ -10,9 +10,14 @@ on-disk reading; ``ddl_statements`` stays empty and ``no_ddl`` is True.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from bot.services.integrity_report import bind_runtime_parity
+
+logger = logging.getLogger(__name__)
 
 # ------------------------------------------------------------------
 # Constants — read-only inventory facts (exploration.md)
@@ -316,13 +321,12 @@ class SchemaInventory:
                     and '("guildid", "ticketnumber")' in normalized
                 )
             except Exception:  # noqa: BLE001 -- index definition probe best-effort
+                logger.warning("015 index-definition probe failed", exc_info=True)
                 defines = False
         # Best-effort runtime parity binding from on-disk bytes only (no live DB).
         runtime_resolved: bool | None = None
         runtime_reasons: tuple[str, ...] = ()
         try:
-            from bot.services.integrity_report import bind_runtime_parity
-
             snap = bind_runtime_parity(
                 on_disk_sql=sql_text,
                 on_disk_filename=path.name if path.exists() else None,
@@ -333,6 +337,7 @@ class SchemaInventory:
             runtime_resolved = snap.parity.compatible and not snap.reasons
             runtime_reasons = snap.reasons
         except Exception:  # noqa: BLE001 -- parity bind best-effort; any failure marks unavailable
+            logger.warning("runtime parity bind failed", exc_info=True)
             runtime_reasons = ("parity_bind_unavailable",)
         # Live FK/RLS require DB connection — deferred to S2.
         return cls(
@@ -361,7 +366,7 @@ class SchemaInventory:
         """Bind read-only live evidence; fail-closed with documented reasons.
 
         No DDL — SELECT-only semantics: validates 9 zero-policy RLS tables,
-        6 guild CASCADE FKs, 4 CDC publication tables, 19 migrations, 12 gaps,
+        6 guild CASCADE FKs, 4 CDC publication tables, 25 migrations, 12 gaps,
         and the TEXT/UUID categoryId mismatch flag. Any absent/mismatched fact
         yields ``resolved=False`` with non-empty ``reasons``.
         """
@@ -402,8 +407,12 @@ class SchemaInventory:
         # Publication: 4 CDC
         if frozenset(live_publication) != frozenset(CDC_TABLES):
             reasons.append("publication_mismatch")
-        # Migrations: 19 exact version/name pairs (not count-only).
-        from bot.services.live_catalog import get_local_migration_names as _local_names
+        # Migrations: 25 exact version/name pairs (not count-only).
+        # Cycle-break import: live_catalog imports LiveEvidenceReport from this
+        # module at top level, so the reverse import must stay local.
+        from bot.services.live_catalog import (
+            get_local_migration_names as _local_names,  # noqa: PLC0415 -- cycle-breaking import (live_catalog -> schema_inventory)
+        )
 
         local_stems = set(_local_names())
         # Normalize live entries to stems: strip .sql and path, compare stems.
@@ -415,7 +424,7 @@ class SchemaInventory:
             if "/" in s:
                 s = s.rsplit("/", 1)[-1]
             normalized_live.add(s)
-        if len(live_migrations) != 19 or not any("015" in str(m) for m in live_migrations):
+        if len(live_migrations) != 25 or not any("015" in str(m) for m in live_migrations):
             reasons.append("migration_count_mismatch")
         if normalized_live != local_stems:
             reasons.append("migration_identity_mismatch")

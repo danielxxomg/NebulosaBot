@@ -1,28 +1,48 @@
 """S4.2A RED: catalog real DB/RPC only — bypass PostgREST PGRST205.
 
-Specs: live-schema-verifier catalog parity measurable 19↔19 9/7/0 6FKs 4 pubs via DB_URL/LIVE_SUPABASE real, not fake.
+Specs: live-schema-verifier catalog parity measurable 25↔25 9/7/0 6FKs 4 pubs via DB_URL/LIVE_SUPABASE real, not fake.
 Proposal Q4: creds real required — verifier MUST FAIL without creds, FakeSupabase never PASS.
 """
 
 from __future__ import annotations
 
+import asyncio
+import importlib
 import os
+import os as _os
+import pathlib
 import warnings
+import warnings as _w
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from bot.services.schema_inventory import CDC_TABLES, SchemaInventory
+from bot.services import live_catalog
+from bot.services.live_catalog import (
+    LiveAcceptanceGate,
+    ProvenanceToken,
+    _resolve_db_url,
+    evaluate_index_policy,
+    fetch_catalog_via_db,
+    fetch_rls_counts_via_db,
+    get_local_migration_names,
+)
+from bot.services.schema_inventory import (
+    CDC_TABLES,
+    RLS_NO_POLICY_TABLES,
+    RlsCounts,
+    SchemaInventory,
+    fetch_live_metadata,
+)
 
 # ---------------------------------------------------------------------------
-# Helpers — must mirror exact local migration identity (19 stems)
+# Helpers — must mirror exact local migration identity (25 stems)
 # ---------------------------------------------------------------------------
 
 EXPECTED_LOCAL_MIGRATIONS = sorted([
     "001_initial_schema",
     "002_ticket_categories",
     "003_economy_config",
-    "003_subtickets_notes",
     "004_greeting_config",
     "005_rls_secure_default",
     "006_drop_user_table",
@@ -38,6 +58,13 @@ EXPECTED_LOCAL_MIGRATIONS = sorted([
     "016_greeting_onboarding_channel",
     "017_ticket_audit_repaired_outcome",
     "018_ticket_integrity_fks",
+    "019_subtickets_notes",
+    "020_greeting_updated_at",
+    "021_greeting_theme_id",
+    "022_ticket_scheduled_close",
+    "023_rls_remaining_tables",
+    "024_permission_matrix_indexes",
+    "025_drop_ticket_backup_categoryid_text_20260818",
 ])
 
 
@@ -54,25 +81,21 @@ def _mocked_fks() -> list[dict[str, str]]:
 
 class TestRedLiveCatalogModuleExists:
     def test_live_catalog_module_importable(self) -> None:
-        import importlib
 
         mod = importlib.import_module("bot.services.live_catalog")
         assert mod is not None
 
-    def test_local_migration_identity_is_19_exact(self) -> None:
-        from bot.services.live_catalog import get_local_migration_names
+    def test_local_migration_identity_is_25_exact(self) -> None:
 
         names = get_local_migration_names()
-        assert len(names) == 19
+        assert len(names) == 25
         assert sorted(names) == EXPECTED_LOCAL_MIGRATIONS
 
     def test_live_catalog_exposes_db_adapter(self) -> None:
-        from bot.services import live_catalog
 
         # Must expose a real-DB adapter that queries pg_constraint etc, not PostgREST fallback
         assert hasattr(live_catalog, "fetch_catalog_via_db") or hasattr(live_catalog, "fetch_catalog_evidence")
         # Must document no PostgREST catalog fallback
-        import pathlib
 
         text = pathlib.Path("bot/services/live_catalog.py").read_text(encoding="utf-8")
         assert "PGRST205" in text or "PostgREST" in text
@@ -80,9 +103,7 @@ class TestRedLiveCatalogModuleExists:
 
 
 class TestCatalogParityMeasurableRealDB:
-    def test_9_7_0_6_4_19_exact_passes_with_real_db(self) -> None:
-        from bot.services.live_catalog import LiveAcceptanceGate, ProvenanceToken, get_local_migration_names
-        from bot.services.schema_inventory import RlsCounts
+    def test_9_7_0_6_4_25_exact_passes_with_real_db(self) -> None:
 
         local = get_local_migration_names()
         # Build via real-DB evidence path — include 9/7/0 binding
@@ -113,8 +134,6 @@ class TestCatalogParityMeasurableRealDB:
             assert result.used_real_db is True
 
     def test_count_only_fails_when_names_differ(self) -> None:
-        from bot.services.live_catalog import LiveAcceptanceGate, ProvenanceToken
-        from bot.services.schema_inventory import RlsCounts
 
         # 19 count but wrong names (placeholder 001..019)
         fake_19 = [f"{i:03d}_migration_{i}" for i in range(1, 20)]
@@ -145,7 +164,6 @@ class TestCatalogParityMeasurableRealDB:
             assert any("migrat" in r.lower() for r in result.reasons)
 
     def test_fake_supabase_never_passes_even_with_correct_counts(self) -> None:
-        from bot.services.live_catalog import LiveAcceptanceGate, get_local_migration_names
 
         local = get_local_migration_names()
         inv = SchemaInventory.build()
@@ -166,7 +184,6 @@ class TestCatalogParityMeasurableRealDB:
             assert len(result.reasons) > 0
 
     def test_missing_creds_fails_with_warning_not_pass(self) -> None:
-        from bot.services.live_catalog import LiveAcceptanceGate, get_local_migration_names
 
         local = get_local_migration_names()
         inv = SchemaInventory.build()
@@ -181,6 +198,7 @@ class TestCatalogParityMeasurableRealDB:
             os.environ.pop("LIVE_SUPABASE", None)
             os.environ.pop("DB_URL", None)
             os.environ.pop("SUPABASE_DB_URL", None)
+            os.environ.pop("DATABASE_URL", None)
             with warnings.catch_warnings(record=True) as w2:
                 warnings.simplefilter("always")
                 gate = LiveAcceptanceGate(report=report, used_real_db=False)
@@ -195,7 +213,6 @@ class TestCatalogParityMeasurableRealDB:
 
     def test_pgrst205_unresolved_never_pass(self) -> None:
         """PostgREST PGRST205 path must remain unresolved, not claimed as PASS."""
-        from bot.services.schema_inventory import fetch_live_metadata
 
         # fetch_live_metadata must raise RuntimeError on PGRST205, caller must not treat as resolved
         mock_client = MagicMock()
@@ -207,11 +224,9 @@ class TestCatalogParityMeasurableRealDB:
             with pytest.raises(RuntimeError, match="PGRST205"):
                 await fetch_live_metadata(mock_client)
 
-        import asyncio
 
         asyncio.run(_run())
         # Verify live_catalog documents that PGRST205 is not a PASS path
-        import pathlib
 
         text = pathlib.Path("bot/services/live_catalog.py").read_text(encoding="utf-8")
         assert "pg_constraint" in text
@@ -232,15 +247,7 @@ def test_live_marker_asserts_db_path_used_when_creds_present() -> None:
     mocked psycopg.connect (TestFetchCatalogViaDbProvenance); live marker only
     passes when psycopg actually connects.
     """
-    from unittest.mock import MagicMock, patch
 
-    from bot.services.live_catalog import (
-        LiveAcceptanceGate,
-        ProvenanceToken,
-        _resolve_db_url,
-        get_local_migration_names,
-    )
-    from bot.services.schema_inventory import RlsCounts
 
     local = get_local_migration_names()
     inv = SchemaInventory.build()
@@ -294,9 +301,7 @@ def test_live_marker_asserts_db_path_used_when_creds_present() -> None:
 
     fake_connect = MagicMock(return_value=FakeConn())
     with patch("psycopg.connect", fake_connect):
-        import asyncio
 
-        from bot.services.live_catalog import fetch_catalog_via_db
 
         _, _, _, _, tok = asyncio.run(fetch_catalog_via_db(db_url))
         assert fake_connect.called
@@ -317,7 +322,6 @@ class TestFetchCatalogViaDbProvenance:
     @pytest.mark.asyncio
     async def test_fetch_catalog_via_db_uses_psycopg_when_db_url_present(self) -> None:
         """Provenance: fetch_catalog_via_db must call psycopg.connect and execute queries."""
-        from unittest.mock import MagicMock, patch
 
         # Fake cursor that records execute calls and returns canned rows
         executed: list[str] = []
@@ -353,7 +357,6 @@ class TestFetchCatalogViaDbProvenance:
 
         fake_connect = MagicMock(return_value=FakeConn())
         with patch("psycopg.connect", fake_connect):
-            from bot.services.live_catalog import ProvenanceToken, fetch_catalog_via_db
 
             fks, _pols, _pubs, _migs, tok = await fetch_catalog_via_db("postgresql://user:pass@localhost/db")
             # Provenance: psycopg.connect was called — token proves query execution
@@ -365,23 +368,25 @@ class TestFetchCatalogViaDbProvenance:
 
     @pytest.mark.asyncio
     async def test_fetch_catalog_without_db_url_warns_and_empty(self) -> None:
-        import warnings as _w
-
-        from bot.services.live_catalog import ProvenanceToken, fetch_catalog_via_db
-
-        with _w.catch_warnings(record=True) as w:
-            _w.simplefilter("always")
-            fks, pols, pubs, migs, tok = await fetch_catalog_via_db(None)
-            # No DB_URL → warns and empty; gate will fail (never PASS)
-            assert fks == [] and pols == [] and pubs == [] and migs == []
-            assert isinstance(tok, ProvenanceToken)
-            assert tok.query_count == 0
-            assert any(issubclass(x.category, UserWarning) for x in w)
+        # Env hygiene: scrub every credential variant _resolve_db_url() reads so a
+        # host-exported DB_URL/DATABASE_URL can never turn this unit test into a
+        # real psycopg connection (test independence — no ambient shared state).
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("DB_URL", None)
+            os.environ.pop("SUPABASE_DB_URL", None)
+            os.environ.pop("DATABASE_URL", None)
+            with _w.catch_warnings(record=True) as w:
+                _w.simplefilter("always")
+                fks, pols, pubs, migs, tok = await fetch_catalog_via_db(None)
+                # No DB_URL → warns and empty; gate will fail (never PASS)
+                assert fks == [] and pols == [] and pubs == [] and migs == []
+                assert isinstance(tok, ProvenanceToken)
+                assert tok.query_count == 0
+                assert any(issubclass(x.category, UserWarning) for x in w)
 
     def test_fake_supabase_cannot_produce_used_real_db(self) -> None:
         """FakeSupabase path must never be able to claim used_real_db=True provenance."""
         # Provenance: only psycopg path executes real queries; FakeSupabase never PASSes.
-        import pathlib
 
         text = pathlib.Path("bot/services/live_catalog.py").read_text(encoding="utf-8")
         assert "FakeSupabase never PASS" in text
@@ -393,10 +398,7 @@ class TestFetchCatalogViaDbProvenance:
 
     def test_synthetic_bool_true_rejected_without_token(self) -> None:
         """Caller-supplied used_real_db=True without ProvenanceToken must be synthetic FakeSupabase."""
-        import warnings as _w
 
-        from bot.services.live_catalog import LiveAcceptanceGate, get_local_migration_names
-        from bot.services.schema_inventory import RlsCounts
 
         inv = SchemaInventory.build()
         report = inv.bind_live_evidence(
@@ -406,7 +408,6 @@ class TestFetchCatalogViaDbProvenance:
             live_migrations=get_local_migration_names(),
             rls_counts=RlsCounts(rls_enabled=9, rls_forced=7, policy_count=0),
         )
-        import os as _os
 
         with (
             patch.dict(_os.environ, {"LIVE_SUPABASE": "1", "DB_URL": "postgresql://x/x"}, clear=False),
@@ -420,8 +421,6 @@ class TestFetchCatalogViaDbProvenance:
 
     def test_provenance_token_with_970_bound_passes(self) -> None:
         """ProvenanceToken(4) + 9/7/0 bound report must PASS via evaluate."""
-        from bot.services.live_catalog import LiveAcceptanceGate, ProvenanceToken, get_local_migration_names
-        from bot.services.schema_inventory import RlsCounts
 
         inv = SchemaInventory.build()
         report = inv.bind_live_evidence(
@@ -440,7 +439,6 @@ class TestFetchCatalogViaDbProvenance:
 
     def test_970_not_bound_fails_even_with_token(self) -> None:
         """Missing 9/7/0 binding must FAIL even with provenance token."""
-        from bot.services.live_catalog import LiveAcceptanceGate, ProvenanceToken, get_local_migration_names
 
         inv = SchemaInventory.build()
         report = inv.bind_live_evidence(
@@ -461,7 +459,6 @@ class TestFetchCatalogViaDbProvenance:
 class TestRls970StructuralViaDb:
     def test_fetch_rls_counts_970_via_mocked_psycopg(self) -> None:
         """9/7/0 catalog fact via pg_class/pg_policy counts, not hardcoded 9."""
-        from unittest.mock import MagicMock, patch
 
         # Mock cursor returning 9 enabled, 7 forced, 0 policies
         counts = iter([(9,), (7,), (0,)])
@@ -475,7 +472,6 @@ class TestRls970StructuralViaDb:
         conn.cursor.return_value.__exit__.return_value = False
 
         with patch("psycopg.connect", return_value=conn):
-            from bot.services.live_catalog import fetch_rls_counts_via_db
 
             enabled, forced, policies = fetch_rls_counts_via_db("postgresql://u:p@h/db")
             assert enabled == 9
@@ -486,7 +482,6 @@ class TestRls970StructuralViaDb:
 
     def test_rls_counts_fail_if_hardcoded_only(self) -> None:
         """If counts drift from expected 9/7/0, must be detectable via binder."""
-        from bot.services.schema_inventory import RLS_NO_POLICY_TABLES
 
         # Binder expects 9 tables with 0 policies — structural invariant
         assert len(RLS_NO_POLICY_TABLES) == 9
@@ -496,7 +491,6 @@ class TestRls970StructuralViaDb:
 
 class TestIndexPolicyExecutable:
     def test_zero_scans_without_explain_is_rejected(self) -> None:
-        from bot.services.live_catalog import evaluate_index_policy
 
         allowed, reason = evaluate_index_policy(scans=0, explain_output=None)
         assert allowed is False
@@ -504,14 +498,12 @@ class TestIndexPolicyExecutable:
         assert "retained" in reason.lower() or "reject" in reason.lower()
 
     def test_zero_scans_with_explain_is_allowed(self) -> None:
-        from bot.services.live_catalog import evaluate_index_policy
 
         explain = "EXPLAIN (ANALYZE, BUFFERS) SELECT * FROM ticket WHERE ..."
         allowed, _ = evaluate_index_policy(scans=0, explain_output=explain)
         assert allowed is True
 
     def test_scans_present_without_explain_is_allowed(self) -> None:
-        from bot.services.live_catalog import evaluate_index_policy
 
         allowed, _ = evaluate_index_policy(scans=11, explain_output=None)
         assert allowed is True
