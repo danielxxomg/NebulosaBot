@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -41,6 +42,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 AUTO_CLOSE_HOURS = 48
 
+# Per-user ','-timer debounce window (S4.4) — duplicate timer messages from
+# the same user in the same channel within this window are silently ignored.
+# Mirrors voice_listener._DEBOUNCE_TTL eviction semantics.
+TIMER_DEBOUNCE_TTL: float = 15.0
+
 # Backward-compat alias — tests import _build_ticket_embed from cog.
 _build_ticket_embed = build_ticket_embed
 
@@ -66,7 +72,7 @@ __all__ = [
 class TicketsCog(commands.Cog, name="Tickets"):
     """Ticket system commands, views, and background tasks (facade)."""
 
-    __slots__ = ("_admin_flow", "_integrity_flow", "_lifecycle_flow", "_notes_flow", "bot")
+    __slots__ = ("_admin_flow", "_integrity_flow", "_lifecycle_flow", "_notes_flow", "_timer_debounce", "bot")
 
     def __init__(self, bot: NebulosaBot) -> None:
         self.bot: NebulosaBot = bot
@@ -74,6 +80,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
         self._lifecycle_flow = TicketLifecycleFlow(bot)
         self._notes_flow = TicketNotesFlow(bot)
         self._integrity_flow = TicketIntegrityFlow(bot)
+        # Debounce store for ','-timer messages, keyed
+        # f"{guild_id}:{channel_id}:{user_id}" → last-fire monotonic time.
+        self._timer_debounce: dict[str, float] = {}
 
     async def cog_load(self) -> None:
         logger.info("TicketsCog loading — syncing channel cache ...")
@@ -262,7 +271,22 @@ class TicketsCog(commands.Cog, name="Tickets"):
         ticket_id = ticket_row.get("id")
         if not ticket_id:
             return
+        # Per-user debounce (S4.4): drop duplicate ',' messages inside the
+        # TTL window before they reach the timer state-machine.
+        now = time.monotonic()
+        self._evict_stale_timer_entries(now)
+        debounce_key = f"{gid}:{message.channel.id}:{author.id}"
+        last_fire = self._timer_debounce.get(debounce_key)
+        if last_fire is not None and now - last_fire < TIMER_DEBOUNCE_TTL:
+            return
+        self._timer_debounce[debounce_key] = now
         await self._dispatch_timer_message(ts, message, gid, ticket_id, ticket_row, content, author)
+
+    def _evict_stale_timer_entries(self, now: float) -> None:
+        """Evict ','-timer debounce entries older than the TTL (voice_listener mirror)."""
+        stale = [k for k, ts_val in self._timer_debounce.items() if now - ts_val > TIMER_DEBOUNCE_TTL]
+        for k in stale:
+            del self._timer_debounce[k]
 
     async def _fetch_active_ticket_row(self, channel_id: int, gid: str) -> dict | None:
         """Fetch the active ticket row for *channel_id* (guild-scoped).

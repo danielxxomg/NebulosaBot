@@ -881,6 +881,111 @@ class TestOnMessageListener:
         assert isinstance(args[2], str)  # timestamp
 
 
+# ---------------------------------------------------------------------------
+# S4.4 — ','-timer per-user 15s debounce
+# ---------------------------------------------------------------------------
+
+
+class TestTimerMessageDebounce:
+    """Duplicate ',' messages from the same user within 15s are silently ignored.
+
+    Mirrors the voice_listener debounce pattern: dict keyed
+    ``{guild}:{channel}:{user}`` with TTL eviction on every event.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _timer_env(
+        self,
+        tickets_cog: TicketsCog,
+        ticket_bot: MagicMock,
+        mock_db,
+        mock_member,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Wire a fully passing on_message path up to _dispatch_timer_message."""
+        self.cog = tickets_cog
+        self.bot = ticket_bot
+        self.db = mock_db
+
+        # Matrix gate passes unconditionally — authorization is not under test here.
+        monkeypatch.setattr("bot.cogs.tickets.can_member", AsyncMock(return_value=True))
+
+        message = MagicMock()
+        message.guild.id = 123456789
+        message.channel.id = 444444444
+        message.content = ","
+        message.author = mock_member
+        # Set AFTER author assignment — mock_member is a bare MagicMock whose
+        # auto-created ``bot`` attribute would otherwise be truthy.
+        message.author.bot = False
+        message.author.id = 111111111
+        self.message = message
+
+        ticket_bot.ticket_service.is_ticket_channel = MagicMock(return_value=True)
+        ticket_bot.ticket_service.handle_timer_message = AsyncMock(return_value=None)
+        mock_db.update_ticket_last_activity = AsyncMock()
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
+        # Second lookup path must stay unused.
+        mock_db.get_active_ticket_by_channel = AsyncMock()
+
+    def _run(self, clock: list[float]):
+        """Return an async callable that fires one on_message at clock[0].
+
+        Patches ``time.monotonic`` globally (not the cog namespace) so the
+        RED phase fails cleanly on dispatch counts before the debounce
+        exists.
+        """
+
+        async def _fire() -> None:
+            with patch("time.monotonic", return_value=clock[0]):
+                await self.cog.on_message(self.message)
+
+        return _fire
+
+    async def test_first_comma_message_dispatches(self) -> None:
+        clock = [1000.0]
+        await self._run(clock)()
+        self.bot.ticket_service.handle_timer_message.assert_awaited_once()
+
+    async def test_duplicate_within_window_silently_ignored(self) -> None:
+        clock = [1000.0]
+        await self._run(clock)()
+        clock[0] = 1005.0  # same user/channel/guild 5s later
+        await self._run(clock)()
+        assert self.bot.ticket_service.handle_timer_message.await_count == 1
+
+    async def test_after_ttl_passes_again(self) -> None:
+        clock = [1000.0]
+        await self._run(clock)()
+        clock[0] = 1005.0
+        await self._run(clock)()  # inside window — ignored
+        clock[0] = 1016.0  # beyond the 15s TTL
+        await self._run(clock)()
+        assert self.bot.ticket_service.handle_timer_message.await_count == 2
+
+    async def test_different_user_not_debounced(self) -> None:
+        other = MagicMock()
+        other.__class__ = discord.Member
+        other.id = 222222222
+        other.bot = False
+        self.message.author = other
+
+        clock = [1000.0]
+        await self._run(clock)()
+        self.message.author.id = 111111111
+        await self._run(clock)()
+        assert self.bot.ticket_service.handle_timer_message.await_count == 2
+
+    async def test_debounce_store_evicts_stale_entries(self) -> None:
+        clock = [1000.0]
+        await self._run(clock)()
+        clock[0] = 1100.0  # well past TTL
+        await self._run(clock)()
+        # The stale entry was evicted, not left to grow unbounded.
+        assert len(self.cog._timer_debounce) == 1
+        assert self.cog._timer_debounce["123456789:444444444:111111111"] == 1100.0
+
+
 class TestCogLifecycle:
     """Tests for cog_load and cog_unload."""
 
