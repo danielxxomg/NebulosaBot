@@ -24,7 +24,6 @@ from bot.services.economy_service import EconomyService
 from bot.services.greeting_renderer import PillowGreetingRenderer
 from bot.services.greeting_service import GreetingService
 from bot.services.guild_service import GuildService
-from bot.services.image_service import ImageService
 from bot.services.infraction_service import InfractionService
 from bot.services.logging_service import LoggingService
 from bot.services.rank_renderer import RankRenderer
@@ -98,7 +97,6 @@ class NebulosaBot(commands.Bot):
         ticket_service: Ticket lifecycle :class:`~bot.services.ticket_service.TicketService` instance.
         transcript_service: HTML transcript :class:`~bot.services.transcript_service.TranscriptService` instance.
         economy_service: Economy system :class:`~bot.services.economy_service.EconomyService` instance.
-        image_service: Rank card :class:`~bot.services.image_service.ImageService` instance (PR 3).
         rank_renderer: Shared :class:`~bot.services.rank_renderer.RankRenderer` instance for /rank.
     """
 
@@ -111,7 +109,6 @@ class NebulosaBot(commands.Bot):
         "economy_service",
         "greeting_service",
         "guild_service",
-        "image_service",
         "infraction_service",
         "logging_service",
         "rank_renderer",
@@ -136,7 +133,6 @@ class NebulosaBot(commands.Bot):
         self.transcript_service: TranscriptService | None = None
         self.economy_service: EconomyService | None = None
         self.greeting_service: GreetingService | None = None
-        self.image_service: ImageService | None = None
         self.logging_service: LoggingService | None = None
         self.rank_renderer: RankRenderer | None = None
 
@@ -201,10 +197,6 @@ class NebulosaBot(commands.Bot):
         self.economy_service = EconomyService(db=self.db, cache=self.cache)
         logger.info("EconomyService initialised")
 
-        # --- 3e. ImageService ---
-        self.image_service = ImageService()
-        logger.info("ImageService initialised")
-
         # --- 3f. GreetingRenderer probe (cairosvg → Pillow fallback) ---
         try:
             import cairosvg  # ty: ignore[unresolved-import]  # noqa: F401 -- probe only; Cycle 1 still uses Pillow
@@ -220,9 +212,8 @@ class NebulosaBot(commands.Bot):
             logger.info("cairosvg available but Cycle 1 uses PillowGreetingRenderer (probe acknowledged)")
 
         # Store the RankRenderer on the bot so cog code uses a single shared
-        # instance (self.bot.rank_renderer) instead of building one per /rank.
-        # ImageService.generate_rank_card already delegates to RankRenderer, so
-        # the cog no longer needs a lazy-import or ImageService fallback branch.
+        # instance (self.bot.rank_renderer) instead of building one per /rank;
+        # the cog needs no lazy import or legacy fallback branch.
         self.rank_renderer = RankRenderer()
 
         # --- 3g. GreetingService ---
