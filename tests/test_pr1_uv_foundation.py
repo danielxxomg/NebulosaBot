@@ -37,6 +37,8 @@ def _read_makefile() -> str:
 
 
 class TestUvLockCheck:
+    """uv lock/sync freshness gates for the Pterodactyl deploy path."""
+
     def test_uv_lock_check_exits_zero(self) -> None:
         """uv lock --check MUST exit 0 — lock matches pyproject after migration."""
         result = subprocess.run(
@@ -70,6 +72,8 @@ class TestUvLockCheck:
 
 
 class TestDependencyGroups:
+    """PEP 735 [dependency-groups] dev migration + exact tool pins."""
+
     def test_dependency_groups_dev_exists(self) -> None:
         """[dependency-groups] dev MUST exist (PEP735, replaces extras)."""
         data = _load_pyproject()
@@ -133,6 +137,8 @@ class TestDependencyGroups:
 
 
 class TestToolUv:
+    """[tool.uv] default-groups and runtime dependency preservation."""
+
     def test_tool_uv_default_groups_dev(self) -> None:
         """[tool.uv] default-groups MUST be [\"dev\"]."""
         data = _load_pyproject()
@@ -152,7 +158,8 @@ class TestToolUv:
         req = PROJECT_ROOT / "requirements.txt"
         assert req.is_file(), "requirements.txt missing"
         content = req.read_text(encoding="utf-8")
-        for needle in ["discord.py", "supabase", "python-dotenv", "Pillow"]:
+        # PEP 503 normalized names (uv export canonicalizes discord.py -> discord-py)
+        for needle in ["discord-py", "supabase", "python-dotenv", "Pillow"]:
             assert needle.lower() in content.lower(), f"{needle} missing from requirements.txt"
 
 
@@ -162,6 +169,8 @@ class TestToolUv:
 
 
 class TestUvLockContent:
+    """uv.lock content invariants: contains ty, lacks replaced audit tools."""
+
     def test_lock_contains_ty(self) -> None:
         """uv.lock MUST contain ty 0.0.18."""
         content = UV_LOCK.read_text(encoding="utf-8")
@@ -190,6 +199,8 @@ class TestUvLockContent:
 
 
 class TestCiSetupUv:
+    """ci.yml setup-uv usage: SHA-pin, no setup-python/cache/pip-install."""
+
     def test_ci_uses_setup_uv_sha_pinned(self) -> None:
         """ci.yml MUST use astral-sh/setup-uv@<40-char-sha> # v6 (SHA-pin)."""
         content = _read_ci()
@@ -228,6 +239,8 @@ class TestCiSetupUv:
 
 
 class TestCiAudit:
+    """ci.yml audit migration: uv audit present, pip-audit fully removed."""
+
     def test_ci_no_pip_audit_references(self) -> None:
         """ci.yml MUST NOT contain any 'pip-audit' string after PR1."""
         content = _read_ci()
@@ -252,6 +265,8 @@ class TestCiAudit:
 
 
 class TestMakefileAudit:
+    """Makefile audit target runs uv audit (no pip-audit remnants)."""
+
     def test_makefile_audit_runs_uv_audit(self) -> None:
         """Makefile audit target MUST run 'uv audit'."""
         content = _read_makefile()
