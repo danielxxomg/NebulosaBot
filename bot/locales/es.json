@@ -640,6 +640,7 @@
     }
   },
   "sentinel": {
+    "default_reason": "Sin razón proporcionada",
     "validate": {
       "self_target_title": "Objetivo Inválido",
       "self_target_description": "No puedo moderarme a mí mismo.",
@@ -671,7 +672,8 @@
       "no_warnings_title": "Sin Advertencias",
       "no_warnings_description": "{mention} no tiene advertencias activas para eliminar.",
       "success_title": "Advertencia Revocada",
-      "success_description": "Se eliminó la advertencia más reciente de {mention}."
+      "success_description": "Se eliminó la advertencia más reciente de {mention}.",
+      "audit_reason": "Advertencia revocada (ID: {id})"
     },
     "mute": {
       "success_title": "Miembro Silenciado",
@@ -679,7 +681,8 @@
     },
     "unmute": {
       "success_title": "Miembro Desilenciado",
-      "success_description": "El silenciamiento de {mention} ha sido removido."
+      "success_description": "El silenciamiento de {mention} ha sido removido.",
+      "audit_reason": "Silenciamiento removido"
     },
     "kick": {
       "success_title": "Miembro Expulsado",
@@ -703,7 +706,8 @@
       "success_title": "Usuario Desbaneado",
       "success_description": "El usuario {user_id} ha sido desbaneado.",
       "failed_title": "Desbaneo Fallido",
-      "failed_description": "No se pudo desbanear al usuario. Intenta de nuevo."
+      "failed_description": "No se pudo desbanear al usuario. Intenta de nuevo.",
+      "audit_reason": "Desbaneado {user_id}"
     },
     "lock": {
       "permission_denied_title": "Permiso Denegado",
@@ -711,7 +715,8 @@
       "failed_title": "Bloqueo Fallido",
       "failed_description": "No se pudo bloquear {channel}.",
       "success_title": "Canal Bloqueado",
-      "success_description": "{channel} ha sido bloqueado. @everyone ya no puede enviar mensajes."
+      "success_description": "{channel} ha sido bloqueado. @everyone ya no puede enviar mensajes.",
+      "audit_reason": "Canal bloqueado {channel}"
     },
     "unlock": {
       "permission_denied_title": "Permiso Denegado",
@@ -719,7 +724,8 @@
       "failed_title": "Desbloqueo Fallido",
       "failed_description": "No se pudo desbloquear {channel}.",
       "success_title": "Canal Desbloqueado",
-      "success_description": "{channel} ha sido desbloqueado. @everyone puede enviar mensajes de nuevo."
+      "success_description": "{channel} ha sido desbloqueado. @everyone puede enviar mensajes de nuevo.",
+      "audit_reason": "Canal desbloqueado {channel}"
     },
     "modlogs": {
       "failed_title": "Modlogs Fallido",
@@ -734,7 +740,8 @@
       "revoked": "\n*(Revocado)*",
       "prev_button": "◀ Anterior",
       "next_button": "Siguiente ▶",
-      "footer": "NebulosaBot • Sentinel • {id}"
+      "footer": "NebulosaBot • Sentinel • {id}",
+      "unknown_date": "Desconocida"
     }
   },
   "stellar": {

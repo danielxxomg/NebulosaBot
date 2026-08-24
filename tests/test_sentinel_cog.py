@@ -15,14 +15,17 @@ TDD cycle: RED → GREEN — tests specify expected behavior of existing code.
 
 from __future__ import annotations
 
+import pathlib
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
+from freezegun import freeze_time
 
-from bot.cogs.sentinel import SentinelCog
+from bot.cogs.sentinel import SentinelCog, UnbanTarget, _build_modlog_pages
 from bot.core.i18n import load_locales, set_guild_language, t
+from bot.models.infraction import Infraction
 from bot.services.infraction_service import InfractionService
 from bot.services.logging_service import LoggingService
 from bot.utils.paginator import EmbedPaginator
@@ -241,24 +244,15 @@ class TestMuteCommand:
         sentinel_bot: MagicMock,
         sentinel_ctx: MagicMock,
         target_member: MagicMock,
-        mock_db,
     ) -> None:
         """mute → member.timeout called + infraction inserted + log embed."""
         target_member.timeout = AsyncMock()
-        mock_db.insert_infraction = AsyncMock(
-            return_value={
-                "id": "inf-mute-001",
-                "guildId": "123456789",
-                "targetId": "555555555",
-                "moderatorId": "111111111",
-                "type": "MUTE",
-                "reason": "spamming",
-                "active": True,
-                "createdAt": datetime.now(UTC),
-            }
-        )
+        service_mute = AsyncMock()
 
-        with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
+        with (
+            patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)),
+            patch.object(InfractionService, "mute", service_mute),
+        ):
             await sentinel_cog.mute.callback(
                 sentinel_cog, sentinel_ctx, target_member, duration="1h", reason="spamming"
             )
@@ -325,42 +319,33 @@ class TestKickCommand:
         sentinel_bot: MagicMock,
         sentinel_ctx: MagicMock,
         target_member: MagicMock,
-        mock_db,
     ) -> None:
         """kick confirm → member.kick called + infraction inserted + log embed."""
         target_member.kick = AsyncMock()
-        mock_db.insert_infraction = AsyncMock(
-            return_value={
-                "id": "inf-kick-001",
-                "guildId": "123456789",
-                "targetId": "555555555",
-                "moderatorId": "111111111",
-                "type": "KICK",
-                "reason": "rule violation",
-                "active": True,
-                "createdAt": datetime.now(UTC),
-            }
-        )
+        service_kick = AsyncMock()
 
-        with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
+        with (
+            patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)),
+            patch.object(InfractionService, "kick", service_kick),
+        ):
             await sentinel_cog.kick.callback(sentinel_cog, sentinel_ctx, target_member, reason="rule violation")
 
-        # Get the ConfirmCancelView from the ephemeral send.
-        view = sentinel_ctx.send.call_args.kwargs.get("view")
-        assert view is not None
+            # Get the ConfirmCancelView from the ephemeral send.
+            view = sentinel_ctx.send.call_args.kwargs.get("view")
+            assert view is not None
 
-        # Simulate the confirm callback.
-        confirm_button = next(
-            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
-        )
-        interaction = MagicMock(spec=discord.Interaction)
-        interaction.user = MagicMock(spec=discord.Member)
-        interaction.user.id = sentinel_ctx.author.id  # Same user as invoker
-        interaction.response = MagicMock()
-        interaction.response.send_message = AsyncMock()
-        interaction.response.edit_message = AsyncMock()
+            # Simulate the confirm callback.
+            confirm_button = next(
+                c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
+            )
+            interaction = MagicMock(spec=discord.Interaction)
+            interaction.user = MagicMock(spec=discord.Member)
+            interaction.user.id = sentinel_ctx.author.id  # Same user as invoker
+            interaction.response = MagicMock()
+            interaction.response.send_message = AsyncMock()
+            interaction.response.edit_message = AsyncMock()
 
-        await confirm_button.callback(interaction)
+            await confirm_button.callback(interaction)
 
         target_member.kick.assert_awaited_once_with(reason="rule violation")
         sentinel_bot.logging_service.log_moderation_action.assert_awaited_once()
@@ -449,24 +434,15 @@ class TestBanCommand:
         sentinel_bot: MagicMock,
         sentinel_ctx: MagicMock,
         target_member: MagicMock,
-        mock_db,
     ) -> None:
         """ban confirm → member.ban called + infraction inserted + log embed."""
         target_member.ban = AsyncMock()
-        mock_db.insert_infraction = AsyncMock(
-            return_value={
-                "id": "inf-ban-001",
-                "guildId": "123456789",
-                "targetId": "555555555",
-                "moderatorId": "111111111",
-                "type": "BAN",
-                "reason": "severe violation",
-                "active": True,
-                "createdAt": datetime.now(UTC),
-            }
-        )
+        service_ban = AsyncMock()
 
-        with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
+        with (
+            patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)),
+            patch.object(InfractionService, "ban", service_ban),
+        ):
             await sentinel_cog.ban.callback(
                 sentinel_cog,
                 sentinel_ctx,
@@ -475,22 +451,22 @@ class TestBanCommand:
                 delete_days=3,
             )
 
-        # Get the ConfirmCancelView from the ephemeral send.
-        view = sentinel_ctx.send.call_args.kwargs.get("view")
-        assert view is not None
+            # Get the ConfirmCancelView from the ephemeral send.
+            view = sentinel_ctx.send.call_args.kwargs.get("view")
+            assert view is not None
 
-        # Simulate the confirm callback.
-        confirm_button = next(
-            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
-        )
-        interaction = MagicMock(spec=discord.Interaction)
-        interaction.user = MagicMock(spec=discord.Member)
-        interaction.user.id = sentinel_ctx.author.id
-        interaction.response = MagicMock()
-        interaction.response.send_message = AsyncMock()
-        interaction.response.edit_message = AsyncMock()
+            # Simulate the confirm callback.
+            confirm_button = next(
+                c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
+            )
+            interaction = MagicMock(spec=discord.Interaction)
+            interaction.user = MagicMock(spec=discord.Member)
+            interaction.user.id = sentinel_ctx.author.id
+            interaction.response = MagicMock()
+            interaction.response.send_message = AsyncMock()
+            interaction.response.edit_message = AsyncMock()
 
-        await confirm_button.callback(interaction)
+            await confirm_button.callback(interaction)
 
         target_member.ban.assert_awaited_once()
         sentinel_bot.logging_service.log_moderation_action.assert_awaited_once()
@@ -548,6 +524,286 @@ class TestBanCommand:
         embed = call_kwargs.kwargs.get("embed") or call_kwargs[1].get("embed")
         assert embed is not None
         assert "Timed Out" in embed.title
+
+
+class TestAuditReasonLocalization:
+    """Audit-log reasons reaching localized log embeds MUST be guild-localized.
+
+    The cog passes free-text reasons into LoggingService.log_moderation_action;
+    with embed titles/labels now localized (cycle-5 S3), the reason body is
+    the remaining user-facing fragment — route every constant through t().
+    """
+
+    @pytest.mark.asyncio
+    async def test_unwarn_audit_reason_localized(
+        self,
+        sentinel_cog: SentinelCog,
+        sentinel_bot: MagicMock,
+        sentinel_ctx: MagicMock,
+        target_member: MagicMock,
+        mock_db,
+        warn_row: dict,
+    ) -> None:
+        """unwarn → audit reason resolves sentinel.unwarn.audit_reason."""
+        mock_db.get_active_warnings = AsyncMock(return_value=[warn_row])
+        mock_db.deactivate_infraction = AsyncMock()
+        mock_db.update_member_warnings = AsyncMock()
+
+        with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
+            await sentinel_cog.unwarn.callback(sentinel_cog, sentinel_ctx, target_member)
+
+        log_args = sentinel_bot.logging_service.log_moderation_action.await_args.args
+        assert log_args[4] == t("123456789", "sentinel.unwarn.audit_reason", id=warn_row["id"])
+
+    @pytest.mark.asyncio
+    async def test_unmute_audit_reason_localized(
+        self,
+        sentinel_cog: SentinelCog,
+        sentinel_bot: MagicMock,
+        sentinel_ctx: MagicMock,
+        target_member: MagicMock,
+    ) -> None:
+        """unmute → audit reason resolves sentinel.unmute.audit_reason."""
+        target_member.timeout = AsyncMock()
+
+        with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
+            await sentinel_cog.unmute.callback(sentinel_cog, sentinel_ctx, target_member)
+
+        log_args = sentinel_bot.logging_service.log_moderation_action.await_args.args
+        assert log_args[4] == t("123456789", "sentinel.unmute.audit_reason")
+
+    @pytest.mark.asyncio
+    async def test_lock_audit_reason_localized(
+        self,
+        sentinel_cog: SentinelCog,
+        sentinel_bot: MagicMock,
+        sentinel_ctx: MagicMock,
+    ) -> None:
+        """lock → audit reason resolves sentinel.lock.audit_reason."""
+        sentinel_ctx.channel.set_permissions = AsyncMock()
+
+        await sentinel_cog.lock.callback(sentinel_cog, sentinel_ctx, None)
+
+        log_args = sentinel_bot.logging_service.log_moderation_action.await_args.args
+        assert log_args[4] == t("123456789", "sentinel.lock.audit_reason", channel=sentinel_ctx.channel.mention)
+
+    @pytest.mark.asyncio
+    async def test_unlock_audit_reason_localized(
+        self,
+        sentinel_cog: SentinelCog,
+        sentinel_bot: MagicMock,
+        sentinel_ctx: MagicMock,
+    ) -> None:
+        """unlock → audit reason resolves sentinel.unlock.audit_reason."""
+        sentinel_ctx.channel.set_permissions = AsyncMock()
+
+        await sentinel_cog.unlock.callback(sentinel_cog, sentinel_ctx, None)
+
+        log_args = sentinel_bot.logging_service.log_moderation_action.await_args.args
+        assert log_args[4] == t("123456789", "sentinel.unlock.audit_reason", channel=sentinel_ctx.channel.mention)
+
+    @pytest.mark.asyncio
+    async def test_unban_audit_reason_localized(
+        self,
+        sentinel_cog: SentinelCog,
+        sentinel_bot: MagicMock,
+        sentinel_ctx: MagicMock,
+        mock_guild,
+    ) -> None:
+        """unban → audit reason resolves sentinel.unban.audit_reason."""
+        mock_guild.unban = AsyncMock()
+        service_unban = AsyncMock(return_value=None)
+        # Service returns None → command reports "no active ban" and stops.
+        # Drive the audited path instead: an active BAN row via the real service.
+        mock_db_row = {
+            "id": "inf-unban-001",
+            "guildId": "123456789",
+            "targetId": "424242",
+            "moderatorId": "111111111",
+            "type": "BAN",
+            "reason": "spam",
+            "active": True,
+            "createdAt": datetime.now(UTC),
+        }
+        sentinel_bot.db.get_infractions = AsyncMock(return_value=[mock_db_row])
+        sentinel_bot.db.deactivate_infraction = AsyncMock()
+        _ = service_unban  # unused; real service drives the flow
+
+        await sentinel_cog.unban.callback(sentinel_cog, sentinel_ctx, "424242")
+
+        log_args = sentinel_bot.logging_service.log_moderation_action.await_args.args
+        assert log_args[4] == t("123456789", "sentinel.unban.audit_reason", user_id="424242")
+
+    def test_modlogs_unknown_date_localized(self, mock_guild) -> None:
+        """modlog entries without created_at show the localized unknown label."""
+        infraction = Infraction(
+            id="inf-x",
+            guild_id="123456789",
+            target_id="555555555",
+            moderator_id="111111111",
+            type="WARN",
+            reason="spam",
+            created_at=None,  # type: ignore[arg-type]
+        )
+
+        pages = _build_modlog_pages(mock_guild, [infraction], guild_id="123456789")
+
+        assert pages, "one entry must build one page"
+        field_value = pages[0].fields[0].value or ""
+        assert t("123456789", "sentinel.modlogs.unknown_date") in field_value
+
+    @pytest.mark.asyncio
+    async def test_mute_default_reason_localized(
+        self,
+        sentinel_cog: SentinelCog,
+        sentinel_ctx: MagicMock,
+        target_member: MagicMock,
+    ) -> None:
+        """mute without explicit reason uses the localized default."""
+        target_member.timeout = AsyncMock()
+
+        with (
+            patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)),
+            patch.object(InfractionService, "mute", AsyncMock()),
+        ):
+            await sentinel_cog.mute.callback(sentinel_cog, sentinel_ctx, target_member, duration="1h")
+
+        expected_default = t("123456789", "sentinel.default_reason")
+        timeout_kwargs = target_member.timeout.call_args.kwargs
+        assert timeout_kwargs["reason"] == expected_default
+
+    @pytest.mark.asyncio
+    async def test_tempban_default_reason_localized_in_confirm_dialog(
+        self,
+        sentinel_cog: SentinelCog,
+        sentinel_ctx: MagicMock,
+        target_member: MagicMock,
+    ) -> None:
+        """tempban without explicit reason shows the localized default in its dialog."""
+        with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
+            await sentinel_cog.tempban.callback(sentinel_cog, sentinel_ctx, target_member, duration="2h")
+
+        embed = sentinel_ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
+        assert t("123456789", "sentinel.default_reason") in (embed.description or "")
+
+
+class TestModerationServiceSwap:
+    """SentinelCog persists MUTE/KICK/BAN via InfractionService (spec infraction-service).
+
+    Cogs MUST NOT insert infraction rows directly: the persistence step
+    goes through infraction_service.mute/kick/ban, while the cog keeps
+    the Discord side-effect and the single caller-side audit call.
+    """
+
+    @pytest.mark.asyncio
+    async def test_mute_persists_via_service(
+        self,
+        sentinel_cog: SentinelCog,
+        sentinel_ctx: MagicMock,
+        target_member: MagicMock,
+    ) -> None:
+        """mute → infraction_service.mute called with identifier args."""
+        target_member.timeout = AsyncMock()
+        service_mute = AsyncMock()
+
+        with (
+            patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)),
+            patch.object(InfractionService, "mute", service_mute),
+        ):
+            await sentinel_cog.mute.callback(sentinel_cog, sentinel_ctx, target_member, duration="1h", reason="spam")
+
+        service_mute.assert_awaited_once_with("123456789", "555555555", "111111111", "spam")
+
+    @pytest.mark.asyncio
+    async def test_mute_never_inserts_infraction_directly(
+        self,
+        sentinel_cog: SentinelCog,
+        sentinel_ctx: MagicMock,
+        target_member: MagicMock,
+        mock_db,
+    ) -> None:
+        """mute → no direct db.insert_infraction from the cog."""
+        target_member.timeout = AsyncMock()
+        mock_db.insert_infraction = AsyncMock()
+
+        with (
+            patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)),
+            patch.object(InfractionService, "mute", AsyncMock()),
+        ):
+            await sentinel_cog.mute.callback(sentinel_cog, sentinel_ctx, target_member, duration="1h", reason="spam")
+
+        mock_db.insert_infraction.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_kick_persists_via_service_on_confirm(
+        self,
+        sentinel_cog: SentinelCog,
+        sentinel_bot: MagicMock,
+        sentinel_ctx: MagicMock,
+        target_member: MagicMock,
+    ) -> None:
+        """kick confirm → infraction_service.kick called; no direct insert."""
+        target_member.kick = AsyncMock()
+        service_kick = AsyncMock()
+        sentinel_bot.db.insert_infraction = AsyncMock()
+
+        with (
+            patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)),
+            patch.object(InfractionService, "kick", service_kick),
+        ):
+            await sentinel_cog.kick.callback(sentinel_cog, sentinel_ctx, target_member, reason="rule violation")
+
+            view = sentinel_ctx.send.call_args.kwargs.get("view")
+            confirm_button = next(
+                c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
+            )
+            interaction = MagicMock(spec=discord.Interaction)
+            interaction.user = MagicMock(spec=discord.Member)
+            interaction.user.id = sentinel_ctx.author.id
+            interaction.response = MagicMock()
+            interaction.response.edit_message = AsyncMock()
+
+            await confirm_button.callback(interaction)
+
+        service_kick.assert_awaited_once_with("123456789", "555555555", "111111111", "rule violation")
+        sentinel_bot.db.insert_infraction.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_ban_persists_via_service_on_confirm(
+        self,
+        sentinel_cog: SentinelCog,
+        sentinel_bot: MagicMock,
+        sentinel_ctx: MagicMock,
+        target_member: MagicMock,
+    ) -> None:
+        """ban confirm → infraction_service.ban called; no direct insert."""
+        target_member.ban = AsyncMock()
+        service_ban = AsyncMock()
+        sentinel_bot.db.insert_infraction = AsyncMock()
+
+        with (
+            patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)),
+            patch.object(InfractionService, "ban", service_ban),
+        ):
+            await sentinel_cog.ban.callback(
+                sentinel_cog, sentinel_ctx, target_member, reason="severe violation", delete_days=3
+            )
+
+            view = sentinel_ctx.send.call_args.kwargs.get("view")
+            confirm_button = next(
+                c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
+            )
+            interaction = MagicMock(spec=discord.Interaction)
+            interaction.user = MagicMock(spec=discord.Member)
+            interaction.user.id = sentinel_ctx.author.id
+            interaction.response = MagicMock()
+            interaction.response.edit_message = AsyncMock()
+
+            await confirm_button.callback(interaction)
+
+        service_ban.assert_awaited_once_with("123456789", "555555555", "111111111", "severe violation")
+        sentinel_bot.db.insert_infraction.assert_not_awaited()
 
 
 class TestKickBanPermanentResult:
@@ -655,8 +911,6 @@ class TestTempbanNoDrift:
         mock_db,
     ) -> None:
         """30s+ dialog latency must NOT drift expiresAt from real ban start."""
-        from freezegun import freeze_time
-
         row = {
             "id": "inf-tempban-001",
             "guildId": "123456789",
@@ -712,7 +966,6 @@ class TestUnbanTypedTarget:
         mock_guild,
     ) -> None:
         """unban → guild.unban + logging receive an UnbanTarget; no attr fabrication."""
-        from bot.cogs.sentinel import UnbanTarget
 
         ban_row = {
             "id": "inf-ban-active",
@@ -1015,7 +1268,6 @@ def test_ban_is_gated_by_can_check_moderation_ban(sentinel_cog: SentinelCog) -> 
     Characterization: admin, matrix role, and mod fallback all pass; outsider denied.
     We prove dual registration and that can_check is the decorator used.
     """
-    import pathlib
 
     src = pathlib.Path("bot/cogs/sentinel.py").read_text(encoding="utf-8")
     # ban decorator must be can_check("moderation.ban")
@@ -1037,7 +1289,6 @@ def test_ban_is_gated_by_can_check_moderation_ban(sentinel_cog: SentinelCog) -> 
 
 def test_ban_keeps_confirm_view_and_default_permissions(sentinel_cog: SentinelCog) -> None:
     """PR1 6.2: /ban MUST keep ConfirmCancelView + default_permissions(ban_members=True)."""
-    import pathlib
 
     src = pathlib.Path("bot/cogs/sentinel.py").read_text(encoding="utf-8")
     # Check ban decorator area + its ConfirmCancelView usage (below the method)

@@ -769,9 +769,7 @@ class TestMuteKickBanServiceMethods:
     def test_async_contract_holds(self) -> None:
         """mute/kick/ban are coroutine functions."""
         for method_name in ("mute", "kick", "ban"):
-            assert inspect.iscoroutinefunction(getattr(InfractionService, method_name)), (
-                f"{method_name} must be async"
-            )
+            assert inspect.iscoroutinefunction(getattr(InfractionService, method_name)), f"{method_name} must be async"
 
     @pytest.mark.asyncio
     async def test_caller_owns_audit_exactly_one_log_site(

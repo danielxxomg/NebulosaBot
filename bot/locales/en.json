@@ -671,7 +671,8 @@
       "no_warnings_title": "No Warnings",
       "no_warnings_description": "{mention} has no active warnings to remove.",
       "success_title": "Warning Revoked",
-      "success_description": "Removed the most recent warning from {mention}."
+      "success_description": "Removed the most recent warning from {mention}.",
+      "audit_reason": "Revoked warning (ID: {id})"
     },
     "mute": {
       "success_title": "Member Muted",
@@ -679,7 +680,8 @@
     },
     "unmute": {
       "success_title": "Member Unmuted",
-      "success_description": "{mention}'s timeout has been removed."
+      "success_description": "{mention}'s timeout has been removed.",
+      "audit_reason": "Timeout removed"
     },
     "kick": {
       "success_title": "Member Kicked",
@@ -703,7 +705,8 @@
       "success_title": "User Unbanned",
       "success_description": "User {user_id} has been unbanned.",
       "failed_title": "Unban Failed",
-      "failed_description": "Could not unban the user. Please try again."
+      "failed_description": "Could not unban the user. Please try again.",
+      "audit_reason": "Unbanned {user_id}"
     },
     "lock": {
       "permission_denied_title": "Permission Denied",
@@ -711,7 +714,8 @@
       "failed_title": "Lock Failed",
       "failed_description": "Could not lock {channel}.",
       "success_title": "Channel Locked",
-      "success_description": "{channel} has been locked. @everyone can no longer send messages."
+      "success_description": "{channel} has been locked. @everyone can no longer send messages.",
+      "audit_reason": "Locked {channel}"
     },
     "unlock": {
       "permission_denied_title": "Permission Denied",
@@ -719,7 +723,8 @@
       "failed_title": "Unlock Failed",
       "failed_description": "Could not unlock {channel}.",
       "success_title": "Channel Unlocked",
-      "success_description": "{channel} has been unlocked. @everyone can send messages again."
+      "success_description": "{channel} has been unlocked. @everyone can send messages again.",
+      "audit_reason": "Unlocked {channel}"
     },
     "modlogs": {
       "failed_title": "Modlogs Failed",
@@ -734,8 +739,10 @@
       "revoked": "\n*(Revoked)*",
       "prev_button": "◀ Previous",
       "next_button": "Next ▶",
-      "footer": "NebulosaBot • Sentinel • {id}"
-    }
+      "footer": "NebulosaBot • Sentinel • {id}",
+      "unknown_date": "Unknown"
+    },
+    "default_reason": "No reason provided"
   },
   "stellar": {
     "daily": {

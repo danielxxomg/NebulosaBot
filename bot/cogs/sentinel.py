@@ -426,7 +426,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             "Unwarn",
             member,
             ctx.author,
-            f"Revoked warning (ID: {result.id})",
+            t(guild_id, "sentinel.unwarn.audit_reason", id=result.id),
         )
         await ctx.send(
             embed=success_embed(
@@ -468,7 +468,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         member: discord.Member,
         duration: str = "1h",
         *,
-        reason: str = "No reason provided",
+        reason: str = "",
     ) -> None:
         """Apply a timeout to *member*."""
         if not await self._validate_target(ctx, member, "mute"):
@@ -476,6 +476,8 @@ class SentinelCog(commands.Cog, name="Sentinel"):
 
         duration_seconds = parse_duration(duration)
         guild_id = self._guild_id(ctx)
+        if not reason:
+            reason = t(guild_id, "sentinel.default_reason")
         target_id = str(member.id)
         moderator_id = str(ctx.author.id)
 
@@ -488,20 +490,21 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             await self._handle_mod_error(ctx, exc, "mute", member)
             return
 
-        # Create MUTE infraction for audit trail.
-        if self.bot.db is None:
-            msg = "Database initialised in setup_hook"
+        # Create MUTE infraction via the service (spec infraction-service:
+        # cogs never insert rows directly). The audit below is the single
+        # caller-side log site; the service performs no Discord action.
+        if self.bot.infraction_service is None:
+            msg = "InfractionService initialised in setup_hook"
             raise RuntimeError(msg)
         try:
-            await self.bot.db.insert_infraction(
-                guild_id=guild_id,
-                target_id=target_id,
-                moderator_id=moderator_id,
-                type="MUTE",
-                reason=reason,
+            await self.bot.infraction_service.mute(
+                guild_id,
+                target_id,
+                moderator_id,
+                reason,
             )
         except Exception:
-            logger.exception("Failed to insert MUTE infraction (non-fatal)")
+            logger.exception("Failed to persist MUTE infraction (non-fatal)")
 
         if self.bot.logging_service is None:
             msg = "LoggingService initialised in setup_hook"
@@ -569,7 +572,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             "Unmute",
             member,
             ctx.author,
-            "Timeout removed",
+            t(guild_id, "sentinel.unmute.audit_reason"),
         )
 
         await ctx.send(
@@ -613,19 +616,20 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                 await self._handle_mod_error(ctx, exc, "kick", member)
                 return
 
-            if self.bot.db is None:
-                msg = "Database initialised in setup_hook"
+            # Persist KICK via the service (cogs never insert rows
+            # directly); the audit below is the single caller-side log site.
+            if self.bot.infraction_service is None:
+                msg = "InfractionService initialised in setup_hook"
                 raise RuntimeError(msg)
             try:
-                await self.bot.db.insert_infraction(
-                    guild_id=guild_id,
-                    target_id=target_id,
-                    moderator_id=moderator_id,
-                    type="KICK",
-                    reason=reason,
+                await self.bot.infraction_service.kick(
+                    guild_id,
+                    target_id,
+                    moderator_id,
+                    reason,
                 )
             except Exception:
-                logger.exception("Failed to insert KICK infraction (non-fatal)")
+                logger.exception("Failed to persist KICK infraction (non-fatal)")
 
             if self.bot.logging_service is None:
                 msg = "LoggingService initialised in setup_hook"
@@ -728,19 +732,20 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                 await self._handle_mod_error(ctx, exc, "ban", member)
                 return
 
-            if self.bot.db is None:
-                msg = "Database initialised in setup_hook"
+            # Persist BAN via the service (cogs never insert rows
+            # directly); the audit below is the single caller-side log site.
+            if self.bot.infraction_service is None:
+                msg = "InfractionService initialised in setup_hook"
                 raise RuntimeError(msg)
             try:
-                await self.bot.db.insert_infraction(
-                    guild_id=guild_id,
-                    target_id=target_id,
-                    moderator_id=moderator_id,
-                    type="BAN",
-                    reason=reason,
+                await self.bot.infraction_service.ban(
+                    guild_id,
+                    target_id,
+                    moderator_id,
+                    reason,
                 )
             except Exception:
-                logger.exception("Failed to insert BAN infraction (non-fatal)")
+                logger.exception("Failed to persist BAN infraction (non-fatal)")
 
             if self.bot.logging_service is None:
                 msg = "LoggingService initialised in setup_hook"
@@ -867,7 +872,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             "Lock",
             ctx.author,
             ctx.author,
-            f"Locked {target_channel.mention}",  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
+            t(guild_id, "sentinel.lock.audit_reason", channel=target_channel.mention),  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
         )
 
         await ctx.send(
@@ -942,7 +947,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             "Unlock",
             ctx.author,
             ctx.author,
-            f"Unlocked {target_channel.mention}",  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
+            t(guild_id, "sentinel.unlock.audit_reason", channel=target_channel.mention),  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
         )
 
         await ctx.send(
@@ -1059,13 +1064,15 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         member: discord.Member,
         duration: str,
         *,
-        reason: str = "No reason provided",
+        reason: str = "",
     ) -> None:
         """Tempban *member* for *duration* after confirmation."""
         if not await self._validate_target(ctx, member, "tempban"):
             return
 
         guild_id = self._guild_id(ctx)
+        if not reason:
+            reason = t(guild_id, "sentinel.default_reason")
         seconds = parse_duration_optional(duration)
         if seconds is None:
             await ctx.send(
@@ -1230,7 +1237,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
                 "Unban",
                 target,
                 ctx.author,
-                f"Unbanned {user_id}",
+                t(guild_id, "sentinel.unban.audit_reason", user_id=user_id),
             )
         except Exception:
             logger.exception("log_moderation_action failed for unban (non-fatal)")
@@ -1295,7 +1302,11 @@ def _build_modlog_pages(
 
         for inf in chunk:
             type_emoji = _type_emoji(inf.type)
-            created = inf.created_at.strftime("%Y-%m-%d %H:%M UTC") if inf.created_at else "Unknown"
+            created = (
+                inf.created_at.strftime("%Y-%m-%d %H:%M UTC")
+                if inf.created_at
+                else t(guild_id, "sentinel.modlogs.unknown_date")
+            )
             value = t(
                 guild_id,
                 "sentinel.modlogs.field_value",

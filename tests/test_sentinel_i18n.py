@@ -21,7 +21,9 @@ import discord
 import pytest
 
 from bot.cogs.sentinel import SentinelCog, _build_modlog_pages
+from bot.core import i18n as i18n_mod
 from bot.core.i18n import load_locales, set_guild_language
+from bot.utils.paginator import EmbedPaginator
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -197,7 +199,6 @@ def _build_nested_locale(markers: dict[str, str]) -> dict:
 @pytest.fixture(autouse=True)
 def _load_i18n(tmp_path: Path) -> Generator[None, None, None]:
     """Load custom locale overrides for sentinel i18n tests."""
-    from bot.core import i18n as i18n_mod
 
     # Save original state.
     orig_locales = dict(i18n_mod._locales)
@@ -469,18 +470,7 @@ class TestMuteI18n:
         ctx = _make_ctx(_GUILD_ID_ES)
         target = _make_target()
 
-        sentinel_bot.db.insert_infraction = AsyncMock(
-            return_value={
-                "id": "inf-mute-001",
-                "guildId": str(_GUILD_ID_ES),
-                "targetId": "555555555",
-                "moderatorId": "111111111",
-                "type": "MUTE",
-                "reason": "spam",
-                "active": True,
-                "createdAt": datetime.now(UTC),
-            }
-        )
+        sentinel_bot.infraction_service.mute = AsyncMock()
 
         with patch.object(cog_es, "_validate_target", new=AsyncMock(return_value=True)):
             await cog_es.mute.callback(cog_es, ctx, target, duration="1h", reason="spam")
@@ -498,18 +488,7 @@ class TestMuteI18n:
         ctx = _make_ctx(_GUILD_ID_EN)
         target = _make_target()
 
-        sentinel_bot.db.insert_infraction = AsyncMock(
-            return_value={
-                "id": "inf-mute-001",
-                "guildId": str(_GUILD_ID_EN),
-                "targetId": "555555555",
-                "moderatorId": "111111111",
-                "type": "MUTE",
-                "reason": "spam",
-                "active": True,
-                "createdAt": datetime.now(UTC),
-            }
-        )
+        sentinel_bot.infraction_service.mute = AsyncMock()
 
         with patch.object(cog, "_validate_target", new=AsyncMock(return_value=True)):
             await cog.mute.callback(cog, ctx, target, duration="1h", reason="spam")
@@ -536,18 +515,7 @@ class TestKickI18n:
         ctx = _make_ctx(_GUILD_ID_ES)
         target = _make_target()
 
-        sentinel_bot.db.insert_infraction = AsyncMock(
-            return_value={
-                "id": "inf-kick-001",
-                "guildId": str(_GUILD_ID_ES),
-                "targetId": "555555555",
-                "moderatorId": "111111111",
-                "type": "KICK",
-                "reason": "rule violation",
-                "active": True,
-                "createdAt": datetime.now(UTC),
-            }
-        )
+        sentinel_bot.infraction_service.kick = AsyncMock()
 
         with patch.object(cog_es, "_validate_target", new=AsyncMock(return_value=True)):
             await cog_es.kick.callback(cog_es, ctx, target, reason="rule violation")
@@ -577,18 +545,7 @@ class TestBanI18n:
         ctx = _make_ctx(_GUILD_ID_ES)
         target = _make_target()
 
-        sentinel_bot.db.insert_infraction = AsyncMock(
-            return_value={
-                "id": "inf-ban-001",
-                "guildId": str(_GUILD_ID_ES),
-                "targetId": "555555555",
-                "moderatorId": "111111111",
-                "type": "BAN",
-                "reason": "severe",
-                "active": True,
-                "createdAt": datetime.now(UTC),
-            }
-        )
+        sentinel_bot.infraction_service.ban = AsyncMock()
 
         with patch.object(cog_es, "_validate_target", new=AsyncMock(return_value=True)):
             await cog_es.ban.callback(cog_es, ctx, target, reason="severe")
@@ -783,8 +740,6 @@ class TestPaginatorButtonI18n:
 
     def test_paginator_es_buttons(self, tmp_path: Path) -> None:
         """Spanish guild paginator buttons show Spanish labels."""
-        from bot.core import i18n as i18n_mod
-        from bot.utils.paginator import EmbedPaginator
 
         # Load real locales (the autouse fixture replaced them with markers).
         orig_locales = dict(i18n_mod._locales)
@@ -815,8 +770,6 @@ class TestPaginatorButtonI18n:
 
     def test_paginator_en_buttons(self, tmp_path: Path) -> None:
         """English guild paginator buttons show English labels."""
-        from bot.core import i18n as i18n_mod
-        from bot.utils.paginator import EmbedPaginator
 
         orig_locales = dict(i18n_mod._locales)
         orig_guild_langs = dict(i18n_mod._guild_languages)
