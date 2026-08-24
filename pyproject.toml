@@ -166,6 +166,11 @@ known-first-party = ["bot"]
 [tool.ty.environment]
 python-version = "3.11"
 
+[tool.ty.terminal]
+# cycle-5-quality-zero S1.7: warnings are fatal. tests/ reached 0 diagnostics
+# via real fixes; revert this single commit to restore warning-tolerant ty.
+error-on-warning = true
+
 [tool.ty.rules]
 possibly-unresolved-reference = "warn"
 unused-ignore-comment = "error"
