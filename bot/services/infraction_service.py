@@ -173,6 +173,81 @@ class InfractionService:
         )
         return Infraction.from_db_row(row)
 
+    async def mute(
+        self,
+        guild_id: str,
+        target_id: str,
+        moderator_id: str,
+        reason: str,
+        expires_at: str | None = None,
+    ) -> Infraction:
+        """Insert a MUTE infraction (mirrors the tempban contract shape).
+
+        Persists via the shared ``insert_infraction`` path and returns the
+        :class:`Infraction`. The service performs NO Discord action and NO
+        audit logging: the caller (SentinelCog) owns ``member.timeout()``
+        and the single caller-side ``log_moderation_action``, exactly as
+        with tempban/unban. (``apply_escalation`` is the documented
+        service-side audit exception — system-initiated flow, design D3.)
+        """
+        row = await self._db.insert_infraction(
+            guild_id=guild_id,
+            target_id=target_id,
+            moderator_id=moderator_id,
+            type="MUTE",
+            reason=reason,
+            expires_at=expires_at,
+        )
+        return Infraction.from_db_row(row)
+
+    async def kick(
+        self,
+        guild_id: str,
+        target_id: str,
+        moderator_id: str,
+        reason: str,
+    ) -> Infraction:
+        """Insert a KICK infraction (tempban contract shape, no expiry).
+
+        Persists via the shared ``insert_infraction`` path and returns the
+        :class:`Infraction`. The service performs NO Discord action and NO
+        audit logging: the caller (SentinelCog) owns ``member.kick()`` and
+        the single caller-side ``log_moderation_action``.
+        """
+        row = await self._db.insert_infraction(
+            guild_id=guild_id,
+            target_id=target_id,
+            moderator_id=moderator_id,
+            type="KICK",
+            reason=reason,
+            expires_at=None,
+        )
+        return Infraction.from_db_row(row)
+
+    async def ban(
+        self,
+        guild_id: str,
+        target_id: str,
+        moderator_id: str,
+        reason: str,
+    ) -> Infraction:
+        """Insert a permanent BAN infraction (tempban shape, ``expires_at=None``).
+
+        Persists via the shared ``insert_infraction`` path and returns the
+        :class:`Infraction`. The service performs NO Discord action and NO
+        audit logging: the caller (SentinelCog) owns ``member.ban()`` and
+        the single caller-side ``log_moderation_action``.
+        """
+        row = await self._db.insert_infraction(
+            guild_id=guild_id,
+            target_id=target_id,
+            moderator_id=moderator_id,
+            type="BAN",
+            reason=reason,
+            expires_at=None,
+        )
+        return Infraction.from_db_row(row)
+
     async def unban(self, guild_id: str, target_id: str) -> Infraction | None:
         """Deactivate the active BAN for *target* in *guild* (idempotent).
 

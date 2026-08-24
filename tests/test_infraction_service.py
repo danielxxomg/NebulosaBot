@@ -12,12 +12,14 @@ Covers the infraction-service spec scenarios:
 
 from __future__ import annotations
 
+import inspect
 from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
 
+from bot.core.database import Database
 from bot.core.i18n import t
 from bot.models.infraction import Infraction
 from bot.services.infraction_service import (
@@ -43,8 +45,6 @@ REASON = "spamming in general"
 @pytest.fixture
 def mock_db() -> AsyncMock:
     """Return an AsyncMock standing in for Database with infraction methods."""
-    from bot.core.database import Database
-
     db = AsyncMock(spec=Database)
     db.insert_infraction = AsyncMock()
     db.get_infractions = AsyncMock()
@@ -637,3 +637,158 @@ async def test_expire_tempbans_empty_scan_returns_zero(tempban_db: AsyncMock) ->
 
     assert count == 0
     tempban_db.deactivate_infraction.assert_not_awaited()
+
+
+# ------------------------------------------------------------------
+# mute / kick / ban — spec infraction-service (cycle-5-quality-zero S3)
+# ------------------------------------------------------------------
+
+
+def _action_row(infraction_type: str) -> dict:
+    """Return a raw camelCase row for the given infraction type."""
+    return {
+        "id": f"row-{infraction_type.lower()}-001",
+        "guildId": GUILD_ID,
+        "targetId": TARGET_ID,
+        "moderatorId": MODERATOR_ID,
+        "type": infraction_type,
+        "reason": REASON,
+        "active": True,
+        "createdAt": "2025-06-15T12:00:00+00:00",
+        "expiresAt": None,
+    }
+
+
+class TestMuteKickBanServiceMethods:
+    """mute/kick/ban mirror the tempban contract shape (spec scenarios)."""
+
+    @pytest.mark.asyncio
+    async def test_mute_persists_and_returns_infraction(
+        self,
+        service: InfractionService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """mute → MUTE row inserted, persisted Infraction returned."""
+        row = _action_row("MUTE")
+        mock_db.insert_infraction.return_value = row
+
+        result = await service.mute(GUILD_ID, TARGET_ID, MODERATOR_ID, REASON)
+
+        assert isinstance(result, Infraction)
+        assert result.type == "MUTE"
+        mock_db.insert_infraction.assert_awaited_once_with(
+            guild_id=GUILD_ID,
+            target_id=TARGET_ID,
+            moderator_id=MODERATOR_ID,
+            type="MUTE",
+            reason=REASON,
+            expires_at=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_mute_accepts_optional_expiry(
+        self,
+        service: InfractionService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """Timed mute forwards expires_at to the shared insert path."""
+        expiry = "2025-06-15T13:00:00+00:00"
+        mock_db.insert_infraction.return_value = _action_row("MUTE")
+
+        await service.mute(GUILD_ID, TARGET_ID, MODERATOR_ID, REASON, expires_at=expiry)
+
+        kwargs = mock_db.insert_infraction.await_args.kwargs
+        assert kwargs["expires_at"] == expiry
+
+    @pytest.mark.asyncio
+    async def test_kick_persists_and_returns_infraction(
+        self,
+        service: InfractionService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """kick → KICK row inserted, persisted Infraction returned."""
+        row = _action_row("KICK")
+        mock_db.insert_infraction.return_value = row
+
+        result = await service.kick(GUILD_ID, TARGET_ID, MODERATOR_ID, REASON)
+
+        assert isinstance(result, Infraction)
+        assert result.type == "KICK"
+        mock_db.insert_infraction.assert_awaited_once_with(
+            guild_id=GUILD_ID,
+            target_id=TARGET_ID,
+            moderator_id=MODERATOR_ID,
+            type="KICK",
+            reason=REASON,
+            expires_at=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_ban_persists_and_returns_infraction_with_null_expiry(
+        self,
+        service: InfractionService,
+        mock_db: AsyncMock,
+    ) -> None:
+        """ban → BAN row inserted with expires_at=None (permanent)."""
+        row = _action_row("BAN")
+        mock_db.insert_infraction.return_value = row
+
+        result = await service.ban(GUILD_ID, TARGET_ID, MODERATOR_ID, REASON)
+
+        assert isinstance(result, Infraction)
+        assert result.type == "BAN"
+        assert result.expires_at is None
+        mock_db.insert_infraction.assert_awaited_once_with(
+            guild_id=GUILD_ID,
+            target_id=TARGET_ID,
+            moderator_id=MODERATOR_ID,
+            type="BAN",
+            reason=REASON,
+            expires_at=None,
+        )
+
+    def test_service_performs_no_discord_action(self) -> None:
+        """Signatures carry identifiers only — no discord objects to mutate.
+
+        The caller (SentinelCog) owns timeout()/kick()/ban(), exactly as
+        with tempban; the service cannot touch Discord because no Member/
+        Guild ever reaches it.
+        """
+        for method_name in ("mute", "kick", "ban"):
+            method = getattr(InfractionService, method_name)
+            params = list(inspect.signature(method).parameters)
+            assert params == ["self", "guild_id", "target_id", "moderator_id", "reason"] or params == [
+                "self",
+                "guild_id",
+                "target_id",
+                "moderator_id",
+                "reason",
+                "expires_at",
+            ], f"{method_name} must take identifier args only, got {params}"
+
+    def test_async_contract_holds(self) -> None:
+        """mute/kick/ban are coroutine functions."""
+        for method_name in ("mute", "kick", "ban"):
+            assert inspect.iscoroutinefunction(getattr(InfractionService, method_name)), (
+                f"{method_name} must be async"
+            )
+
+    @pytest.mark.asyncio
+    async def test_caller_owns_audit_exactly_one_log_site(
+        self,
+        escalation_service: InfractionService,
+        mock_logging: AsyncMock,
+        mock_db: AsyncMock,
+    ) -> None:
+        """The service NEVER audits mute/kick/ban — the cog callsite does.
+
+        Audit-path consistency (spec): exactly one log_moderation_action
+        per executed action, produced by the caller; apply_escalation is
+        the documented service-side exception (system-initiated flow).
+        """
+        mock_db.insert_infraction.return_value = _action_row("BAN")
+
+        for action in (escalation_service.mute, escalation_service.kick, escalation_service.ban):
+            await action(GUILD_ID, TARGET_ID, MODERATOR_ID, REASON)
+
+        mock_logging.log_moderation_action.assert_not_awaited()
