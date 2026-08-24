@@ -1893,7 +1893,7 @@ async def test_create_ticket_channel_renames_if_number_differs(
     )
 
     # Channel renamed to match actual ticket number.
-    channel.edit.assert_awaited_once_with(name="support-testuser-0042")
+    guild.create_text_channel.return_value.edit.assert_awaited_once_with(name="support-testuser-0042")
     assert ticket.ticket_number == 42
 
 
@@ -1920,7 +1920,7 @@ async def test_create_ticket_channel_no_rename_if_name_matches(
     )
 
     # No rename needed.
-    channel.edit.assert_not_awaited()
+    guild.create_text_channel.return_value.edit.assert_not_awaited()
     assert ticket.ticket_number == 1
 
 
@@ -2140,7 +2140,7 @@ async def test_create_ticket_channel_renames_with_sanitized_actual(
     )
 
     # Channel renamed to sanitized actual name.
-    channel.edit.assert_awaited_once_with(name="soporte-testuser-0042")
+    guild.create_text_channel.return_value.edit.assert_awaited_once_with(name="soporte-testuser-0042")
     assert ticket.ticket_number == 42
 
 
@@ -2396,8 +2396,8 @@ def _ticket_model(*, ticket_id: str = "ticket-uuid-close") -> Ticket:
         author_id="111111111",
         channel_id="888888888",
         status="open",
-        created_at="2026-01-15T10:00:00",
-        last_activity="2026-01-15T10:00:00",
+        created_at=datetime(2026, 1, 15, 10, 0, 0, tzinfo=UTC),
+        last_activity=datetime(2026, 1, 15, 10, 0, 0, tzinfo=UTC),
     )
 
 

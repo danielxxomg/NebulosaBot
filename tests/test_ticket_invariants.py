@@ -9,10 +9,14 @@ raise ``ValueError`` on invariant violations. They are wired into
 from __future__ import annotations
 
 import hashlib
+from typing import Any
 
 import pytest
 
 from bot.services.ticket_invariants import (
+    AuthorityDecision,
+    GlobalMutationGrant,
+    RepairAuthority,
     check_can_add_note,
     check_can_claim,
     check_can_close,
@@ -466,11 +470,11 @@ def test_parse_ticket_ref_garbage_returns_none() -> None:
 # ===========================================================================
 
 
-def _authority(**overrides: object) -> object:
+def _authority(**overrides: Any) -> RepairAuthority:
     """Build a :class:`RepairAuthority` with sane same-guild defaults."""
     from bot.services.ticket_invariants import RepairAuthority
 
-    defaults: dict[str, object] = {
+    defaults: dict[str, Any] = {
         "actor_id": "actor-1",
         "guild_id": "guildA",
         "target_guild_id": "guildA",
@@ -484,11 +488,11 @@ def _authority(**overrides: object) -> object:
     return RepairAuthority(**defaults)
 
 
-def _grant(**overrides: object) -> object:
+def _grant(**overrides: Any) -> GlobalMutationGrant:
     """Build a :class:`GlobalMutationGrant` matching the default authority."""
     from bot.services.ticket_invariants import GlobalMutationGrant
 
-    defaults: dict[str, object] = {
+    defaults: dict[str, Any] = {
         "actor_id": "actor-1",
         "scope": "global",
         "target_guild_id": "guildA",
@@ -499,7 +503,9 @@ def _grant(**overrides: object) -> object:
     return GlobalMutationGrant(**defaults)
 
 
-def _evaluate(authority: object, grant: object | None = None) -> object:
+def _evaluate(
+    authority: RepairAuthority, grant: GlobalMutationGrant | None = None
+) -> AuthorityDecision:
     from bot.services.ticket_invariants import evaluate_repair_authority
 
     return evaluate_repair_authority(authority, global_grant=grant)

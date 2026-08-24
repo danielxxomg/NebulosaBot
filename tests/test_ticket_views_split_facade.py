@@ -132,7 +132,7 @@ def test_panel_button_label_uses_t_guild_id_dynamic() -> None:
 
     with patch("bot.views.tickets.t", return_value="Abrir Ticket") as mock_t:
         view = TicketPanelView(guild_id="999")
-        btn = next(c for c in view.children if getattr(c, "custom_id", None) == "ticket:open")
+        btn = next(c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:open")
         assert btn.label == "Abrir Ticket"
         mock_t.assert_any_call("999", "tickets.panel.open_button")
 

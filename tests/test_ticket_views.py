@@ -9,10 +9,11 @@ Covers Phase 2 of the ticket-category-fields change:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from bot.views.tickets import TicketIntakeModal
+    from bot.views.tickets import TicketIntakeModal, _EditCategorySelect
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -302,8 +303,8 @@ class TestBuildTicketEmbedCustomFields:
             author_id="456",
             channel_id="789",
             status="open",
-            created_at="2026-01-01T00:00:00",
-            last_activity="2026-01-01T00:00:00",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            last_activity=datetime(2026, 1, 1, tzinfo=UTC),
             custom_fields=None,
         )
         embed = build_ticket_embed(ticket, guild_id="123")
@@ -321,8 +322,8 @@ class TestBuildTicketEmbedCustomFields:
             author_id="456",
             channel_id="789",
             status="open",
-            created_at="2026-01-01T00:00:00",
-            last_activity="2026-01-01T00:00:00",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            last_activity=datetime(2026, 1, 1, tzinfo=UTC),
             custom_fields={},
         )
         embed = build_ticket_embed(ticket, guild_id="123")
@@ -339,8 +340,8 @@ class TestBuildTicketEmbedCustomFields:
             author_id="456",
             channel_id="789",
             status="open",
-            created_at="2026-01-01T00:00:00",
-            last_activity="2026-01-01T00:00:00",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            last_activity=datetime(2026, 1, 1, tzinfo=UTC),
             custom_fields={"player_nick": "DarkSlayer42", "evidence_url": "https://imgur.com/abc"},
         )
         definitions = [
@@ -370,8 +371,8 @@ class TestBuildTicketEmbedCustomFields:
             author_id="456",
             channel_id="789",
             status="open",
-            created_at="2026-01-01T00:00:00",
-            last_activity="2026-01-01T00:00:00",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            last_activity=datetime(2026, 1, 1, tzinfo=UTC),
             custom_fields={"evidence": long_value},
         )
         definitions = [
@@ -392,8 +393,8 @@ class TestBuildTicketEmbedCustomFields:
             author_id="456",
             channel_id="789",
             status="open",
-            created_at="2026-01-01T00:00:00",
-            last_activity="2026-01-01T00:00:00",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            last_activity=datetime(2026, 1, 1, tzinfo=UTC),
             custom_fields={"removed_field": "some value"},
         )
         embed = build_ticket_embed(ticket, guild_id="123", field_definitions=[])
@@ -410,8 +411,8 @@ class TestBuildTicketEmbedCustomFields:
             channel_id="789",
             status="claimed",
             claimed_by="999",
-            created_at="2026-01-01T00:00:00",
-            last_activity="2026-01-01T00:00:00",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            last_activity=datetime(2026, 1, 1, tzinfo=UTC),
             custom_fields={"player_nick": "DarkSlayer42"},
         )
         definitions = [
@@ -1147,8 +1148,8 @@ class TestModalModRoleResolution:
             author_id="456",
             channel_id="789",
             status="open",
-            created_at="2026-01-01",
-            last_activity="2026-01-01",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            last_activity=datetime(2026, 1, 1, tzinfo=UTC),
         )
         mock_channel = MagicMock()
         sent_message = AsyncMock()
@@ -1194,8 +1195,8 @@ class TestModalModRoleResolution:
             author_id="456",
             channel_id="789",
             status="open",
-            created_at="2026-01-01",
-            last_activity="2026-01-01",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            last_activity=datetime(2026, 1, 1, tzinfo=UTC),
         )
         mock_channel = MagicMock()
         sent_message = AsyncMock()
@@ -1241,8 +1242,8 @@ class TestModalModRoleResolution:
             author_id="456",
             channel_id="789",
             status="open",
-            created_at="2026-01-01",
-            last_activity="2026-01-01",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            last_activity=datetime(2026, 1, 1, tzinfo=UTC),
         )
         mock_channel = MagicMock()
         sent_message = AsyncMock()
@@ -1544,7 +1545,7 @@ class TestEditCategorySelect:
         guild: MagicMock,
         categories: list | None = None,
         ticket_row: dict | None = None,
-    ) -> object:
+    ) -> _EditCategorySelect:
         """Build an _EditCategorySelect with real category options."""
         from bot.models.ticket_category import TicketCategory
         from bot.views.tickets import _EditCategorySelect
@@ -1638,8 +1639,8 @@ class TestEditCategorySelect:
             author_id="111111111",
             channel_id="888888888",
             status="open",
-            created_at="2026-01-15T10:00:00+00:00",
-            last_activity="2026-01-15T10:00:00+00:00",
+            created_at=datetime(2026, 1, 15, 10, 0, 0, tzinfo=UTC),
+            last_activity=datetime(2026, 1, 15, 10, 0, 0, tzinfo=UTC),
             category_id="cat-uuid-2",
         )
         interaction.client.ticket_service.edit_ticket_category = AsyncMock(
@@ -1811,8 +1812,8 @@ class TestEditCategorySelect:
             author_id="111111111",
             channel_id="888888888",
             status="open",
-            created_at="2026-01-15T10:00:00+00:00",
-            last_activity="2026-01-15T10:00:00+00:00",
+            created_at=datetime(2026, 1, 15, 10, 0, 0, tzinfo=UTC),
+            last_activity=datetime(2026, 1, 15, 10, 0, 0, tzinfo=UTC),
             category_id="cat-uuid-2",
         )
         # rename_succeeded=False — the channel rename failed.
@@ -1849,8 +1850,8 @@ class TestEditCategorySelect:
             author_id="111111111",
             channel_id="888888888",
             status="open",
-            created_at="2026-01-15T10:00:00+00:00",
-            last_activity="2026-01-15T10:00:00+00:00",
+            created_at=datetime(2026, 1, 15, 10, 0, 0, tzinfo=UTC),
+            last_activity=datetime(2026, 1, 15, 10, 0, 0, tzinfo=UTC),
             category_id="cat-uuid-2",
         )
         interaction.client.ticket_service.edit_ticket_category = AsyncMock(
@@ -1938,8 +1939,8 @@ class TestEditCategorySelect:
             author_id="111111111",
             channel_id="888888888",
             status="open",
-            created_at="2026-01-15T10:00:00+00:00",
-            last_activity="2026-01-15T10:00:00+00:00",
+            created_at=datetime(2026, 1, 15, 10, 0, 0, tzinfo=UTC),
+            last_activity=datetime(2026, 1, 15, 10, 0, 0, tzinfo=UTC),
             category_id="cat-uuid-2",
         )
         interaction.client.ticket_service.edit_ticket_category = AsyncMock(
@@ -1987,8 +1988,8 @@ class TestEditCategorySelect:
             author_id="111111111",
             channel_id="888888888",
             status="open",
-            created_at="2026-01-15T10:00:00+00:00",
-            last_activity="2026-01-15T10:00:00+00:00",
+            created_at=datetime(2026, 1, 15, 10, 0, 0, tzinfo=UTC),
+            last_activity=datetime(2026, 1, 15, 10, 0, 0, tzinfo=UTC),
             category_id="cat-uuid-2",
         )
         interaction.client.ticket_service.edit_ticket_category = AsyncMock(
@@ -2024,8 +2025,8 @@ class TestEditCategorySelect:
             author_id="111111111",
             channel_id="888888888",
             status="open",
-            created_at="2026-01-15T10:00:00+00:00",
-            last_activity="2026-01-15T10:00:00+00:00",
+            created_at=datetime(2026, 1, 15, 10, 0, 0, tzinfo=UTC),
+            last_activity=datetime(2026, 1, 15, 10, 0, 0, tzinfo=UTC),
             category_id="cat-uuid-2",
         )
         interaction.client.ticket_service.edit_ticket_category = AsyncMock(

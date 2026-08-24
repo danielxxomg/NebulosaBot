@@ -987,6 +987,7 @@ class TestSlashCommands:
 
         ctx.send.assert_awaited_once()
         embed = ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
         assert "Server Only" in embed.title or "Solo Servidores" in embed.title
 
     async def test_list_categories_shows_categories(
@@ -1006,6 +1007,7 @@ class TestSlashCommands:
 
         ctx.send.assert_awaited_once()
         embed = ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
         assert "Categories" in embed.title
 
     async def test_list_categories_empty(
@@ -1025,6 +1027,7 @@ class TestSlashCommands:
 
         ctx.send.assert_awaited_once()
         embed = ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
         assert "No Categories" in embed.title
 
     async def test_create_category_creates(
@@ -1045,6 +1048,7 @@ class TestSlashCommands:
 
         ctx.send.assert_awaited_once()
         embed = ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
         assert "Created" in embed.title
 
     async def test_create_category_duplicate_name(
@@ -1064,6 +1068,7 @@ class TestSlashCommands:
 
         ctx.send.assert_awaited_once()
         embed = ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
         assert "Duplicate" in embed.title
 
     async def test_delete_category_not_found(
@@ -1083,6 +1088,7 @@ class TestSlashCommands:
 
         ctx.send.assert_awaited_once()
         embed = ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
         assert "Not Found" in embed.title
 
     async def test_delete_category_wrong_guild(
@@ -1103,6 +1109,7 @@ class TestSlashCommands:
 
         ctx.send.assert_awaited_once()
         embed = ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
         assert "Wrong Guild" in embed.title or "Servidor Incorrecto" in embed.title
 
     async def test_delete_category_in_use(
@@ -1124,6 +1131,7 @@ class TestSlashCommands:
 
         ctx.send.assert_awaited_once()
         embed = ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
         assert "In Use" in embed.title
 
     async def test_delete_category_success(
@@ -1146,6 +1154,7 @@ class TestSlashCommands:
 
         ctx.send.assert_awaited_once()
         embed = ctx.send.call_args.kwargs.get("embed")
+        assert embed is not None
         assert "Deleted" in embed.title
 
 
