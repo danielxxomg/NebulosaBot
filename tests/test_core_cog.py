@@ -64,7 +64,7 @@ def _load_i18n(tmp_path: Path) -> None:
                 "cache_none": "CACHE_NONE",
                 "guild_config_field": "GUILD_FIELD",
                 "guild_config_dm": "GUILD_DM",
-                "guild_config_loaded": "LOADED {prefix} {language}",
+                "guild_config_loaded": "LOADED {language}",
                 "guild_config_missing": "GUILD_MISSING",
                 "latency_field": "LAT_FIELD",
                 "latency_value": "{latency}ms",
@@ -72,7 +72,7 @@ def _load_i18n(tmp_path: Path) -> None:
             },
             "help": {
                 "title": "HELP_{module}",
-                "description": "{count} cmds {prefix} /",
+                "description": "{count} cmds /",
                 "no_module": "NO_MOD_{module}",
                 "no_module_desc": "USE_HELP",
                 "no_commands": "NO_CMDS",
@@ -174,7 +174,6 @@ class TestStatusI18n:
 
         ctx = _make_ctx()
         ctx.guild_config = MagicMock()
-        ctx.guild_config.prefix = "nb!"
         ctx.guild_config.language = "es"
 
         await cog.status.callback(cog, ctx)
@@ -192,7 +191,6 @@ class TestStatusI18n:
 
         ctx = _make_ctx()
         ctx.guild_config = MagicMock()
-        ctx.guild_config.prefix = "nb!"
         ctx.guild_config.language = "es"
 
         await cog.status.callback(cog, ctx)
@@ -201,6 +199,26 @@ class TestStatusI18n:
         fields = {f.name: f.value for f in embed.fields}
         assert "DB_FIELD" in fields
         assert "CACHE_FIELD" in fields
+
+    @pytest.mark.asyncio
+    async def test_status_guild_config_field_has_no_prefix(self, cog: CoreCog) -> None:
+        """Slash-only policy: the guild-config field MUST NOT mention a prefix."""
+        cog.bot.db = AsyncMock()
+        cog.bot.db.health_check = AsyncMock(return_value=True)
+        cog.bot.cache = MagicMock()
+        cog.bot.cache._store = {}
+
+        ctx = _make_ctx()
+        ctx.guild_config = MagicMock()
+        ctx.guild_config.language = "es"
+
+        await cog.status.callback(cog, ctx)
+
+        embed = ctx.send.call_args[1]["embed"]
+        fields = {f.name: f.value for f in embed.fields}
+        value = fields["GUILD_FIELD"]
+        assert value == "LOADED es", "guild_config_loaded must interpolate language only"
+        assert "nb!" not in value and "prefix" not in value.lower()
 
 
 # ---------------------------------------------------------------------------

@@ -15,7 +15,6 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from bot.constants import FALLBACK_PREFIX
 from bot.core.context import NebulosaContext
 from bot.core.i18n import SLASH_DESCRIPTIONS, t
 from bot.utils.brand import INFO, SUCCESS
@@ -113,12 +112,8 @@ class CoreCog(commands.Cog, name="Core"):
         else:
             config = ctx.guild_config
             if config is not None:
-                guild_label = t(
-                    guild_id,
-                    "core.status.guild_config_loaded",
-                    prefix=config.prefix,
-                    language=config.language,
-                )
+                # Slash-only policy: prefix is unread at runtime.
+                guild_label = t(guild_id, "core.status.guild_config_loaded", language=config.language)
             else:
                 guild_label = t(guild_id, "core.status.guild_config_missing")
 
@@ -167,8 +162,7 @@ class CoreCog(commands.Cog, name="Core"):
 
         # -- single-module help --
         if module is not None:
-            prefix = _resolve_prefix(ctx)
-            embed = _build_cog_help_embed(self.bot, module, prefix, guild_id=guild_id)
+            embed = _build_cog_help_embed(self.bot, module, guild_id=guild_id)
             if embed is None:
                 await ctx.send(
                     embed=error_embed(
@@ -261,13 +255,6 @@ async def teardown(bot: NebulosaBot) -> None:
 # ======================================================================
 
 
-def _resolve_prefix(ctx: NebulosaContext) -> str:
-    """Return the active prefix for the context, or the fallback default."""
-    if ctx.guild is not None and ctx.guild_config is not None:
-        return ctx.guild_config.prefix
-    return FALLBACK_PREFIX
-
-
 def _resolve_command_description(
     cmd: commands.Command[Any, Any, Any],
     guild_id: int | None,
@@ -282,17 +269,22 @@ def _resolve_command_description(
     i18n_key = SLASH_DESCRIPTIONS.get(cmd.qualified_name) or SLASH_DESCRIPTIONS.get(cmd.name)
     if i18n_key is not None:
         return t(guild_id, i18n_key)
-    return cmd.description or "No description."
+    if cmd.description:
+        return cmd.description
+    # Slash-only help: localized fallback for undescribed commands.
+    return t(guild_id, "core.help.no_description")
 
 
 def _build_cog_help_embed(
     bot: NebulosaBot,
     cog_name: str,
-    prefix: str,
     *,
     guild_id: int | None = None,
 ) -> discord.Embed | None:
     """Build a single embed for *cog_name* showing its commands.
+
+    Every entry renders slash syntax only (bot-core spec): zero prefix
+    examples appear anywhere in the output.
 
     Returns ``None`` if the cog is not loaded or has no commands.
     """
@@ -312,7 +304,6 @@ def _build_cog_help_embed(
             guild_id,
             "core.help.description",
             count=len(visible),
-            prefix=prefix,
         ),
         color=INFO,
         timestamp=datetime.now(UTC),
@@ -320,12 +311,10 @@ def _build_cog_help_embed(
 
     for cmd in visible:
         desc = _resolve_command_description(cmd, guild_id)
-        is_hybrid = isinstance(cmd, commands.HybridCommand)
-        suffix = " [prefix + slash]" if is_hybrid else " [prefix]"
 
         embed.add_field(
-            name=(f"`{prefix}{cmd.name}` / `/{cmd.name}`" if is_hybrid else f"`{prefix}{cmd.name}`"),
-            value=f"{desc}{suffix}",
+            name=f"`/{cmd.name}`",
+            value=desc,
             inline=False,
         )
 
@@ -339,17 +328,14 @@ def _build_cog_help_embed(
 def _build_help_pages(bot: NebulosaBot, ctx: NebulosaContext) -> list[discord.Embed]:
     """Build one embed per loaded cog showing its commands.
 
-    Each embed shows:
-    - Module name and command count
-    - Command name, description, and whether it's hybrid (prefix + slash)
-    - Fetches prefix from context for consistent display
+    Each embed shows the module name, command count, and one `/command`
+    entry per visible command with its localized description.
     """
-    prefix = _resolve_prefix(ctx)
     guild_id = ctx.guild.id if ctx.guild else None
     pages: list[discord.Embed] = []
 
     for cog_name in bot.cogs:
-        embed = _build_cog_help_embed(bot, cog_name, prefix, guild_id=guild_id)
+        embed = _build_cog_help_embed(bot, cog_name, guild_id=guild_id)
         if embed is None:
             continue  # skip empty / missing cogs
         pages.append(embed)

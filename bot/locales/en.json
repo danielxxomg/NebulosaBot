@@ -231,7 +231,7 @@
       "cache_none": "❌ Not initialised",
       "guild_config_field": "Guild Config",
       "guild_config_dm": "N/A (DM)",
-      "guild_config_loaded": "✅ Loaded\nPrefix: `{prefix}`\nLanguage: `{language}`",
+      "guild_config_loaded": "✅ Loaded\nLanguage: `{language}`",
       "guild_config_missing": "⚠️ Not loaded",
       "latency_field": "Latency",
       "latency_value": "{latency} ms",
@@ -239,10 +239,11 @@
     },
     "help": {
       "title": "📚 {module} Commands",
-      "description": "{count} command(s) available.\nPrefix: `{prefix}`  •  Slash: `/`",
+      "description": "{count} command(s) available. Use `/command` syntax.",
       "no_module": "Module '{module}' not found.",
       "no_module_desc": "Use `/help` without arguments to see available modules.",
       "no_commands": "No commands are registered yet.",
+      "no_description": "No description available yet.",
       "footer": "NebulosaBot • /help",
       "prev_button": "◀ Previous",
       "next_button": "Next ▶"

@@ -1,7 +1,9 @@
 """Unit tests for help builder internals in bot.cogs.core.
 
-Tests _build_cog_help_embed, _build_help_pages, and _resolve_prefix
-using mock bot/cog/context objects. No Discord API calls.
+Tests _build_cog_help_embed and _build_help_pages using mock bot/cog/context
+objects. No Discord API calls. Slash-only policy: every entry renders
+``/command`` syntax (prefix resolution was removed with the inert prefix
+surface — see tests/test_bot_core_prefix.py).
 """
 
 from __future__ import annotations
@@ -11,8 +13,7 @@ from unittest.mock import MagicMock
 import discord
 from discord.ext import commands
 
-from bot.cogs.core import _build_cog_help_embed, _build_help_pages, _resolve_prefix
-from bot.constants import FALLBACK_PREFIX
+from bot.cogs.core import _build_cog_help_embed, _build_help_pages
 from bot.core.i18n import load_locales, set_guild_language
 
 # Ensure real locales are loaded for i18n-aware tests.
@@ -49,43 +50,69 @@ def _make_bot(cogs_map: dict[str, MagicMock]) -> MagicMock:
     return bot
 
 
-def _make_ctx(prefix: str | None = None, guild_id: int = 123456789) -> MagicMock:
-    """Create a mock NebulosaContext with optional guild config."""
+def _make_ctx(guild_id: int = 123456789) -> MagicMock:
+    """Create a mock NebulosaContext (guild config no longer read by builders)."""
     ctx = MagicMock()
     ctx.guild = MagicMock()
     ctx.guild.id = guild_id
-    if prefix is not None:
-        ctx.guild_config = MagicMock()
-        ctx.guild_config.prefix = prefix
-    else:
-        ctx.guild_config = None
+    ctx.guild_config = None
     return ctx
 
 
 # ---------------------------------------------------------------------------
-# _resolve_prefix
+# Slash-only help syntax (cycle-5-quality-zero, bot-core spec)
 # ---------------------------------------------------------------------------
 
 
-class TestResolvePrefix:
-    """_resolve_prefix reads guild config prefix or falls back to default."""
+class TestHelpSlashOnlySyntax:
+    """Help output MUST show /command syntax only — zero prefix examples."""
 
-    def test_prefix_from_guild_config(self) -> None:
-        """Guild with custom prefix returns that prefix."""
-        ctx = _make_ctx(prefix="!")
-        assert _resolve_prefix(ctx) == "!"
+    def test_entries_show_slash_name_only(self) -> None:
+        """Every entry renders as `/name` — no prefix-prefixed variants."""
+        cmd = _make_command("ping", description="Check latency", hybrid=True)
+        cog = _make_cog([cmd])
+        bot = _make_bot({"Core": cog})
 
-    def test_prefix_fallback_no_guild(self) -> None:
-        """DM context (no guild) returns FALLBACK_PREFIX."""
-        ctx = MagicMock()
-        ctx.guild = None
-        ctx.guild_config = None
-        assert _resolve_prefix(ctx) == FALLBACK_PREFIX
+        embed = _build_cog_help_embed(bot, "Core", guild_id=None)
 
-    def test_prefix_fallback_no_config(self) -> None:
-        """Guild present but no config returns FALLBACK_PREFIX."""
-        ctx = _make_ctx(prefix=None)
-        assert _resolve_prefix(ctx) == FALLBACK_PREFIX
+        assert embed is not None
+        assert embed.fields[0].name == "`/ping`"
+
+    def test_prefix_only_commands_also_show_slash_syntax(self) -> None:
+        """Non-hybrid legacy entries still display `/name` (no `[prefix]` suffix)."""
+        cmd = _make_command("legacy", description="Old command", hybrid=False)
+        cog = _make_cog([cmd])
+        bot = _make_bot({"Legacy": cog})
+
+        embed = _build_cog_help_embed(bot, "Legacy", guild_id=None)
+
+        assert embed is not None
+        assert embed.fields[0].name == "`/legacy`"
+        assert embed.fields[0].value is not None and "[prefix]" not in embed.fields[0].value
+
+    def test_no_hybrid_suffix_in_values(self) -> None:
+        """The `[prefix + slash]` suffix is gone from every entry."""
+        cmd = _make_command("ping", description="Check latency", hybrid=True)
+        cog = _make_cog([cmd])
+        bot = _make_bot({"Core": cog})
+
+        embed = _build_cog_help_embed(bot, "Core", guild_id=None)
+
+        assert embed is not None
+        assert embed.fields[0].value is not None and "[prefix" not in embed.fields[0].value
+
+    def test_no_prefix_example_in_embed_text(self) -> None:
+        """Real locales: neither the fallback nor any `Prefix:` line appears."""
+        cmd = _make_command("ping", description="Check latency", hybrid=True)
+        cog = _make_cog([cmd])
+        bot = _make_bot({"Core": cog})
+
+        embed = _build_cog_help_embed(bot, "Core", guild_id=None)
+
+        assert embed is not None
+        description = embed.description or ""
+        assert "nb!" not in description
+        assert "Prefijo" not in description and "Prefix" not in description
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +131,7 @@ class TestBuildCogHelpEmbed:
         cog = _make_cog([cmd1, cmd2, cmd3])
         bot = _make_bot({"Core": cog})
 
-        embed = _build_cog_help_embed(bot, "Core", "nb!")
+        embed = _build_cog_help_embed(bot, "Core")
 
         assert embed is not None
         assert isinstance(embed, discord.Embed)
@@ -116,33 +143,24 @@ class TestBuildCogHelpEmbed:
         cog = _make_cog([hidden])
         bot = _make_bot({"Core": cog})
 
-        assert _build_cog_help_embed(bot, "Core", "nb!") is None
+        assert _build_cog_help_embed(bot, "Core") is None
 
     def test_returns_none_for_missing_cog(self) -> None:
         """Non-existent cog name returns None."""
         bot = _make_bot({})
 
-        assert _build_cog_help_embed(bot, "Nonexistent", "nb!") is None
+        assert _build_cog_help_embed(bot, "Nonexistent") is None
 
-    def test_hybrid_commands_show_slash_suffix(self) -> None:
-        """Hybrid commands get [prefix + slash] suffix in field value."""
+    def test_field_values_have_no_visibility_suffix(self) -> None:
+        """Entries carry the plain localized description — no suffix markers."""
         cmd = _make_command("ping", description="Check latency", hybrid=True)
         cog = _make_cog([cmd])
         bot = _make_bot({"Core": cog})
 
-        embed = _build_cog_help_embed(bot, "Core", "nb!")
+        embed = _build_cog_help_embed(bot, "Core")
         assert embed is not None
-        assert embed.fields[0].value is not None and "[prefix + slash]" in embed.fields[0].value
-
-    def test_prefix_only_commands_show_prefix_suffix(self) -> None:
-        """Non-hybrid commands get [prefix] suffix in field value."""
-        cmd = _make_command("legacy", description="Old command", hybrid=False)
-        cog = _make_cog([cmd])
-        bot = _make_bot({"Legacy": cog})
-
-        embed = _build_cog_help_embed(bot, "Legacy", "nb!")
-        assert embed is not None
-        assert embed.fields[0].value is not None and "[prefix]" in embed.fields[0].value
+        value = embed.fields[0].value
+        assert value is not None and "[prefix" not in value
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +183,7 @@ class TestBuildHelpPages:
             "Empty": empty_cog,
         }
         bot = _make_bot(cogs)
-        ctx = _make_ctx(prefix="nb!")
+        ctx = _make_ctx()
 
         pages = _build_help_pages(bot, ctx)
 
@@ -178,7 +196,7 @@ class TestBuildHelpPages:
             "Empty2": _make_cog([]),
         }
         bot = _make_bot(cogs)
-        ctx = _make_ctx(prefix="nb!")
+        ctx = _make_ctx()
 
         pages = _build_help_pages(bot, ctx)
 
@@ -232,7 +250,7 @@ class TestHelpDescriptionsLocalized:
         cog = _make_cog([cmd])
         bot = _make_bot({"Core": cog})
 
-        embed = _build_cog_help_embed(bot, "Core", "nb!", guild_id=111111111)
+        embed = _build_cog_help_embed(bot, "Core", guild_id=111111111)
 
         assert embed is not None
         assert embed.fields[0].value is not None
@@ -253,7 +271,7 @@ class TestHelpDescriptionsLocalized:
         cog = _make_cog([cmd])
         bot = _make_bot({"Core": cog})
 
-        embed = _build_cog_help_embed(bot, "Core", "nb!", guild_id=222222222)
+        embed = _build_cog_help_embed(bot, "Core", guild_id=222222222)
 
         assert embed is not None
         assert embed.fields[0].value is not None
@@ -273,10 +291,32 @@ class TestHelpDescriptionsLocalized:
         cog = _make_cog([cmd])
         bot = _make_bot({"Core": cog})
 
-        embed = _build_cog_help_embed(bot, "Core", "nb!", guild_id=333333333)
+        embed = _build_cog_help_embed(bot, "Core", guild_id=333333333)
 
         assert embed is not None
         assert embed.fields[0].value is not None and "Some raw description" in embed.fields[0].value
+
+    def test_empty_description_uses_localized_fallback(self) -> None:
+        """Commands with no description MUST get the localized fallback text.
+
+        Blocks the hardcoded 'No description.' English literal — user-facing
+        strings in cogs go through t() (AGENTS.md i18n rule).
+        """
+        set_guild_language("444444444", "en")
+        cmd = _make_locale_str_command(
+            "custom_cmd",
+            es_description="",
+            key="slash.descriptions.custom_cmd",
+        )
+        cmd.name = "custom_cmd"
+        cog = _make_cog([cmd])
+        bot = _make_bot({"Core": cog})
+
+        embed = _build_cog_help_embed(bot, "Core", guild_id=444444444)
+
+        assert embed is not None
+        value = embed.fields[0].value or ""
+        assert value == "No description available yet.", "must resolve via core.help.no_description"
 
     def test_none_guild_id_uses_default_locale(self) -> None:
         """guild_id=None MUST use the default locale (Spanish)."""
@@ -288,7 +328,7 @@ class TestHelpDescriptionsLocalized:
         cog = _make_cog([cmd])
         bot = _make_bot({"Core": cog})
 
-        embed = _build_cog_help_embed(bot, "Core", "nb!", guild_id=None)
+        embed = _build_cog_help_embed(bot, "Core", guild_id=None)
 
         assert embed is not None
         assert embed.fields[0].value is not None and "latencia WebSocket" in embed.fields[0].value
