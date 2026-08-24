@@ -515,7 +515,7 @@ class TestValidatePanels:
         bot.guild_service.update_guild_panel.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_validation_runs_after_backfill(self) -> None:
+    async def test_validation_runs_after_backfill(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """_validate_panels MUST be called at the end of on_ready, after backfill gather."""
         bot = _make_bot()
         bot.guild_service = MagicMock()
@@ -535,8 +535,8 @@ class TestValidatePanels:
         async def mock_validate() -> None:
             call_order.append("validate")
 
-        bot.guild_service.ensure_guild_exists = mock_ensure
-        bot._validate_panels = mock_validate
+        monkeypatch.setattr(bot.guild_service, "ensure_guild_exists", mock_ensure)
+        monkeypatch.setattr(bot, "_validate_panels", mock_validate)
 
         guild_a = MagicMock()
         guild_a.id = 111
@@ -579,7 +579,9 @@ class TestGlobalErrorHandlersLogExceptions:
         with patch("bot.bot.logger") as logger_mock:
             logger_mock.error.side_effect = lambda *a, **kw: order.append("log")
             interaction.response.send_message.side_effect = _respond
-            await bot.on_app_command_error(interaction, error)
+            # Deliberately passes RuntimeError (not AppCommandError): the handler must
+            # log-and-respond to ANY unexpected exception, not just typed ones.
+            await bot.on_app_command_error(interaction, error)  # ty: ignore[invalid-argument-type]
 
         logger_mock.error.assert_called_once()
         assert logger_mock.error.call_args.kwargs.get("exc_info") is error

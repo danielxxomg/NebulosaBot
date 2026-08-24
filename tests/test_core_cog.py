@@ -215,9 +215,10 @@ class TestHelpI18n:
     async def test_help_unknown_module_error_from_locale(
         self,
         cog: CoreCog,
+        mock_bot: MagicMock,
     ) -> None:
         """Help error for unknown module MUST use t()."""
-        cog.bot.get_cog = MagicMock(return_value=None)
+        mock_bot.get_cog = MagicMock(return_value=None)
 
         ctx = _make_ctx()
         await cog.help_command.callback(cog, ctx, module="Foo")
@@ -235,13 +236,13 @@ class TestSyncI18n:
     """Tests for /sync with i18n."""
 
     @pytest.mark.asyncio
-    async def test_sync_title_from_locale(self, cog: CoreCog) -> None:
+    async def test_sync_title_from_locale(self, cog: CoreCog, mock_bot: MagicMock) -> None:
         """Sync success embed title MUST use t()."""
         ctx = _make_ctx()
         ctx.defer = AsyncMock()
-        cog.bot.tree = MagicMock()  # type: ignore[misc]  # tree is read-only property on BotBase
-        cog.bot.tree.walk_commands = MagicMock(return_value=[])
-        cog.bot.tree.sync = AsyncMock(return_value=[MagicMock()])
+        mock_bot.tree = MagicMock()
+        mock_bot.tree.walk_commands = MagicMock(return_value=[])
+        mock_bot.tree.sync = AsyncMock(return_value=[MagicMock()])
 
         # Mock is_admin check to pass
         with patch("bot.cogs.core.is_admin", return_value=lambda f: f):

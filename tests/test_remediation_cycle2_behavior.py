@@ -512,6 +512,7 @@ def test_cooldown_releases_after_5s_window() -> None:
     ctx.guild = MagicMock(id=999)
 
     bucket = mapping.get_bucket(ctx, current=100.0)
+    assert bucket is not None, "bucket must exist for the mapped command"
     # t=100: first invocation consumes the token -> allowed (None)
     first = bucket.update_rate_limit(current=100.0)
     assert first is None, "first invocation must be allowed"

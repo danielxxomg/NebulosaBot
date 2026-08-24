@@ -542,8 +542,10 @@ def _embed_to_str(embed: discord.Embed) -> str:
     if embed.description:
         parts.append(embed.description)
     for field in embed.fields:
-        parts.append(field.name)
-        parts.append(field.value)
+        if field.name:
+            parts.append(field.name)
+        if field.value:
+            parts.append(field.value)
     if embed.footer.text:
         parts.append(embed.footer.text)
     return " ".join(parts)
@@ -858,6 +860,8 @@ class TestLogSentinelLoopZeroCount:
         await service.log_sentinel_loop("123", "decay", 3)
 
         mock_log_channel.send.assert_awaited_once()
-        embed = mock_log_channel.send.await_args.kwargs.get("embed")
+        await_args = mock_log_channel.send.await_args
+        assert await_args is not None
+        embed = await_args.kwargs.get("embed")
         assert embed is not None
         assert "3" in embed.description

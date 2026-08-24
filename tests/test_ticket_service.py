@@ -1884,7 +1884,7 @@ async def test_create_ticket_channel_renames_if_number_differs(
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 42}
 
-    channel, ticket = await service.create_ticket_channel(
+    _channel, ticket = await service.create_ticket_channel(
         guild,
         category,
         author,
@@ -1911,7 +1911,7 @@ async def test_create_ticket_channel_no_rename_if_name_matches(
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1}
 
-    channel, ticket = await service.create_ticket_channel(
+    _channel, ticket = await service.create_ticket_channel(
         guild,
         category,
         author,
@@ -2131,7 +2131,7 @@ async def test_create_ticket_channel_renames_with_sanitized_actual(
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 42}
 
-    channel, ticket = await service.create_ticket_channel(
+    _channel, ticket = await service.create_ticket_channel(
         guild,
         category,
         author,

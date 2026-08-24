@@ -120,29 +120,18 @@ class TestTyOverrides:
                     return
         pytest.fail("no bot/cogs per-file override with possibly-unresolved-reference=warn")
 
-    def test_tests_override_exists(self) -> None:
-        """[[tool.ty.overrides]] include MUST cover tests/** per-file after S3.6 narrowing."""
+    def test_tests_overrides_removed(self) -> None:
+        """cycle-5 S1: tests/** per-file overrides MUST be gone.
+
+        Every tests/ file reached zero ty diagnostics via real fixes, so the
+        blanket warn-downgrades were deleted from pyproject. Reintroducing a
+        tests/ override would hide new regressions from the fatal gate.
+        """
         overrides = self._overrides()
-        found = any(any(inc.startswith("tests/") for inc in o.get("include", [])) for o in overrides)
-        assert found, f"no tests per-file override in {overrides}"
-
-    def test_tests_override_possibly_unresolved_reference_warn(self) -> None:
-        """tests override possibly-unresolved-reference MUST be warn."""
-        for o in self._overrides():
-            if any(inc.startswith("tests/") for inc in o.get("include", [])):
-                rules = o.get("rules", {})
-                if rules.get("possibly-unresolved-reference") == "warn":
-                    return
-        pytest.fail("no tests per-file override with possibly-unresolved-reference=warn")
-
-    def test_tests_override_possibly_missing_attribute_warn(self) -> None:
-        """tests override possibly-missing-attribute MUST be warn."""
-        for o in self._overrides():
-            if any(inc.startswith("tests/") for inc in o.get("include", [])):
-                rules = o.get("rules", {})
-                if rules.get("possibly-missing-attribute") == "warn":
-                    return
-        pytest.fail("no tests per-file override with possibly-missing-attribute=warn")
+        leftovers = [
+            o.get("include") for o in overrides if any(inc.startswith("tests/") for inc in o.get("include", []))
+        ]
+        assert not leftovers, f"tests/ per-file overrides must stay removed: {leftovers}"
 
     def test_cogs_findings_are_warnings(self) -> None:
         """bot/cogs/ findings MUST be warn-tier after override (not error)."""

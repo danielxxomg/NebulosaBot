@@ -62,14 +62,14 @@ class TestEmbedPaginatorInit:
     def test_prev_disabled_at_start(self) -> None:
         """Previous button MUST be disabled on first page."""
         view = EmbedPaginator(_make_pages())
-        children = list(view.children)
-        assert children[0].disabled is True
+        buttons = [c for c in view.children if isinstance(c, discord.ui.Button)]
+        assert buttons[0].disabled is True
 
     def test_next_enabled_at_start(self) -> None:
         """Next button MUST be enabled when multiple pages exist."""
         view = EmbedPaginator(_make_pages())
-        children = list(view.children)
-        assert children[1].disabled is False
+        buttons = [c for c in view.children if isinstance(c, discord.ui.Button)]
+        assert buttons[1].disabled is False
 
 
 class TestEmbedPaginatorNavigation:
@@ -121,16 +121,16 @@ class TestEmbedPaginatorNavigation:
         view = EmbedPaginator(_make_pages(2))
         view.current_page = 1
         view.update_buttons()
-        children = list(view.children)
-        assert children[1].disabled is True
+        buttons = [c for c in view.children if isinstance(c, discord.ui.Button)]
+        assert buttons[1].disabled is True
 
     def test_prev_enabled_after_first_page(self) -> None:
         """Previous button MUST be enabled when not on first page."""
         view = EmbedPaginator(_make_pages(3))
         view.current_page = 1
         view.update_buttons()
-        children = list(view.children)
-        assert children[0].disabled is False
+        buttons = [c for c in view.children if isinstance(c, discord.ui.Button)]
+        assert buttons[0].disabled is False
 
 
 class TestEmbedPaginatorStop:
@@ -143,9 +143,9 @@ class TestEmbedPaginatorStop:
 
         await view.stop_button.callback(interaction)
 
-        children = list(view.children)
-        for child in children:
-            assert child.disabled is True
+        for child in view.children:
+            if isinstance(child, discord.ui.Button):
+                assert child.disabled is True
 
     async def test_stop_sends_edit(self) -> None:
         """Stop button MUST call edit_message to update the view."""
@@ -168,9 +168,9 @@ class TestEmbedPaginatorTimeout:
 
         await view.on_timeout()
 
-        children = list(view.children)
-        for child in children:
-            assert child.disabled is True
+        for child in view.children:
+            if isinstance(child, discord.ui.Button):
+                assert child.disabled is True
 
 
 class TestEmbedPaginatorPersistence:
@@ -179,8 +179,7 @@ class TestEmbedPaginatorPersistence:
     def test_custom_id_prefix_preserved(self) -> None:
         """Custom custom_id_prefix MUST be reflected in button custom_ids."""
         view = EmbedPaginator(_make_pages(), custom_id_prefix="help:")
-        children = list(view.children)
-        ids = [child.custom_id for child in children]
+        ids = [child.custom_id for child in view.children if isinstance(child, discord.ui.Button)]
         assert "help:prev" in ids
         assert "help:next" in ids
         assert "help:stop" in ids
@@ -188,8 +187,7 @@ class TestEmbedPaginatorPersistence:
     def test_default_custom_id_prefix(self) -> None:
         """Default custom_id prefix MUST be 'paginator:'."""
         view = EmbedPaginator(_make_pages())
-        children = list(view.children)
-        ids = [child.custom_id for child in children]
+        ids = [child.custom_id for child in view.children if isinstance(child, discord.ui.Button)]
         assert "paginator:prev" in ids
         assert "paginator:next" in ids
         assert "paginator:stop" in ids

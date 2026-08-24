@@ -503,9 +503,7 @@ def _grant(**overrides: Any) -> GlobalMutationGrant:
     return GlobalMutationGrant(**defaults)
 
 
-def _evaluate(
-    authority: RepairAuthority, grant: GlobalMutationGrant | None = None
-) -> AuthorityDecision:
+def _evaluate(authority: RepairAuthority, grant: GlobalMutationGrant | None = None) -> AuthorityDecision:
     from bot.services.ticket_invariants import evaluate_repair_authority
 
     return evaluate_repair_authority(authority, global_grant=grant)

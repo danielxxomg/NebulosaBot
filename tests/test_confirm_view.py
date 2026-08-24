@@ -159,7 +159,8 @@ class TestTimeout:
             timeout=30,
         )
         # Attach a mock message so on_timeout can edit it.
-        view._message = AsyncMock()
+        # _message is a duck-typed legacy attr read via getattr in confirmation.py.
+        view._message = AsyncMock()  # ty: ignore[unresolved-attribute]
 
         # Simulate timeout by calling on_timeout directly.
         await view.on_timeout()
@@ -179,8 +180,9 @@ class TestTimeout:
             timeout=30,
         )
         # Attach a mock message so on_timeout can edit it.
+        # _message is a duck-typed legacy attr read via getattr in confirmation.py.
         mock_message = AsyncMock()
-        view._message = mock_message
+        view._message = mock_message  # ty: ignore[unresolved-attribute]
 
         await view.on_timeout()
 

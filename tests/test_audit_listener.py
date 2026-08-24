@@ -730,6 +730,7 @@ class TestSentinelCogUsesLoggingService:
         self,
         sentinel_cog: SentinelCog,
         sentinel_bot: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """After refactor, /warn must call logging_service.log_moderation_action.
 
@@ -738,7 +739,7 @@ class TestSentinelCogUsesLoggingService:
         """
         # Bypass _validate_target for this focused test — we want to verify
         # the log call path, not the full validation chain.
-        sentinel_cog._validate_target = AsyncMock(return_value=True)
+        monkeypatch.setattr(sentinel_cog, "_validate_target", AsyncMock(return_value=True))
 
         ctx = MagicMock(spec=commands.Context)
         ctx.send = AsyncMock()

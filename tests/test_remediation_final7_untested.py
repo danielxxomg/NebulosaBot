@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
+from typing import TypedDict
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -336,7 +337,19 @@ class TestNeonGaussianBlur:
         from bot.services.greeting_renderer import PillowGreetingRenderer
         from bot.utils import brand
 
-        common = {
+        class _RenderKwargs(TypedDict):
+            """Keyword arguments for :meth:`PillowGreetingRenderer.render`."""
+
+            username: str
+            avatar_url: str | None
+            guild_name: str
+            member_count: int
+            card_type: str
+            greeting_title: str
+            member_count_text: str
+            guild_icon_url: str | None
+
+        common: _RenderKwargs = {
             "username": "User",
             "avatar_url": None,
             "guild_name": "Guild",
@@ -357,11 +370,14 @@ class TestNeonGaussianBlur:
 
         def _count_accent(img: Image.Image) -> tuple[int, int]:
             pix = img.load()
+            assert pix is not None
             w, h = img.size
             ca = cb = 0
             for y in range(h):
                 for x in range(w):
                     p = pix[x, y]
+                    if not isinstance(p, tuple):
+                        continue
                     if p[:3] == a_rgb:
                         ca += 1
                     if p[:3] == b_rgb:

@@ -223,7 +223,7 @@ class TestHelpDescriptionsLocalized:
 
     def test_english_guild_sees_english_description(self) -> None:
         """English guild MUST see the English description, not the Spanish default."""
-        set_guild_language("eng_guild", "en")
+        set_guild_language("111111111", "en")
         cmd = _make_locale_str_command(
             "ping",
             es_description="Muestra la latencia WebSocket del bot.",
@@ -232,7 +232,7 @@ class TestHelpDescriptionsLocalized:
         cog = _make_cog([cmd])
         bot = _make_bot({"Core": cog})
 
-        embed = _build_cog_help_embed(bot, "Core", "nb!", guild_id="eng_guild")
+        embed = _build_cog_help_embed(bot, "Core", "nb!", guild_id=111111111)
 
         assert embed is not None
         assert embed.fields[0].value is not None
@@ -244,7 +244,7 @@ class TestHelpDescriptionsLocalized:
 
     def test_spanish_guild_sees_spanish_description(self) -> None:
         """Spanish guild MUST see the Spanish description."""
-        set_guild_language("spa_guild", "es")
+        set_guild_language("222222222", "es")
         cmd = _make_locale_str_command(
             "ping",
             es_description="Muestra la latencia WebSocket del bot.",
@@ -253,7 +253,7 @@ class TestHelpDescriptionsLocalized:
         cog = _make_cog([cmd])
         bot = _make_bot({"Core": cog})
 
-        embed = _build_cog_help_embed(bot, "Core", "nb!", guild_id="spa_guild")
+        embed = _build_cog_help_embed(bot, "Core", "nb!", guild_id=222222222)
 
         assert embed is not None
         assert embed.fields[0].value is not None
@@ -263,7 +263,7 @@ class TestHelpDescriptionsLocalized:
 
     def test_unknown_command_uses_raw_description_fallback(self) -> None:
         """Command NOT in SLASH_DESCRIPTIONS falls back to raw cmd.description."""
-        set_guild_language("eng_guild2", "en")
+        set_guild_language("333333333", "en")
         cmd = _make_locale_str_command(
             "custom_cmd",
             es_description="Some raw description",
@@ -273,7 +273,7 @@ class TestHelpDescriptionsLocalized:
         cog = _make_cog([cmd])
         bot = _make_bot({"Core": cog})
 
-        embed = _build_cog_help_embed(bot, "Core", "nb!", guild_id="eng_guild2")
+        embed = _build_cog_help_embed(bot, "Core", "nb!", guild_id=333333333)
 
         assert embed is not None
         assert embed.fields[0].value is not None and "Some raw description" in embed.fields[0].value

@@ -82,6 +82,7 @@ class TestXpListenerGuard:
     @pytest.mark.asyncio
     async def test_ignores_bot_messages(
         self,
+        mock_bot: MagicMock,
         listener: XPListener,
         mock_message: MagicMock,
     ) -> None:
@@ -90,7 +91,7 @@ class TestXpListenerGuard:
 
         await listener.on_message(mock_message)
 
-        listener.bot.economy_service.gain_xp.assert_not_called()  # type: ignore[union-attr]
+        mock_bot.economy_service.gain_xp.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_ignores_dm_messages(
@@ -106,7 +107,7 @@ class TestXpListenerGuard:
 
         await listener.on_message(msg)
 
-        listener.bot.economy_service.gain_xp.assert_not_called()  # type: ignore[union-attr]
+        mock_bot.economy_service.gain_xp.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -120,25 +121,27 @@ class TestXpListenerGain:
     @pytest.mark.asyncio
     async def test_calls_gain_xp_with_correct_ids(
         self,
+        mock_bot: MagicMock,
         listener: XPListener,
         mock_message: MagicMock,
     ) -> None:
         """Valid message should call gain_xp(guild_id, user_id)."""
         mock_message.author.id = 111111111
-        listener.bot.economy_service.gain_xp.return_value = (10, 0, False)
+        mock_bot.economy_service.gain_xp.return_value = (10, 0, False)
 
         await listener.on_message(mock_message)
 
-        listener.bot.economy_service.gain_xp.assert_called_once_with("123456789", "111111111")
+        mock_bot.economy_service.gain_xp.assert_called_once_with("123456789", "111111111")
 
     @pytest.mark.asyncio
     async def test_gain_xp_no_level_up_does_nothing_extra(
         self,
+        mock_bot: MagicMock,
         listener: XPListener,
         mock_message: MagicMock,
     ) -> None:
         """When gain_xp returns leveled_up=False, no embed or role change."""
-        listener.bot.economy_service.gain_xp.return_value = (260, 2, False)
+        mock_bot.economy_service.gain_xp.return_value = (260, 2, False)
 
         await listener.on_message(mock_message)
 
@@ -149,15 +152,16 @@ class TestXpListenerGain:
     @pytest.mark.asyncio
     async def test_gain_xp_level_up_sends_embed(
         self,
+        mock_bot: MagicMock,
         listener: XPListener,
         mock_message: MagicMock,
     ) -> None:
         """Level-up should send a notification embed."""
         mock_message.author.id = 111111111
         mock_message.author.mention = "<@111111111>"
-        listener.bot.economy_service.gain_xp.return_value = (400, 3, True)
+        mock_bot.economy_service.gain_xp.return_value = (400, 3, True)
         # No config → fallback to message channel, no roles.
-        listener.bot.economy_service.get_economy_config.return_value = None
+        mock_bot.economy_service.get_economy_config.return_value = None
 
         await listener.on_message(mock_message)
 
@@ -171,30 +175,32 @@ class TestXpListenerGain:
     @pytest.mark.asyncio
     async def test_gain_xp_zero_xp_on_cooldown(
         self,
+        mock_bot: MagicMock,
         listener: XPListener,
         mock_message: MagicMock,
     ) -> None:
         """When gain_xp returns (0, 0, False), no embed or role action."""
-        listener.bot.economy_service.gain_xp.return_value = (0, 0, False)
+        mock_bot.economy_service.gain_xp.return_value = (0, 0, False)
 
         await listener.on_message(mock_message)
 
         # No embed, no role, no channel lookup, no config lookup.
         mock_message.channel.send.assert_not_called()
         mock_message.guild.get_channel.assert_not_called()
-        listener.bot.economy_service.get_economy_config.assert_not_called()
+        mock_bot.economy_service.get_economy_config.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_gain_xp_level_up_high_level(
         self,
+        mock_bot: MagicMock,
         listener: XPListener,
         mock_message: MagicMock,
     ) -> None:
         """Level-up to a high level (e.g., 50) should still work."""
         mock_message.author.id = 111111111
         mock_message.author.mention = "<@111111111>"
-        listener.bot.economy_service.gain_xp.return_value = (500000, 50, True)
-        listener.bot.economy_service.get_economy_config.return_value = None
+        mock_bot.economy_service.gain_xp.return_value = (500000, 50, True)
+        mock_bot.economy_service.get_economy_config.return_value = None
 
         await listener.on_message(mock_message)
 
@@ -214,6 +220,7 @@ class TestXpListenerLevelUpChannel:
     @pytest.mark.asyncio
     async def test_level_up_uses_configured_channel(
         self,
+        mock_bot: MagicMock,
         listener: XPListener,
         mock_message: MagicMock,
         mock_guild: MagicMock,
@@ -221,8 +228,8 @@ class TestXpListenerLevelUpChannel:
         """When levelUpChannelId is set, embed goes to that channel."""
         mock_message.author.id = 111111111
         mock_message.author.mention = "<@111111111>"
-        listener.bot.economy_service.gain_xp.return_value = (400, 3, True)
-        listener.bot.economy_service.get_economy_config.return_value = {
+        mock_bot.economy_service.gain_xp.return_value = (400, 3, True)
+        mock_bot.economy_service.get_economy_config.return_value = {
             "guildId": "123456789",
             "levelUpChannelId": "999999999",
             "levelRoles": {},
@@ -241,14 +248,15 @@ class TestXpListenerLevelUpChannel:
     @pytest.mark.asyncio
     async def test_level_up_fallback_to_message_channel(
         self,
+        mock_bot: MagicMock,
         listener: XPListener,
         mock_message: MagicMock,
     ) -> None:
         """When levelUpChannelId is None, embed goes to message.channel."""
         mock_message.author.id = 111111111
         mock_message.author.mention = "<@111111111>"
-        listener.bot.economy_service.gain_xp.return_value = (400, 3, True)
-        listener.bot.economy_service.get_economy_config.return_value = None
+        mock_bot.economy_service.gain_xp.return_value = (400, 3, True)
+        mock_bot.economy_service.get_economy_config.return_value = None
 
         await listener.on_message(mock_message)
 
@@ -258,6 +266,7 @@ class TestXpListenerLevelUpChannel:
     @pytest.mark.asyncio
     async def test_level_up_configured_channel_not_found(
         self,
+        mock_bot: MagicMock,
         listener: XPListener,
         mock_message: MagicMock,
         mock_guild: MagicMock,
@@ -265,8 +274,8 @@ class TestXpListenerLevelUpChannel:
         """When configured channel doesn't exist, fallback to message channel."""
         mock_message.author.id = 111111111
         mock_message.author.mention = "<@111111111>"
-        listener.bot.economy_service.gain_xp.return_value = (400, 3, True)
-        listener.bot.economy_service.get_economy_config.return_value = {
+        mock_bot.economy_service.gain_xp.return_value = (400, 3, True)
+        mock_bot.economy_service.get_economy_config.return_value = {
             "guildId": "123456789",
             "levelUpChannelId": "999999999",
             "levelRoles": {},
@@ -291,6 +300,7 @@ class TestXpListenerRoleAssignment:
     @pytest.mark.asyncio
     async def test_level_up_assigns_role_from_config(
         self,
+        mock_bot: MagicMock,
         listener: XPListener,
         mock_message: MagicMock,
         mock_guild: MagicMock,
@@ -298,8 +308,8 @@ class TestXpListenerRoleAssignment:
         """When levelRoleMap has a role for the new level, assign it."""
         mock_message.author.id = 111111111
         mock_message.author.mention = "<@111111111>"
-        listener.bot.economy_service.gain_xp.return_value = (400, 5, True)
-        listener.bot.economy_service.get_economy_config.return_value = {
+        mock_bot.economy_service.gain_xp.return_value = (400, 5, True)
+        mock_bot.economy_service.get_economy_config.return_value = {
             "guildId": "123456789",
             "levelUpChannelId": None,
             "levelRoles": {"5": "555555555"},
@@ -316,6 +326,7 @@ class TestXpListenerRoleAssignment:
     @pytest.mark.asyncio
     async def test_level_up_no_role_for_level(
         self,
+        mock_bot: MagicMock,
         listener: XPListener,
         mock_message: MagicMock,
         mock_guild: MagicMock,
@@ -323,8 +334,8 @@ class TestXpListenerRoleAssignment:
         """When levelRoleMap has no entry for new level, skip role assignment."""
         mock_message.author.id = 111111111
         mock_message.author.mention = "<@111111111>"
-        listener.bot.economy_service.gain_xp.return_value = (400, 5, True)
-        listener.bot.economy_service.get_economy_config.return_value = {
+        mock_bot.economy_service.gain_xp.return_value = (400, 5, True)
+        mock_bot.economy_service.get_economy_config.return_value = {
             "guildId": "123456789",
             "levelUpChannelId": None,
             "levelRoles": {"10": "999999999"},  # Only level 10
@@ -338,6 +349,7 @@ class TestXpListenerRoleAssignment:
     @pytest.mark.asyncio
     async def test_level_up_role_not_found(
         self,
+        mock_bot: MagicMock,
         listener: XPListener,
         mock_message: MagicMock,
         mock_guild: MagicMock,
@@ -345,8 +357,8 @@ class TestXpListenerRoleAssignment:
         """When role ID from config doesn't exist, skip gracefully."""
         mock_message.author.id = 111111111
         mock_message.author.mention = "<@111111111>"
-        listener.bot.economy_service.gain_xp.return_value = (400, 5, True)
-        listener.bot.economy_service.get_economy_config.return_value = {
+        mock_bot.economy_service.gain_xp.return_value = (400, 5, True)
+        mock_bot.economy_service.get_economy_config.return_value = {
             "guildId": "123456789",
             "levelUpChannelId": None,
             "levelRoles": {"5": "555555555"},
@@ -361,6 +373,7 @@ class TestXpListenerRoleAssignment:
     @pytest.mark.asyncio
     async def test_level_up_no_config_skips_role(
         self,
+        mock_bot: MagicMock,
         listener: XPListener,
         mock_message: MagicMock,
         mock_guild: MagicMock,
@@ -368,8 +381,8 @@ class TestXpListenerRoleAssignment:
         """When no economy_config exists, skip role assignment entirely."""
         mock_message.author.id = 111111111
         mock_message.author.mention = "<@111111111>"
-        listener.bot.economy_service.gain_xp.return_value = (400, 5, True)
-        listener.bot.economy_service.get_economy_config.return_value = None
+        mock_bot.economy_service.gain_xp.return_value = (400, 5, True)
+        mock_bot.economy_service.get_economy_config.return_value = None
 
         await listener.on_message(mock_message)
 

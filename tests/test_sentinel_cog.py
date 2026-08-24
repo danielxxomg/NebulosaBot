@@ -583,7 +583,9 @@ class TestKickBanPermanentResult:
 
         # Ephemeral dialog must NOT carry the final success result.
         interaction.response.edit_message.assert_awaited_once()
-        edited_embed = interaction.response.edit_message.await_args.kwargs.get("embed")
+        await_args = interaction.response.edit_message.await_args
+        assert await_args is not None
+        edited_embed = await_args.kwargs.get("embed")
         assert edited_embed is not None
         assert edited_embed.title != t("123456789", "sentinel.kick.success_title"), (
             "ephemeral dialog must not double as the permanent record"
@@ -624,7 +626,9 @@ class TestKickBanPermanentResult:
         await confirm_button.callback(interaction)
 
         interaction.response.edit_message.assert_awaited_once()
-        edited_embed = interaction.response.edit_message.await_args.kwargs.get("embed")
+        await_args = interaction.response.edit_message.await_args
+        assert await_args is not None
+        edited_embed = await_args.kwargs.get("embed")
         assert edited_embed is not None
         assert edited_embed.title != t("123456789", "sentinel.ban.success_title"), (
             "ephemeral dialog must not double as the permanent record"
@@ -687,7 +691,9 @@ class TestTempbanNoDrift:
             )
             await confirm_button.callback(interaction)
 
-        kwargs = mock_db.insert_infraction.await_args.kwargs
+        insert_args = mock_db.insert_infraction.await_args
+        assert insert_args is not None
+        kwargs = insert_args.kwargs
         assert kwargs["expires_at"] == "2024-06-16T12:00:35+00:00", (
             f"expiresAt must be execution-time + 24h, got {kwargs.get('expires_at')!r}"
         )
@@ -729,7 +735,9 @@ class TestUnbanTypedTarget:
         await sentinel_cog.unban.callback(sentinel_cog, sentinel_ctx, user_id="555000111")
 
         guild.unban.assert_awaited_once()
-        unban_arg = guild.unban.await_args.args[0]
+        unban_args = guild.unban.await_args
+        assert unban_args is not None
+        unban_arg = unban_args.args[0]
         assert isinstance(unban_arg, UnbanTarget), "target must be a typed UnbanTarget"
         assert not isinstance(unban_arg, discord.Object), "discord.Object must not be used"
         assert unban_arg.id == 555000111
@@ -852,9 +860,9 @@ class TestModlogsPaginator:
         """Prev button disabled on page 0."""
         pages = [discord.Embed(title=f"Page {i}") for i in range(3)]
         view = EmbedPaginator(pages, custom_id_prefix="modlogs:")
-        children = list(view.children)
-        assert children[0].disabled is True
-        assert children[1].disabled is False
+        buttons = [c for c in view.children if isinstance(c, discord.ui.Button)]
+        assert buttons[0].disabled is True
+        assert buttons[1].disabled is False
 
     async def test_next_button_advances_page(self) -> None:
         """Next button advances to next page and updates embed."""
@@ -891,8 +899,8 @@ class TestModlogsPaginator:
         view = EmbedPaginator(pages, custom_id_prefix="modlogs:")
         view.current_page = 1
         view.update_buttons()
-        children = list(view.children)
-        assert children[1].disabled is True
+        buttons = [c for c in view.children if isinstance(c, discord.ui.Button)]
+        assert buttons[1].disabled is True
 
 
 class TestValidateTarget:
