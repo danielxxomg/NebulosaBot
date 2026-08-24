@@ -80,6 +80,8 @@ def _mocked_fks() -> list[dict[str, str]]:
 
 
 class TestRedLiveCatalogModuleExists:
+    """RED: live_catalog module exists and pins exact 25-stem migration identity."""
+
     def test_live_catalog_module_importable(self) -> None:
 
         mod = importlib.import_module("bot.services.live_catalog")
@@ -103,6 +105,8 @@ class TestRedLiveCatalogModuleExists:
 
 
 class TestCatalogParityMeasurableRealDB:
+    """Catalog parity is measurable only against a real DB — fakes never PASS."""
+
     def test_9_7_0_6_4_25_exact_passes_with_real_db(self) -> None:
 
         local = get_local_migration_names()
@@ -224,7 +228,6 @@ class TestCatalogParityMeasurableRealDB:
             with pytest.raises(RuntimeError, match="PGRST205"):
                 await fetch_live_metadata(mock_client)
 
-
         asyncio.run(_run())
         # Verify live_catalog documents that PGRST205 is not a PASS path
 
@@ -247,7 +250,6 @@ def test_live_marker_asserts_db_path_used_when_creds_present() -> None:
     mocked psycopg.connect (TestFetchCatalogViaDbProvenance); live marker only
     passes when psycopg actually connects.
     """
-
 
     local = get_local_migration_names()
     inv = SchemaInventory.build()
@@ -301,8 +303,6 @@ def test_live_marker_asserts_db_path_used_when_creds_present() -> None:
 
     fake_connect = MagicMock(return_value=FakeConn())
     with patch("psycopg.connect", fake_connect):
-
-
         _, _, _, _, tok = asyncio.run(fetch_catalog_via_db(db_url))
         assert fake_connect.called
         assert isinstance(tok, ProvenanceToken) and tok.query_count == 4
@@ -319,6 +319,8 @@ def test_live_marker_asserts_db_path_used_when_creds_present() -> None:
 
 
 class TestFetchCatalogViaDbProvenance:
+    """Provenance contract: only real psycopg queries mint used_real_db evidence."""
+
     @pytest.mark.asyncio
     async def test_fetch_catalog_via_db_uses_psycopg_when_db_url_present(self) -> None:
         """Provenance: fetch_catalog_via_db must call psycopg.connect and execute queries."""
@@ -357,7 +359,6 @@ class TestFetchCatalogViaDbProvenance:
 
         fake_connect = MagicMock(return_value=FakeConn())
         with patch("psycopg.connect", fake_connect):
-
             fks, _pols, _pubs, _migs, tok = await fetch_catalog_via_db("postgresql://user:pass@localhost/db")
             # Provenance: psycopg.connect was called — token proves query execution
             assert fake_connect.called
@@ -398,7 +399,6 @@ class TestFetchCatalogViaDbProvenance:
 
     def test_synthetic_bool_true_rejected_without_token(self) -> None:
         """Caller-supplied used_real_db=True without ProvenanceToken must be synthetic FakeSupabase."""
-
 
         inv = SchemaInventory.build()
         report = inv.bind_live_evidence(
@@ -457,6 +457,8 @@ class TestFetchCatalogViaDbProvenance:
 
 
 class TestRls970StructuralViaDb:
+    """9/7/0 RLS counts come from structural catalog queries, not hardcoded values."""
+
     def test_fetch_rls_counts_970_via_mocked_psycopg(self) -> None:
         """9/7/0 catalog fact via pg_class/pg_policy counts, not hardcoded 9."""
 
@@ -472,7 +474,6 @@ class TestRls970StructuralViaDb:
         conn.cursor.return_value.__exit__.return_value = False
 
         with patch("psycopg.connect", return_value=conn):
-
             enabled, forced, policies = fetch_rls_counts_via_db("postgresql://u:p@h/db")
             assert enabled == 9
             assert forced == 7
@@ -490,6 +491,8 @@ class TestRls970StructuralViaDb:
 
 
 class TestIndexPolicyExecutable:
+    """Index-drop policy: zero-scan drops require an EXPLAIN (ANALYZE, BUFFERS) receipt."""
+
     def test_zero_scans_without_explain_is_rejected(self) -> None:
 
         allowed, reason = evaluate_index_policy(scans=0, explain_output=None)
