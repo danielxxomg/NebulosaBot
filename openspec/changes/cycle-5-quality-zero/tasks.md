@@ -1,0 +1,217 @@
+# Tasks: Cycle 5 — Quality Zero (v1.0 readiness)
+
+> Delivery: `auto-chain` · `stacked-to-main` · review budget 800 lines/slice · strict TDD RED→GREEN for every behavior change · conventional commits, no AI attribution · one writer, no parallel worktree mutation.
+> Slice = PR boundary. Each slice begins by acquiring a native attempt ledger (`gentle-ai sdd-attempt acquire --request-id req-c5q-<slice>`) and ends by settling with the sha256 of the slice's verify-output artifact.
+> Verify gate per slice (minimum): `uv run pytest && uv run ruff check bot/ tests/ && uv run ty check bot/ tests/` + betterleaks (staged). S0/S3/S5/S6/S7 also run jscpd, `uv lock --check`, full pytest.
+> Stale-guard rule: any test that pins a count/version touched by this cycle is updated IN THE SAME slice that causes the change.
+
+## Slice S0 — Reference-green (~150 ln, ~5 tasks)
+
+- [x] S0.1 Acquire attempt ledger — `gentle-ai sdd-attempt acquire --cwd <repo> --change cycle-5-quality-zero --request-id req-c5q-s0 --work-unit "S0 reference-green" --evidence-goal "versions 0.9.0, hygiene parametrized, PEP503, CHANGELOG"` (files: none) — est 0 ln — verify: `gentle-ai sdd-attempt status` *(acquired by orchestrator: token sha256:e183f7aa…, request-id req-c5q-s0-acq-001)*
+- [x] S0.2 RED→GREEN: bump versions to 0.9.0 — RED first: update `tests/test_welcome_foundation_pr1_hygiene.py` `TestVersionHygiene` asserts `version == "0.9.0"` (pyproject + `bot/__init__.py` + CHANGELOG mention) → watch fail → bump `pyproject.toml` project.version, `bot/__init__.py` `__version__`, add `0.9.0` line to `CHANGELOG.md` (files: `pyproject.toml`, `bot/__init__.py`, `CHANGELOG.md`, `tests/test_welcome_foundation_pr1_hygiene.py`) — est 12 ln — verify: `uv run pytest tests/test_welcome_foundation_pr1_hygiene.py::TestVersionHygiene -v` *(implemented per design D-decision: parametrized from pyproject source-of-truth instead of hardcoded 0.9.0; pyproject was already 0.9.0)*
+- [x] S0.3 Parametrize stale hygiene tests — convert hardcoded-count cases in `tests/test_welcome_foundation_pr1_hygiene.py` (TestGitignore 4 patterns, TestEnvExample 12 vars, TestCodeQuality SHA pins) to parametrized form so they survive future churn without per-bump edits; do NOT change thresholds (files: `tests/test_welcome_foundation_pr1_hygiene.py`) — est 30 ln — verify: `uv run pytest tests/test_welcome_foundation_pr1_hygiene.py -v`
+- [x] S0.4 PEP 503 requirements fix — normalize any non-PEP-503 normalized names in `requirements.txt` (regenerated via `uv export`) and pin format; confirm `uv lock --check` passes (files: `requirements.txt`, `uv.lock` if touched) — est 8 ln — verify: `uv lock --check && uv pip compile --help` (no PEP 503 warnings) *(requirements.txt was already normalized (`discord-py==2.7.1`); fix landed as the stale test-side needle `discord.py`→`discord-py` in `test_requirements_txt_still_pinned`)*
+- [x] S0.5 Settle attempt — run `uv run pytest && uv run ruff check . && uv run ty check bot/ tests/ && npx jscpd . && uv lock --check` capturing output to `/tmp/opencode/c5q-s0-verify.txt`, compute `sha256sum` → `gentle-ai sdd-attempt settle --token <tok> --request-id req-c5q-s0 --outcome passed --evidence-revision sha256:<64hex> --diagnosis "..." --harness-disposition reused --cleanup-evidence "..." --process-evidence "..."` — est 0 ln — verify: ledger status `complete` *(settled with request-id req-c5q-s0-settle-001 per orchestrator session parameters)*
+
+## Slice S1 — ty fatal gate (~700 ln, ~9 tasks, B0→B3 then gate LAST)
+
+> pyproject has ~57 `[[tool.ty.overrides]]` blocks (not 15). Delete a cluster's block ONLY after that cluster's warnings drop to zero via real fixes; verify per cluster with `uv run ty check tests/<cluster>` before removing its override.
+
+- [ ] S1.1 Acquire attempt ledger — `gentle-ai sdd-attempt acquire ... --request-id req-c5q-s1 --work-unit "S1 ty fatal gate" --evidence-goal "tests/ ty 495→0; gate commit last"` (files: none) — est 0 ln — verify: `gentle-ai sdd-attempt status`
+- [ ] S1.2 B0 mechanical deletion — delete all 155 `unused-type-ignore` comments across `tests/` (`# type: ignore[unused-ignore]` / `# ty: ignore[unused-type-ignore]`); pure deletion, no behavior; confirm `uv run ty check tests/` warning count drops by ~155 (files: `tests/**`) — est 160 ln — verify: `uv run ty check tests/ 2>&1 | grep -c unused-type-ignore` → 0
+- [ ] S1.3 B1 invalid-argument-type cluster fixes (185) — per file cluster, typed fixes / targeted casts; after each cluster verify its `ty check` warnings reach 0 then DELETE that cluster's `[[tool.ty.overrides]]` block from `pyproject.toml` (files: `tests/**`, `pyproject.toml`) — est 200 ln — verify: `uv run ty check tests/<cluster>` → 0 warnings, then `rg -c '\[\[tool\.ty\.overrides\]\]' pyproject.toml` decremented
+- [ ] S1.4 B2 unresolved-attribute cluster fixes (114) — mostly mock typing; unblocked by conftest factory hoist is S5b, so here use targeted `cast`/protocol typing + correct mock attribute declarations; delete each fixed cluster's override block after warnings hit 0 (files: `tests/**`, `pyproject.toml`) — est 130 ln — verify: per-cluster `uv run ty check tests/<cluster>` → 0
+- [ ] S1.5 B3 invalid-assignment (26) + not-subscriptable (15) tail cluster — same fix-then-delete-override protocol (files: `tests/**`, `pyproject.toml`) — est 45 ln — verify: tail clusters → 0 warnings
+- [ ] S1.6 Verify all override blocks removed — `rg -c '\[\[tool\.ty\.overrides\]\]' pyproject.toml` must be 0 (or only blocks with explicit written rationale kept, documented inline); full `uv run ty check tests/` → 0 warnings (files: `pyproject.toml`) — est 0 ln — verify: `rg -c '\[\[tool\.ty\.overrides\]\]' pyproject.toml` == 0
+- [ ] S1.7 GATE COMMIT (LAST in S1) — add `[tool.ty.terminal] error-on-warning = true` to `pyproject.toml`; this single commit closes residual-debt §1; rollback = revert this one commit restores warning-tolerant ty (files: `pyproject.toml`) — est 2 ln — verify: `uv run ty check bot/ tests/` exits 0 (fatal)
+- [ ] S1.8 Update stale-guard tests if any pin ty override-block count — scan `tests/**` for assertions on override-block count or `error-on-warning` and update IN THIS SLICE; none expected but verify (files: `tests/**`) — est 0 ln — verify: `uv run pytest -k "ty or override" -v`
+- [ ] S1.9 Settle attempt — full gate `uv run pytest && uv run ruff check . && uv run ty check bot/ tests/ && npx jscpd . && uv lock --check`, capture → sha256 → settle (files: none) — est 0 ln — verify: ledger complete
+
+## Slice S2 — Slash-policy / gap-7 (~600 ln, ~10 tasks)
+
+- [ ] S2.1 Acquire attempt ledger — `--request-id req-c5q-s2 --work-unit "S2 slash-policy" --evidence-goal "prefix inert [], no DM branch, help slash-only, AGENTS+specs"` (files: none) — est 0 ln
+- [ ] S2.2 RED: prefix resolver inertness — write failing tests asserting `get_prefix`-equivalent returns `[]` for any guild/message (`nb!ping`/`,ping` inert) in `tests/test_bot_core_prefix.py` (NEW or extend existing); cover bot-core scenarios "Prefix invocation is inert" + "Comma invocation is inert outside ticket channels" (files: `tests/test_bot_core_prefix.py`) — est 40 ln — verify: `uv run pytest tests/test_bot_core_prefix.py -v` → RED
+- [ ] S2.3 GREEN: replace `_build_prefix_callable` (`bot/bot.py:66-88`) with module-level `async def _noop_prefix(bot_ref, message) -> list[str]: return []`; keep `(bot, message) -> list[str]` signature; wire at `bot.py:164-167`; closure over guild_service dies (files: `bot/bot.py`) — est 15 ln — verify: tests GREEN
+- [ ] S2.4 RED: on_command_error no-DM branch — failing tests for "No DM-first branch in prefix handler path" + "Unexpected error shows guild language" (ES/EN) + "Guild resolved from interaction" in `tests/test_bot_error_handler.py`; assert no DM attempt and `t()` used (files: `tests/test_bot_error_handler.py`) — est 50 ln — verify: RED
+- [ ] S2.5 GREEN: simplify `on_command_error` (`bot.py:415-493`) — KEEP silent-ignore tuple `(CommandNotFound, DisabledCommand)` + both deferral guards; DELETE DM-first branch (L469-487) and DM path (L490-493); retain log-first + single channel embed via `t(guild_id,...)`; rewrite `on_app_command_error` to use `t()` for title/message, extract `guild_id` from interaction (files: `bot/bot.py`) — est 40 ln — verify: tests GREEN
+- [ ] S2.6 RED+GREEN: help slash-only — failing test for "Help shows slash syntax only" (no prefix example) → drop `prefix` param from `_build_cog_help_embed` callers `core.py:170` and `core.py:347`; stop interpolating `prefix=config.prefix` in `core.py:119` status field; update `core.status.guild_config_loaded` key text in `bot/locales/{es,en}.json` (files: `bot/cogs/core.py`, `bot/locales/es.json`, `bot/locales/en.json`, `tests/test_core_cog.py`) — est 30 ln — verify: `uv run pytest tests/test_core_cog.py -v`
+- [ ] S2.7 Rewrite AGENTS.md L17/18/22/23 + PLC0415/i18n/brand rules — in SAME commit as the code they describe: rewrite prefix/hybrid lines to slash-only reality; codify PLC0415 documented-exception policy; codify i18n `t()` and brand-token rules; adapt `tests/test_ephemeral_standard.py` expectations (files: `AGENTS.md`, `tests/test_ephemeral_standard.py`) — est 60 ln — verify: `uv run pytest tests/test_ephemeral_standard.py -v`
+- [ ] S2.8 Update ephemeral-standard spec text + KEEP-ADAPTED 8 DM-first tests — reword Purpose "24 hybrid commands" → "all registered slash commands"; rename whois→userinfo; drop stale count; adapt the 8 DM-first locking tests to assert new slash-only ephemeral behavior (embed-content asserts first, then call-assert changes); cover ephemeral-standard scenarios "Admin slash error stays ephemeral" + "Prefix invocation produces no output" (files: `openspec/specs/ephemeral-standard/spec.md`, `tests/**` 8 tests) — est 120 ln — verify: `uv run pytest -k "ephemeral or dm_first or whois or userinfo" -v`
+- [ ] S2.9 bot-core delta spec sync — ensure `openspec/specs/bot-core/spec.md` reflects REMOVED alternate comma prefix; update any tests asserting `,ping`/`,warn` invocation → inertness or delete with twin (files: `openspec/specs/bot-core/spec.md`, `tests/**`) — est 20 ln — verify: `uv run pytest -k "comma or prefix" -v`
+- [ ] S2.10 Settle attempt — full gate (S2 runs full pytest+ruff+ty per design) → capture → sha256 → settle (files: none) — est 0 ln
+
+## Slice S3 — Quality T1 (~750 ln, ~10 tasks; migration 025 + push)
+
+> Pushes migration count 24→25. Stale-guard: `tests/test_schema_inventory_verifier.py` and `bot/services/live_catalog.py` + `schema_inventory.py` pin `19` — but those reflect the *live remote* baseline and a local DROP does not add a migration id paired in `LOCAL_MIGRATION_STEMS`. Confirm: 025 is a DROP of an already-counted artifact; if the inventory expects 25 after push, update `LOCAL_MIGRATION_STEMS` + `migration_count == 19` assertions → 25 IN THIS SLICE. Verify against `get_local_migration_names()` actual list before editing.
+
+- [ ] S3.1 Acquire attempt ledger — `--request-id req-c5q-s3 --work-unit "S3 quality T1" --evidence-goal "logging i18n 28×2, infraction mute/kick/ban, 025 DROP+push 25/25"` (files: none) — est 0 ln
+- [ ] S3.2 RED: LoggingService i18n keys exist — failing test extending `tests/test_i18n_key_coverage.py` asserting all 28 new `log.<domain>.<part>` keys exist in both `bot/locales/{es,en}.json` and are referenced by `logging_service.py` (AST scanner extension) (files: `tests/test_i18n_key_coverage.py`) — est 30 ln — verify: RED
+- [ ] S3.3 GREEN: add 28 keys ×2 locales + wire — add `log.moderation.title`, `log.voice.{join,leave,move,mute,deafen}_{title,description}` etc. to `bot/locales/{es,en}.json`; `log_moderation_action` (`logging_service.py:224-256`) swaps literals `"🛡️ Moderation"`,`"Target"`,`"Moderator"`,`"Reason"` → `t(guild_id,...)`; `log_voice_event` wires 10 orphan `voice.*` keys with `{mention}/{channel}/{from}/{to}/{state}` substitution; cover logging-service scenarios "Spanish/English guild voice join localized", "Interpolation params substituted", "Locale coverage holds", "Routing guards unchanged" (files: `bot/services/logging_service.py`, `bot/locales/es.json`, `bot/locales/en.json`) — est 120 ln — verify: GREEN + `uv run pytest tests/test_i18n_key_coverage.py -v`
+- [ ] S3.4 RED: InfractionService mute/kick/ban — failing tests in `tests/test_infraction_service.py` (or new) for "Mute/Kick/Ban persists and returns Infraction", "Service performs no Discord action", "Async contract holds (iscoroutinefunction)", "Audit path consistency (exactly one log_moderation_action)" (files: `tests/test_infraction_service.py`) — est 80 ln — verify: RED
+- [ ] S3.5 GREEN: add mute/kick/ban methods — mirror `tempban` (`infraction_service.py:152-174`): `async def ban(self, guild_id, target_id, moderator_id, reason) -> Infraction` (expires_at=None to shared insert); `mute(..., expires_at: str | None = None)`; `kick` = ban minus expiry; NO Discord action; docstring states caller owns audit (files: `bot/services/infraction_service.py`) — est 60 ln — verify: tests GREEN
+- [ ] S3.6 Sentinel callsite swap + caller-side audit — SentinelCog `mute/kick/ban` commands persist via service methods (no direct infraction-row inserts); caller-side `log_moderation_action` exactly like `sentinel.py:1227-1236` unban; cover "Sentinel callsite swap" scenario; `apply_escalation` stays service-side audit (system-initiated) with honest docstring (files: `bot/cogs/sentinel.py`, `bot/services/infraction_service.py`) — est 60 ln — verify: `uv run pytest tests/test_sentinel_cog.py tests/integration/test_moderation_flow.py -v`
+- [ ] S3.7 xp_listener role-rewards delegate + audit_listener ticket-close routing — xp_listener delegates role-rewards to EconomyService method; audit_listener ticket-close routes via `TicketService` (channel-delete → coordinator, no listener state mutation) with honest docstring (files: `bot/listeners/xp_listener.py`, `bot/listeners/audit_listener.py`) — est 40 ln — verify: `uv run pytest tests/test_xp_listener*.py tests/test_audit_listener*.py -v`
+- [ ] S3.8 AST i18n literal enforcement extension — extend the AST scanner to cover `logging_service.py` literals (not just cogs); ensure no hardcoded English remains in service (files: `tests/test_i18n_key_coverage.py` or scanner module) — est 30 ln — verify: `uv run pytest tests/test_i18n_key_coverage.py -v`
+- [ ] S3.9 Migration 025 DROP + push live + stale-guard update — create `migrations/025_drop_ticket_backup_categoryid_text_20260818.sql`: `DROP TABLE IF EXISTS public.ticket_backup_categoryid_text_20260818;` (destructive, approved, recovery=DB dump); push live → 25/25; IF inventory expects 25, update `bot/services/live_catalog.py` `LOCAL_MIGRATION_STEMS` (add `025_...`) and `tests/test_schema_inventory_verifier.py` `migration_count == 19` → `== 25` (lines 62, 242, 293, 327) and docstring "19 migrations" → "25"; verify idempotent re-run with `IF NOT EXISTS` N/A for DROP (files: `migrations/025_drop_ticket_backup_categoryid_text_20260818.sql`, `bot/services/live_catalog.py`, `bot/services/schema_inventory.py`, `tests/test_schema_inventory_verifier.py`) — est 25 ln — verify: `uv run pytest tests/test_schema_inventory_verifier.py tests/test_migrations.py -v`
+- [ ] S3.10 Settle attempt — S3 runs jscpd+uv-lock+full → capture → sha256 → settle (files: none) — est 0 ln
+
+## Slice S4 — Robustness/perf (~500 ln, ~9 tasks)
+
+- [ ] S4.1 Acquire attempt ledger — `--request-id req-c5q-s4 --work-unit "S4 robustness/perf" --evidence-goal "to_thread, semaphore, debounce, cache, resource-loop, brand dedup"` (files: none) — est 0 ln
+- [ ] S4.2 RED+GREEN: transcript to_thread — failing test asserting `_build_html` runs off-event-loop → wrap call `transcript_service.py:95` as `await asyncio.to_thread(self._build_html, ...)`; method at `:135` stays sync-pure (files: `bot/services/transcript_service.py`, `tests/test_transcript*.py`) — est 15 ln — verify: `uv run pytest tests/test_transcript*.py -v`
+- [ ] S4.3 RED+GREEN: greeting raid semaphore — failing test for burst saturation (guild-scoped `asyncio.Semaphore(2)`, non-blocking acquire, `logger.warning("greeting dropped: raid saturation guild=%s")`) → implement in `GreetingService.dispatch_greeting` keyed by `guild_id` dict (files: `bot/services/greeting_service.py`, `tests/test_greeting_service*.py`) — est 40 ln — verify: `uv run pytest tests/test_greeting_service*.py -v`
+- [ ] S4.4 RED+GREEN: `,`-timer per-user 15s debounce — failing test → dict keyed `f"{guild}:{channel}:{user}"`, 15s TTL, `_evict_stale(now)` mirroring `voice_listener.py:47-57`; placed in `TicketsCog.on_message` (`tickets.py:230-265`) before `_dispatch_timer_message` (files: `bot/cogs/tickets.py`, `tests/test_tickets_cog.py`) — est 35 ln — verify: `uv run pytest tests/test_tickets_cog.py -v`
+- [ ] S4.5 RED+GREEN: economy_config cache-first TTL — failing test for cache hit/miss/invalidation → `EconomyService.get_economy_config` (`economy_service.py:338-344`) cache-first via `cache_key(gid, "economy_config")`, TTL `ECONOMY_CONFIG_TTL = DEFAULT_TTL` re-exported in `bot/core/cache.py` (mirror `GREETING_CONFIG_TTL`); invalidate in config save path (mirror `greeting_service.save_config:97-105`); hot paths `gain_xp:123`/`claim_daily:188` hit cache (files: `bot/services/economy_service.py`, `bot/core/cache.py`, `tests/test_economy_service.py`) — est 50 ln — verify: `uv run pytest tests/test_economy_service.py -v`
+- [ ] S4.6 RED+GREEN: resource-log task — failing test → CoreCog `@tasks.loop(minutes=5)` (~20ln) logs `resource.getrusage(RUSAGE_SELF).ru_maxrss`, `cache.size`, `len(guilds)`; `before_loop → wait_until_ready()`, `cog_unload → cancel()` (files: `bot/cogs/core.py`, `tests/test_core_cog.py`) — est 25 ln — verify: `uv run pytest tests/test_core_cog.py -v`
+- [ ] S4.7 Brand token dedup — consolidate `TRANSCRIPT_*`, `CARD_BG_*`, `LEGACY_BLURPLE`, `MUTED_TEXT` into `bot/utils/brand.py`; drop imgur footer icon; no hex literals outside `brand.py` (files: `bot/utils/brand.py`, `bot/services/transcript_service.py`, `bot/services/greeting_renderer.py`, `bot/services/image_service.py` pre-S5a) — est 40 ln — verify: `uv run ruff check bot/ && uv run pytest -k brand -v`
+- [ ] S4.8 Verify no blocking I/O regressions — grep `time.sleep(`, `requests.`, raw `Pillow` calls in async context across `bot/` → zero (files: none) — est 0 ln — verify: `rg "time\.sleep\(|^import requests" bot/` → empty
+- [ ] S4.9 Settle attempt — S4 runs full pytest+ruff+ty → capture → sha256 → settle (files: none) — est 0 ln
+
+## Slice S5a — ImageService removal (~400 ln net −775, ~7 tasks; ordered per D5)
+
+- [ ] S5a.1 Acquire attempt ledger — `--request-id req-c5q-s5a --work-unit "S5a ImageService removal" --evidence-goal "shim gone, wiring clean, vulture clean"` (files: none) — est 0 ln
+- [ ] S5a.2 RED: protocol-only GreetingService constructor — failing test asserting `GreetingService.__init__` accepts no `image_service` param (or ignores it) and operates protocol-only (`greeting_service.py:47-64`) (files: `tests/test_greeting_service*.py`) — est 20 ln — verify: RED
+- [ ] S5a.3 GREEN: GreetingService compat branches + resolve_renderer step2 — remove `image_service` param + `_image_service` alias; `resolve_renderer` step-2 branch (`:130-134`, `generate_greeting_card` fallback) raises `AttributeError` unless `.render` exists; `dispatch_greeting` TypeError fallback chain (`:210-263`) → single `to_thread(render_fn, ...)` call (files: `bot/services/greeting_service.py`) — est 60 ln — verify: tests GREEN
+- [ ] S5a.4 bot.py wiring cleanup — remove `image_service` import `:28`, attr `:150`, instantiation `:217-218`; KEEP `RankRenderer` at `:238` (cog uses `bot.rank_renderer`) (files: `bot/bot.py`) — est 10 ln — verify: `uv run pytest tests/test_bot*.py -v`
+- [ ] S5a.5 Delete shim + tests — `rm bot/services/image_service.py`, `tests/test_image_service.py`, `tests/test_image_service_no_mock.py`; drop rank byte-identity tests that only proved shim delegation (keep renderer-behavior tests) (files: deleted) — est −775 ln — verify: `rg "ImageService|image_service" bot/ tests/` → empty
+- [ ] S5a.6 Update mocks referencing ImageService — patch mocks in `tests/test_stellar_*.py`, greetings/greeting_service test files to use renderer directly (files: `tests/**`) — est 60 ln — verify: `uv run pytest tests/test_stellar_*.py tests/test_greeting*.py -v`
+- [ ] S5a.7 Settle attempt — S5a runs jscpd+uv-lock → `vulture bot/ tests/` advisory-clean → capture → sha256 → settle (files: none) — est 0 ln — verify: `vulture bot/ tests/` no advisories
+
+## Slice S5b/c — Test consolidation (~net −3300 ln, ~8 tasks)
+
+> Per-cluster: identify behavioral twin (diff assertions, not names) → parametrize or delete → focused `uv run pytest -k <cluster>` → full suite at slice end. Twin rule: NOTHING deleted without a confirmed surviving assertion. Mock-theater call-asserts replaced by embed-content asserts BEFORE removal.
+> KEEP-list (protected, never deleted): `tests/test_pr3_voice_listener_red.py` (read-only-listener greps), `tests/test_s3d1_guardrails.py`, config hygiene tests (`test_ephemeral_standard`, `test_i18n_key_coverage`, `test_migrations`, `test_ruff_config`, `test_ci_config`).
+
+- [ ] S5b.1 Acquire attempt ledger — `--request-id req-c5q-s5bc --work-unit "S5b/c test consolidation" --evidence-goal "net -3300ln, behavioral twins preserved, vulture clean"` (files: none) — est 0 ln
+- [ ] S5b.2 conftest factory API hoist (~700 ln) — add `make_ctx(*, guild_id="1", author=None, send=True, spec=...) -> NebulosaContext` and `make_member(*, roles=(), admin=False, **kw) -> discord.Member` to `tests/conftest.py`; replace `_make_ctx`/`_make_member` local factories across test files (files: `tests/conftest.py`, `tests/**`) — est −700 ln — verify: `uv run pytest -q`
+- [ ] S5b.3 i18n pair parametrization (~900 ln) — parametrize ES/EN locale assertion pairs across `tests/test_i18n*.py`, `tests/test_stellar_i18n.py`, logging i18n tests (S3) into single parametrized cases (files: `tests/**`) — est −900 ln — verify: `uv run pytest -k i18n -v`
+- [ ] S5b.4 Cluster parametrizations (~700 ln) — merge near-duplicate test classes per cluster (economy_math, ticket flows, sentinel cases) into parametrized form; DELETE `tests/test_economy_math_smoke.py` (twin confirmed in parametrized suite) (files: `tests/**`) — est −700 ln — verify: `uv run pytest -k "economy_math or ticket_flow or sentinel" -v`
+- [ ] S5b.5 Structural source-grep deletions (~350 ln) — delete source-grep tests whose behavior is covered elsewhere; KEEP protected guards in KEEP-list (read-only-listener greps, s3d1 guardrails, config hygiene); for each deletion record the twin assertion that survives (files: `tests/**`) — est −350 ln — verify: `uv run pytest tests/test_pr3_voice_listener_red.py tests/test_s3d1_guardrails.py -v` still pass
+- [ ] S5b.6 Mock-theater replacement with embed-content asserts — for each cluster replacing call-asserts: ADD embed-content asserts FIRST → run green → THEN remove call-asserts → run green; never delete without green embed-content twin (files: `tests/**`) — est −400 ln — verify: `uv run pytest -q`
+- [ ] S5b.7 Facade merges preserving unique behavioral tests — merge facade test files where behavioral overlap is confirmed by diff; preserve every unique assertion (files: `tests/**`) — est −250 ln — verify: `uv run pytest -q`
+- [ ] S5b.8 Settle attempt — full suite + jscpd + uv-lock + `vulture bot/ tests/` advisory-clean → capture → sha256 → settle (files: none) — est 0 ln — verify: `vulture bot/ tests/` clean
+
+## Slice S6 — CDC member/economy_config (~350 ln, ~9 tasks; HARD ORDER: hooks → 026 → realtime → tests)
+
+> Pushes migration count 25→26. Stale-guard: update `LOCAL_MIGRATION_STEMS` (add `026_...`) and `tests/test_schema_inventory_verifier.py` `migration_count == 25` → `== 26` (lines 62, 242, 293, 327) and "25 migrations" → "26" docstrings IN THIS SLICE, same commit as 026 push.
+> Hard ordering (spec-verifiable in history): `_on_write` wiring commit MUST precede the publication ALTER commit. Do NOT invert.
+
+- [ ] S6.1 Acquire attempt ledger — `--request-id req-c5q-s6 --work-unit "S6 CDC member/economy_config" --evidence-goal "hooks before 026, realtime+tests, 26/26"` (files: none) — est 0 ln
+- [ ] S6.2 RED: RPC mutator marks recent write — failing tests asserting `self._on_write` invoked by `update_member_xp/coins/daily` (`economy_db.py:48-166`), `upsert_economy_config` (`:34-46`, table=`economy_config`), `update_member_warnings` (`member_db.py:36-58`); cover cache-sync scenarios "RPC mutator marks recent write" + "Echo of own write is skipped" (files: `tests/test_economy_db.py`, `tests/test_member_db.py` or new) — est 60 ln — verify: RED
+- [ ] S6.3 GREEN: wire `_on_write` into RPC mutators (BEFORE 026 commit) — add `if self._on_write is not None: await self._on_write(table, guild_id)` to each mutator above; hook plumbing exists (`DatabaseBase._on_write` → `mark_recent_write` at `bot.py:310-311`) — mutators simply call it now (files: `bot/db/economy_db.py`, `bot/db/member_db.py`) — est 30 ln — verify: tests GREEN
+- [ ] S6.4 Migration 026 publication (DO-block idempotent) + updatedAt columns — create `migrations/026_realtime_member_economy_config.sql`: DO-block `ALTER PUBLICATION supabase_realtime ADD TABLE member, economy_config` catching SQLSTATE 42710 (verbatim `007_realtime_publication.sql:18` pattern); `ADD NOW` `updatedAt timestamptz` columns on both tables (trigger-maintained, `020_greeting_updated_at` precedent; decide moddatetime vs custom trigger at apply); push live → 26/26; verify re-runnable no-op (files: `migrations/026_realtime_member_economy_config.sql`) — est 40 ln — verify: `uv run pytest tests/test_migrations.py -v`
+- [ ] S6.5 Stale-guard: migration count 25→26 — update `bot/services/live_catalog.py` `LOCAL_MIGRATION_STEMS` (add `025_drop_...`, `026_realtime_...` if 025 not yet in stems — confirm against S3 outcome), `bot/services/schema_inventory.py` `len(live_migrations) != 19` → 26 and "19 migrations" docstrings; update `tests/test_schema_inventory_verifier.py` `migration_count == 19` → `== 26` (lines 62, 242, 293, 327) and docstrings (files: `bot/services/live_catalog.py`, `bot/services/schema_inventory.py`, `tests/test_schema_inventory_verifier.py`) — est 15 ln — verify: `uv run pytest tests/test_schema_inventory_verifier.py -v`
+- [ ] S6.6 RED+GREEN: realtime.py subscription extension — failing tests for "Member/Economy config CDC event invalidates guild cache" + "DELETE events use old_record" → `SUBSCRIBED_TABLES` += 2 (`realtime.py:49-54`); `_extract_guild_id` cases (`:109-126`) map both via `str(record["guildId"])`, DELETE falls back to `old_record["guildId"]` (files: `bot/core/realtime.py`, `tests/test_realtime.py`) — est 50 ln — verify: `uv run pytest tests/test_realtime.py -v`
+- [ ] S6.7 RED+GREEN: watchdog counter + poll incremental — failing tests for "Migration applied — events received", "Migration not applied — warning", "Watchdog counts skipped events", "Idempotent migration safe to re-run", "Incremental poll uses updatedAt", "Full-scan fallback without updatedAt", "Poll invalidates all guild configs", "Poll deactivates on WS recovery" → watchdog counter increments at top of `_handle_cdc` (RECEIVED semantics, before filtering); poll gains incremental branches for `member`/`economy_config` via `updatedAt`, full-scan fallback for `guild`/`greeting_config` (files: `bot/core/realtime.py`, `tests/test_realtime.py`) — est 80 ln — verify: `uv run pytest tests/test_realtime.py -v`
+- [ ] S6.8 RED+GREEN: hard-ordering assertion — failing test asserting (from git history in this slice) the `_on_write` wiring commit precedes the 026 ALTER commit; cover "Hard ordering is verifiable in history"; also "Existing CDC behavior is preserved" + "Published table scope is explicit" + "Deferral wording is gone" docs (files: `bot/core/realtime.py` docstring/docs, `tests/test_realtime.py`, `/Diagramas` cache docs) — est 30 ln — verify: `uv run pytest tests/test_realtime.py -k "order or history" -v`
+- [ ] S6.9 Settle attempt — S6 runs jscpd+uv-lock+full → capture → sha256 → settle (files: none) — est 0 ln
+
+## Slice S7 — Convergence (~100 docs ln, ~6 tasks)
+
+- [ ] S7.1 Acquire attempt ledger — `--request-id req-c5q-s7 --work-unit "S7 convergence" --evidence-goal "full-range GGA review PASS ≤2 rounds, residual-debt §1+§7 closed, archive"` (files: none) — est 0 ln
+- [ ] S7.2 Full-range GGA review setup — temporary env swap: `PR_BASE_BRANCH=v0.9.0-debt-zero bash .gga` (range `v0.9.0-debt-zero..HEAD`); restore original `PR_BASE_BRANCH` in SAME task step immediately after; NEVER commit the export (threat-matrix RED: grep tasks forbid committed export) (files: none) — est 0 ln — verify: `.gga` output captured
+- [ ] S7.3 GGA review round 1 + isolated fixes — run review max 2 rounds; isolated fixes land as own commits; re-review base = parent commit of the isolated fix (not range start) to avoid re-reviewing converged slices (files: any touched) — est 40 ln — verify: review PASSED
+- [ ] S7.4 Close residual-debt §1 + §7 with evidence — document ty gate closure (§1, link S1.7 gate commit) and §7 closure with evidence links in `docs/residual-debt.md` (or equivalent); update gap register (files: `docs/residual-debt.md`, gap register) — est 30 ln — verify: grep §1/§7 marked closed
+- [ ] S7.5 Update gap register + archive — update gap register with cycle-5 outcomes; archive change per `sdd-archive` (sync delta specs into `openspec/specs/`) (files: gap register, `openspec/changes/cycle-5-quality-zero/`) — est 30 ln — verify: `openspec` archive clean
+- [ ] S7.6 Settle attempt — full stack gate → capture → sha256 → settle (files: none) — est 0 ln
+
+## Threat Matrix (RED tests encoded above)
+
+| Row | Status | RED task |
+|---|---|---|
+| Shell/env manipulation (`.gga` `PR_BASE_BRANCH` swap) | Applicable | S7.2 — swap scoped to single invocation, restored same step; grep forbids committed export |
+| VCS/PR automation (stacked-chain retarget) | Applicable | Per-slice settle; child diffs must show no previous slices (rebase until clean) |
+| Routing/subprocess/exec classification | N/A | No new routes/subprocesses — omitted |
+
+## Traceability: spec scenarios → tasks
+
+### bot-core
+| Scenario | Task(s) |
+|---|---|
+| Slash command invocation | S2.2, S2.3 |
+| Prefix invocation is inert | S2.2, S2.3 |
+| Comma invocation is inert outside ticket channels | S2.2, S2.3 |
+| Comma ticket timer is unaffected | S2.9 (close-confirmation unchanged; verify no regression) |
+| Help shows slash syntax only | S2.6 |
+| Slash command error | S2.4, S2.5 |
+| No DM-first branch in prefix handler path | S2.4, S2.5 |
+| Unexpected error shows guild language (ES/EN) | S2.4, S2.5 |
+| Guild resolved from interaction | S2.4, S2.5 |
+
+### ephemeral-standard
+| Scenario | Task(s) |
+|---|---|
+| Admin slash error stays ephemeral | S2.8 |
+| Prefix invocation produces no output | S2.2, S2.3, S2.8 |
+| Admin command is ephemeral | S2.8 (KEEP-ADAPTED) |
+| Mod action is permanent | S2.8 (KEEP-ADAPTED) |
+| Fun command is permanent | S2.8 (KEEP-ADAPTED) |
+| /ping ephemeral | S2.8 |
+| /userinfo ephemeral | S2.8 (whois→userinfo rename) |
+
+### logging-service
+| Scenario | Task(s) |
+|---|---|
+| Spanish guild voice join embed localized | S3.2, S3.3 |
+| English guild voice join embed localized | S3.2, S3.3 |
+| Interpolation params substituted | S3.3 |
+| Locale coverage holds for all logging keys | S3.2, S3.3, S3.8 |
+| Routing guards unchanged | S3.3 (assert preserved) |
+
+### infraction-service
+| Scenario | Task(s) |
+|---|---|
+| Mute persists and returns Infraction | S3.4, S3.5 |
+| Kick persists and returns Infraction | S3.4, S3.5 |
+| Ban persists and returns Infraction | S3.4, S3.5 |
+| Service performs no Discord action | S3.4, S3.5 |
+| Async contract holds | S3.4, S3.5 |
+| Audit path consistency | S3.4, S3.6 |
+| Sentinel callsite swap | S3.6 |
+
+### cache-sync-realtime
+| Scenario | Task(s) |
+|---|---|
+| Member CDC event invalidates guild cache | S6.6 |
+| Economy config CDC event invalidates guild cache | S6.6 |
+| DELETE events use old_record | S6.6 |
+| RPC mutator marks recent write | S6.2, S6.3 |
+| Echo of own write is skipped | S6.2, S6.3 |
+| Hard ordering verifiable in history | S6.3 (before S6.4), S6.8 |
+| Subscriber starts on bot startup | S6.6 (preserve) |
+| Subscriber stops on shutdown | S6.6 (preserve) |
+| Subscription status tracked | S6.6 (preserve) |
+| Poll detects recent ticket activity | S6.7 (preserve) |
+| Incremental poll uses updatedAt | S6.7 |
+| Full-scan fallback without updatedAt | S6.7 |
+| Poll invalidates all guild configs | S6.7 |
+| Poll deactivates on WS recovery | S6.7 |
+| Migration applied — events received | S6.4, S6.7 |
+| Migration not applied — warning | S6.7 |
+| Watchdog counts skipped events | S6.7 |
+| Idempotent migration safe to re-run | S6.4, S6.7 |
+| Published table scope is explicit | S6.8 (docs) |
+| Deferral wording is gone | S6.8 (docs) |
+| Existing CDC behavior preserved | S6.6, S6.8 |
+
+## Review Workload Forecast
+
+| Slice | Est. changed lines | 400-line budget risk | PR |
+|---|---|---|---|
+| S0 | ~150 | Low | PR 1 |
+| S1 | ~700 | High | PR 2 |
+| S2 | ~600 | High | PR 3 |
+| S3 | ~750 | High | PR 4 |
+| S4 | ~500 | High | PR 5 |
+| S5a | ~400 net (−775 del) | Medium | PR 6 |
+| S5b/c | net −3300 | High (deletions) | PR 7 |
+| S6 | ~350 | Low | PR 8 |
+| S7 | ~100 | Low | PR 9 |
+| **Total** | **~3650 authored + −4075 deletions** | **High** | 9 PRs |
+
+Decision needed before apply: Yes (auto-chain: orchestrator proceeds with first slice S0; each slice settles before next acquires)
+Chained PRs recommended: Yes
+Chain strategy: stacked-to-main
+400-line budget risk: High (S1/S2/S3/S4/S5b/c each exceed 400; user already approved auto-chain + stacked-to-main)
+
+> The >400-line budget risk DOES trigger chained PRs — already user-approved via `auto-chain` + `stacked-to-main`. No further decision gate needed before apply. Each slice ships as one stacked PR to main in order S0→S1→S2→S3→S4→S5a→S5b/c→S6→S7; reverting a slice restores prior green state. S1 gate commit is last in its slice (single-commit revert restores tolerant ty). S3 migration 025 pushes before S6 migration 026 (numbering 24→25→26). S6 `_on_write` hooks land before the 026 publication ALTER (hard order, spec-verifiable in history).
