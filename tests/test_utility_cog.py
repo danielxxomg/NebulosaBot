@@ -147,7 +147,7 @@ class TestAvatarCommand:
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
         assert embed.image.url == f"{ctx.author.display_avatar.url}?size=1024"
-        assert ctx.author.display_name in embed.title  # type: ignore[operator]
+        assert ctx.author.display_name in embed.title
 
     @pytest.mark.asyncio
     async def test_avatar_target_shows_member_image(
@@ -217,13 +217,13 @@ class TestServerinfoCommand:
         fields = {f.name: f.value for f in embed.fields}
         assert "Owner" in fields or "Propietario" in fields
         assert "Members" in fields or "Miembros" in fields
-        assert str(ctx.guild.member_count) in fields.get("Members", fields.get("Miembros", ""))  # type: ignore[operator]
+        assert str(ctx.guild.member_count) in fields.get("Members", fields.get("Miembros", ""))
         assert "Channels" in fields or "Canales" in fields
-        assert str(len(ctx.guild.channels)) in fields.get("Channels", fields.get("Canales", ""))  # type: ignore[operator]
+        assert str(len(ctx.guild.channels)) in fields.get("Channels", fields.get("Canales", ""))
         assert "Roles" in fields
-        assert str(len(ctx.guild.roles)) in fields.get("Roles", fields.get("Roles", ""))  # type: ignore[operator]
+        assert str(len(ctx.guild.roles)) in fields.get("Roles", fields.get("Roles", ""))
         assert "Boosts" in fields or "Boosts" in fields
-        assert str(ctx.guild.premium_subscription_count) in fields.get("Boosts", fields.get("Boosts", ""))  # type: ignore[operator]
+        assert str(ctx.guild.premium_subscription_count) in fields.get("Boosts", fields.get("Boosts", ""))
         assert "Created" in fields or "Creado" in fields
 
     @pytest.mark.asyncio
@@ -241,7 +241,7 @@ class TestServerinfoCommand:
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
-        assert embed.color.value == ERROR  # type: ignore[union-attr]
+        assert embed.color.value == ERROR
 
     @pytest.mark.asyncio
     async def test_serverinfo_no_icon_handles_none_thumbnail(
@@ -296,7 +296,7 @@ class TestUserinfoCommand:
         fields = {f.name: f.value for f in embed.fields}
         id_field = "ID" if "ID" in fields else "Identificador"
         assert id_field in fields
-        assert str(ctx.author.id) in fields[id_field]  # type: ignore[operator]
+        assert str(ctx.author.id) in fields[id_field]
         roles_field = "Roles"
         assert roles_field in fields
         joined_field = "Joined" if "Joined" in fields else "Se Unió"

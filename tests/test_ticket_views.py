@@ -553,8 +553,8 @@ class TestTicketIntakeModalSubmit:
         # Replace the real TextInput objects with mocks that allow value setting.
         mock_title = self._make_mock_input(title_value, "Title")
         mock_desc = self._make_mock_input(desc_value, "Description")
-        modal.title_input = mock_title  # type: ignore[assignment]
-        modal.description_input = mock_desc  # type: ignore[assignment]
+        modal.title_input = mock_title
+        modal.description_input = mock_desc
 
         # Replace dynamic custom inputs.
         if custom_values is None:
@@ -563,7 +563,7 @@ class TestTicketIntakeModalSubmit:
         for i, defn in enumerate(field_definitions):
             val = custom_values[i] if i < len(custom_values) else ""
             mock_custom.append(self._make_mock_input(val, defn["label"]))
-        modal._custom_inputs = mock_custom  # type: ignore[assignment]
+        modal._custom_inputs = mock_custom
 
         return modal, guild
 

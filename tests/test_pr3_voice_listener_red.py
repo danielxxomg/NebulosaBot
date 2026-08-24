@@ -306,19 +306,19 @@ class TestVoiceListenerDebounce:
         cog = _load_listener(bot)
         # Seed debounce with fake old entries
         old_now = time.monotonic() - 1000
-        cog._debounce["111:1"] = old_now  # type: ignore[attr-defined]
-        cog._debounce["111:2"] = old_now  # type: ignore[attr-defined]
-        cog._debounce["111:3"] = old_now  # type: ignore[attr-defined]
+        cog._debounce["111:1"] = old_now
+        cog._debounce["111:2"] = old_now
+        cog._debounce["111:3"] = old_now
         # Trigger eviction via a new event
         member = _member(guild_id="111", member_id=99)
         before = _voice_state(channel=None)
         after = _voice_state(channel=_voice_channel(100))
         await cog.on_voice_state_update(member, before, after)
         # Old entries should be evicted (no unbounded growth)
-        assert "111:1" not in cog._debounce  # type: ignore[attr-defined]
-        assert "111:2" not in cog._debounce  # type: ignore[attr-defined]
+        assert "111:1" not in cog._debounce
+        assert "111:2" not in cog._debounce
         # New entry should exist
-        assert "111:99" in cog._debounce  # type: ignore[attr-defined]
+        assert "111:99" in cog._debounce
 
     @pytest.mark.asyncio
     async def test_debounce_expires_after_ttl(self) -> None:

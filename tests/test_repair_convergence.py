@@ -40,7 +40,7 @@ async def test_sweep_integrity_converges_on_evaluate() -> None:
     mock_bot = MagicMock()
     mock_bot.get_guild.return_value = None
 
-    service = TicketService(mock_db, MagicMock())  # type: ignore[arg-type]
+    service = TicketService(mock_db, MagicMock())
     results = await service.sweep_integrity("g1", mock_bot, preflight=None)
     # Unresolved probe MUST produce a single skipped report with evidence_id, no mutation.
     assert len(results) == 1
@@ -78,7 +78,7 @@ async def test_repair_ticket_from_evidence_guild_scoped_and_conditional() -> Non
         observed_at=datetime.now(UTC).isoformat(),
     )
 
-    svc = TicketService(mock_db, MagicMock())  # type: ignore[arg-type]
+    svc = TicketService(mock_db, MagicMock())
     evidence = IntegrityEvidence(
         ticket_id="t9",
         guild_id="g1",
@@ -107,7 +107,7 @@ async def test_repair_ticket_by_ref_guild_scoped() -> None:
     mock_db.get_ticket_by_number.return_value = {"id": "t1", "guildId": "g-other", "channelId": "c1", "status": "open"}
     mock_db.insert_audit_row = AsyncMock()
 
-    svc = TicketService(mock_db, MagicMock())  # type: ignore[arg-type]
+    svc = TicketService(mock_db, MagicMock())
     authority = RepairAuthority(
         actor_id="u1",
         guild_id="g1",

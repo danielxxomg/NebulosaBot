@@ -103,7 +103,7 @@ class TestDailyCommand:
         assert isinstance(embed, discord.Embed)
         assert embed.color is not None
         assert embed.color.value == SUCCESS
-        assert "130" in embed.description  # type: ignore[operator]
+        assert "130" in embed.description
         # Economy commands must be permanent (NOT ephemeral)
         assert call_args[1].get("ephemeral") is not True
 
@@ -127,7 +127,7 @@ class TestDailyCommand:
         assert embed.color is not None
         assert embed.color.value == WARNING
         # Must contain formatted remaining time
-        assert "22h 0m" in embed.description  # type: ignore[operator]
+        assert "22h 0m" in embed.description
 
     @pytest.mark.asyncio
     async def test_daily_error_handling(
@@ -255,7 +255,7 @@ class TestLeaderboardCommand:
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
-        assert "#1" in embed.description or "1." in embed.description  # type: ignore[operator]
+        assert "#1" in embed.description or "1." in embed.description
 
     @pytest.mark.asyncio
     async def test_leaderboard_coins_displays_top_10(

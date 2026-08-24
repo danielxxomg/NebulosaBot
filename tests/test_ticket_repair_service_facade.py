@@ -59,7 +59,7 @@ def test_repair_service_single_eligibility_owner(mock_db: AsyncMock) -> None:
 
     import bot.services.ticket_repair_service as mod
 
-    src = pathlib.Path(mod.__file__).read_text(encoding="utf-8")  # type: ignore[arg-type]
+    src = pathlib.Path(mod.__file__).read_text(encoding="utf-8")
     assert "evaluate_repair_eligibility" in src
     # facade or repair service must not re-implement gate logic inline
     # (the coordinator is the single source; ensure import from ticket_repair)
@@ -75,7 +75,7 @@ async def test_facade_delegates_repair_ticket_from_evidence_once(mock_db: AsyncM
     svc = TicketService(db=mock_db, cache=cache)
     mock_repair = MagicMock()
     mock_repair.repair_ticket_from_evidence = AsyncMock(return_value=MagicMock())
-    svc._repair = mock_repair  # type: ignore[attr-defined]
+    svc._repair = mock_repair
     evidence = IntegrityEvidence(
         ticket_id="t1",
         guild_id="g1",
@@ -96,7 +96,7 @@ async def test_facade_delegates_handle_channel_delete_once(mock_db: AsyncMock) -
     svc = TicketService(db=mock_db, cache=cache)
     mock_repair = MagicMock()
     mock_repair.handle_channel_delete = AsyncMock(return_value=None)
-    svc._repair = mock_repair  # type: ignore[attr-defined]
+    svc._repair = mock_repair
     await svc.handle_channel_delete(guild_id="g1", channel_id="c1", preflight=None)
     mock_repair.handle_channel_delete.assert_awaited_once_with(guild_id="g1", channel_id="c1", preflight=None)
     mock_db.get_active_ticket_by_channel.assert_not_awaited()
@@ -110,7 +110,7 @@ async def test_facade_delegates_sweep_integrity_once(mock_db: AsyncMock) -> None
     svc = TicketService(db=mock_db, cache=cache)
     mock_repair = MagicMock()
     mock_repair.sweep_integrity = AsyncMock(return_value=[])
-    svc._repair = mock_repair  # type: ignore[attr-defined]
+    svc._repair = mock_repair
     bot = MagicMock()
     await svc.sweep_integrity(guild_id="g1", bot=bot, preflight=None)
     mock_repair.sweep_integrity.assert_awaited_once()
@@ -126,7 +126,7 @@ async def test_facade_delegates_repair_by_ref_once(mock_db: AsyncMock) -> None:
     svc = TicketService(db=mock_db, cache=cache)
     mock_repair = MagicMock()
     mock_repair.repair_ticket_by_ref = AsyncMock(return_value=None)
-    svc._repair = mock_repair  # type: ignore[attr-defined]
+    svc._repair = mock_repair
     authority = RepairAuthority(actor_id="u1", guild_id="g1", target_guild_id="g1", has_mod_role=True)
     bot = MagicMock()
     await svc.repair_ticket_by_ref("42", guild_id="g1", actor_id="u1", authority=authority, bot=bot, preflight=None)
@@ -144,7 +144,7 @@ async def test_facade_delegates_repair_manual_once(mock_db: AsyncMock) -> None:
     svc = TicketService(db=mock_db, cache=cache)
     mock_repair = MagicMock()
     mock_repair.repair_ticket_manual = AsyncMock(return_value=MagicMock())
-    svc._repair = mock_repair  # type: ignore[attr-defined]
+    svc._repair = mock_repair
     authority = RepairAuthority(actor_id="u1", guild_id="g1", target_guild_id="g1", has_mod_role=True)
     bot = MagicMock()
     await svc.repair_ticket_manual(
@@ -162,7 +162,7 @@ async def test_facade_delegates_create_ticket_channel_once(mock_db: AsyncMock) -
     svc = TicketService(db=mock_db, cache=cache)
     mock_repair = MagicMock()
     mock_repair.create_ticket_channel = AsyncMock(return_value=(MagicMock(), MagicMock(spec=Ticket)))
-    svc._repair = mock_repair  # type: ignore[attr-defined]
+    svc._repair = mock_repair
     guild = MagicMock()
     category = MagicMock()
     author = MagicMock()
@@ -189,7 +189,7 @@ async def test_facade_delegates_close_ticket_full_once(mock_db: AsyncMock) -> No
     svc = TicketService(db=mock_db, cache=cache)
     mock_repair = MagicMock()
     mock_repair.close_ticket_full = AsyncMock(return_value=None)
-    svc._repair = mock_repair  # type: ignore[attr-defined]
+    svc._repair = mock_repair
     channel = MagicMock()
     ticket = MagicMock(spec=Ticket)
     ticket.id = "t1"

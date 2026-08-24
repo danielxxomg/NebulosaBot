@@ -98,7 +98,7 @@ async def test_facade_delegates_get_stale_tickets_once(mock_db: AsyncMock) -> No
     mock_qs.get_stale_tickets = AsyncMock(return_value=[])
     # keep real cache set for other assertions
     mock_qs._ticket_channel_cache = set()
-    svc._query = mock_qs  # type: ignore[attr-defined]
+    svc._query = mock_qs
 
     await svc.get_stale_tickets("g1", hours=48)
 
@@ -116,7 +116,7 @@ def test_facade_delegates_is_ticket_channel_once(mock_db: AsyncMock) -> None:
     mock_qs = MagicMock()
     mock_qs.is_ticket_channel = MagicMock(return_value=True)
     mock_qs._ticket_channel_cache = {42}
-    svc._query = mock_qs  # type: ignore[attr-defined]
+    svc._query = mock_qs
 
     assert svc.is_ticket_channel(42) is True
     mock_qs.is_ticket_channel.assert_called_once_with(42)
@@ -131,7 +131,7 @@ def test_facade_delegates_sync_channel_cache_once(mock_db: AsyncMock) -> None:
     mock_qs = MagicMock()
     mock_qs.sync_channel_cache = MagicMock()
     mock_qs._ticket_channel_cache = set()
-    svc._query = mock_qs  # type: ignore[attr-defined]
+    svc._query = mock_qs
 
     svc.sync_channel_cache({10, 20})
     mock_qs.sync_channel_cache.assert_called_once_with({10, 20})
@@ -151,15 +151,15 @@ def test_facade_cache_property_is_alias_to_query_owner(mock_db: AsyncMock) -> No
     svc = TicketService(db=mock_db, cache=cache)
 
     # facade exposes alias to single owner
-    assert svc._ticket_channel_cache is svc._query._ticket_channel_cache  # type: ignore[attr-defined]
+    assert svc._ticket_channel_cache is svc._query._ticket_channel_cache
 
-    svc._query.add_channel(99)  # type: ignore[attr-defined]
+    svc._query.add_channel(99)
     assert 99 in svc._ticket_channel_cache
     assert svc.is_ticket_channel(99) is True
 
     # facade setter aliases too
     svc._ticket_channel_cache = {1, 2}
-    assert svc._query._ticket_channel_cache == {1, 2}  # type: ignore[attr-defined]
+    assert svc._query._ticket_channel_cache == {1, 2}
 
 
 @pytest.mark.asyncio
@@ -171,8 +171,8 @@ async def test_facade_create_close_use_single_owner_not_direct_set(mock_db: Asyn
     svc = TicketService(db=mock_db, cache=cache)
 
     # Spy on the single owner via wrap
-    orig_add = svc._query.add_channel  # type: ignore[attr-defined]
-    orig_discard = svc._query.discard_channel  # type: ignore[attr-defined]
+    orig_add = svc._query.add_channel
+    orig_discard = svc._query.discard_channel
 
     calls_add: list[int] = []
     calls_discard: list[int] = []

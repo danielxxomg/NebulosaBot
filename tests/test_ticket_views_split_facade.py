@@ -97,7 +97,7 @@ def test_ephemeral_views_timeout_300() -> None:
     cats = [TicketCategory(id="c1", guild_id="123", name="Support", description="", position=0)]
     opts = [discord.SelectOption(label="Support", value="c1")]
 
-    v1 = _CategorySelectView(opts, guild, cats)  # type: ignore[arg-type]
+    v1 = _CategorySelectView(opts, guild, cats)
     assert v1.timeout == 300
 
     ticket_row = {
@@ -114,7 +114,7 @@ def test_ephemeral_views_timeout_300() -> None:
         "closedAt": None,
         "lastActivity": "2026-01-01T00:00:00+00:00",
     }
-    v2 = _EditCategoryView(opts, guild, cats, ticket_row)  # type: ignore[arg-type]
+    v2 = _EditCategoryView(opts, guild, cats, ticket_row)
     assert v2.timeout == 300
 
 
@@ -184,8 +184,8 @@ def test_category_select_passes_field_definitions_to_modal() -> None:
         ],
     )
     opts = [discord.SelectOption(label="Reportes", value="cat-uuid-1")]
-    select = _CategorySelect(opts, guild, [cat])  # type: ignore[arg-type]
-    select._values = ["cat-uuid-1"]  # type: ignore[attr-defined]
+    select = _CategorySelect(opts, guild, [cat])
+    select._values = ["cat-uuid-1"]
 
     interaction = MagicMock(spec=discord.Interaction)
     interaction.response = MagicMock()
@@ -226,8 +226,8 @@ async def test_edit_category_select_revalidates_is_mod_and_closed_state() -> Non
         "closedAt": None,
         "lastActivity": "2026-01-01T00:00:00+00:00",
     }
-    select = _EditCategorySelect(opts, guild, [cat], ticket_row_open)  # type: ignore[arg-type]
-    select._values = ["cat-uuid-2"]  # type: ignore[attr-defined]
+    select = _EditCategorySelect(opts, guild, [cat], ticket_row_open)
+    select._values = ["cat-uuid-2"]
 
     # Case 1: now-non-mod must be rejected and not call service
     interaction = MagicMock(spec=discord.Interaction)

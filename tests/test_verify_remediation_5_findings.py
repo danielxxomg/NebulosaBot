@@ -146,7 +146,7 @@ async def test_sweep_dry_run_returns_corroborated_candidates():
         assert r.reason == "gate_unresolved"
         assert r.evidence_id is not None
         # New contract: dry-run candidate must be corroborated=True
-        assert r.corroborated is True  # type: ignore[attr-defined]
+        assert r.corroborated is True
     # No mutation
     db.transition_ticket_to_closed.assert_not_awaited()
     # No audit rows for dry-run (spec 7.3)
@@ -222,8 +222,8 @@ async def test_listener_duplicate_race_yields_repaired_then_already_closed():
         svc.handle_channel_delete("123", "555", preflight=_resolved()),
     )
     assert {r.outcome for r in results if r is not None} == {"repaired", "already_closed"}
-    assert sum(1 for r in results if r is not None and r.action == "close" and r.outcome == "repaired") == 1  # type: ignore[assert-type]
-    assert sum(1 for r in results if r is not None and r.action == "no_op" and r.outcome == "already_closed") == 1  # type: ignore[assert-type]
+    assert sum(1 for r in results if r is not None and r.action == "close" and r.outcome == "repaired") == 1
+    assert sum(1 for r in results if r is not None and r.action == "no_op" and r.outcome == "already_closed") == 1
 
 
 @pytest.mark.asyncio

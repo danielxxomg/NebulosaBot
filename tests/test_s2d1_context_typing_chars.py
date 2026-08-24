@@ -23,14 +23,14 @@ def _source_has_broad_any(fp: pathlib.Path) -> bool:
     tree = ast.parse(src, filename=str(fp))
     for node in ast.walk(tree):
         if isinstance(node, ast.AnnAssign):
-            ann = ast.unparse(node.annotation)  # type: ignore[attr-defined]
+            ann = ast.unparse(node.annotation)
             if "Context[Any]" in ann or "Context[typing.Any]" in ann:
                 return True
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             for arg in node.args.args:
                 if arg.annotation is None:
                     continue
-                ann = ast.unparse(arg.annotation)  # type: ignore[attr-defined]
+                ann = ast.unparse(arg.annotation)
                 if "Context[Any]" in ann:
                     return True
     return False
@@ -63,12 +63,12 @@ class TestContextTypingCharacterization:
         # the attribute is settable on a NebulosaContext-constructible instance
         # without requiring a live Discord connection — use __new__ to bypass init.
         obj = NebulosaContext.__new__(NebulosaContext)
-        obj.interaction = None  # type: ignore[attr-defined]
+        obj.interaction = None
         assert hasattr(obj, "interaction")
         assert obj.interaction is None
         # Also verify a mock interaction object is preserved
         mock_inter = object()
-        obj.interaction = mock_inter  # type: ignore[attr-defined]
+        obj.interaction = mock_inter
         assert obj.interaction is mock_inter
 
 

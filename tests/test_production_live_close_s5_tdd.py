@@ -259,7 +259,7 @@ class TestRepairAllowlistRed:
         from scripts.apply_staging_migration import build_repair_argv
 
         with pytest.raises(ValueError, match="allowlist"):
-            build_repair_argv(("evil_migration",))  # type: ignore[arg-type]
+            build_repair_argv(("evil_migration",))
 
     def test_supabase_config_and_symlink_exist(self) -> None:
         assert pathlib.Path("supabase/config.toml").exists()
@@ -280,7 +280,7 @@ class TestSubprocessShellThreat:
         from scripts.apply_staging_migration import build_psql_argv
 
         with pytest.raises(ValueError, match="untracked"):
-            build_psql_argv("postgresql://u:p@h/db", "migrations/001_initial_schema.sql")  # type: ignore[arg-type]
+            build_psql_argv("postgresql://u:p@h/db", "migrations/001_initial_schema.sql")
 
     def test_shell_false_and_on_error_stop(self) -> None:
         text = pathlib.Path("scripts/apply_staging_migration.py").read_text(encoding="utf-8")

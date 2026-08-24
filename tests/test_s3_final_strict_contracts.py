@@ -9,7 +9,7 @@ import pytest
 
 
 class _StrictDB(AsyncMock):
-    def __init__(self, *a, **kw):  # type: ignore[no-untyped-def]
+    def __init__(self, *a, **kw):
         super().__init__(*a, **kw)
         self.get_ticket = AsyncMock(side_effect=self._gt)
         self.get_ticket_by_channel = AsyncMock(side_effect=self._gtc)
@@ -22,17 +22,17 @@ class _StrictDB(AsyncMock):
         self.count_user_open_tickets_in_category = AsyncMock(return_value=0)
         self.transition_ticket_to_closed = AsyncMock(return_value=None)
 
-    async def _gt(self, tid: str, guild_id: str | None = None, **_: object):  # type: ignore[no-untyped-def]
+    async def _gt(self, tid: str, guild_id: str | None = None, **_: object):
         if guild_id is None:
             raise ValueError("guild_id required")
         return
 
-    async def _gtc(self, cid: str, guild_id: str | None = None, **_: object):  # type: ignore[no-untyped-def]
+    async def _gtc(self, cid: str, guild_id: str | None = None, **_: object):
         if guild_id is None:
             raise ValueError("guild_id required")
         return
 
-    async def _ut(self, tid: str, **kw):  # type: ignore[no-untyped-def]
+    async def _ut(self, tid: str, **kw):
         if kw.get("guild_id") is None:
             raise ValueError("guild_id required")
         return
@@ -45,7 +45,7 @@ class TestGuildScopeStrict:
         from bot.services.ticket_query_service import TicketQueryService
 
         db = _StrictDB()
-        svc = TicketLifecycleService(db=db, query=TicketQueryService(db))  # type: ignore[arg-type]
+        svc = TicketLifecycleService(db=db, query=TicketQueryService(db))
         with pytest.raises(ValueError, match="guild_id required"):
             await svc.create_note("t1", "u1", "hello")
         with pytest.raises(ValueError, match="not found"):
@@ -57,7 +57,7 @@ class TestGuildScopeStrict:
         from bot.services.ticket_query_service import TicketQueryService
 
         db = _StrictDB()
-        svc = TicketLifecycleService(db=db, query=TicketQueryService(db))  # type: ignore[arg-type]
+        svc = TicketLifecycleService(db=db, query=TicketQueryService(db))
         with pytest.raises(ValueError, match="guild_id required"):
             await svc.get_notes("t1")
         assert await svc.get_notes("t1", guild_id="g1") == []

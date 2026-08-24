@@ -115,7 +115,7 @@ async def test_generate_produces_html(
     assert file.filename == "transcript-support-42.html"
 
     # Read back the HTML content.
-    buffer_content = file.fp.read()  # type: ignore[union-attr]
+    buffer_content = file.fp.read()
     html = buffer_content.decode("utf-8")
 
     assert "<!DOCTYPE html>" in html
@@ -137,7 +137,7 @@ async def test_generate_empty_channel(
 
     file = await transcript_service.generate(channel)
 
-    buffer_content = file.fp.read()  # type: ignore[union-attr]
+    buffer_content = file.fp.read()
     html = buffer_content.decode("utf-8")
     assert "Ticket Transcript — empty-ticket" in html
     assert '<div class="message">' not in html
@@ -161,7 +161,7 @@ async def test_generate_respects_message_cap(
     # The real Discord history(limit=5000) won't return more.
 
     file = await transcript_service.generate(channel, limit=9999)
-    buffer_content = file.fp.read()  # type: ignore[union-attr]
+    buffer_content = file.fp.read()
     html = buffer_content.decode("utf-8")
 
     # Spot-check first and last messages are present.
@@ -184,7 +184,7 @@ async def test_generate_null_content_shows_placeholder(
     channel = _make_mock_channel(name="ghost", messages=messages)
 
     file = await transcript_service.generate(channel)
-    buffer_content = file.fp.read()  # type: ignore[union-attr]
+    buffer_content = file.fp.read()
     html = buffer_content.decode("utf-8")
 
     assert "[no text content]" in html
@@ -199,7 +199,7 @@ async def test_generate_escapes_html(
     channel = _make_mock_channel(name="xss-test", messages=messages)
 
     file = await transcript_service.generate(channel)
-    buffer_content = file.fp.read()  # type: ignore[union-attr]
+    buffer_content = file.fp.read()
     html = buffer_content.decode("utf-8")
 
     # The raw script tag should be escaped.

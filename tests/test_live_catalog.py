@@ -413,7 +413,7 @@ class TestFetchCatalogViaDbProvenance:
             _w.catch_warnings(record=True),
         ):
             _w.simplefilter("always")
-            gate = LiveAcceptanceGate(report=report, used_real_db=True)  # type: ignore[arg-type]
+            gate = LiveAcceptanceGate(report=report, used_real_db=True)
             result = gate.evaluate()
             assert result.passed is False
             assert any("synthetic" in r.lower() or "provenance" in r.lower() for r in result.reasons)

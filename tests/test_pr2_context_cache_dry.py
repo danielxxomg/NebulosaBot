@@ -14,7 +14,7 @@ import pathlib
 
 def test_cache_key_helper_exists_and_formats() -> None:
     """cache_key helper must exist in bot.core.cache and format {guild_id}:{entity}."""
-    from bot.core.cache import cache_key  # type: ignore[attr-defined]
+    from bot.core.cache import cache_key
 
     assert cache_key("123", "config") == "123:config"
     assert cache_key(456, "greeting_config") == "456:greeting_config"
@@ -23,7 +23,7 @@ def test_cache_key_helper_exists_and_formats() -> None:
 
 def test_cache_key_helper_guild_isolation() -> None:
     """cache_key must produce distinct keys for different guilds."""
-    from bot.core.cache import cache_key  # type: ignore[attr-defined]
+    from bot.core.cache import cache_key
 
     a = cache_key("111", "config")
     b = cache_key("222", "config")

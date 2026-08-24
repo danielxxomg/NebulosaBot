@@ -274,7 +274,7 @@ async def test_show_timer_confirm_view_logs_when_edit_message_raises(
 
     with caplog.at_level(logging.WARNING, logger="bot.cogs.tickets"):
         # Owner-gated confirm: call the view's on_confirm directly.
-        await view._on_confirm(interaction)  # type: ignore[attr-defined]
+        await view._on_confirm(interaction)
 
     # The edit failure MUST be logged (was swallowed by suppress(Exception)).
     assert any(

@@ -517,7 +517,7 @@ class TestChannelDeleteRepairRouting:
         listener = AuditListener(bot)
         channel = make_mock_channel(name="general")
 
-        await listener.on_guild_channel_delete(channel)  # type: ignore[union-attr]
+        await listener.on_guild_channel_delete(channel)
 
         mock_logging.log_channel_delete.assert_awaited_once_with("123456789", channel)
 
@@ -563,7 +563,7 @@ class TestAuthoritativeChannelDeletePR3:
         listener = AuditListener(bot)
         channel = make_mock_channel(channel_id=555, name="ticket-0001")
         channel.guild.id = 123
-        await listener.on_guild_channel_delete(channel)  # type: ignore[union-attr]
+        await listener.on_guild_channel_delete(channel)
         db.transition_ticket_to_closed.assert_awaited_once()
         assert db.transition_ticket_to_closed.call_args.kwargs["close_reason"] == "zombie:channel_deleted"
 
@@ -589,7 +589,7 @@ class TestAuthoritativeChannelDeletePR3:
         listener = AuditListener(bot)
         channel = make_mock_channel(channel_id=555, name="ticket-0001")
         channel.guild.id = 123
-        await listener.on_guild_channel_delete(channel)  # type: ignore[union-attr]
+        await listener.on_guild_channel_delete(channel)
         db.transition_ticket_to_closed.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -626,7 +626,7 @@ class TestAuthoritativeChannelDeletePR3:
         listener = AuditListener(bot)
         channel = make_mock_channel(channel_id=555, name="ticket-0001")
         channel.guild.id = 123
-        await asyncio.gather(listener.on_guild_channel_delete(channel), listener.on_guild_channel_delete(channel))  # type: ignore[union-attr]
+        await asyncio.gather(listener.on_guild_channel_delete(channel), listener.on_guild_channel_delete(channel))
         assert db.transition_ticket_to_closed.await_count == 2
         # Strengthened: exactly one repaired close and one already_closed no-op via service harnesses
         db2 = AsyncMock()
@@ -667,7 +667,7 @@ class TestAuthoritativeChannelDeletePR3:
         listener = AuditListener(bot)
         channel = make_mock_channel(channel_id=999, name="other")
         channel.guild.id = 999
-        await listener.on_guild_channel_delete(channel)  # type: ignore[union-attr]
+        await listener.on_guild_channel_delete(channel)
         db.transition_ticket_to_closed.assert_not_awaited()
 
 

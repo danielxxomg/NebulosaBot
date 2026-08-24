@@ -115,13 +115,13 @@ class TestGuildScopeDeferredCallers:
         fake = FakeSupabaseClient()
         fake.set_table_data("ticket", [])
         db = Database(url="https://test.supabase.co", key="test-key")
-        db._client = fake  # type: ignore[attr-defined]
+        db._client = fake
         with pytest.raises((ValueError, TypeError)):
-            await db.get_ticket("t-b")  # type: ignore[call-arg]
+            await db.get_ticket("t-b")
         result = await db.get_ticket("t-b", guild_id="guild-a")
         assert result is None
         with pytest.raises((ValueError, TypeError)):
-            await db.get_ticket_by_channel("ch-b")  # type: ignore[call-arg]
+            await db.get_ticket_by_channel("ch-b")
         result2 = await db.get_ticket_by_channel("ch-b", guild_id="guild-a")
         assert result2 is None
 
@@ -169,7 +169,7 @@ class TestSbSecretProbe:
         # With real secret + real signature, service_role is accepted, anon still rejected
         secret = "s3-guard-secret-32bytes-strong-123456"
         monkeypatch.setenv("SUPABASE_JWT_SECRET", secret)
-        import jwt as pyjwt  # type: ignore[import-untyped]
+        import jwt as pyjwt
 
         real = pyjwt.encode({"role": "service_role"}, secret, algorithm="HS256")
         anon_real = pyjwt.encode({"role": "anon"}, secret, algorithm="HS256")

@@ -43,7 +43,7 @@ def _unwrap_predicate(
     result = factory()
     # New-style: is_admin() exposes .predicate directly.
     if hasattr(result, "predicate"):
-        return result.predicate  # type: ignore[return-value]
+        return result.predicate
     # Legacy: is_mod() returns app_commands.check(predicate).
     with patch("bot.utils.checks.app_commands.check") as mock_check:
         mock_check.side_effect = lambda pred: pred
@@ -653,12 +653,12 @@ async def test_can_member_dm_denies() -> None:
     m = _make_member_with_roles(1, [123])
     # guild_id None simulates DM or non-guild listener
     # can_member takes guild_id param — pass 0 or None; it should deny.
-    assert await can_member("moderation.ban", m, guild_id=None) is False  # type: ignore[arg-type]
+    assert await can_member("moderation.ban", m, guild_id=None) is False
     # also string "0" with no guild context
     with patch("bot.utils.checks._get_guild_service") as gs_mock:
         gs_mock.return_value.get_config = AsyncMock(return_value=MagicMock(permission_matrix={}, mod_role_id=None))
         # When guild_id is None, should not even fetch config — direct deny
-        assert await can_member("moderation.ban", m, guild_id=None) is False  # type: ignore[arg-type]
+        assert await can_member("moderation.ban", m, guild_id=None) is False
 
 
 @pytest.mark.asyncio

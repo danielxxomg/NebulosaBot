@@ -66,7 +66,7 @@ async def test_native_kwargs_path_calls_renderer_directly():
         # Old signature: (db, cache, image_service) — still test native path via image_service mock
         img = MagicMock()
         img.generate_greeting_card.return_value = io.BytesIO(b"fake-png")
-        service = GreetingService(db=db, cache=cache, image_service=img)  # type: ignore[call-arg]
+        service = GreetingService(db=db, cache=cache, image_service=img)
         member = _make_member()
         await service.dispatch_welcome(member)
         assert img.generate_greeting_card.called

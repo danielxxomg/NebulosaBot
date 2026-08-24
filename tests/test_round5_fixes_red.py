@@ -106,7 +106,7 @@ class TestSentinelCogLoadRed:
         mock_loop = MagicMock()
         mock_loop.is_running.return_value = False
         mock_loop.start = MagicMock()
-        cog.decay_expiry_loop = mock_loop  # type: ignore[method-assign]
+        cog.decay_expiry_loop = mock_loop
 
         await cog.cog_load()
 
@@ -125,7 +125,7 @@ class TestSentinelCogLoadRed:
         mock_loop = MagicMock()
         mock_loop.is_running.return_value = True
         mock_loop.start = MagicMock()
-        cog.decay_expiry_loop = mock_loop  # type: ignore[method-assign]
+        cog.decay_expiry_loop = mock_loop
 
         await cog.cog_load()
 

@@ -62,11 +62,11 @@ class TestServiceRoleConnect:
         )
         secret = "s3-guard-secret-32bytes-strong-123456"
         with patch.dict("os.environ", {"SUPABASE_JWT_SECRET": secret}):
-            import jwt as pyjwt  # type: ignore[import-untyped]
+            import jwt as pyjwt
 
             # Re-sign with the same secret so PyJWT verification passes
             signed = pyjwt.encode({"role": "service_role"}, secret, algorithm="HS256")
-            db._key = signed  # type: ignore[attr-defined]
+            db._key = signed
             with patch("bot.core.db.base.acreate_client", return_value=mock_client):
                 await db.connect()
             assert db._client is mock_client
@@ -127,7 +127,7 @@ class TestServiceRoleConnect:
 
         os.environ["SUPABASE_JWT_SECRET"] = secret
         try:
-            import jwt as pyjwt  # type: ignore[import-untyped]
+            import jwt as pyjwt
 
             signed = pyjwt.encode({"role": "service_role"}, secret, algorithm="HS256")
             validate_service_role_key(signed)
@@ -146,7 +146,7 @@ class TestServiceRoleConnect:
 
         os.environ["SUPABASE_JWT_SECRET"] = secret
         try:
-            import jwt as pyjwt  # type: ignore[import-untyped]
+            import jwt as pyjwt
 
             signed = pyjwt.encode({"role": "service_role"}, secret, algorithm="HS256")
             validate_supabase_key(signed)

@@ -118,7 +118,7 @@ class TestDadosCommand:
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
-        assert "d20" in embed.description  # type: ignore[operator]
+        assert "d20" in embed.description
 
     @pytest.mark.asyncio
     async def test_dados_max_sides_100(
@@ -201,8 +201,8 @@ class TestBananaCommand:
         assert isinstance(sent_file, discord.File)
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
-        assert "cm" in embed.description  # type: ignore[operator]
-        assert "banana" in embed.title.lower() or "\U0001f34c" in embed.title  # type: ignore[union-attr, operator]
+        assert "cm" in embed.description
+        assert "banana" in embed.title.lower() or "\U0001f34c" in embed.title
 
     @pytest.mark.asyncio
     @patch.object(

@@ -28,7 +28,7 @@ def fake_client() -> FakeSupabaseClient:
 @pytest.fixture
 def db(fake_client: FakeSupabaseClient) -> Database:
     database = Database(url="https://test.supabase.co", key="test-key")
-    database._client = fake_client  # type: ignore[attr-defined]
+    database._client = fake_client
     return database
 
 
@@ -53,7 +53,7 @@ class TestGuildScopeGetTicket:
         # After GREEN, it filters by guild_id and returns [] -> None
         # To make test deterministic with FakeSupabaseClient, we set data to [] for the guild-scoped call
         # Instead we test filter is applied: call with guild_id and assert filter includes guildId
-        await db.get_ticket("t-b", guild_id="guild-a")  # type: ignore[call-arg]
+        await db.get_ticket("t-b", guild_id="guild-a")
         filters = fake_client.get_table_filters("ticket")
         assert ("eq", "guildId", "guild-a") in filters, f"Missing guildId filter, got {filters}"
         assert ("eq", "id", "t-b") in filters
@@ -65,7 +65,7 @@ class TestGuildScopeGetTicket:
         """get_ticket with wrong guild MUST return None, not the row."""
         # Data for guild B exists, but query scoped to guild A returns empty
         fake_client.set_table_data("ticket", [])
-        result = await db.get_ticket("t-b", guild_id="guild-a")  # type: ignore[call-arg]
+        result = await db.get_ticket("t-b", guild_id="guild-a")
         assert result is None
 
 
@@ -74,7 +74,7 @@ class TestGuildScopeGetTicketByChannel:
     async def test_guild_scope_get_ticket_by_channel_denies_cross_guild(
         self, db: Database, fake_client: FakeSupabaseClient
     ) -> None:
-        await db.get_ticket_by_channel("ch-b", guild_id="guild-a")  # type: ignore[call-arg]
+        await db.get_ticket_by_channel("ch-b", guild_id="guild-a")
         filters = fake_client.get_table_filters("ticket")
         assert ("eq", "guildId", "guild-a") in filters
         assert ("eq", "channelId", "ch-b") in filters
@@ -84,7 +84,7 @@ class TestGuildScopeGetTicketByChannel:
         self, db: Database, fake_client: FakeSupabaseClient
     ) -> None:
         fake_client.set_table_data("ticket", [])
-        result = await db.get_ticket_by_channel("ch-b", guild_id="guild-a")  # type: ignore[call-arg]
+        result = await db.get_ticket_by_channel("ch-b", guild_id="guild-a")
         assert result is None
 
 
@@ -94,7 +94,7 @@ class TestGuildScopeUpdateTicket:
         self, db: Database, fake_client: FakeSupabaseClient
     ) -> None:
         """update_ticket from wrong guild MUST NOT mutate — WHERE guildId=GID AND id=TID."""
-        await db.update_ticket("t-b", guild_id="guild-a", status="closed")  # type: ignore[call-arg]
+        await db.update_ticket("t-b", guild_id="guild-a", status="closed")
         filters = fake_client.get_table_filters("ticket")
         assert ("eq", "guildId", "guild-a") in filters
         assert ("eq", "id", "t-b") in filters
@@ -106,7 +106,7 @@ class TestGuildScopeUpdateTicket:
         """Ensure update without guild does not leak — scoped call must include guild."""
         # Call without guild should still work (backward compat) but scoped call must filter
         fake_client.set_table_data("ticket", [])
-        await db.update_ticket("t-b", guild_id="guild-a", status="closed")  # type: ignore[call-arg]
+        await db.update_ticket("t-b", guild_id="guild-a", status="closed")
         filters = fake_client.get_table_filters("ticket")
         # The last call's filters must contain guildId
         assert any(f[1] == "guildId" for f in filters)
@@ -117,7 +117,7 @@ class TestGuildScopeGetTicketsByParent:
     async def test_guild_scope_get_tickets_by_parent_filters_guild(
         self, db: Database, fake_client: FakeSupabaseClient
     ) -> None:
-        await db.get_tickets_by_parent("p-b", guild_id="guild-a")  # type: ignore[call-arg]
+        await db.get_tickets_by_parent("p-b", guild_id="guild-a")
         filters = fake_client.get_table_filters("ticket")
         # Must filter by guildId when scoped
         assert ("eq", "guildId", "guild-a") in filters
@@ -128,7 +128,7 @@ class TestGuildScopeGetTicketsByParent:
         self, db: Database, fake_client: FakeSupabaseClient
     ) -> None:
         fake_client.set_table_data("ticket", [])
-        result = await db.get_tickets_by_parent("p-b", guild_id="guild-a")  # type: ignore[call-arg]
+        result = await db.get_tickets_by_parent("p-b", guild_id="guild-a")
         assert result == []
 
 
@@ -142,7 +142,7 @@ class TestGuildScopeCategory:
     async def test_guild_scope_get_ticket_category_denies_cross_guild(
         self, db: Database, fake_client: FakeSupabaseClient
     ) -> None:
-        await db.get_ticket_category("cat-b", guild_id="guild-a")  # type: ignore[call-arg]
+        await db.get_ticket_category("cat-b", guild_id="guild-a")
         filters = fake_client.get_table_filters("ticket_category")
         assert ("eq", "guildId", "guild-a") in filters
         assert ("eq", "id", "cat-b") in filters
@@ -152,14 +152,14 @@ class TestGuildScopeCategory:
         self, db: Database, fake_client: FakeSupabaseClient
     ) -> None:
         fake_client.set_table_data("ticket_category", [])
-        result = await db.get_ticket_category("cat-b", guild_id="guild-a")  # type: ignore[call-arg]
+        result = await db.get_ticket_category("cat-b", guild_id="guild-a")
         assert result is None
 
     @pytest.mark.asyncio
     async def test_guild_scope_delete_ticket_category_denies_cross_guild(
         self, db: Database, fake_client: FakeSupabaseClient
     ) -> None:
-        await db.delete_ticket_category("cat-b", guild_id="guild-a")  # type: ignore[call-arg]
+        await db.delete_ticket_category("cat-b", guild_id="guild-a")
         filters = fake_client.get_table_filters("ticket_category")
         assert ("eq", "guildId", "guild-a") in filters
         assert ("eq", "id", "cat-b") in filters
@@ -179,7 +179,7 @@ class TestGuildScopeTicketNote:
         # Simulate ticket belongs to guild-b; caller claims guild-a
         fake_client.set_table_queue("ticket", [[{"id": "t-b", "guildId": "guild-b"}]])
         with pytest.raises(ValueError, match=r"cross_guild|denied|guild"):
-            await db.insert_ticket_note("t-b", "staff-1", "note", guild_id="guild-a")  # type: ignore[call-arg]
+            await db.insert_ticket_note("t-b", "staff-1", "note", guild_id="guild-a")
         # Ensure no insert was attempted on ticket_note
         calls = fake_client.get_table_calls("ticket_note")
         assert not any(c[0] == "insert" for c in calls)
@@ -189,7 +189,7 @@ class TestGuildScopeTicketNote:
         self, db: Database, fake_client: FakeSupabaseClient
     ) -> None:
         fake_client.set_table_queue("ticket", [[{"id": "t-b", "guildId": "guild-b"}]])
-        result = await db.get_ticket_notes("t-b", guild_id="guild-a")  # type: ignore[call-arg]
+        result = await db.get_ticket_notes("t-b", guild_id="guild-a")
         assert result == []
         # No notes fetched when guild mismatched
         filters = fake_client.get_table_filters("ticket_note")
@@ -204,7 +204,7 @@ class TestGuildScopeTicketNote:
         fake_client.set_table_queue("ticket_note", [[{"id": "n-1", "ticketId": "t-b"}]])
         fake_client.set_table_queue("ticket", [[{"id": "t-b", "guildId": "guild-b"}]])
         with pytest.raises(ValueError, match=r"cross_guild|denied|guild"):
-            await db.delete_ticket_note("n-1", guild_id="guild-a", ticket_id="t-b")  # type: ignore[call-arg]
+            await db.delete_ticket_note("n-1", guild_id="guild-a", ticket_id="t-b")
         filters = fake_client.get_table_filters("ticket_note")
         # Should not have deleted
         assert ("eq", "id", "n-1") not in filters
@@ -214,7 +214,7 @@ class TestGuildScopeTicketNote:
         self, db: Database, fake_client: FakeSupabaseClient
     ) -> None:
         fake_client.set_table_queue("ticket", [[{"id": "t-b", "guildId": "guild-b"}]])
-        result = await db.get_recent_notes_for_dedup("t-b", "staff-1", guild_id="guild-a")  # type: ignore[call-arg]
+        result = await db.get_recent_notes_for_dedup("t-b", "staff-1", guild_id="guild-a")
         assert result == []
 
 
@@ -283,7 +283,7 @@ class TestGuildScopeServiceVertical:
         mock_db.insert_audit_row = AsyncMock(return_value={})
         mock_db.get_ticket_by_number = AsyncMock(return_value=None)
 
-        svc = TicketService(mock_db, cache)  # type: ignore[arg-type]
+        svc = TicketService(mock_db, cache)
         # Claim with guild-a for a ticket that only exists in guild-b MUST be denied
         with pytest.raises(ValueError, match="not found"):
             await svc.claim_ticket("t-b", claimed_by="staff-1", guild_id="guild-a")

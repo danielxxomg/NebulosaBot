@@ -138,7 +138,7 @@ class TestNeonUsesBrandPalette:
         img = Image.open(io.BytesIO(data)).convert("RGBA")
         a_rgb = ((brand.ACCENT_A >> 16) & 255, (brand.ACCENT_A >> 8) & 255, brand.ACCENT_A & 255)
         b_rgb = ((brand.ACCENT_B >> 16) & 255, (brand.ACCENT_B >> 8) & 255, brand.ACCENT_B & 255)
-        pix = img.load()  # type: ignore[assignment]
+        pix = img.load()
         w, h = img.size
         found_a = found_b = False
         for y in range(h):

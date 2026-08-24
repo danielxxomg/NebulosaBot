@@ -125,11 +125,11 @@ async def test_facade_ticket_panel_delegates_once(cog_bot: MagicMock) -> None:
     cog = TicketsCog(cog_bot)
     mock_admin = MagicMock()
     mock_admin.ticket_panel = AsyncMock()
-    cog._admin_flow = mock_admin  # type: ignore[attr-defined]
+    cog._admin_flow = mock_admin
     ctx = MagicMock()
     ctx.guild = MagicMock()
     ctx.guild.id = 123456789
-    await cog.ticket_panel.callback(cog, ctx, title=None, description_text=None)  # type: ignore[attr-defined]
+    await cog.ticket_panel.callback(cog, ctx, title=None, description_text=None)
     mock_admin.ticket_panel.assert_awaited_once()
 
 
@@ -138,11 +138,11 @@ async def test_facade_create_category_delegates_once(cog_bot: MagicMock) -> None
     cog = TicketsCog(cog_bot)
     mock_admin = MagicMock()
     mock_admin.create_category = AsyncMock()
-    cog._admin_flow = mock_admin  # type: ignore[attr-defined]
+    cog._admin_flow = mock_admin
     ctx = MagicMock()
     ctx.guild = MagicMock()
     ctx.guild.id = 123456789
-    await cog.create_category.callback(cog, ctx, name="Support")  # type: ignore[attr-defined]
+    await cog.create_category.callback(cog, ctx, name="Support")
     mock_admin.create_category.assert_awaited_once()
 
 
@@ -151,11 +151,11 @@ async def test_facade_subticket_create_delegates_once(cog_bot: MagicMock) -> Non
     cog = TicketsCog(cog_bot)
     mock_lc = MagicMock()
     mock_lc.subticket_create = AsyncMock()
-    cog._lifecycle_flow = mock_lc  # type: ignore[attr-defined]
+    cog._lifecycle_flow = mock_lc
     ctx = MagicMock()
     ctx.guild = MagicMock()
     ctx.guild.id = 123456789
-    await cog.subticket_create.callback(cog, ctx, parent_id=None)  # type: ignore[attr-defined]
+    await cog.subticket_create.callback(cog, ctx, parent_id=None)
     mock_lc.subticket_create.assert_awaited_once()
 
 
@@ -164,11 +164,11 @@ async def test_facade_reopen_delegates_once(cog_bot: MagicMock) -> None:
     cog = TicketsCog(cog_bot)
     mock_lc = MagicMock()
     mock_lc.reopen = AsyncMock()
-    cog._lifecycle_flow = mock_lc  # type: ignore[attr-defined]
+    cog._lifecycle_flow = mock_lc
     ctx = MagicMock()
     ctx.guild = MagicMock()
     ctx.guild.id = 123456789
-    await cog.reopen.callback(cog, ctx, ticket_ref=None)  # type: ignore[attr-defined]
+    await cog.reopen.callback(cog, ctx, ticket_ref=None)
     mock_lc.reopen.assert_awaited_once()
 
 
@@ -177,12 +177,12 @@ async def test_facade_transfer_delegates_once(cog_bot: MagicMock) -> None:
     cog = TicketsCog(cog_bot)
     mock_lc = MagicMock()
     mock_lc.transfer = AsyncMock()
-    cog._lifecycle_flow = mock_lc  # type: ignore[attr-defined]
+    cog._lifecycle_flow = mock_lc
     ctx = MagicMock()
     ctx.guild = MagicMock()
     ctx.guild.id = 123456789
     member = MagicMock(spec=discord.Member)
-    await cog.transfer.callback(cog, ctx, member=member)  # type: ignore[attr-defined]
+    await cog.transfer.callback(cog, ctx, member=member)
     mock_lc.transfer.assert_awaited_once()
 
 
@@ -191,11 +191,11 @@ async def test_facade_unclaim_delegates_once(cog_bot: MagicMock) -> None:
     cog = TicketsCog(cog_bot)
     mock_lc = MagicMock()
     mock_lc.unclaim = AsyncMock()
-    cog._lifecycle_flow = mock_lc  # type: ignore[attr-defined]
+    cog._lifecycle_flow = mock_lc
     ctx = MagicMock()
     ctx.guild = MagicMock()
     ctx.guild.id = 123456789
-    await cog.unclaim.callback(cog, ctx)  # type: ignore[attr-defined]
+    await cog.unclaim.callback(cog, ctx)
     mock_lc.unclaim.assert_awaited_once()
 
 
@@ -204,11 +204,11 @@ async def test_facade_note_add_delegates_once(cog_bot: MagicMock) -> None:
     cog = TicketsCog(cog_bot)
     mock_notes = MagicMock()
     mock_notes.note_add = AsyncMock()
-    cog._notes_flow = mock_notes  # type: ignore[attr-defined]
+    cog._notes_flow = mock_notes
     ctx = MagicMock()
     ctx.guild = MagicMock()
     ctx.guild.id = 123456789
-    await cog.note_add.callback(cog, ctx, content="hello")  # type: ignore[attr-defined]
+    await cog.note_add.callback(cog, ctx, content="hello")
     mock_notes.note_add.assert_awaited_once()
 
 
@@ -217,11 +217,11 @@ async def test_facade_sweep_integrity_delegates_once(cog_bot: MagicMock) -> None
     cog = TicketsCog(cog_bot)
     mock_int = MagicMock()
     mock_int.sweep_integrity = AsyncMock()
-    cog._integrity_flow = mock_int  # type: ignore[attr-defined]
+    cog._integrity_flow = mock_int
     ctx = MagicMock()
     ctx.guild = MagicMock()
     ctx.guild.id = 123456789
-    await cog.sweep_integrity.callback(cog, ctx)  # type: ignore[attr-defined]
+    await cog.sweep_integrity.callback(cog, ctx)
     mock_int.sweep_integrity.assert_awaited_once()
 
 
@@ -230,11 +230,11 @@ async def test_facade_repair_ticket_delegates_once(cog_bot: MagicMock) -> None:
     cog = TicketsCog(cog_bot)
     mock_int = MagicMock()
     mock_int.repair_ticket = AsyncMock()
-    cog._integrity_flow = mock_int  # type: ignore[attr-defined]
+    cog._integrity_flow = mock_int
     ctx = MagicMock()
     ctx.guild = MagicMock()
     ctx.guild.id = 123456789
-    await cog.repair_ticket.callback(cog, ctx, ticket_ref="#0001")  # type: ignore[attr-defined]
+    await cog.repair_ticket.callback(cog, ctx, ticket_ref="#0001")
     mock_int.repair_ticket.assert_awaited_once()
 
 

@@ -239,8 +239,8 @@ class TestWelcomeTestCommand:
         call_kwargs = ctx.send.call_args[1]
         embed = call_kwargs["embed"]
         assert isinstance(embed, discord.Embed)
-        assert embed.color.value == ERROR  # type: ignore[union-attr]
-        title_lower = embed.title.lower() if embed.title else ""  # type: ignore[union-attr]
+        assert embed.color.value == ERROR
+        title_lower = embed.title.lower() if embed.title else ""
         assert "permission" in title_lower or "permiso" in title_lower
 
     @pytest.mark.asyncio

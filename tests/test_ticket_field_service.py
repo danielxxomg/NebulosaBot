@@ -194,12 +194,12 @@ class TestValidateFieldDefinitionsRejection:
     def test_not_a_list_rejected(self) -> None:
         """A non-list input MUST be rejected."""
         with pytest.raises(ValueError, match="list"):
-            validate_field_definitions("not a list")  # type: ignore[arg-type]
+            validate_field_definitions("not a list")
 
     def test_non_dict_item_rejected(self) -> None:
         """A non-dict item in the list MUST be rejected."""
         with pytest.raises(ValueError, match="dict"):
-            validate_field_definitions(["not a dict"])  # type: ignore[list-item]
+            validate_field_definitions(["not a dict"])
 
 
 # ---------------------------------------------------------------------------
@@ -286,4 +286,4 @@ class TestValidateCustomFieldsRejection:
         """A non-string value MUST be rejected."""
         defs = [{"key": "count", "label": "Count", "style": "short", "required": False, "max_length": 100}]
         with pytest.raises(ValueError, match="string"):
-            validate_custom_fields({"count": 42}, defs)  # type: ignore[dict-item]
+            validate_custom_fields({"count": 42}, defs)

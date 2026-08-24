@@ -244,7 +244,7 @@ async def test_ticket_panel_open_no_guild() -> None:
     interaction.response = MagicMock()
     interaction.response.send_message = AsyncMock()
     interaction.client = MagicMock()
-    await view.open_ticket_button.callback(interaction)  # type: ignore[attr-defined]
+    await view.open_ticket_button.callback(interaction)
 
 
 @pytest.mark.asyncio
@@ -267,7 +267,7 @@ async def test_ticket_panel_open_no_categories() -> None:
         if isinstance(child, discord.ui.Button):
             # simulate click
             with patch("bot.views.tickets.t", return_value="x"):
-                await child.callback(interaction)  # type: ignore[attr-defined]
+                await child.callback(interaction)
             break
     assert interaction.response.send_message.await_count >= 1
 
@@ -361,8 +361,8 @@ async def test_panel_deploy_and_create_flows() -> None:
         field_definitions=[{"key": "k1", "label": "Field1", "required": True}],
     )
     # Empty title
-    modal.title_input._value = "  "  # type: ignore[attr-defined]
-    modal.description_input._value = ""  # type: ignore[attr-defined]
+    modal.title_input._value = "  "
+    modal.description_input._value = ""
     inter3 = MagicMock(spec=discord.Interaction)
     inter3.response = MagicMock(send_message=AsyncMock(), is_done=MagicMock(return_value=False))
     await modal.on_submit(inter3)
@@ -374,11 +374,11 @@ async def test_panel_deploy_and_create_flows() -> None:
         category_name="Cat",
         field_definitions=[{"key": "k1", "label": "Field1", "required": True}],
     )
-    modal2.title_input._value = "Title"  # type: ignore[attr-defined]
-    modal2.description_input._value = None  # type: ignore[attr-defined]
+    modal2.title_input._value = "Title"
+    modal2.description_input._value = None
     # custom inputs empty
     for inp in modal2._custom_inputs:
-        inp._value = ""  # type: ignore[attr-defined]
+        inp._value = ""
     inter4 = MagicMock(spec=discord.Interaction)
     inter4.response = MagicMock(send_message=AsyncMock(), is_done=MagicMock(return_value=False))
     await modal2.on_submit(inter4)

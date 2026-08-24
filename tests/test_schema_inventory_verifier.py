@@ -137,10 +137,10 @@ class TestDriftFailsClosed:
     def test_missing_creds_fails_closed(self) -> None:
         inv = SchemaInventory.build()
         report = inv.bind_live_evidence(
-            live_fks=None,  # type: ignore[arg-type]
-            live_policies=None,  # type: ignore[arg-type]
-            live_publication=None,  # type: ignore[arg-type]
-            live_migrations=None,  # type: ignore[arg-type]
+            live_fks=None,
+            live_policies=None,
+            live_publication=None,
+            live_migrations=None,
         )
         assert report.resolved is False
         assert report.reasons
