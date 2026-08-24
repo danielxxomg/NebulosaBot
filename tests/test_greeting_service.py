@@ -11,6 +11,7 @@ Strict TDD: tests written BEFORE implementation (RED phase).
 
 from __future__ import annotations
 
+import inspect
 import io
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -59,6 +60,45 @@ def service(
 ) -> GreetingService:
     """Return a fresh GreetingService with mocked dependencies."""
     return GreetingService(db=mock_db, cache=cache, greeting_renderer=mock_image_service)
+
+
+class TestProtocolOnlyConstructor:
+    """S5a RED: GreetingService must operate protocol-only (no image_service compat)."""
+
+    def test_init_signature_has_no_image_service_param(self) -> None:
+        """``image_service`` must be gone from the constructor signature."""
+        params = inspect.signature(GreetingService.__init__).parameters
+        assert "image_service" not in params, (
+            "GreetingService.__init__ must not accept image_service — "
+            "the deprecated shim is removed in S5a; inject greeting_renderer."
+        )
+
+    def test_no_image_service_back_compat_alias_after_init(
+        self, cache: TTLCache, mock_db: AsyncMock
+    ) -> None:
+        """The ``_image_service`` back-compat alias must not exist post-init."""
+        renderer = MagicMock(spec=PillowGreetingRenderer)
+        service = GreetingService(db=mock_db, cache=cache, greeting_renderer=renderer)
+        assert not hasattr(service, "_image_service"), (
+            "_image_service back-compat alias must be absent — use _greeting_renderer."
+        )
+
+    def test_resolve_renderer_raises_when_render_absent(
+        self, cache: TTLCache, mock_db: AsyncMock
+    ) -> None:
+        """A renderer without ``.render`` must raise AttributeError (no legacy fallback)."""
+
+        class LegacyOnlyRenderer:
+            """Exposes only the deprecated generate_greeting_card surface."""
+
+            def generate_greeting_card(self, **_kw: object) -> io.BytesIO:  # pragma: no cover
+                return io.BytesIO(b"legacy")
+
+        service = GreetingService(
+            db=mock_db, cache=cache, greeting_renderer=LegacyOnlyRenderer()  # type: ignore[arg-type]
+        )
+        with pytest.raises(AttributeError, match="render"):
+            service.resolve_renderer()
 
 
 @pytest.fixture
@@ -354,29 +394,16 @@ class TestDispatchWelcome:
         assert "file" in channel.send.call_args.kwargs
 
     @pytest.mark.asyncio
-    async def test_renderer_compatibility_fallback_and_error_propagation(
+    async def test_renderer_error_propagates_without_compat_retry(
         self, service: GreetingService, mock_db: AsyncMock, greeting_config_row: dict
     ) -> None:
-        received: dict[str, object] = {}
-
-        def old_renderer(username, avatar_url, guild_name, member_count, card_type):
-            received.update(locals())
-            return io.BytesIO()
-
-        service._greeting_renderer.render = old_renderer  # type: ignore[method-assign]
+        """A genuine renderer TypeError propagates — no legacy retry-without-kwargs."""
         mock_db.get_greeting_config.return_value = greeting_config_row
-
-        await service.dispatch_welcome(make_mock_member())
-
-        assert received["card_type"] == "welcome"
-        assert "greeting_title" not in received
-        assert "member_count_text" not in received
 
         def broken_renderer(**_: object) -> io.BytesIO:
             raise TypeError("renderer failed while drawing")
 
         service._greeting_renderer.render = broken_renderer  # type: ignore[method-assign]
-        mock_db.get_greeting_config.return_value = greeting_config_row
 
         with pytest.raises(TypeError, match="renderer failed while drawing"):
             await service.dispatch_welcome(make_mock_member())

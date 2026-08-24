@@ -39,30 +39,19 @@ class GreetingService:
         cache: The bot's :class:`~bot.core.cache.TTLCache` instance.
         greeting_renderer: The ``GreetingRenderer`` implementation for
             generating welcome/goodbye cards.
-        image_service: Deprecated — prefer ``greeting_renderer``. Kept for
-            backwards compatibility with existing tests.
     """
 
-    __slots__ = ("_cache", "_db", "_greeting_renderer", "_image_service", "_raid_semaphores")
+    __slots__ = ("_cache", "_db", "_greeting_renderer", "_raid_semaphores")
 
     def __init__(
         self,
         db: Database,
         cache: TTLCache,
-        greeting_renderer: GreetingRenderer | None = None,
-        image_service: Any | None = None,
+        greeting_renderer: GreetingRenderer,
     ) -> None:
         self._db = db
         self._cache = cache
-        if greeting_renderer is not None:
-            self._greeting_renderer: GreetingRenderer = greeting_renderer
-        elif image_service is not None:
-            self._greeting_renderer = image_service
-        else:
-            msg = "GreetingService requires greeting_renderer or image_service"
-            raise TypeError(msg)
-        # Back-compat alias so legacy tests can still access _image_service
-        self._image_service = self._greeting_renderer
+        self._greeting_renderer: GreetingRenderer = greeting_renderer
         # Guild-scoped render caps (design D4): join raids must not stack an
         # unbounded number of concurrent Pillow renders.
         self._raid_semaphores: dict[str, asyncio.Semaphore] = {}
@@ -117,10 +106,7 @@ class GreetingService:
             1. If the injected renderer implements the ``GreetingRenderer``
                protocol (i.e. exposes ``render``), use ``renderer.render``.
                This is the canonical path (``PillowGreetingRenderer``).
-            2. Else if the renderer exposes ``generate_greeting_card`` (the
-               deprecated :class:`~bot.services.image_service.ImageService`
-               shim), use that.
-            3. Else raise ``AttributeError``.
+            2. Else raise ``AttributeError``.
 
         The cog test commands (``/welcome_test``, ``/goodbye_test``) and
         :meth:`dispatch_greeting` both go through this resolver so the policy
@@ -129,15 +115,12 @@ class GreetingService:
         """
         renderer = self._greeting_renderer
         render_fn = getattr(renderer, "render", None)
-        if render_fn is not None:
-            return render_fn
-        gen_fn = getattr(renderer, "generate_greeting_card", None)
-        if gen_fn is not None:
-            return gen_fn
-        msg = "GreetingRenderer missing render/generate_greeting_card"
-        raise AttributeError(msg)
+        if render_fn is None:
+            msg = "GreetingRenderer missing render"
+            raise AttributeError(msg)
+        return render_fn
 
-    async def dispatch_greeting(  # noqa: C901  -- branching is cache/card/compat migration; will simplify when image_service shim is removed
+    async def dispatch_greeting(
         self, member: discord.Member, kind: Literal["welcome", "goodbye"]
     ) -> None:
         """Unified dispatch for welcome/goodbye — DRY for cache key + card flow.
@@ -221,62 +204,22 @@ class GreetingService:
             avatar_cache_key = cache_key(guild_id, "greeting_avatar")
             if self._cache.get(avatar_cache_key) is None and avatar_url is not None:
                 self._cache.set(avatar_cache_key, avatar_url, ttl=AVATAR_CACHE_TTL)
-            # Shim: if the render function is a legacy signature that doesn't accept
-            # localized kwargs, strip them and retry — preserves the compat test.
-            try:
-                buffer: io.BytesIO = await asyncio.to_thread(
-                    render_fn,
-                    username=member.display_name,
-                    avatar_url=avatar_url,
-                    guild_name=member.guild.name,
-                    member_count=member.guild.member_count or 0,
-                    guild_icon_url=_resolve_guild_icon_url(member.guild),
-                    greeting_title=t(guild_id, title_key),
-                    member_count_text=t(
-                        guild_id,
-                        "greetings.card.member_count",
-                        count=member.guild.member_count or 0,
-                    ),
-                    card_type=card_type,
-                    theme_id=getattr(config, "theme_id", None),
-                )
-            except TypeError as exc:
-                msg = str(exc)
-                if "unexpected keyword argument" in msg and any(
-                    k in msg for k in ("greeting_title", "member_count_text", "guild_icon_url", "theme_id")
-                ):
-                    # Fallback without theme_id for legacy mocks
-                    try:
-                        buffer = await asyncio.to_thread(
-                            render_fn,
-                            username=member.display_name,
-                            avatar_url=avatar_url,
-                            guild_name=member.guild.name,
-                            member_count=member.guild.member_count or 0,
-                            guild_icon_url=_resolve_guild_icon_url(member.guild),
-                            greeting_title=t(guild_id, title_key),
-                            member_count_text=t(
-                                guild_id,
-                                "greetings.card.member_count",
-                                count=member.guild.member_count or 0,
-                            ),
-                            card_type=card_type,
-                        )
-                    except TypeError as exc2:
-                        msg2 = str(exc2)
-                        if "unexpected keyword argument" in msg2:
-                            buffer = await asyncio.to_thread(
-                                render_fn,
-                                username=member.display_name,
-                                avatar_url=avatar_url,
-                                guild_name=member.guild.name,
-                                member_count=member.guild.member_count or 0,
-                                card_type=card_type,
-                            )
-                        else:
-                            raise
-                else:
-                    raise
+            buffer: io.BytesIO = await asyncio.to_thread(
+                render_fn,
+                username=member.display_name,
+                avatar_url=avatar_url,
+                guild_name=member.guild.name,
+                member_count=member.guild.member_count or 0,
+                guild_icon_url=_resolve_guild_icon_url(member.guild),
+                greeting_title=t(guild_id, title_key),
+                member_count_text=t(
+                    guild_id,
+                    "greetings.card.member_count",
+                    count=member.guild.member_count or 0,
+                ),
+                card_type=card_type,
+                theme_id=getattr(config, "theme_id", None),
+            )
 
             file = discord.File(buffer, filename=filename)
             if kind == "welcome":
