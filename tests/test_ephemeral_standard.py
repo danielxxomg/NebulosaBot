@@ -1,11 +1,12 @@
-"""Unit tests for Phase 4: Ephemeral Standard + Permissions + Prefix.
+"""Unit tests for Phase 4: Ephemeral Standard + Permissions.
 
 Covers:
-    - 4.1: _build_prefix_callable returns [config.prefix, ","]
-    - 4.3: on_command_error — slash ephemeral, prefix DM, DM failure → channel
+    - 4.1: prefix surface inertness — moved to tests/test_bot_core_prefix.py
+      (slash-only policy, cycle-5-quality-zero; the old [prefix, ","] locks
+      were replaced by inertness twins there)
+    - 4.3: on_command_error — channel-direct delivery, no DM attempt
     - 4.5-4.7: ephemeral=True on admin/info slash responses
     - 4.8-4.10: @app_commands.default_permissions decorators
-    - 4.11: Prefix DM fallback for admin commands
 
 Strict TDD: RED phase — tests written BEFORE implementation.
 """
@@ -18,7 +19,7 @@ import discord
 import pytest
 from discord.ext import commands
 
-from bot.bot import NebulosaBot, _build_prefix_callable
+from bot.bot import NebulosaBot
 from bot.cogs.core import CoreCog
 from bot.cogs.sentinel import SentinelCog
 from bot.cogs.stellar import StellarCog
@@ -44,91 +45,8 @@ def _make_bot(config: BotConfig | None = None) -> NebulosaBot:
     return NebulosaBot(config=config or _make_config(), intents=discord.Intents.default())
 
 
-def _make_message(guild_id: int | None = 123456789, prefix: str | None = "!") -> MagicMock:
-    """Return a mock discord.Message for prefix tests."""
-    msg = MagicMock(spec=discord.Message)
-    msg.guild = MagicMock(spec=discord.Guild) if guild_id else None
-    if msg.guild:
-        msg.guild.id = guild_id
-    return msg
-
-
 # ===========================================================================
-# 4.1 — Prefix callable returns [config.prefix, ","]
-# ===========================================================================
-
-
-class TestPrefixCallable:
-    """Test that the prefix callable returns a list with config prefix + comma."""
-
-    @pytest.mark.asyncio
-    async def test_prefix_returns_list_with_config_prefix_and_comma(self) -> None:
-        """get_prefix MUST return [config.prefix, ","] when config is available."""
-        bot = _make_bot()
-        bot.guild_service = MagicMock()
-        config = MagicMock()
-        config.prefix = "nb!"
-        bot.guild_service.get_config = AsyncMock(return_value=config)
-
-        get_prefix = _build_prefix_callable(bot)
-        msg = _make_message(guild_id=123456789)
-        result = await get_prefix(bot, msg)
-
-        # discord.py expects a list of strings for multiple prefixes.
-        assert isinstance(result, list)
-        assert "nb!" in result
-        assert "," in result
-
-    @pytest.mark.asyncio
-    async def test_prefix_fallback_when_no_config(self) -> None:
-        """get_prefix MUST return [fallback, ","] when service is None."""
-        bot = _make_bot()
-        bot.guild_service = None
-
-        get_prefix = _build_prefix_callable(bot)
-        msg = _make_message(guild_id=123456789)
-        result = await get_prefix(bot, msg)
-
-        assert isinstance(result, list)
-        assert "nb!" in result
-        assert "," in result
-
-    @pytest.mark.asyncio
-    async def test_prefix_fallback_for_dm(self) -> None:
-        """get_prefix MUST return [fallback, ","] for DMs (no guild)."""
-        bot = _make_bot()
-        bot.guild_service = MagicMock()
-
-        get_prefix = _build_prefix_callable(bot)
-        msg = _make_message(guild_id=None)
-        result = await get_prefix(bot, msg)
-
-        assert isinstance(result, list)
-        assert "nb!" in result
-        assert "," in result
-
-    @pytest.mark.asyncio
-    async def test_prefix_uses_custom_prefix(self) -> None:
-        """get_prefix MUST use the guild's configured prefix, not hardcoded."""
-        bot = _make_bot()
-        bot.guild_service = MagicMock()
-        config = MagicMock()
-        config.prefix = "!"
-        bot.guild_service.get_config = AsyncMock(return_value=config)
-
-        get_prefix = _build_prefix_callable(bot)
-        msg = _make_message(guild_id=123456789)
-        result = await get_prefix(bot, msg)
-
-        assert isinstance(result, list)
-        assert "!" in result
-        assert "," in result
-        # The fallback "nb!" must NOT appear when a custom prefix is set.
-        assert "nb!" not in result
-
-
-# ===========================================================================
-# 4.3 — on_command_error: slash ephemeral, prefix DM, DM failure → channel
+# 4.3 — on_command_error: channel-direct delivery (no DM-first branch)
 # ===========================================================================
 
 

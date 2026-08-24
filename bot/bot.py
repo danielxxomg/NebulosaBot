@@ -8,14 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable, Coroutine
+from collections.abc import Coroutine
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import discord
 from discord.ext import commands
 
-from bot.constants import FALLBACK_PREFIX
 from bot.core.cache import TTLCache
 from bot.core.context import NebulosaContext
 from bot.core.database import Database, create_realtime_client
@@ -60,32 +59,22 @@ EXTENSIONS: tuple[str, ...] = (
     "bot.listeners.voice_listener",
 )
 
-# -- Sentry for missing guild config (used by get_prefix fallback) ----------
+# -- Slash-only command surface: inert prefix resolver -----------------------
 
 
-def _build_prefix_callable(
-    _bot: NebulosaBot,
-) -> Callable[..., Any]:
-    """Return an async callable that resolves the prefix per-message.
+async def _noop_prefix(bot_ref: NebulosaBot, message: discord.Message) -> list[str]:
+    """Return an empty prefix list — the text-command surface is slash-only.
 
-    Closure over *bot* so it can access ``guild_service`` at runtime.
+    bot-core spec: zero text-invocable commands; ``nb!``/`,` invocations are
+    inert and guild config is never consulted here. The ticket-channel ``,``
+    timer operates in ``TicketsCog.on_message``, outside the command framework
+    (close-confirmation spec, unchanged by this policy).
+
+    Signature matches what discord.py expects for ``command_prefix``
+    (``(bot, message) -> list[str] | str``).
     """
-
-    async def get_prefix(bot_ref: NebulosaBot, message: discord.Message) -> list[str]:
-        prefix = FALLBACK_PREFIX
-        if message.guild is not None:
-            try:
-                if bot_ref.guild_service is not None:
-                    config = await bot_ref.guild_service.get_config(str(message.guild.id))
-                    prefix = config.prefix or FALLBACK_PREFIX
-            except Exception:
-                logger.exception(
-                    "Failed to resolve prefix for guild %s — using fallback",
-                    message.guild.id,
-                )
-        return [prefix, ","]
-
-    return get_prefix
+    _ = (bot_ref, message)
+    return []
 
 
 # ======================================================================
@@ -159,12 +148,11 @@ class NebulosaBot(commands.Bot):
         # setup_hook() and stopped in close(); None in degraded mode.
         self._realtime_subscriber: RealtimeCacheSubscriber | None = None
 
-        # Build the prefix callable.  We pass `self` by reference so the
-        # closure calls back into guild_service at message time.
-        prefix_callable = _build_prefix_callable(self)
-
+        # Slash-only surface (bot-core spec): static empty prefix — no text
+        # command is invocable. The ticket ',' timer lives outside the
+        # framework, so no per-message guild-config resolution happens here.
         super().__init__(
-            command_prefix=prefix_callable,
+            command_prefix=_noop_prefix,
             intents=intents,
             # discord.py 2.x requires explicit help_command disable when
             # we provide our own /help hybrid command.
