@@ -2,6 +2,20 @@
 
 All notable changes to NebulosaBot are documented here.
 
+## [0.9.0] - 2026-08-23
+
+### Added
+- Sentinel permission matrix gates with escalation chain.
+- jscpd duplication ratchet gate (`scripts/jscpd_check.py`).
+- betterleaks staged-scan pre-commit hook; `requirements.txt` regenerated from `uv.lock`.
+
+### Changed
+- AGENTS.md code review rules v3 (rule-cited, diff-scoped blocking).
+- Toolchain hardening: PEP 735 dev dependency group, exact `ty` pin, `uv audit` replaces pip-audit.
+
+### Fixed
+- Version surfaces aligned to pyproject source of truth (`bot/__init__.py`, this changelog).
+
 ## [0.8.0] - 2026-08-19
 
 ### Added
