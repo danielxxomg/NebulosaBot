@@ -1,7 +1,9 @@
-"""RED tests for welcome-svg-foundation PR1 hygiene (Phase 1).
+"""Hygiene tests for welcome-svg-foundation PR1 (Phase 1).
 
-Strict TDD: these tests MUST fail before hygiene fixes, pass after.
-Covers tasks 1.1-1.8 from tasks.md.
+Version and count assertions are derived from their authoritative sources
+(pyproject.toml version, .gitignore/.env.example contents, workflow pins) and
+parametrized so future churn never requires per-bump test edits.
+Covers tasks 1.1-1.8 from the original welcome-svg-foundation tasks.md.
 """
 
 from __future__ import annotations
@@ -10,42 +12,67 @@ import re
 import tomllib
 from pathlib import Path
 
+import pytest
 import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
+def _project_version() -> str:
+    """Return the canonical project version from pyproject.toml (source of truth)."""
+    with open(PROJECT_ROOT / "pyproject.toml", "rb") as f:
+        return tomllib.load(f)["project"]["version"]
+
+
+def _declared_surface_version(surface: Path) -> str | None:
+    """Extract the version an artifact declares, or None when absent.
+
+    - Python modules: the ``__version__`` string literal.
+    - CHANGELOG: the version in the most recent ``## [<version>]`` heading.
+    """
+    text = surface.read_text(encoding="utf-8")
+    if surface.suffix == ".py":
+        match = re.search(r'^__version__\s*=\s*"([^"]+)"', text, re.MULTILINE)
+        return match.group(1) if match else None
+    match = re.search(r"^##\s*\[v?([^\]]+)\]", text, re.MULTILINE)
+    return match.group(1).strip() if match else None
+
+
+VERSION_SURFACES = ("bot/__init__.py", "CHANGELOG.md")
+
+
 class TestVersionHygiene:
-    """1.1 pyproject.toml version 0.1.0→0.8.0 + bot/__init__.py"""
+    """Version hygiene: pyproject.toml [project].version is the single source of truth.
 
-    def test_pyproject_version_is_0_8_0(self) -> None:
-        pyproject = PROJECT_ROOT / "pyproject.toml"
-        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-        version = data["project"]["version"]
-        assert version == "0.8.0", f"pyproject version is {version!r}, expected 0.8.0"
+    Every published version surface (package ``__version__``, latest CHANGELOG
+    heading) must match the pyproject version, so a release bump touches
+    pyproject plus its mirrors and nothing else.
+    """
 
-    def test_bot_init_version_is_0_8_0(self) -> None:
-        init = PROJECT_ROOT / "bot" / "__init__.py"
-        content = init.read_text(encoding="utf-8")
-        assert '__version__ = "0.8.0"' in content, f"bot/__init__.py must contain 0.8.0, got: {content!r}"
+    @pytest.mark.parametrize("surface_relpath", VERSION_SURFACES)
+    def test_version_surfaces_match_pyproject(self, surface_relpath: str) -> None:
+        expected = _project_version()
+        surface = PROJECT_ROOT / surface_relpath
+        assert surface.exists(), f"{surface_relpath} must exist"
+        declared = _declared_surface_version(surface)
+        assert declared is not None, f"{surface_relpath} must declare a version"
+        assert declared == expected, f"{surface_relpath} declares {declared!r} but pyproject.toml pins {expected!r}"
 
-    def test_changelog_exists_and_mentions_0_8_0(self) -> None:
-        # CHANGELOG.md or CHANGELOG at root must exist and mention 0.8.0
-        changelog = PROJECT_ROOT / "CHANGELOG.md"
-        alt = PROJECT_ROOT / "CHANGELOG"
-        path = changelog if changelog.exists() else alt
-        assert path.exists(), "CHANGELOG.md must exist for 1.1"
-        text = path.read_text(encoding="utf-8")
-        assert "0.8.0" in text
+    def test_pyproject_version_is_semver(self) -> None:
+        version = _project_version()
+        assert re.fullmatch(r"\d+\.\d+\.\d+", version), f"pyproject version {version!r} is not X.Y.Z"
+
+
+GITIGNORE_PATTERNS = (".ty_cache/", ".hypothesis/", "*.tsbuildinfo", "**/.next/")
 
 
 class TestGitignoreHygiene:
-    """1.2 .gitignore must contain 4 patterns"""
+    """1.2 .gitignore must contain required ignore patterns."""
 
-    def test_gitignore_has_four_patterns(self) -> None:
+    @pytest.mark.parametrize("pattern", GITIGNORE_PATTERNS)
+    def test_gitignore_contains_pattern(self, pattern: str) -> None:
         gi = (PROJECT_ROOT / ".gitignore").read_text(encoding="utf-8")
-        for pat in [".ty_cache/", ".hypothesis/", "*.tsbuildinfo", "**/.next/"]:
-            assert pat in gi, f"Missing .gitignore pattern {pat!r}"
+        assert pattern in gi, f"Missing .gitignore pattern {pattern!r}"
 
 
 class TestOpenspecConfigHygiene:
@@ -98,18 +125,30 @@ class TestReadmeHygiene:
         assert "NebulosaBot" in text
 
 
-class TestEnvExampleHygiene:
-    """1.5 .env.example documents 12 vars with comments"""
+REQUIRED_ENV_VARS = ("DISCORD_TOKEN", "SUPABASE_URL", "SUPABASE_KEY")
 
-    def test_env_example_has_12_vars(self) -> None:
+
+class TestEnvExampleHygiene:
+    """1.5 .env.example documents >=12 vars with comments."""
+
+    def test_env_example_has_at_least_12_vars_with_comments(self) -> None:
         text = (PROJECT_ROOT / ".env.example").read_text(encoding="utf-8")
         # Count non-comment, non-empty lines with =
         vars_found = [l for l in text.splitlines() if l.strip() and not l.strip().startswith("#") and "=" in l]
         assert len(vars_found) >= 12, f".env.example must document >=12 vars, found {len(vars_found)}: {vars_found}"
-        for required in ["DISCORD_TOKEN", "SUPABASE_URL", "SUPABASE_KEY"]:
-            assert required in text, f"{required} missing from .env.example"
         # Must have comments
         assert text.count("#") >= 3, "Must have comments documenting vars"
+
+    @pytest.mark.parametrize("required", REQUIRED_ENV_VARS)
+    def test_env_example_documents_required_var(self, required: str) -> None:
+        text = (PROJECT_ROOT / ".env.example").read_text(encoding="utf-8")
+        assert required in text, f"{required} missing from .env.example"
+
+
+WORKFLOW_PIN_NEEDLES = (
+    ("jscpd@", "jscpd must be version-pinned (npx jscpd@x.y.z)"),
+    ("vulture==", "vulture must be version-pinned (vulture==x.y.z)"),
+)
 
 
 class TestCodeQualityPinHygiene:
@@ -127,10 +166,11 @@ class TestCodeQualityPinHygiene:
                     f"uses not SHA-pinned: {line}"
                 )
                 assert not re.match(r"^v\d", after), f"uses uses @vN not SHA: {line}"
-        # npx jscpd must be pinned with version
-        assert "npx jscpd@" in text or "jscpd@" in text, "jscpd must be version-pinned (npx jscpd@x.y.z)"
-        # pip install vulture must be pinned
-        assert "vulture==" in text, "vulture must be version-pinned (vulture==x.y.z)"
+
+    @pytest.mark.parametrize(("needle", "message"), WORKFLOW_PIN_NEEDLES)
+    def test_workflow_pins_required_tool(self, needle: str, message: str) -> None:
+        text = (PROJECT_ROOT / ".github" / "workflows" / "code-quality.yml").read_text(encoding="utf-8")
+        assert needle in text, message
 
 
 class TestAgentsGaps:
