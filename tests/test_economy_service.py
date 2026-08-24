@@ -18,7 +18,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from bot.core.cache import TTLCache
+from bot.core.cache import TTLCache, cache_key
+from bot.models.economy_config import EconomyConfig
 from bot.services.economy_service import EconomyService
 
 # ---------------------------------------------------------------------------
@@ -918,3 +919,67 @@ class TestClaimDailyTimestampParsing:
         assert success is True
         assert coins_awarded == 130
         assert streak == 4
+
+
+# ---------------------------------------------------------------------------
+# S4.5 — economy_config cache-first TTL reads + save-path invalidation
+# ---------------------------------------------------------------------------
+
+
+class TestEconomyConfigCache:
+    """get_economy_config is cache-first; save path invalidates (design D4)."""
+
+    async def test_miss_fetches_and_populates_cache(self, service: EconomyService, mock_db, default_config_row) -> None:
+        mock_db.get_economy_config.return_value = default_config_row
+        result = await service.get_economy_config("123456789")
+        assert result == default_config_row
+        mock_db.get_economy_config.assert_awaited_once()
+        assert service._cache.get(cache_key("123456789", "economy_config")) == default_config_row
+
+    async def test_hit_skips_db(self, service: EconomyService, mock_db, default_config_row) -> None:
+        mock_db.get_economy_config.return_value = default_config_row
+        first = await service.get_economy_config("123456789")
+        second = await service.get_economy_config("123456789")
+        assert second == first
+        mock_db.get_economy_config.assert_awaited_once()
+
+    async def test_none_row_is_not_cached(self, service: EconomyService, mock_db) -> None:
+        mock_db.get_economy_config.return_value = None
+        assert await service.get_economy_config("123456789") is None
+        mock_db.get_economy_config.return_value = {"fresh": True}
+        # A later call must hit the DB again — None was never cached.
+        assert await service.get_economy_config("123456789") == {"fresh": True}
+        assert mock_db.get_economy_config.await_count == 2
+
+    async def test_save_invalidates_cache(self, service: EconomyService, mock_db, default_config_row) -> None:
+        mock_db.get_economy_config.return_value = default_config_row
+        await service.get_economy_config("123456789")
+        stale = {"xpPerMessage": 10}
+        service._cache.set(cache_key("123456789", "economy_config"), stale)
+
+        config = EconomyConfig(guild_id="123456789")
+        await service.save_economy_config(config)
+
+        assert service._cache.get(cache_key("123456789", "economy_config")) is None
+        mock_db.upsert_economy_config.assert_awaited_once_with(config)
+
+    async def test_hot_paths_gain_xp_and_claim_daily_hit_cache(
+        self, service: EconomyService, mock_db, default_config_row, member_row
+    ) -> None:
+        """gain_xp/claim_daily route through the cache-first accessor."""
+        mock_db.get_economy_config.return_value = default_config_row
+        member_row["lastXpGain"] = None
+        member_row["lastDaily"] = None
+        mock_db.get_member.return_value = dict(member_row)
+        mock_db.update_member_xp.return_value = {"xp": 10, "level": 0}
+        mock_db.update_member_daily.return_value = {"coins": 100}
+
+        await service.gain_xp("123456789", "111111111")
+        await service.claim_daily("123456789", "111111111")
+
+        mock_db.get_economy_config.assert_awaited_once()
+
+    def test_economy_config_ttl_reexported(self) -> None:
+        from bot.core.cache import DEFAULT_TTL, ECONOMY_CONFIG_TTL
+
+        assert ECONOMY_CONFIG_TTL == DEFAULT_TTL

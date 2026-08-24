@@ -13,7 +13,8 @@ from typing import TYPE_CHECKING, Any, cast
 
 import discord
 
-from bot.core.cache import LEADERBOARD_TTL, cache_key
+from bot.core.cache import ECONOMY_CONFIG_TTL, LEADERBOARD_TTL, cache_key
+from bot.models.economy_config import EconomyConfig
 from bot.utils.timeparse import _to_datetime
 
 if TYPE_CHECKING:
@@ -122,7 +123,7 @@ class EconomyService:
             ``(new_xp, new_level, leveled_up)``.  If the member is on
             cooldown, returns ``(0, 0, False)``.
         """
-        config = await self._db.get_economy_config(guild_id)
+        config = await self.get_economy_config(guild_id)
         xp_per_message = config.get("xpPerMessage", DEFAULT_XP_PER_MESSAGE) if config else DEFAULT_XP_PER_MESSAGE
         xp_cooldown_seconds = (
             config.get("xpCooldownSeconds", DEFAULT_XP_COOLDOWN_SECONDS) if config else DEFAULT_XP_COOLDOWN_SECONDS
@@ -231,7 +232,7 @@ class EconomyService:
             and ``remaining_seconds`` is the exact time until the cooldown expires.
             On success, ``remaining_seconds`` is 0.
         """
-        config = await self._db.get_economy_config(guild_id)
+        config = await self.get_economy_config(guild_id)
         daily_reward = config.get("dailyReward", DEFAULT_DAILY_REWARD) if config else DEFAULT_DAILY_REWARD
         cooldown_hours = (
             config.get("dailyCooldownHours", DEFAULT_DAILY_COOLDOWN_HOURS) if config else DEFAULT_DAILY_COOLDOWN_HOURS
@@ -354,7 +355,7 @@ class EconomyService:
         if member is None:
             return None
 
-        config = await self._db.get_economy_config(guild_id)
+        config = await self.get_economy_config(guild_id)
         level_base = config.get("levelBaseXp", DEFAULT_LEVEL_BASE_XP) if config else DEFAULT_LEVEL_BASE_XP
         level_mult = config.get("levelMultiplier", DEFAULT_LEVEL_MULTIPLIER) if config else DEFAULT_LEVEL_MULTIPLIER
 
@@ -384,10 +385,31 @@ class EconomyService:
     async def get_economy_config(self, guild_id: str) -> dict[str, Any] | None:
         """Return the economy configuration for *guild_id*, or ``None``.
 
-        Thin wrapper over ``Database.get_economy_config()`` so callers
-        never need to reach into the private ``_db`` attribute.
+        Cache-first (S4.5): hits ``{guild_id}:economy_config`` with
+        ``ECONOMY_CONFIG_TTL`` before falling back to the database.  A
+        missing row is never cached so a later save becomes visible
+        immediately.  Hot paths (``gain_xp``, ``claim_daily``,
+        ``get_rank_info``) route through this accessor.
         """
-        return await self._db.get_economy_config(guild_id)
+        ck = cache_key(guild_id, "economy_config")
+        cached = self._cache.get(ck)
+        if cached is not None:
+            logger.debug("get_economy_config(%s): cache hit", guild_id)
+            return cast(dict[str, Any], cached)
+
+        row = await self._db.get_economy_config(guild_id)
+        if row is not None:
+            self._cache.set(ck, row, ttl=ECONOMY_CONFIG_TTL)
+        return row
+
+    async def save_economy_config(self, config: EconomyConfig) -> None:
+        """Persist an economy configuration and invalidate its cache entry.
+
+        Mirrors ``GreetingService.save_config``: Supabase upsert first,
+        then cache invalidation so the next read observes the fresh row.
+        """
+        await self._db.upsert_economy_config(config)
+        self._cache.invalidate(cache_key(config.guild_id, "economy_config"))
 
     # ------------------------------------------------------------------
     # Internal helpers
