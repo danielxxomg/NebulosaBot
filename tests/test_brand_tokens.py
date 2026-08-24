@@ -11,9 +11,13 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
+from bot.cogs.core import _build_cog_help_embed
+from bot.core.i18n import load_locales
+from bot.services import greeting_renderer, rank_renderer, shared_assets
 from bot.utils import brand
 
 BOT_ROOT = Path(__file__).resolve().parent.parent / "bot"
@@ -86,3 +90,63 @@ class TestTranscriptSurfaceTokens:
         src = (BOT_ROOT / "services" / "transcript_service.py").read_text(encoding="utf-8")
         offenders = [m.group(0) for m in _HEX_LITERAL_RE.finditer(src)]
         assert not offenders, f"hex literals must live in bot/utils/brand.py: {offenders}"
+
+
+class TestRendererPaletteTokens:
+    """S4.7 — renderer RGBA palette single-sourced in brand (byte-identical values)."""
+
+    @pytest.mark.parametrize(
+        ("token", "value"),
+        [
+            ("CARD_BG_TOP", (43, 45, 49, 255)),
+            ("CARD_BG_BOTTOM", (30, 31, 34, 255)),
+            ("PLACEHOLDER", (74, 78, 91, 255)),
+            ("PLACEHOLDER_INNER", (56, 59, 68, 255)),
+            ("PANEL_OVERLAY", (255, 255, 255, 18)),
+            ("MUTED_TEXT", (185, 187, 190, 255)),
+        ],
+    )
+    def test_token_value(self, token: str, value: tuple[int, int, int, int]) -> None:
+        assert getattr(brand, token) == value
+
+    def test_shared_assets_reuses_card_tokens(self) -> None:
+        assert shared_assets.BG_TOP == brand.CARD_BG_TOP
+        assert shared_assets.BG_BOTTOM == brand.CARD_BG_BOTTOM
+        assert shared_assets.GREETING_PLACEHOLDER == brand.PLACEHOLDER
+        assert shared_assets.GREETING_PLACEHOLDER_INNER == brand.PLACEHOLDER_INNER
+
+    def test_rank_renderer_uses_shared_tokens(self) -> None:
+        assert rank_renderer.LEVEL_COLOR == brand.LEGACY_BLURPLE_RGBA
+        assert rank_renderer.XP_BAR_FILL == brand.LEGACY_BLURPLE_RGBA
+        # Dedupe: XP text color == greeting count color == MUTED_TEXT.
+        assert rank_renderer.XP_TEXT_COLOR == brand.MUTED_TEXT
+
+    def test_greeting_renderer_count_color_dedupes_into_muted_text(self) -> None:
+        assert greeting_renderer._GREETING_COUNT_COLOR == brand.MUTED_TEXT
+        assert greeting_renderer._GREETING_PANEL == brand.PANEL_OVERLAY
+
+
+class TestImgurFooterDropped:
+    """S4.7 — the dead i.imgur.com footer icon URL is gone from CoreCog."""
+
+    def test_no_imgur_url_in_bot_source(self) -> None:
+        offenders = []
+        for py_file in sorted(BOT_ROOT.rglob("*.py")):
+            if "i.imgur.com" in py_file.read_text(encoding="utf-8"):
+                offenders.append(str(py_file.relative_to(BOT_ROOT.parent)))
+        assert not offenders, f"imgur footer URLs must be dropped: {offenders}"
+
+    def test_help_cog_embed_footer_has_no_icon(self) -> None:
+        load_locales(Path("bot/locales"))
+
+        cmd = MagicMock()
+        cmd.name = "ping"
+        cmd.qualified_name = "ping"
+        cmd.description = "latency"
+        cmd.hidden = False
+
+        mock_bot = MagicMock()
+        mock_bot.get_cog.return_value.get_commands.return_value = [cmd]
+        embed = _build_cog_help_embed(mock_bot, "Core", guild_id=123456789)
+        assert embed is not None
+        assert not embed.footer.icon_url, "footer must not carry an icon URL"

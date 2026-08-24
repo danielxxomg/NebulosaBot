@@ -22,6 +22,7 @@ from PIL import Image, ImageDraw  # noqa: F401 -- re-exported for tests that pat
 
 from bot.services.greeting_renderer import PillowGreetingRenderer
 from bot.services.rank_renderer import RankRenderer
+from bot.utils import brand
 
 
 class ImageService:
@@ -49,9 +50,9 @@ class ImageService:
     GREETING_GUILD_NAME_Y = 28
     # Keep legacy accent for back-compat; greeting path uses brand.ACCENT via PillowGreetingRenderer.
     GREETING_ACCENT = (114, 137, 218, 255)
-    GREETING_PANEL = (255, 255, 255, 18)
-    GREETING_PLACEHOLDER = (74, 78, 91, 255)
-    GREETING_PLACEHOLDER_INNER = (56, 59, 68, 255)
+    GREETING_PANEL = brand.PANEL_OVERLAY
+    GREETING_PLACEHOLDER = brand.PLACEHOLDER
+    GREETING_PLACEHOLDER_INNER = brand.PLACEHOLDER_INNER
     GREETING_TITLE_COLOR = (255, 255, 255, 255)
     GREETING_COUNT_COLOR = (185, 187, 190, 255)
 

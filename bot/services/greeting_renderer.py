@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import io
 import logging
+import math
 from typing import Protocol, runtime_checkable
 
 from PIL import Image, ImageDraw, ImageFilter
@@ -40,11 +41,11 @@ _GREETING_COUNT_Y = 170
 
 _GREETING_GUILD_NAME_X = 210
 _GREETING_GUILD_NAME_Y = 28
-_GREETING_PANEL = (255, 255, 255, 18)
+_GREETING_PANEL = brand.PANEL_OVERLAY
 
 
 _GREETING_TITLE_COLOR = (255, 255, 255, 255)
-_GREETING_COUNT_COLOR = (185, 187, 190, 255)
+_GREETING_COUNT_COLOR = brand.MUTED_TEXT  # dedupe: == rank XP text color (S4.7)
 
 
 def _brand_accent_rgba() -> tuple[int, int, int, int]:
@@ -64,8 +65,6 @@ def _brand_neon_rgba_b() -> tuple[int, int, int, int]:
 
 
 def _hexagon_points(cx: int, cy: int, radius: int) -> list[tuple[float, float]]:
-    import math
-
     pts: list[tuple[float, float]] = []
     for i in range(6):
         ang = math.radians(60 * i - 30)

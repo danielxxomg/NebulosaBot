@@ -13,6 +13,7 @@ from __future__ import annotations
 import io
 
 from bot.services import shared_assets
+from bot.utils.brand import LEGACY_BLURPLE_RGBA, MUTED_TEXT
 
 # ---------------------------------------------------------------------------
 # Rank card layout constants (mirrors image_service for byte-identity)
@@ -39,12 +40,15 @@ XP_TEXT_Y = 210
 RANK_X = 850
 RANK_Y = 60
 
-# Colors (RGBA) — kept identical for byte-identity; brand.ACCENT is greeting-side.
+# Colors (RGBA) — single-sourced via brand tokens (S4.7); values identical
+# to the pre-consolidation literals so golden bytes are unchanged.
+# brand.ACCENT is greeting-side.
 USERNAME_COLOR = (255, 255, 255, 255)
-LEVEL_COLOR = (114, 137, 218, 255)  # rank uses legacy blurple to preserve golden bytes
+LEVEL_COLOR = LEGACY_BLURPLE_RGBA  # rank keeps legacy blurple for golden-byte identity
 XP_BAR_BG = (78, 80, 88, 255)
-XP_BAR_FILL = (114, 137, 218, 255)
-XP_TEXT_COLOR = (185, 187, 190, 255)
+XP_BAR_FILL = LEGACY_BLURPLE_RGBA
+# Dedupe (S4.7): XP text color == greeting count color == brand.MUTED_TEXT.
+XP_TEXT_COLOR = MUTED_TEXT
 RANK_COLOR = (255, 255, 255, 255)
 
 # Rank-side placeholder for a missing avatar (spec R-3). Uses the shared

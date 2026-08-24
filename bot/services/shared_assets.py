@@ -14,20 +14,22 @@ from typing import TYPE_CHECKING
 
 from PIL import Image, ImageDraw, ImageFont
 
+from bot.utils.brand import CARD_BG_BOTTOM, CARD_BG_TOP, PLACEHOLDER, PLACEHOLDER_INNER
+
 if TYPE_CHECKING:
     from PIL.ImageFont import FreeTypeFont
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Shared constants
+# Shared constants — palette values single-sourced in bot.utils.brand (S4.7)
 # ---------------------------------------------------------------------------
 
 CARD_WIDTH = 934
 CARD_HEIGHT = 282
 
-BG_TOP = (43, 45, 49, 255)  # #2b2d31
-BG_BOTTOM = (30, 31, 34, 255)  # #1e1f22
+BG_TOP = CARD_BG_TOP
+BG_BOTTOM = CARD_BG_BOTTOM
 
 _FONT_DIR = Path(__file__).resolve().parent.parent.parent / "assets" / "fonts"
 _FONT_REGULAR = str(_FONT_DIR / "Inter-Regular.ttf")
@@ -36,8 +38,8 @@ AVATAR_FETCH_TIMEOUT = 10  # seconds
 MAX_USERNAME_DISPLAY = 32  # chars before truncation
 
 # Greeting placeholder palette (rank uses transparent fallback)
-GREETING_PLACEHOLDER = (74, 78, 91, 255)
-GREETING_PLACEHOLDER_INNER = (56, 59, 68, 255)
+GREETING_PLACEHOLDER = PLACEHOLDER
+GREETING_PLACEHOLDER_INNER = PLACEHOLDER_INNER
 
 
 # ---------------------------------------------------------------------------

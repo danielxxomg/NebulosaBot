@@ -171,7 +171,6 @@ class CoreCog(commands.Cog, name="Core"):
 
         embed.set_footer(
             text=t(guild_id, "core.status.footer"),
-            icon_url="https://i.imgur.com/fvE4b0c.png",
         )
         await ctx.send(embed=embed, ephemeral=True)
 
@@ -354,7 +353,6 @@ def _build_cog_help_embed(
 
     embed.set_footer(
         text=t(guild_id, "core.help.footer"),
-        icon_url="https://i.imgur.com/fvE4b0c.png",
     )
     return embed
 

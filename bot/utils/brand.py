@@ -42,3 +42,15 @@ TRANSCRIPT_MUTED: str = "#72767d"
 TRANSCRIPT_BORDER: str = "#42464d"
 TRANSCRIPT_TEXT: str = "#dcddde"
 TRANSCRIPT_HEADER_TEXT: str = "#fff"
+
+# ---------------------------------------------------------------------------
+# Renderer RGBA palette (S4) — byte-identity contract with the golden PNGs:
+# values are identical to the pre-consolidation literals in shared_assets /
+# rank_renderer / greeting_renderer; only the source of truth moved here.
+# ---------------------------------------------------------------------------
+CARD_BG_TOP: tuple[int, int, int, int] = (43, 45, 49, 255)
+CARD_BG_BOTTOM: tuple[int, int, int, int] = (30, 31, 34, 255)
+PLACEHOLDER: tuple[int, int, int, int] = (74, 78, 91, 255)
+PLACEHOLDER_INNER: tuple[int, int, int, int] = (56, 59, 68, 255)
+PANEL_OVERLAY: tuple[int, int, int, int] = (255, 255, 255, 18)
+MUTED_TEXT: tuple[int, int, int, int] = (185, 187, 190, 255)  # == greeting count color
