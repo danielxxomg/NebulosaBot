@@ -16,27 +16,39 @@ The system MUST initialize the bot instance and execute a setup hook before conn
 - WHEN `setup_hook` runs
 - THEN cogs are loaded and services are ready before the connection to Discord is established
 
-### Requirement: Hybrid prefix
+### Requirement: Slash-only command surface
 
-The system MUST support both slash commands and prefix commands, using a configurable prefix that defaults to `nb!`. The system MUST also accept `,` (comma) as a global alternate prefix for all prefix commands.
-
-#### Scenario: Prefix command invocation
-
-- GIVEN a guild with default configuration
-- WHEN a user sends `nb!ping`
-- THEN the bot invokes the `ping` command
-
-#### Scenario: Alternate prefix invocation
-
-- GIVEN the bot is online
-- WHEN a user sends `,ping`
-- THEN the bot invokes the `ping` command
+The system MUST expose commands exclusively through Discord slash (application) commands. `get_prefix` MUST resolve to a static empty list (`[]`) — no text prefix enables command invocation. Zero text-invocable commands MUST remain registered. `,` (comma) MUST NOT act as a command prefix anywhere in the framework; its sole surviving behavior is the ticket-channel timer listener, which operates outside the command framework and remains specified by `close-confirmation` (unchanged by this delta). Help output MUST display slash syntax only.
 
 #### Scenario: Slash command invocation
 
 - GIVEN the bot is online
 - WHEN a user invokes `/ping`
 - THEN the bot invokes the `ping` command
+
+#### Scenario: Prefix invocation is inert
+
+- GIVEN a guild with any configuration
+- WHEN a user sends `nb!ping`
+- THEN no command is invoked and the bot posts no response
+
+#### Scenario: Comma invocation is inert outside ticket channels
+
+- GIVEN the bot is online
+- WHEN a user sends `,ping` in a non-ticket channel
+- THEN no command is invoked and the bot posts no response
+
+#### Scenario: Comma ticket timer is unaffected
+
+- GIVEN a ticket channel governed by `close-confirmation`
+- WHEN the `,` timer interaction occurs
+- THEN it behaves exactly as specified by `close-confirmation` (unchanged)
+
+#### Scenario: Help shows slash syntax only
+
+- GIVEN the help output is rendered
+- WHEN its command entries are inspected
+- THEN every entry shows `/command` syntax and none shows a prefix example
 
 ### Requirement: Cog loading
 
@@ -56,9 +68,7 @@ The system MUST load command modules (cogs) during `setup_hook`.
 
 ### Requirement: Global error handler
 
-The system MUST handle command errors and respond with user-friendly embeds. Slash command errors MUST be sent ephemerally. Prefix command errors MUST be sent as a DM to the invoking user; if the DM fails, the error is sent to the channel. The unexpected error embed title and message MUST be resolved via `t()` using the guild's language, not hardcoded English.
-
-(Previously: `on_app_command_error` used hardcoded `error_embed("Unexpected Error", ...)`)
+The system MUST handle command errors and respond with user-friendly embeds. Application command errors MUST be sent ephemerally to the invoking user. The handler MUST contain no DM-first branch: with the prefix surface disabled, `on_command_error` retains no prefix-specific delivery logic and MUST NOT attempt DM delivery. The unexpected error embed title and message MUST be resolved via `t()` using the guild's language, not hardcoded English.
 
 #### Scenario: Slash command error
 
@@ -66,17 +76,11 @@ The system MUST handle command errors and respond with user-friendly embeds. Sla
 - WHEN the error is caught
 - THEN an ephemeral embed is sent to the invoking user
 
-#### Scenario: Prefix command error DM
+#### Scenario: No DM-first branch in prefix handler path
 
-- GIVEN a prefix command raises an error
-- WHEN the error is caught
-- THEN an embed is sent as a DM to the invoking user
-
-#### Scenario: Prefix error DM failure
-
-- GIVEN a prefix command raises an error
-- WHEN the bot cannot DM the user
-- THEN the embed is sent to the channel where the command was invoked
+- GIVEN an error surfaces through `on_command_error`
+- WHEN the simplified handler processes it
+- THEN no DM delivery is attempted (the handler defines no DM-first fallback)
 
 #### Scenario: Unexpected error shows guild language
 
@@ -95,19 +99,3 @@ The system MUST handle command errors and respond with user-friendly embeds. Sla
 - GIVEN a slash command error in a guild
 - WHEN `on_app_command_error` fires
 - THEN `guild_id` is extracted from the interaction to resolve `t()` language
-
-### Requirement: Alternate comma prefix
-
-The system MUST recognize `,` (comma) as a hardcoded global alternate prefix in addition to the guild-configured prefix.
-
-#### Scenario: Comma prefix works
-
-- GIVEN a guild with prefix `nb!`
-- WHEN a user sends `,ping`
-- THEN the bot responds as if `nb!ping` was sent
-
-#### Scenario: Comma prefix with arguments
-
-- GIVEN a guild with prefix `nb!`
-- WHEN a user sends `,warn @user spam`
-- THEN the `warn` command is invoked with arguments `@user spam`

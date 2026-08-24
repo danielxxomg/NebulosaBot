@@ -10,19 +10,20 @@
 - Use `logging` module, never `print()` for runtime output
 - Constants in UPPER_SNAKE_CASE, configurable values in `.env`
 - Docstrings on public classes and non-obvious functions (Google style)
+- **Function-level imports (PLC0415) are banned by default.** Allowed ONLY with an inline documented-exception comment for: cycle-breaking imports, optional-dependency probes (e.g. the cairosvg boot probe), or facade indirection. A bare stdlib import inside a function is a violation
 
 ## Discord.py
 
 - All cogs MUST use `async def setup(bot)` (v2.x requirement)
-- Use `@commands.hybrid_command()` for user-facing commands (prefix + slash)
-- Use `@commands.hybrid_group(fallback=...)` for command groups
+- **Slash-only command surface** (bot-core spec): `get_prefix` resolves to `[]`, zero text-invocable commands. NEW commands MUST use pure app commands (`@app_commands.command()` / `app_commands.Group`), NOT `hybrid_command`
+- Legacy `@commands.hybrid_command()` / `@commands.hybrid_group(fallback=...)` declarations MAY remain from earlier cycles — their prefix half is inert because no prefix resolves; do not add new ones
 - Persistent views: `timeout=None` + static `custom_id` + `bot.add_view()` on startup
 - Background tasks: `@tasks.loop()` with `cog_unload()` to cancel
-- Prefix resolution: always async callable reading from cache-first guild config
-- Error handling: ephemeral embeds for slash, channel embeds for prefix
-- Never hardcode prefixes, channel IDs, or role IDs — read from guild config
+- Prefix resolution: static empty list (`bot.bot._noop_prefix`) — never consults guild config at invocation time; `GuildConfig.prefix` persists as data only and MUST NOT gate command behavior
+- Error handling: application-command errors respond ephemerally; the global handler's only delivery path is a single channel embed via `ctx.send` — NO DM-first branch, no DM fallback (see `ephemeral-standard` spec)
+- Never hardcode prefixes, channel IDs, or role IDs — read from guild config. **Documented exception:** `,` survives ONLY as the ticket-channel close-timer trigger parsed by `TicketsCog.on_message`, outside the command framework (`close-confirmation` spec); never reintroduce it as a command prefix
 - Use `app_commands.check()` for custom permission checks, compose with `has_permissions()`
-- **i18n**: user-facing strings in cogs MUST go through `t(guild_id, "<key>")` — no hardcoded literals (see `bot/utils/i18n.py`; every `t()` literal must exist in `bot/locales/{es,en}.json`; scan via `tests/test_i18n_key_coverage.py`)
+- **i18n (100% `t()`)**: ALL user-facing strings — in cogs AND services — MUST go through `t(guild_id, "<key>")`; no hardcoded literals (see `bot/core/i18n.py`; every `t()` literal must exist in `bot/locales/{es,en}.json`; scan via `tests/test_i18n_key_coverage.py`)
 - **Permission decorators**: `@can_check("<perm>")` (matrix-gated, 7 keys: `moderation.{warn,mute,kick,ban}`, `tickets.manage`, `economy.manage`, `greeting.manage`); `@is_mod()` (mod-role fallback); `@is_admin()` (admin-only). All three dual-register prefix+slash. Use `can()`/`can_member()` for non-decorator call sites
 - **Command visibility**: admin/config → ephemeral; mod-action → permanent; fun → permanent (exception: ocio `/banana` and `/8ball` are ephemeral per `ocio-commands` spec — they reply only to the invoking user and MUST NOT write to the DB); personal/info → ephemeral (see `ephemeral-standard` spec)
 - **Background loops**: `@tasks.loop()` MUST be DB-sourced for restart durability (scan each iteration, no in-memory timers), with `before_loop` (wait ready) + `cog_unload()` (cancel)

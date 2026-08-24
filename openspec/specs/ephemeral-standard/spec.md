@@ -2,13 +2,29 @@
 
 ## Purpose
 
-Classify all 24 hybrid commands by visibility behavior (ephemeral vs permanent) and define DM fallback for admin prefix commands that would otherwise pollute channels.
+Classify all registered slash commands by visibility behavior (ephemeral vs permanent). With the prefix surface inert (`bot-core`), application-command error responses are always ephemeral, so no response can pollute a public channel.
 
 ## Requirements
 
+### Requirement: Slash-only error visibility
+
+With the prefix surface disabled (see `bot-core`), no prefix-invocation error path exists. Application (slash) command error responses MUST be ephemeral — visible only to the invoking user. Admin/config commands invoked via slash are already ephemeral by classification, so no response can pollute a public channel.
+
+#### Scenario: Admin slash error stays ephemeral
+
+- GIVEN an admin invokes `/config` and the command raises a handled error
+- WHEN the error response is produced
+- THEN the embed is ephemeral (no DM is sent, nothing is posted permanently)
+
+#### Scenario: Prefix invocation produces no output
+
+- GIVEN a user types `nb!ticket_panel` in #general
+- WHEN the message is processed
+- THEN no command executes and the bot posts no response (the prefix surface is inert)
+
 ### Requirement: Command visibility classification
 
-Every hybrid command MUST be classified as either ephemeral (visible only to the invoking user) or permanent (visible to all) based on its category.
+Every registered slash command MUST be classified as either ephemeral (visible only to the invoking user) or permanent (visible to all) based on its category.
 
 #### Scenario: Admin command is ephemeral
 
@@ -70,7 +86,7 @@ All moderation action commands (warn, unwarn, mute, unmute, kick, ban, lock, unl
 
 ### Requirement: Personal/info commands ephemeral standard
 
-Personal or informational commands (ping, status, help, modlogs, whois) MUST respond ephemerally.
+Personal or informational commands (ping, status, help, modlogs, userinfo) MUST respond ephemerally.
 
 #### Scenario: /ping ephemeral
 
@@ -78,21 +94,11 @@ Personal or informational commands (ping, status, help, modlogs, whois) MUST res
 - WHEN the command executes
 - THEN the latency response is visible only to the invoking user
 
-### Requirement: Prefix DM fallback for admin commands
+#### Scenario: /userinfo ephemeral
 
-When an administrative command is invoked via prefix in a public channel, the bot MUST send the response as a DM to the invoking user instead of the channel.
-
-#### Scenario: Admin prefix command DM response
-
-- GIVEN an admin invokes `nb!ticket_panel` in #general
-- WHEN the command executes successfully
-- THEN the confirmation embed is sent as a DM to the admin
-
-#### Scenario: Admin prefix DM failure
-
-- GIVEN an admin invokes `nb!ticket_panel` in #general
-- WHEN the bot cannot DM the user (DMs disabled)
-- THEN the response is sent ephemerally in the channel with a note to enable DMs
+- GIVEN a user invokes `/userinfo`
+- WHEN the command executes
+- THEN the profile response is visible only to the invoking user
 
 ### Requirement: Fun commands permanent standard
 
