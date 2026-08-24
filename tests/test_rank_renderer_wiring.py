@@ -2,11 +2,10 @@
 
 The rank renderer-selection policy was duplicated in the cog: ``stellar.rank``
 lazily imported ``RankRenderer`` each call, probed ``getattr(self.bot,
-"rank_renderer", None)``, and carried an unreachable ``ImageService`` fallback
+"rank_renderer", None)``, and carried an unreachable legacy-shim fallback
 branch.  Meanwhile ``bot.py`` created a throwaway ``_rank_renderer = RankRenderer()``
 local (``# noqa: F841``) that was never stored, so the cog always built a fresh
-``RankRenderer`` per ``/rank`` invocation and the ImageService fallback was
-dead code.
+``RankRenderer`` per ``/rank`` invocation and the fallback path was dead code.
 
 AGENTS.md mandates "Cogs handle Discord interaction only — no business logic"
 and the bot owns service/renderer lifecycle in ``setup_hook``.  The renderer
@@ -19,7 +18,7 @@ This guard proves the wiring is fixed:
     - ``bot.py`` has no throwaway ``_rank_renderer =`` local.
     - ``stellar.py`` ``rank()`` uses ``self.bot.rank_renderer`` directly.
     - ``stellar.py`` has no lazy ``from bot.services.rank_renderer import``
-      inside ``rank()`` and no ``ImageService`` fallback branch.
+      inside ``rank()`` and no legacy fallback branch.
 """
 
 from __future__ import annotations
@@ -84,12 +83,13 @@ class TestRankRendererWiring:
             "bot/cogs/stellar.py must not lazily import RankRenderer inside rank() — the renderer is owned by the bot."
         )
 
-    def test_cog_has_no_image_service_fallback_branch(self) -> None:
+    def test_cog_has_no_legacy_fallback_branch(self) -> None:
         src = _cog_source()
         assert src, "bot/cogs/stellar.py not found"
-        # The fallback branch keys on image_service.generate_rank_card inside rank().
-        assert "falling back to ImageService" not in src, (
-            "bot/cogs/stellar.py must not carry the ImageService fallback "
-            "branch — ImageService.generate_rank_card already delegates to "
-            "RankRenderer, and the bot owns the renderer instance."
+        # The deleted legacy shim's fallback branch keyed on a generate_rank_card
+        # delegation inside rank(); guard against any fallback wording returning.
+        assert "falling back" not in src, (
+            "bot/cogs/stellar.py must not carry a legacy rank-card fallback "
+            "branch — RankRenderer owns generation and the bot owns the "
+            "renderer instance."
         )

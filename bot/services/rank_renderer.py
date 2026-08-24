@@ -1,4 +1,4 @@
-"""Rank card renderer — SRP split from ImageService.
+"""Rank card renderer.
 
 Shares gradient loop, font loader, and avatar helpers via
 ``bot.services.shared_assets`` so no code is duplicated. The circular avatar
@@ -16,7 +16,7 @@ from bot.services import shared_assets
 from bot.utils.brand import LEGACY_BLURPLE_RGBA, MUTED_TEXT
 
 # ---------------------------------------------------------------------------
-# Rank card layout constants (mirrors image_service for byte-identity)
+# Rank card layout constants
 # ---------------------------------------------------------------------------
 
 AVATAR_X = 30
@@ -80,7 +80,7 @@ class RankRenderer:
         xp_for_current: float,
         xp_for_next: float,
     ) -> io.BytesIO:
-        """Generate a rank card PNG image (byte-identical to ImageService)."""
+        """Generate a rank card PNG image."""
         # -- Base image with gradient background --------------------------
         img, draw = shared_assets._card_base()
 

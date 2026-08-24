@@ -275,7 +275,7 @@ class StellarCog(commands.Cog, name="Stellar"):
             return
 
         # Fetch avatar URL for the rank card.
-        # ImageService downloads the avatar itself in-thread, so we only
+        # The renderer downloads the avatar itself in-thread, so we only
         # pass the URL — no need to read() bytes here.
         try:
             avatar_url: str | None = str(target.display_avatar.url)
@@ -289,9 +289,8 @@ class StellarCog(commands.Cog, name="Stellar"):
 
         # Generate the rank card in a thread to avoid blocking.
         # The renderer is owned by the bot (stored in setup_hook) so the cog
-        # uses the shared instance directly — no lazy import or ImageService
-        # fallback branch (ImageService.generate_rank_card already delegates
-        # to RankRenderer).
+        # uses the shared instance directly — no lazy import or legacy
+        # fallback branch.
         if self.bot.rank_renderer is None:
             msg = "RankRenderer initialised in setup_hook"
             raise RuntimeError(msg)

@@ -34,9 +34,9 @@ Enforce NebulosaBot's layered module architecture via `tach.toml` so import boun
 - WHEN `tach check` runs
 - THEN any model importing another layer reports a violation
 
-### Requirement: Image-service split stays in the services layer
+### Requirement: Renderer split stays in the services layer
 
-The split of `ImageService` into `RankRenderer`, `GreetingRenderer`, and a `shared_assets` module MUST place all three in the `bot/services/` package (services layer). The Cycle 2 neon theme branch of `PillowGreetingRenderer` MUST also live in the services layer (it is part of the existing `GreetingRenderer` module, not a new module). `shared_assets` MUST NOT import cogs or views. The renderers MUST NOT import cogs or views. The existing services-layer rule (services depend on `["core", "db", "models", "utils"]`) MUST continue to hold for the new modules and the neon branch.
+The renderer modules `RankRenderer`, `GreetingRenderer`, and the shared `shared_assets` module MUST live in the `bot/services/` package (services layer); the retired compatibility shim is deleted and MUST NOT be reintroduced. The Cycle 2 neon theme branch of `PillowGreetingRenderer` MUST also live in the services layer (it is part of the existing `GreetingRenderer` module, not a new module). `shared_assets` MUST NOT import cogs or views. The renderers MUST NOT import cogs or views. The existing services-layer rule (services depend on `["core", "db", "models", "utils"]`) MUST continue to hold for the new modules and the neon branch.
 (Previously: the requirement covered the Cycle 1 three-way split; it did not name the Cycle 2 neon theme branch.)
 
 #### Scenario: Renderers and shared assets are services

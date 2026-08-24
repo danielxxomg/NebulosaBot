@@ -227,7 +227,7 @@ Dashboard greeting config writes — including `theme_id` — MUST NOT call any 
 
 - GIVEN `welcome_enabled` is `True`, `welcome_channel_id` is set, and `welcome_card_enabled` is `True`
 - WHEN a member joins the guild
-- THEN `ImageService.generate_greeting_card()` is called via `asyncio.to_thread` and the resulting `.png` file is sent to the welcome channel with optional text overlay
+- THEN `GreetingRenderer.render()` is called via `asyncio.to_thread` and the resulting `.png` file is sent to the welcome channel with optional text overlay
 
 #### Scenario: Welcome text-only when toggle disabled and message set
 
@@ -249,7 +249,7 @@ Dashboard greeting config writes — including `theme_id` — MUST NOT call any 
 
 - GIVEN `goodbye_enabled` is `True`, `goodbye_channel_id` is set, and `goodbye_card_enabled` is `True`
 - WHEN a member leaves the guild
-- THEN `ImageService.generate_greeting_card()` is called via `asyncio.to_thread` and the resulting `.png` file is sent to the goodbye channel with optional text overlay
+- THEN `GreetingRenderer.render()` is called via `asyncio.to_thread` and the resulting `.png` file is sent to the goodbye channel with optional text overlay
 
 #### Scenario: Goodbye text-only when toggle disabled and message set
 

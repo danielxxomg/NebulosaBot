@@ -35,17 +35,18 @@ The system MUST render the rank card with a dark gradient background, light text
 
 The system MUST extract rank-card generation into a `RankRenderer` service
 that owns `generate_rank_card`, the shared gradient loop, and the shared font
-loader. `ImageService` MUST NOT own rank-card generation after the split.
+loader. Rank-card generation MUST NOT live in any legacy compatibility shim;
+the shim module is deleted outright after the split.
 The extracted `RankRenderer` MUST share the gradient loop and font loader
 with the greeting renderer through a `shared_assets` module so neither
 renderer duplicates that code. The extraction MUST NOT change the rank card
 visual output.
 
-#### Scenario: ImageService no longer owns rank card
+#### Scenario: No legacy shim owns rank card generation
 
-- GIVEN `bot/services/image_service.py` after the split
-- WHEN scanned for `generate_rank_card`
-- THEN it is absent; the method lives in `RankRenderer` under `bot/services/`
+- GIVEN the repository tree after the split
+- WHEN scanned for a rank-card-generating compatibility shim module
+- THEN none exists; `generate_rank_card` lives only in `RankRenderer` under `bot/services/`
 
 #### Scenario: Shared gradient and font loader are not duplicated
 

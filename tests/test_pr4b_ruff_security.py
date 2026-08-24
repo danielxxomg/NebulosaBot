@@ -55,7 +55,7 @@ class TestRuffSecurityBaseline:
         assert "All checks passed" in combined, f"expected All checks passed, got: {combined[:1500]}"
 
     def test_isolated_s310_zero_after_fix(self) -> None:
-        """Post-fix: isolated S310 must be 0 (RED was 2 — urlopen in image_service)."""
+        """Post-fix: isolated S310 must be 0 (RED was 2 — legacy urlopen call, since removed)."""
         result = _run(["uv", "run", "ruff", "check", "--isolated", "--select", "S310", "bot/"])
         combined = result.stdout + result.stderr
         assert result.returncode == 0, f"S310 still present: {combined[:1500]}"
