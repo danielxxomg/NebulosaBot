@@ -135,13 +135,17 @@ class AuditListener(commands.Cog):
     ) -> None:
         """Log channel deletion and route active-ticket detection to the coordinator.
 
-        Preserves deletion logging and hands the exact (guild, channel) facts
-        to ``TicketService.handle_channel_delete`` so the shared, evidence-gated
-        repair path can detect a matching active ticket. The listener NEVER
-        mutates ticket state and NEVER fabricates an authorizing actor — the
-        gateway event carries no audit-log actor, so the coordinator treats
-        the deletion actor as informational only. A missing ticket_service is
-        tolerated (deletion logging continues, no repair is attempted).
+        The listener itself performs no direct mutation: it preserves
+        deletion logging and hands the exact (guild, channel) facts to
+        ``TicketService.handle_channel_delete`` — the shared, evidence-gated
+        repair path — which MAY close a matching active ticket (transition
+        to closed) when preflight and evidence gates resolve. That sanctioned
+        close-via-service is the coordinator's decision, never the listener's:
+        no ticket state is mutated here and no authorizing actor is fabricated
+        (the gateway event carries no audit-log actor, so the coordinator
+        treats the deletion actor as informational only). A missing
+        ticket_service is tolerated (deletion logging continues, no repair is
+        attempted).
         """
         if channel.guild is None:
             return

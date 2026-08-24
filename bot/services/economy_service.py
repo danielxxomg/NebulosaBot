@@ -11,6 +11,8 @@ import sys
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, cast
 
+import discord
+
 from bot.core.cache import LEADERBOARD_TTL, cache_key
 from bot.utils.timeparse import _to_datetime
 
@@ -171,6 +173,50 @@ class EconomyService:
             leveled_up,
         )
         return (new_xp, new_level, leveled_up)
+
+    # ------------------------------------------------------------------
+    # Level Role Assignment (Discord mutation owned by the service)
+    # ------------------------------------------------------------------
+
+    async def assign_level_role(self, guild_id: str, user: discord.Member, role: discord.Role) -> bool:
+        """Assign a level reward *role* to *user* (Discord mutation lives here).
+
+        Level-reward role grants are the sanctioned exception to the
+        read-only-listener rule: the XP listener resolves the configured
+        mapping and delegates; the actual ``add_roles`` mutation happens in
+        this service method so Discord state changes are never performed
+        from a listener. Moderation-class mutations remain forbidden.
+
+        Returns:
+            ``True`` when the role was assigned, ``False`` on permission or
+            HTTP failure (logged, never raised — level rewards are best-effort).
+        """
+        try:
+            await user.add_roles(role, reason=f"Level role reward in guild {guild_id}")
+        except discord.Forbidden:
+            logger.warning(
+                "Missing permissions to assign role %s to %s in guild %s",
+                role.name,
+                user,
+                guild_id,
+            )
+            return False
+        except discord.HTTPException:
+            logger.exception(
+                "Failed to assign role %s to %s in guild %s",
+                role.name,
+                user,
+                guild_id,
+            )
+            return False
+
+        logger.info(
+            "Assigned role %s to %s (level reward) in guild %s",
+            role.name,
+            user,
+            guild_id,
+        )
+        return True
 
     # ------------------------------------------------------------------
     # Daily Claim

@@ -42,6 +42,7 @@ def mock_bot() -> MagicMock:
     bot.economy_service = MagicMock()
     bot.economy_service.gain_xp = AsyncMock()
     bot.economy_service.get_economy_config = AsyncMock()
+    bot.economy_service.assign_level_role = AsyncMock()
     return bot
 
 
@@ -305,7 +306,7 @@ class TestXpListenerRoleAssignment:
         mock_message: MagicMock,
         mock_guild: MagicMock,
     ) -> None:
-        """When levelRoleMap has a role for the new level, assign it."""
+        """When levelRoleMap has a role for the new level, delegate to EconomyService."""
         mock_message.author.id = 111111111
         mock_message.author.mention = "<@111111111>"
         mock_bot.economy_service.gain_xp.return_value = (400, 5, True)
@@ -321,7 +322,33 @@ class TestXpListenerRoleAssignment:
         await listener.on_message(mock_message)
 
         mock_guild.get_role.assert_called_once_with(555555555)
-        mock_message.author.add_roles.assert_called_once_with(role)
+        # Delegation contract (cycle-5 S3): the Discord mutation lives in the
+        # service; the listener resolves config and delegates only.
+        mock_bot.economy_service.assign_level_role.assert_awaited_once_with("123456789", mock_message.author, role)
+
+    @pytest.mark.asyncio
+    async def test_level_up_never_adds_roles_directly(
+        self,
+        mock_bot: MagicMock,
+        listener: XPListener,
+        mock_message: MagicMock,
+        mock_guild: MagicMock,
+    ) -> None:
+        """The listener itself MUST NOT mutate Discord roles (AGENTS listeners rule)."""
+        mock_message.author.id = 111111111
+        mock_message.author.mention = "<@111111111>"
+        mock_bot.economy_service.gain_xp.return_value = (400, 5, True)
+        mock_bot.economy_service.get_economy_config.return_value = {
+            "guildId": "123456789",
+            "levelUpChannelId": None,
+            "levelRoles": {"5": "555555555"},
+        }
+        role = MagicMock(spec=discord.Role)
+        mock_guild.get_role.return_value = role
+
+        await listener.on_message(mock_message)
+
+        mock_message.author.add_roles.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_level_up_no_role_for_level(

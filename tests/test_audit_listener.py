@@ -11,6 +11,9 @@ Strict TDD: RED phase — tests written BEFORE implementation exists.
 
 from __future__ import annotations
 
+import asyncio
+import inspect
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
@@ -18,6 +21,10 @@ import pytest
 from discord.ext import commands
 
 from bot.cogs.sentinel import SentinelCog
+from bot.core.cache import TTLCache
+from bot.listeners.audit_listener import AuditListener, setup, teardown
+from bot.services.integrity_report import evaluate_live_preflight
+from bot.services.ticket_service import TicketService
 
 # ---------------------------------------------------------------------------
 # AuditListener helpers
@@ -128,7 +135,6 @@ def listener(mock_bot: MagicMock) -> commands.Cog:
 
     Module is imported dynamically since the file does not exist yet (RED phase).
     """
-    from bot.listeners.audit_listener import AuditListener
 
     return AuditListener(mock_bot)
 
@@ -445,9 +451,27 @@ class TestChannelDeleteRepairRouting:
     """on_guild_channel_delete routes matching active tickets to the coordinator.
 
     The listener preserves deletion logging AND supplies guild/channel facts
-    to the shared repair path. It NEVER mutates tickets and NEVER fabricates
-    an authorizing actor (the gateway event carries no audit-log actor).
+    to the shared repair path. It performs no direct mutation itself and never
+    fabricates an authorizing actor (the gateway event carries no audit-log
+    actor); a matching ticket MAY be closed through TicketService's
+    evidence-gated repair path — that sanctioned close-via-service behavior
+    must be documented honestly (cycle-5 S3.7), not denied.
     """
+
+    def test_docstring_documents_sanctioned_close_via_service_honestly(self) -> None:
+        """The listener docstring must not deny the coordinator-driven close.
+
+        The delegated repair path transitions matching active tickets to
+        closed — claiming the flow 'NEVER mutates ticket state' is false.
+        """
+        doc = inspect.getdoc(AuditListener.on_guild_channel_delete) or ""
+        # Whitespace-normalized so a line wrap cannot hide the denied phrase.
+        flat = " ".join(doc.split())
+        assert "NEVER mutates ticket state" not in flat, (
+            "docstring denies real service-side close behavior — rewrite it honestly"
+        )
+        # Honest documentation: names the coordinator and its repair outcome.
+        assert "handle_channel_delete" in flat or "TicketService" in flat
 
     @pytest.fixture
     def repair_bot(self, mock_logging: MagicMock) -> MagicMock:
@@ -462,7 +486,6 @@ class TestChannelDeleteRepairRouting:
 
     @pytest.fixture
     def repair_listener(self, repair_bot: MagicMock) -> commands.Cog:
-        from bot.listeners.audit_listener import AuditListener
 
         return AuditListener(repair_bot)
 
@@ -512,8 +535,6 @@ class TestChannelDeleteRepairRouting:
         bot.user.id = 999999999
         # ticket_service intentionally unset.
 
-        from bot.listeners.audit_listener import AuditListener
-
         listener = AuditListener(bot)
         channel = make_mock_channel(name="general")
 
@@ -533,12 +554,6 @@ class TestAuthoritativeChannelDeletePR3:
     @pytest.mark.asyncio
     async def test_resolved_preflight_reaches_conditional_close(self) -> None:
         """G.2 resolved + active ticket -> handle_channel_delete with resolved preflight repairs."""
-        from datetime import UTC, datetime
-
-        from bot.core.cache import TTLCache
-        from bot.listeners.audit_listener import AuditListener
-        from bot.services.integrity_report import evaluate_live_preflight
-        from bot.services.ticket_service import TicketService
 
         db = AsyncMock()
         row = {"id": "t-1", "guildId": "123", "channelId": "555", "status": "open"}
@@ -570,9 +585,6 @@ class TestAuthoritativeChannelDeletePR3:
     @pytest.mark.asyncio
     async def test_gate_unresolved_is_fail_closed_no_mutation(self) -> None:
         """G.2 unresolved -> no conditional close, but deletion logging preserved."""
-        from bot.core.cache import TTLCache
-        from bot.listeners.audit_listener import AuditListener
-        from bot.services.ticket_service import TicketService
 
         db = AsyncMock()
         row = {"id": "t-1", "guildId": "123", "channelId": "555", "status": "open"}
@@ -595,13 +607,6 @@ class TestAuthoritativeChannelDeletePR3:
     @pytest.mark.asyncio
     async def test_two_resolved_events_one_repaired_one_already_closed(self) -> None:
         """Two concurrent resolved deletes -> one repaired, one already_closed."""
-        import asyncio
-        from datetime import UTC, datetime
-
-        from bot.core.cache import TTLCache
-        from bot.listeners.audit_listener import AuditListener
-        from bot.services.integrity_report import evaluate_live_preflight
-        from bot.services.ticket_service import TicketService
 
         db = AsyncMock()
         row = {"id": "t-1", "guildId": "123", "channelId": "555", "status": "open"}
@@ -651,9 +656,6 @@ class TestAuthoritativeChannelDeletePR3:
     @pytest.mark.asyncio
     async def test_cross_guild_lookup_is_isolated(self) -> None:
         """Cross-guild channel delete does not leak tickets across guilds."""
-        from bot.core.cache import TTLCache
-        from bot.listeners.audit_listener import AuditListener
-        from bot.services.ticket_service import TicketService
 
         db = AsyncMock()
         # No ticket in this guild
@@ -784,8 +786,6 @@ class TestAuditListenerSetup:
         """setup() must add AuditListener as a cog."""
         mock_bot.add_cog = AsyncMock()
 
-        from bot.listeners.audit_listener import setup
-
         await setup(mock_bot)
 
         mock_bot.add_cog.assert_awaited_once()
@@ -796,8 +796,6 @@ class TestAuditListenerSetup:
     async def test_teardown_removes_cog(self, mock_bot: MagicMock) -> None:
         """teardown() must remove the AuditListener cog."""
         mock_bot.remove_cog = AsyncMock()
-
-        from bot.listeners.audit_listener import teardown
 
         await teardown(mock_bot)
 

@@ -167,29 +167,14 @@ class XPListener(commands.Cog):
         if not isinstance(message.author, discord.Member):
             return  # Can't assign roles to non-members.
 
-        try:
-            await message.author.add_roles(role)
-            logger.info(
-                "Assigned role %s to %s (level %d) in guild %s",
-                role.name,
-                message.author,
-                new_level,
-                guild.id,
-            )
-        except discord.Forbidden:
-            logger.warning(
-                "Missing permissions to assign role %s to %s in guild %s",
-                role.name,
-                message.author,
-                guild.id,
-            )
-        except discord.HTTPException:
-            logger.exception(
-                "Failed to assign role %s to %s in guild %s",
-                role.name,
-                message.author,
-                guild.id,
-            )
+        if self.bot.economy_service is None:
+            msg = "EconomyService initialised in setup_hook"
+            raise RuntimeError(msg)
+
+        # Delegation contract (cycle-5 S3.7): the Discord mutation lives in
+        # EconomyService.assign_level_role — listeners never mutate Discord
+        # state directly (AGENTS.md listeners rule, level-rewards exception).
+        await self.bot.economy_service.assign_level_role(str(guild.id), message.author, role)
 
 
 # ----------------------------------------------------------------------

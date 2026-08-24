@@ -39,7 +39,7 @@
 - **No blocking I/O in event loop**: use `asyncio.to_thread()` for Pillow, file I/O, etc.
 - **Supabase**: `create_client()` with `AsyncClientOptions(schema="public", auto_refresh_token=False, persist_session=False)`; async is MUST
 - **Renderer**: `Pillow` is the default (procedural, `brand.ACCENT`); `cairosvg` optional behind a boot probe (`ImportError` → WARNING + Pillow injection). Do NOT hard-depend on `cairosvg`
-- **Listeners are read-only**: `bot/listeners/*.py` cogs MUST NOT kick/mute/move/DM/send-into-voice. They observe + log via `LoggingService`. Per-member debounce is guild-scoped (`f"{guild_id}:{member_id}"`) with TTL + stale eviction
+- **Listeners observe + delegate, never mutate**: `bot/listeners/*.py` cogs MUST NOT kick/mute/move/DM/send-into-voice and MUST NOT perform Discord mutations directly. They observe + log via `LoggingService`; any sanctioned Discord mutation (e.g. level-reward `add_roles`) goes through a service method (`EconomyService.assign_level_role`). Moderation-class mutations from listeners are NEVER allowed. Per-member debounce is guild-scoped (`f"{guild_id}:{member_id}"`) with TTL + stale eviction
 
 ## Naming
 
@@ -115,5 +115,6 @@ inherited debt.
 
 ## Domain Notes
 
+- **`/unclaim` gate is claimer-or-mod in the service — matrix-gate intentionally absent**: authorization lives in `TicketService.check_can_unclaim` (claimer OR mod role; raises on violation), NOT in a `can_check()`/`@is_mod()` decorator. This is deliberate: the gate depends on ticket state (`claimedBy`), not just the caller's permission key. Guard test: `tests/test_tickets_cog.py::TestUnclaimCommand::test_unclaim_not_gated_by_is_mod`. Do not "fix" by adding a matrix key.
 - **`bot/utils/time.py` vs `bot/utils/timeparse.py` — DO NOT MERGE**: `time.py` parses human duration strings → seconds (Sentinel timeouts); `timeparse.py` parses DB timestamp values → `datetime` (economy). Different domains, different callers. Keep separate and document the other as a distinct domain.
 - **Brand tokens**: all colors via `bot/utils/brand.py` (`ACCENT`, `INFO`, etc.); no hex literals outside `brand.py`. Greeting accent is `brand.ACCENT`, not `GREETING_ACCENT`/`#7289da`.
