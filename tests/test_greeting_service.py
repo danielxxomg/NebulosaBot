@@ -115,6 +115,7 @@ class TestGetConfig:
     async def test_cache_hit_returns_cached_config(
         self,
         service: GreetingService,
+        mock_db: AsyncMock,
         cache: TTLCache,
         greeting_config_row: dict,
     ) -> None:
@@ -126,7 +127,7 @@ class TestGetConfig:
         result = await service.get_config(guild_id)
 
         assert result is cached
-        service._db.get_greeting_config.assert_not_called()
+        mock_db.get_greeting_config.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_cache_miss_db_hit_populates_cache(
@@ -176,6 +177,7 @@ class TestGetConfig:
     async def test_cache_hit_preserves_onboarding_channel(
         self,
         service: GreetingService,
+        mock_db: AsyncMock,
         cache: TTLCache,
     ) -> None:
         """Cache-first reads return the configured onboarding channel without DB access."""
@@ -185,7 +187,7 @@ class TestGetConfig:
         result = await service.get_config("123456789")
 
         assert result.onboarding_channel_id == "999999999"
-        service._db.get_greeting_config.assert_not_called()
+        mock_db.get_greeting_config.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_different_guilds_have_separate_cache_keys(

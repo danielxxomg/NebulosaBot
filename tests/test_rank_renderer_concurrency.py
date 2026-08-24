@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import io
 import time
+from typing import TypedDict
 from unittest.mock import patch
 
 import pytest
@@ -16,7 +17,19 @@ _BLOCK_SECONDS = 0.05
 # Serial = 2 * _BLOCK_SECONDS = 0.10s; parallel ≈ _BLOCK_SECONDS. Midway.
 _SERIAL_THRESHOLD = _BLOCK_SECONDS * 1.5
 
-_RANK_KW = {
+
+class _RankKwargs(TypedDict):
+    """Keyword arguments for :meth:`RankRenderer.generate_rank_card`."""
+
+    avatar_url: str | None
+    xp: int
+    level: int
+    rank: int
+    xp_for_current: float
+    xp_for_next: float
+
+
+_RANK_KW: _RankKwargs = {
     "avatar_url": None,
     "xp": 500,
     "level": 3,

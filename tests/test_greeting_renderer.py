@@ -15,9 +15,22 @@ from __future__ import annotations
 import io
 import logging
 from pathlib import Path
+from typing import TypedDict
 from unittest.mock import patch
 
 from PIL import Image, ImageFont
+
+
+class _RenderKwargs(TypedDict):
+    """Keyword arguments for :meth:`PillowGreetingRenderer.render` (minus icon/theme)."""
+
+    username: str
+    avatar_url: str | None
+    guild_name: str
+    member_count: int
+    card_type: str
+    greeting_title: str
+    member_count_text: str
 
 
 def _renderer_source() -> str:
@@ -76,6 +89,7 @@ class TestGreetingRendererBrandTokens:
         img = Image.open(buf)
         # The left bar is at x=18..24, y=16..(H-16). Sample inside.
         pixel = img.getpixel((20, 30))
+        assert isinstance(pixel, tuple), f"getpixel must return a tuple for RGBA, got {type(pixel)}"
         # Allow antialias? Left bar is solid fill rectangle.
         assert pixel[:3] == expected[:3] or pixel == expected, f"accent pixel {pixel} != brand.ACCENT {expected}"
 
@@ -220,7 +234,7 @@ class TestGreetingRendererGuildIconPresent:
                 return member_avatar
             return None
 
-        common = {
+        common: _RenderKwargs = {
             "username": "IconUser",
             "avatar_url": "member-avatar",
             "guild_name": "Branded Guild",

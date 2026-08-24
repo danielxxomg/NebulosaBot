@@ -120,6 +120,7 @@ class TestGetGreetingConfig:
         result = await db.get_greeting_config("g1")
 
         assert result == row
+        assert result is not None
         assert result["onboardingChannelId"] == "onboarding-1"
 
     @pytest.mark.asyncio
@@ -131,4 +132,5 @@ class TestGetGreetingConfig:
         result = await db.get_greeting_config("g1")
 
         assert result == row
+        assert result is not None
         assert result["onboardingChannelId"] is None

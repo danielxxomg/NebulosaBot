@@ -10,6 +10,19 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
+from typing import TypedDict
+
+
+class _RankKwargs(TypedDict):
+    """Keyword arguments for :meth:`RankRenderer.generate_rank_card`."""
+
+    username: str
+    avatar_url: str | None
+    xp: int
+    level: int
+    rank: int
+    xp_for_current: float
+    xp_for_next: float
 
 
 def _is_valid_png(data: bytes) -> bool:
@@ -42,7 +55,7 @@ class TestRankRendererGoldenBytes:
         from bot.services.image_service import ImageService
         from bot.services.rank_renderer import RankRenderer
 
-        kwargs = {
+        kwargs: _RankKwargs = {
             "username": "TestUser",
             "avatar_url": None,
             "xp": 500,
@@ -71,7 +84,7 @@ class TestRankRendererGoldenBytes:
         from bot.services.image_service import ImageService
         from bot.services.rank_renderer import RankRenderer
 
-        cases = [
+        cases: list[_RankKwargs] = [
             {
                 "username": "ZeroProgress",
                 "avatar_url": None,

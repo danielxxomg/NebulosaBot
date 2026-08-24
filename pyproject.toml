@@ -287,78 +287,6 @@ not-subscriptable = "warn"
 unused-ignore-comment = "warn"
 
 [[tool.ty.overrides]]
-include = ["tests/test_greeting_db.py"]
-
-[tool.ty.overrides.rules]
-possibly-unresolved-reference = "warn"
-possibly-missing-attribute = "warn"
-unresolved-attribute = "warn"
-invalid-argument-type = "warn"
-invalid-assignment = "warn"
-not-subscriptable = "warn"
-unused-ignore-comment = "warn"
-
-[[tool.ty.overrides]]
-include = ["tests/test_greeting_neon_renderer.py"]
-
-[tool.ty.overrides.rules]
-possibly-unresolved-reference = "warn"
-possibly-missing-attribute = "warn"
-unresolved-attribute = "warn"
-invalid-argument-type = "warn"
-invalid-assignment = "warn"
-not-subscriptable = "warn"
-unused-ignore-comment = "warn"
-
-[[tool.ty.overrides]]
-include = ["tests/test_greeting_renderer.py"]
-
-[tool.ty.overrides.rules]
-possibly-unresolved-reference = "warn"
-possibly-missing-attribute = "warn"
-unresolved-attribute = "warn"
-invalid-argument-type = "warn"
-invalid-assignment = "warn"
-not-subscriptable = "warn"
-unused-ignore-comment = "warn"
-
-[[tool.ty.overrides]]
-include = ["tests/test_greeting_service.py"]
-
-[tool.ty.overrides.rules]
-possibly-unresolved-reference = "warn"
-possibly-missing-attribute = "warn"
-unresolved-attribute = "warn"
-invalid-argument-type = "warn"
-invalid-assignment = "warn"
-not-subscriptable = "warn"
-unused-ignore-comment = "warn"
-
-[[tool.ty.overrides]]
-include = ["tests/test_greeting_service_native_kwargs.py"]
-
-[tool.ty.overrides.rules]
-possibly-unresolved-reference = "warn"
-possibly-missing-attribute = "warn"
-unresolved-attribute = "warn"
-invalid-argument-type = "warn"
-invalid-assignment = "warn"
-not-subscriptable = "warn"
-unused-ignore-comment = "warn"
-
-[[tool.ty.overrides]]
-include = ["tests/test_greetings_cog.py"]
-
-[tool.ty.overrides.rules]
-possibly-unresolved-reference = "warn"
-possibly-missing-attribute = "warn"
-unresolved-attribute = "warn"
-invalid-argument-type = "warn"
-invalid-assignment = "warn"
-not-subscriptable = "warn"
-unused-ignore-comment = "warn"
-
-[[tool.ty.overrides]]
 include = ["tests/test_guild_scope_gaps.py"]
 
 [tool.ty.overrides.rules]
@@ -456,30 +384,6 @@ unused-ignore-comment = "warn"
 
 [[tool.ty.overrides]]
 include = ["tests/test_production_live_close_s5_tdd.py"]
-
-[tool.ty.overrides.rules]
-possibly-unresolved-reference = "warn"
-possibly-missing-attribute = "warn"
-unresolved-attribute = "warn"
-invalid-argument-type = "warn"
-invalid-assignment = "warn"
-not-subscriptable = "warn"
-unused-ignore-comment = "warn"
-
-[[tool.ty.overrides]]
-include = ["tests/test_rank_renderer.py"]
-
-[tool.ty.overrides.rules]
-possibly-unresolved-reference = "warn"
-possibly-missing-attribute = "warn"
-unresolved-attribute = "warn"
-invalid-argument-type = "warn"
-invalid-assignment = "warn"
-not-subscriptable = "warn"
-unused-ignore-comment = "warn"
-
-[[tool.ty.overrides]]
-include = ["tests/test_rank_renderer_concurrency.py"]
 
 [tool.ty.overrides.rules]
 possibly-unresolved-reference = "warn"
@@ -660,18 +564,6 @@ unused-ignore-comment = "warn"
 
 [[tool.ty.overrides]]
 include = ["tests/test_timeparse.py"]
-
-[tool.ty.overrides.rules]
-possibly-unresolved-reference = "warn"
-possibly-missing-attribute = "warn"
-unresolved-attribute = "warn"
-invalid-argument-type = "warn"
-invalid-assignment = "warn"
-not-subscriptable = "warn"
-unused-ignore-comment = "warn"
-
-[[tool.ty.overrides]]
-include = ["tests/test_transcript_service.py"]
 
 [tool.ty.overrides.rules]
 possibly-unresolved-reference = "warn"

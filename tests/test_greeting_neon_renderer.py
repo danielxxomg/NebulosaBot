@@ -11,6 +11,7 @@ from __future__ import annotations
 import io
 import re
 from pathlib import Path
+from typing import TypedDict
 
 from PIL import Image
 
@@ -20,6 +21,19 @@ from bot.utils import brand
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
 _RENDERER_PATH = Path("bot/services/greeting_renderer.py")
+
+
+class _RenderKwargs(TypedDict):
+    """Keyword arguments for :meth:`PillowGreetingRenderer.render` (minus theme_id)."""
+
+    username: str
+    avatar_url: str | None
+    guild_name: str
+    member_count: int
+    card_type: str
+    greeting_title: str
+    member_count_text: str
+    guild_icon_url: str | None
 
 
 def _renderer_source() -> str:
@@ -79,7 +93,7 @@ class TestNeonThemeFallback:
 
     def test_unknown_theme_falls_back_to_default(self) -> None:
         renderer = PillowGreetingRenderer()
-        common = {
+        common: _RenderKwargs = {
             "username": "User",
             "avatar_url": None,
             "guild_name": "Guild",
@@ -96,7 +110,7 @@ class TestNeonThemeFallback:
 
     def test_none_theme_matches_default(self) -> None:
         renderer = PillowGreetingRenderer()
-        common = {
+        common: _RenderKwargs = {
             "username": "User",
             "avatar_url": None,
             "guild_name": "Guild",
@@ -113,7 +127,7 @@ class TestNeonThemeFallback:
     def test_neon_render_differs_from_default(self) -> None:
         """Neon overlay must actually change the rendered bytes."""
         renderer = PillowGreetingRenderer()
-        common = {
+        common: _RenderKwargs = {
             "username": "User",
             "avatar_url": None,
             "guild_name": "Guild",
@@ -139,11 +153,14 @@ class TestNeonUsesBrandPalette:
         a_rgb = ((brand.ACCENT_A >> 16) & 255, (brand.ACCENT_A >> 8) & 255, brand.ACCENT_A & 255)
         b_rgb = ((brand.ACCENT_B >> 16) & 255, (brand.ACCENT_B >> 8) & 255, brand.ACCENT_B & 255)
         pix = img.load()
+        assert pix is not None, "load() must return a PixelAccess for a valid image"
         w, h = img.size
         found_a = found_b = False
         for y in range(h):
             for x in range(w):
                 p = pix[x, y]
+                if not isinstance(p, tuple):
+                    continue
                 if p[:3] == a_rgb:
                     found_a = True
                 if p[:3] == b_rgb:
