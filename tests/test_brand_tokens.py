@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import TypeAlias
 from unittest.mock import MagicMock
 
 import pytest
@@ -24,40 +25,39 @@ BOT_ROOT = Path(__file__).resolve().parent.parent / "bot"
 _HEX_LITERAL_RE = re.compile(r"#[0-9a-fA-F]{3,6}\b")
 
 
-class TestNeonBrandTokens:
-    """PR1 1.1 — neon palette tokens present with binding hex values."""
+BrandTokenValue: TypeAlias = int | str | tuple[int, int, int, int]
 
-    def test_accent_a_is_magenta(self) -> None:
-        assert brand.ACCENT_A == 0xFF2E97
 
-    def test_accent_b_is_cyan(self) -> None:
-        assert brand.ACCENT_B == 0x00E5FF
+class TestBrandTokenExports:
+    """PR1 1.1 + S4 — every pinned brand export lives in one matrix.
 
-    def test_accent_unchanged(self) -> None:
-        assert brand.ACCENT == 0xA855F7
+    Neon palette (PR1), the GREETING_ACCENT alias (must equal ACCENT — no
+    standalone constant), and all three legacy-blurple forms (S4) are
+    value-pinned in a single parametrized token list.
+    """
 
-    def test_greeting_accent_is_alias_of_accent(self) -> None:
-        """GREETING_ACCENT must stay == ACCENT (no standalone constant)."""
-        assert brand.GREETING_ACCENT == brand.ACCENT
+    @pytest.mark.parametrize(
+        ("token", "value"),
+        [
+            ("ACCENT", 0xA855F7),
+            ("ACCENT_A", 0xFF2E97),
+            ("ACCENT_B", 0x00E5FF),
+            # Alias of ACCENT — pinned to the same literal so a standalone
+            # constant drift fails this case.
+            ("GREETING_ACCENT", 0xA855F7),
+            ("LEGACY_BLURPLE", 0x7289DA),
+            ("LEGACY_BLURPLE_CSS", "#7289da"),
+            ("LEGACY_BLURPLE_RGBA", (114, 137, 218, 255)),
+        ],
+    )
+    def test_token_value(self, token: str, value: BrandTokenValue) -> None:
+        assert getattr(brand, token) == value
 
     def test_neon_tokens_are_int(self) -> None:
         assert isinstance(brand.ACCENT_A, int)
         assert isinstance(brand.ACCENT_B, int)
 
-
-class TestLegacyBlurpleForms:
-    """S4 — legacy blurple lives once in brand, in every consumed form."""
-
-    def test_canonical_int_form(self) -> None:
-        assert brand.LEGACY_BLURPLE == 0x7289DA
-
-    def test_css_string_form(self) -> None:
-        assert brand.LEGACY_BLURPLE_CSS == "#7289da"
-
-    def test_rgba_tuple_form(self) -> None:
-        assert brand.LEGACY_BLURPLE_RGBA == (114, 137, 218, 255)
-
-    def test_forms_agree(self) -> None:
+    def test_legacy_blurple_forms_agree(self) -> None:
         r, g, b, _a = brand.LEGACY_BLURPLE_RGBA
         assert (r << 16) | (g << 8) | b == brand.LEGACY_BLURPLE
         assert f"#{brand.LEGACY_BLURPLE:06x}" == brand.LEGACY_BLURPLE_CSS
