@@ -3,7 +3,9 @@
 Tests that ticket embeds and responses use t() instead of hardcoded English.
 Uses distinctive locale overrides so tests prove t() is called, not hardcoded strings.
 
-Strict TDD: RED phase — tests written BEFORE the i18n migration.
+Every command/embed concept is parametrized over the shared ES/EN locale matrix;
+the EN override set is generated from the ES markers by suffix swap, so the two
+locales stay structurally identical by construction.
 """
 
 from __future__ import annotations
@@ -23,8 +25,9 @@ from bot.cogs.tickets import (
     TicketsCog,
     _build_ticket_embed,
 )
-from bot.core.i18n import load_locales, set_guild_language
+from bot.core.i18n import load_locales, set_guild_language, t
 from bot.models.ticket import Ticket
+from tests.conftest import make_ctx, make_interaction, make_member
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -32,6 +35,215 @@ from bot.models.ticket import Ticket
 
 _ES_GUILD_ID = "123456789"
 _EN_GUILD_ID = "987654321"
+
+# Locale matrix shared by every command concept below.
+_LOCALE_MATRIX = [
+    pytest.param(_ES_GUILD_ID, "ES", id="es"),
+    pytest.param(_EN_GUILD_ID, "EN", id="en"),
+]
+
+# Distinctive ES markers — intentionally ugly so they're unmistakable in
+# assertions. The EN set is derived by replacing the ``_ES`` suffix with
+# ``_EN``, guaranteeing both locales stay structurally identical.
+_ES_MARKERS: dict[str, str] = {
+    "common.footer": "NB • {timestamp}",
+    "common.error.title": "ERR_ES",
+    "common.success.title": "OK_ES",
+    "common.info.title": "INFO_ES",
+    "tickets.config_missing.title": "TICKET_NO_CONFIG_ES",
+    "tickets.config_missing.description": "TICKET_NO_CONFIG_DESC_ES",
+    "tickets.modal.title": "MODAL_TITLE_{category}_ES",
+    "tickets.modal.subject_label": "MODAL_SUBJECT_LABEL_ES",
+    "tickets.modal.subject_placeholder": "MODAL_SUBJECT_PH_ES",
+    "tickets.modal.description_label": "MODAL_DESC_LABEL_ES",
+    "tickets.modal.description_placeholder": "MODAL_DESC_PH_ES",
+    "tickets.modal.empty_title": "MODAL_EMPTY_TITLE_ES",
+    "tickets.modal.empty_title_description": "MODAL_EMPTY_TITLE_DESC_ES",
+    "tickets.panel.server_only_title": "PANEL_GUILD_ONLY_ES",
+    "tickets.panel.server_only_description": "PANEL_GUILD_ONLY_DESC_ES",
+    "tickets.panel.no_categories_title": "PANEL_NO_CATS_ES",
+    "tickets.panel.no_categories_description": "PANEL_NO_CATS_DESC_ES",
+    "tickets.panel.select_placeholder": "SELECT_CAT_ES",
+    "tickets.panel.success_title": "PANEL_OK_ES",
+    "tickets.panel.success_description": "PANEL_OK_DESC_ES",
+    "tickets.panel.deploy_error_title": "PANEL_ERR_ES",
+    "tickets.panel.deploy_error_description": "PANEL_ERR_DESC_ES",
+    "tickets.panel.permission_denied_title": "PANEL_PERM_ES",
+    "tickets.panel.permission_denied_description": "PANEL_PERM_DESC_ES",
+    "tickets.panel.open_button": "OPEN_BTN_ES",
+    "tickets.create.server_only_title": "CREATE_GUILD_ONLY_ES",
+    "tickets.create.server_only_description": "CREATE_GUILD_ONLY_DESC_ES",
+    "tickets.create.duplicate_title": "CREATE_DUP_ES",
+    "tickets.create.duplicate_description": "CREATE_DUP_DESC_{name}_ES",
+    "tickets.create.check_failed_title": "CREATE_CHECK_ERR_ES",
+    "tickets.create.check_failed_description": "CREATE_CHECK_ERR_DESC_ES",
+    "tickets.create.failed_title": "CREATE_ERR_ES",
+    "tickets.create.failed_description": "CREATE_ERR_DESC_ES",
+    "tickets.create.success_title": "CREATE_OK_ES",
+    "tickets.create.success_description": "CREATE_OK_DESC_{name}_{id}_ES",
+    "tickets.list.id_label": "LIST_ID_ES",
+    "tickets.list.position_label": "LIST_POS_ES",
+    "tickets.list.failed_title": "LIST_ERR_ES",
+    "tickets.list.failed_description": "LIST_ERR_DESC_ES",
+    "tickets.list.empty_title": "LIST_EMPTY_ES",
+    "tickets.list.empty_description": "LIST_EMPTY_DESC_ES",
+    "tickets.list.title": "LIST_TITLE_ES",
+    "tickets.delete.failed_title": "DEL_ERR_ES",
+    "tickets.delete.failed_description": "DEL_ERR_DESC_ES",
+    "tickets.delete.not_found_title": "DEL_NOT_FOUND_ES",
+    "tickets.delete.not_found_description": "DEL_NOT_FOUND_DESC_{id}_ES",
+    "tickets.delete.wrong_guild_title": "DEL_WRONG_GUILD_ES",
+    "tickets.delete.wrong_guild_description": "DEL_WRONG_GUILD_DESC_ES",
+    "tickets.delete.in_use_title": "DEL_IN_USE_ES",
+    "tickets.delete.in_use_description": "DEL_IN_USE_DESC_{name}_{count}_ES",
+    "tickets.delete.success_title": "DEL_OK_ES",
+    "tickets.delete.success_description": "DEL_OK_DESC_{name}_ES",
+    "tickets.open.server_only_title": "OPEN_GUILD_ONLY_ES",
+    "tickets.open.server_only_description": "OPEN_GUILD_ONLY_DESC_ES",
+    "tickets.open.no_categories_title": "OPEN_NO_CATS_ES",
+    "tickets.open.no_categories_description": "OPEN_NO_CATS_DESC_ES",
+    "tickets.open.select_category": "OPEN_SELECT_CAT_ES",
+    "tickets.open.config_error_title": "OPEN_CFG_ERR_ES",
+    "tickets.open.config_error_description": "OPEN_CFG_ERR_DESC_ES",
+    "tickets.open.invalid_category_title": "OPEN_INV_CAT_ES",
+    "tickets.open.invalid_category_description": "OPEN_INV_CAT_DESC_ES",
+    "tickets.open.permission_denied_title": "OPEN_PERM_ES",
+    "tickets.open.permission_denied_description": "OPEN_PERM_DESC_ES",
+    "tickets.open.channel_failed_title": "OPEN_CH_FAIL_ES",
+    "tickets.open.channel_failed_description": "OPEN_CH_FAIL_DESC_ES",
+    "tickets.open.creation_failed_title": "OPEN_CR_FAIL_ES",
+    "tickets.open.creation_failed_description": "OPEN_CR_FAIL_DESC_ES",
+    "tickets.open.success_title": "OPEN_OK_ES",
+    "tickets.open.success_description": "OPEN_OK_DESC_{channel}_ES",
+    "tickets.open.welcome_title": "OPEN_WELCOME_{number}_ES",
+    "tickets.open.welcome_title_with_subject": "OPEN_WELCOME_SUBJ_{number}_{subject}_ES",
+    "tickets.open.welcome_description": "OPEN_WELCOME_DESC_ES",
+    "tickets.open.welcome_claimed_title": "OPEN_CLAIMED_{number}_ES",
+    "tickets.open.welcome_claimed_description": "OPEN_CLAIMED_DESC_ES",
+    "tickets.open.welcome_claimed_by": "OPEN_CLAIMED_BY_ES",
+    "tickets.open.author_field": "OPEN_AUTHOR_ES",
+    "tickets.open.details_field": "OPEN_DETAILS_ES",
+    "tickets.open.footer": "OPEN_FOOTER_ES",
+    "tickets.actions.claim_button": "CLAIM_BTN_ES",
+    "tickets.actions.close_button": "CLOSE_BTN_ES",
+    "tickets.actions.claim_mods_only_title": "CLAIM_MOD_ES",
+    "tickets.actions.claim_mods_only_description": "CLAIM_MOD_DESC_ES",
+    "tickets.actions.claim_failed_title": "CLAIM_FAIL_ES",
+    "tickets.actions.claim_failed_description": "CLAIM_FAIL_DESC_ES",
+    "tickets.actions.claim_not_ticket_description": "CLAIM_NO_TICKET_ES",
+    "tickets.actions.claim_already_closed_description": "CLAIM_CLOSED_ES",
+    "tickets.actions.claim_already_claimed_title": "CLAIM_ALREADY_ES",
+    "tickets.actions.claim_already_claimed_description": "CLAIM_ALREADY_DESC_{user}_ES",
+    "tickets.actions.claim_generic_error_description": "CLAIM_ERR_DESC_ES",
+    "tickets.actions.close_failed_title": "CLOSE_FAIL_ES",
+    "tickets.actions.close_not_ticket_description": "CLOSE_NO_TICKET_ES",
+    "tickets.actions.close_already_closed_description": "CLOSE_CLOSED_ES",
+    "tickets.actions.close_author_or_mod_title": "CLOSE_AUTH_MOD_ES",
+    "tickets.actions.close_author_or_mod_description": "CLOSE_AUTH_MOD_DESC_ES",
+    "tickets.actions.close_db_error_title": "CLOSE_DB_ERR_ES",
+    "tickets.actions.close_db_error_description": "CLOSE_DB_ERR_DESC_ES",
+    "tickets.actions.close_success_title": "CLOSE_OK_ES",
+    "tickets.actions.close_success_description": "CLOSE_OK_DESC_ES",
+    "tickets.actions.closed_channel_title": "CLOSED_CH_TITLE_ES",
+    "tickets.actions.closed_channel_message": "CLOSED_CH_MSG_ES",
+    "tickets.actions.closed_channel_transcript": "CLOSED_CH_TRANS_ES",
+    "tickets.actions.edit_category_audit_title": "AUDIT_TITLE_ES",
+    "tickets.actions.edit_category_audit_description": "AUDIT_DESC_{old_category}_{new_category}_{actor}_ES",
+    "tickets.subticket.help_title": "SUB_HELP_ES",
+    "tickets.subticket.help_description": "SUB_HELP_DESC_ES",
+    "tickets.subticket.server_only_title": "SUB_GUILD_ONLY_ES",
+    "tickets.subticket.server_only_description": "SUB_GUILD_ONLY_DESC_ES",
+    "tickets.subticket.owner_not_found_title": "SUB_OWNER_NF_ES",
+    "tickets.subticket.owner_not_found_description": "SUB_OWNER_NF_DESC_ES",
+    "tickets.subticket.owner_not_found_resolve_title": "SUB_OWNER_RESOLVE_ES",
+    "tickets.subticket.owner_not_found_resolve_description": "SUB_OWNER_RESOLVE_DESC_ES",
+    "tickets.subticket.not_ticket_title": "SUB_NO_TICKET_ES",
+    "tickets.subticket.not_ticket_description": "SUB_NO_TICKET_DESC_ES",
+    "tickets.subticket.lookup_failed_title": "SUB_LOOKUP_ERR_ES",
+    "tickets.subticket.lookup_failed_description": "SUB_LOOKUP_ERR_DESC_ES",
+    "tickets.subticket.number_failed_title": "SUB_NUM_ERR_ES",
+    "tickets.subticket.number_failed_description": "SUB_NUM_ERR_DESC_ES",
+    "tickets.subticket.channel_failed_title": "SUB_CH_ERR_ES",
+    "tickets.subticket.channel_failed_description": "SUB_CH_ERR_DESC_ES",
+    "tickets.subticket.creation_failed_title": "SUB_CR_ERR_ES",
+    "tickets.subticket.creation_failed_description": "SUB_CR_ERR_DESC_ES",
+    "tickets.subticket.success_title": "SUB_OK_ES",
+    "tickets.subticket.success_description": "SUB_OK_DESC_{channel}_ES",
+    "tickets.subticket.invalid_category_title": "SUB_INV_CAT_ES",
+    "tickets.subticket.invalid_category_description": "SUB_INV_CAT_DESC_ES",
+    "tickets.reopen.server_only_title": "REOPEN_GUILD_ONLY_ES",
+    "tickets.reopen.server_only_description": "REOPEN_GUILD_ONLY_DESC_ES",
+    "tickets.reopen.invalid_ref_title": "REOPEN_INV_REF_ES",
+    "tickets.reopen.invalid_ref_description": "REOPEN_INV_REF_DESC_{ref}_ES",
+    "tickets.reopen.lookup_failed_title": "REOPEN_LOOKUP_ERR_ES",
+    "tickets.reopen.lookup_failed_description": "REOPEN_LOOKUP_ERR_DESC_ES",
+    "tickets.reopen.not_found_title": "REOPEN_NF_ES",
+    "tickets.reopen.not_found_description": "REOPEN_NF_DESC_{number}_ES",
+    "tickets.reopen.not_found_uuid_title": "REOPEN_NF_UUID_ES",
+    "tickets.reopen.not_found_uuid_description": "REOPEN_NF_UUID_DESC_{id}_ES",
+    "tickets.reopen.wrong_guild_title": "REOPEN_WRONG_GUILD_ES",
+    "tickets.reopen.wrong_guild_description": "REOPEN_WRONG_GUILD_DESC_ES",
+    "tickets.reopen.not_ticket_title": "REOPEN_NO_TICKET_ES",
+    "tickets.reopen.not_ticket_description": "REOPEN_NO_TICKET_DESC_ES",
+    "tickets.reopen.failed_title": "REOPEN_FAIL_ES",
+    "tickets.reopen.failed_description": "REOPEN_FAIL_DESC_ES",
+    "tickets.reopen.not_closed_description": "REOPEN_NOT_CLOSED_{status}_ES",
+    "tickets.reopen.success_title": "REOPEN_OK_ES",
+    "tickets.reopen.success_description": "REOPEN_OK_DESC_ES",
+    "tickets.transfer.server_only_title": "XFER_GUILD_ONLY_ES",
+    "tickets.transfer.server_only_description": "XFER_GUILD_ONLY_DESC_ES",
+    "tickets.transfer.not_ticket_title": "XFER_NO_TICKET_ES",
+    "tickets.transfer.not_ticket_description": "XFER_NO_TICKET_DESC_ES",
+    "tickets.transfer.lookup_failed_title": "XFER_LOOKUP_ERR_ES",
+    "tickets.transfer.lookup_failed_description": "XFER_LOOKUP_ERR_DESC_ES",
+    "tickets.transfer.failed_title": "XFER_FAIL_ES",
+    "tickets.transfer.failed_description": "XFER_FAIL_DESC_ES",
+    "tickets.transfer.success_title": "XFER_OK_ES",
+    "tickets.transfer.success_description": "XFER_OK_DESC_{member}_ES",
+    "tickets.note.help_title": "NOTE_HELP_ES",
+    "tickets.note.help_description": "NOTE_HELP_DESC_ES",
+    "tickets.note.add_lookup_failed_title": "NOTE_LOOKUP_ERR_ES",
+    "tickets.note.add_lookup_failed_description": "NOTE_LOOKUP_ERR_DESC_ES",
+    "tickets.note.add_not_ticket_title": "NOTE_NO_TICKET_ES",
+    "tickets.note.add_not_ticket_description": "NOTE_NO_TICKET_DESC_ES",
+    "tickets.note.add_failed_title": "NOTE_ADD_ERR_ES",
+    "tickets.note.add_failed_description": "NOTE_ADD_ERR_DESC_ES",
+    "tickets.note.add_success_title": "NOTE_ADD_OK_ES",
+    "tickets.note.add_success_description": "NOTE_ADD_OK_DESC_{id}_ES",
+    "tickets.note.list_no_notes_title": "NOTE_LIST_EMPTY_ES",
+    "tickets.note.list_no_notes_description": "NOTE_LIST_EMPTY_DESC_ES",
+    "tickets.note.list_title": "NOTE_LIST_TITLE_ES",
+    "tickets.note.list_dm_failed_title": "NOTE_DM_ERR_ES",
+    "tickets.note.list_dm_failed_description": "NOTE_DM_ERR_DESC_ES",
+    "tickets.note.list_sent_title": "NOTE_SENT_ES",
+    "tickets.note.list_sent_description": "NOTE_SENT_DESC_ES",
+    "tickets.note.delete_lookup_failed_title": "NOTE_DEL_LOOKUP_ES",
+    "tickets.note.delete_lookup_failed_description": "NOTE_DEL_LOOKUP_DESC_ES",
+    "tickets.note.delete_not_ticket_title": "NOTE_DEL_NO_TICKET_ES",
+    "tickets.note.delete_not_ticket_description": "NOTE_DEL_NO_TICKET_DESC_ES",
+    "tickets.note.delete_failed_title": "NOTE_DEL_ERR_ES",
+    "tickets.note.delete_failed_description": "NOTE_DEL_ERR_DESC_ES",
+    "tickets.note.delete_success_title": "NOTE_DEL_OK_ES",
+    "tickets.note.delete_success_description": "NOTE_DEL_OK_DESC_{id}_ES",
+}
+
+
+def _build_nested_locale(markers: dict[str, str]) -> dict:
+    """Convert flat dot-notation keys into a nested dict for locale JSON."""
+    result: dict = {}
+    for key, value in markers.items():
+        parts = key.split(".")
+        current = result
+        for part in parts[:-1]:
+            current = current.setdefault(part, {})
+        current[parts[-1]] = value
+    return result
+
+
+def _swap_suffix(markers: dict[str, str], sfx: str) -> dict[str, str]:
+    """Derive a sibling-locale marker set by swapping the ``_ES`` suffix."""
+    return {key: value.replace("_ES", sfx) for key, value in markers.items()}
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -83,454 +295,24 @@ def _category_row(guild_id: str = _ES_GUILD_ID) -> dict:
 def _load_ticket_i18n(tmp_path: Path) -> Generator[None, None, None]:
     """Load distinctive locale overrides for ticket strings.
 
-    Uses strings that are DIFFERENT from the current hardcoded English
-    so tests can prove t() is being called.
+    Uses strings that are DIFFERENT from any hardcoded default so tests can
+    prove t() is being called.
     """
-    from bot.core import i18n as i18n_mod
-
-    # Save original state.
-    orig_locales = dict(i18n_mod._locales)
-    orig_guild_langs = dict(i18n_mod._guild_languages)
-
-    i18n_mod._locales.clear()
-    i18n_mod._guild_languages.clear()
-
-    es_data = {
-        "common": {
-            "footer": "NB • {timestamp}",
-            "error": {"title": "ERR_ES"},
-            "success": {"title": "OK_ES"},
-            "info": {"title": "INFO_ES"},
-        },
-        "tickets": {
-            "config_missing": {
-                "title": "TICKET_NO_CONFIG_ES",
-                "description": "TICKET_NO_CONFIG_DESC_ES",
-            },
-            "modal": {
-                "title": "MODAL_TITLE_{category}_ES",
-                "subject_label": "MODAL_SUBJECT_LABEL_ES",
-                "subject_placeholder": "MODAL_SUBJECT_PH_ES",
-                "description_label": "MODAL_DESC_LABEL_ES",
-                "description_placeholder": "MODAL_DESC_PH_ES",
-                "empty_title": "MODAL_EMPTY_TITLE_ES",
-                "empty_title_description": "MODAL_EMPTY_TITLE_DESC_ES",
-            },
-            "panel": {
-                "server_only_title": "PANEL_GUILD_ONLY_ES",
-                "server_only_description": "PANEL_GUILD_ONLY_DESC_ES",
-                "no_categories_title": "PANEL_NO_CATS_ES",
-                "no_categories_description": "PANEL_NO_CATS_DESC_ES",
-                "select_placeholder": "SELECT_CAT_ES",
-                "success_title": "PANEL_OK_ES",
-                "success_description": "PANEL_OK_DESC_ES",
-                "deploy_error_title": "PANEL_ERR_ES",
-                "deploy_error_description": "PANEL_ERR_DESC_ES",
-                "permission_denied_title": "PANEL_PERM_ES",
-                "permission_denied_description": "PANEL_PERM_DESC_ES",
-                "open_button": "OPEN_BTN_ES",
-            },
-            "create": {
-                "server_only_title": "CREATE_GUILD_ONLY_ES",
-                "server_only_description": "CREATE_GUILD_ONLY_DESC_ES",
-                "duplicate_title": "CREATE_DUP_ES",
-                "duplicate_description": "CREATE_DUP_DESC_{name}_ES",
-                "check_failed_title": "CREATE_CHECK_ERR_ES",
-                "check_failed_description": "CREATE_CHECK_ERR_DESC_ES",
-                "failed_title": "CREATE_ERR_ES",
-                "failed_description": "CREATE_ERR_DESC_ES",
-                "success_title": "CREATE_OK_ES",
-                "success_description": "CREATE_OK_DESC_{name}_{id}_ES",
-            },
-            "list": {
-                "id_label": "LIST_ID_ES",
-                "position_label": "LIST_POS_ES",
-                "failed_title": "LIST_ERR_ES",
-                "failed_description": "LIST_ERR_DESC_ES",
-                "empty_title": "LIST_EMPTY_ES",
-                "empty_description": "LIST_EMPTY_DESC_ES",
-                "title": "LIST_TITLE_ES",
-            },
-            "delete": {
-                "failed_title": "DEL_ERR_ES",
-                "failed_description": "DEL_ERR_DESC_ES",
-                "not_found_title": "DEL_NOT_FOUND_ES",
-                "not_found_description": "DEL_NOT_FOUND_DESC_{id}_ES",
-                "wrong_guild_title": "DEL_WRONG_GUILD_ES",
-                "wrong_guild_description": "DEL_WRONG_GUILD_DESC_ES",
-                "in_use_title": "DEL_IN_USE_ES",
-                "in_use_description": "DEL_IN_USE_DESC_{name}_{count}_ES",
-                "success_title": "DEL_OK_ES",
-                "success_description": "DEL_OK_DESC_{name}_ES",
-            },
-            "open": {
-                "server_only_title": "OPEN_GUILD_ONLY_ES",
-                "server_only_description": "OPEN_GUILD_ONLY_DESC_ES",
-                "no_categories_title": "OPEN_NO_CATS_ES",
-                "no_categories_description": "OPEN_NO_CATS_DESC_ES",
-                "select_category": "OPEN_SELECT_CAT_ES",
-                "config_error_title": "OPEN_CFG_ERR_ES",
-                "config_error_description": "OPEN_CFG_ERR_DESC_ES",
-                "invalid_category_title": "OPEN_INV_CAT_ES",
-                "invalid_category_description": "OPEN_INV_CAT_DESC_ES",
-                "permission_denied_title": "OPEN_PERM_ES",
-                "permission_denied_description": "OPEN_PERM_DESC_ES",
-                "channel_failed_title": "OPEN_CH_FAIL_ES",
-                "channel_failed_description": "OPEN_CH_FAIL_DESC_ES",
-                "creation_failed_title": "OPEN_CR_FAIL_ES",
-                "creation_failed_description": "OPEN_CR_FAIL_DESC_ES",
-                "success_title": "OPEN_OK_ES",
-                "success_description": "OPEN_OK_DESC_{channel}_ES",
-                "welcome_title": "OPEN_WELCOME_{number}_ES",
-                "welcome_title_with_subject": "OPEN_WELCOME_SUBJ_{number}_{subject}_ES",
-                "welcome_description": "OPEN_WELCOME_DESC_ES",
-                "welcome_claimed_title": "OPEN_CLAIMED_{number}_ES",
-                "welcome_claimed_description": "OPEN_CLAIMED_DESC_ES",
-                "welcome_claimed_by": "OPEN_CLAIMED_BY_ES",
-                "author_field": "OPEN_AUTHOR_ES",
-                "details_field": "OPEN_DETAILS_ES",
-                "footer": "OPEN_FOOTER_ES",
-            },
-            "actions": {
-                "claim_button": "CLAIM_BTN_ES",
-                "close_button": "CLOSE_BTN_ES",
-                "claim_mods_only_title": "CLAIM_MOD_ES",
-                "claim_mods_only_description": "CLAIM_MOD_DESC_ES",
-                "claim_failed_title": "CLAIM_FAIL_ES",
-                "claim_failed_description": "CLAIM_FAIL_DESC_ES",
-                "claim_not_ticket_description": "CLAIM_NO_TICKET_ES",
-                "claim_already_closed_description": "CLAIM_CLOSED_ES",
-                "claim_already_claimed_title": "CLAIM_ALREADY_ES",
-                "claim_already_claimed_description": "CLAIM_ALREADY_DESC_{user}_ES",
-                "claim_generic_error_description": "CLAIM_ERR_DESC_ES",
-                "close_failed_title": "CLOSE_FAIL_ES",
-                "close_not_ticket_description": "CLOSE_NO_TICKET_ES",
-                "close_already_closed_description": "CLOSE_CLOSED_ES",
-                "close_author_or_mod_title": "CLOSE_AUTH_MOD_ES",
-                "close_author_or_mod_description": "CLOSE_AUTH_MOD_DESC_ES",
-                "close_db_error_title": "CLOSE_DB_ERR_ES",
-                "close_db_error_description": "CLOSE_DB_ERR_DESC_ES",
-                "close_success_title": "CLOSE_OK_ES",
-                "close_success_description": "CLOSE_OK_DESC_ES",
-                "closed_channel_title": "CLOSED_CH_TITLE_ES",
-                "closed_channel_message": "CLOSED_CH_MSG_ES",
-                "closed_channel_transcript": "CLOSED_CH_TRANS_ES",
-                "edit_category_audit_title": "AUDIT_TITLE_ES",
-                "edit_category_audit_description": "AUDIT_DESC_{old_category}_{new_category}_{actor}_ES",
-            },
-            "subticket": {
-                "help_title": "SUB_HELP_ES",
-                "help_description": "SUB_HELP_DESC_ES",
-                "server_only_title": "SUB_GUILD_ONLY_ES",
-                "server_only_description": "SUB_GUILD_ONLY_DESC_ES",
-                "owner_not_found_title": "SUB_OWNER_NF_ES",
-                "owner_not_found_description": "SUB_OWNER_NF_DESC_ES",
-                "owner_not_found_resolve_title": "SUB_OWNER_RESOLVE_ES",
-                "owner_not_found_resolve_description": "SUB_OWNER_RESOLVE_DESC_ES",
-                "not_ticket_title": "SUB_NO_TICKET_ES",
-                "not_ticket_description": "SUB_NO_TICKET_DESC_ES",
-                "lookup_failed_title": "SUB_LOOKUP_ERR_ES",
-                "lookup_failed_description": "SUB_LOOKUP_ERR_DESC_ES",
-                "number_failed_title": "SUB_NUM_ERR_ES",
-                "number_failed_description": "SUB_NUM_ERR_DESC_ES",
-                "channel_failed_title": "SUB_CH_ERR_ES",
-                "channel_failed_description": "SUB_CH_ERR_DESC_ES",
-                "creation_failed_title": "SUB_CR_ERR_ES",
-                "creation_failed_description": "SUB_CR_ERR_DESC_ES",
-                "success_title": "SUB_OK_ES",
-                "success_description": "SUB_OK_DESC_{channel}_ES",
-                "invalid_category_title": "SUB_INV_CAT_ES",
-                "invalid_category_description": "SUB_INV_CAT_DESC_ES",
-            },
-            "reopen": {
-                "server_only_title": "REOPEN_GUILD_ONLY_ES",
-                "server_only_description": "REOPEN_GUILD_ONLY_DESC_ES",
-                "invalid_ref_title": "REOPEN_INV_REF_ES",
-                "invalid_ref_description": "REOPEN_INV_REF_DESC_{ref}_ES",
-                "lookup_failed_title": "REOPEN_LOOKUP_ERR_ES",
-                "lookup_failed_description": "REOPEN_LOOKUP_ERR_DESC_ES",
-                "not_found_title": "REOPEN_NF_ES",
-                "not_found_description": "REOPEN_NF_DESC_{number}_ES",
-                "not_found_uuid_title": "REOPEN_NF_UUID_ES",
-                "not_found_uuid_description": "REOPEN_NF_UUID_DESC_{id}_ES",
-                "wrong_guild_title": "REOPEN_WRONG_GUILD_ES",
-                "wrong_guild_description": "REOPEN_WRONG_GUILD_DESC_ES",
-                "not_ticket_title": "REOPEN_NO_TICKET_ES",
-                "not_ticket_description": "REOPEN_NO_TICKET_DESC_ES",
-                "failed_title": "REOPEN_FAIL_ES",
-                "failed_description": "REOPEN_FAIL_DESC_ES",
-                "not_closed_description": "REOPEN_NOT_CLOSED_{status}_ES",
-                "success_title": "REOPEN_OK_ES",
-                "success_description": "REOPEN_OK_DESC_ES",
-            },
-            "transfer": {
-                "server_only_title": "XFER_GUILD_ONLY_ES",
-                "server_only_description": "XFER_GUILD_ONLY_DESC_ES",
-                "not_ticket_title": "XFER_NO_TICKET_ES",
-                "not_ticket_description": "XFER_NO_TICKET_DESC_ES",
-                "lookup_failed_title": "XFER_LOOKUP_ERR_ES",
-                "lookup_failed_description": "XFER_LOOKUP_ERR_DESC_ES",
-                "failed_title": "XFER_FAIL_ES",
-                "failed_description": "XFER_FAIL_DESC_ES",
-                "success_title": "XFER_OK_ES",
-                "success_description": "XFER_OK_DESC_{member}_ES",
-            },
-            "note": {
-                "help_title": "NOTE_HELP_ES",
-                "help_description": "NOTE_HELP_DESC_ES",
-                "add_lookup_failed_title": "NOTE_LOOKUP_ERR_ES",
-                "add_lookup_failed_description": "NOTE_LOOKUP_ERR_DESC_ES",
-                "add_not_ticket_title": "NOTE_NO_TICKET_ES",
-                "add_not_ticket_description": "NOTE_NO_TICKET_DESC_ES",
-                "add_failed_title": "NOTE_ADD_ERR_ES",
-                "add_failed_description": "NOTE_ADD_ERR_DESC_ES",
-                "add_success_title": "NOTE_ADD_OK_ES",
-                "add_success_description": "NOTE_ADD_OK_DESC_{id}_ES",
-                "list_no_notes_title": "NOTE_LIST_EMPTY_ES",
-                "list_no_notes_description": "NOTE_LIST_EMPTY_DESC_ES",
-                "list_title": "NOTE_LIST_TITLE_ES",
-                "list_dm_failed_title": "NOTE_DM_ERR_ES",
-                "list_dm_failed_description": "NOTE_DM_ERR_DESC_ES",
-                "list_sent_title": "NOTE_SENT_ES",
-                "list_sent_description": "NOTE_SENT_DESC_ES",
-                "delete_lookup_failed_title": "NOTE_DEL_LOOKUP_ES",
-                "delete_lookup_failed_description": "NOTE_DEL_LOOKUP_DESC_ES",
-                "delete_not_ticket_title": "NOTE_DEL_NO_TICKET_ES",
-                "delete_not_ticket_description": "NOTE_DEL_NO_TICKET_DESC_ES",
-                "delete_failed_title": "NOTE_DEL_ERR_ES",
-                "delete_failed_description": "NOTE_DEL_ERR_DESC_ES",
-                "delete_success_title": "NOTE_DEL_OK_ES",
-                "delete_success_description": "NOTE_DEL_OK_DESC_{id}_ES",
-            },
-        },
-    }
-
-    en_data = {
-        "common": {
-            "footer": "NB • {timestamp}",
-            "error": {"title": "ERR_EN"},
-            "success": {"title": "OK_EN"},
-            "info": {"title": "INFO_EN"},
-        },
-        "tickets": {
-            "config_missing": {
-                "title": "TICKET_NO_CONFIG_EN",
-                "description": "TICKET_NO_CONFIG_DESC_EN",
-            },
-            "modal": {
-                "title": "MODAL_TITLE_{category}_EN",
-                "subject_label": "MODAL_SUBJECT_LABEL_EN",
-                "subject_placeholder": "MODAL_SUBJECT_PH_EN",
-                "description_label": "MODAL_DESC_LABEL_EN",
-                "description_placeholder": "MODAL_DESC_PH_EN",
-                "empty_title": "MODAL_EMPTY_TITLE_EN",
-                "empty_title_description": "MODAL_EMPTY_TITLE_DESC_EN",
-            },
-            "panel": {
-                "server_only_title": "PANEL_GUILD_ONLY_EN",
-                "server_only_description": "PANEL_GUILD_ONLY_DESC_EN",
-                "no_categories_title": "PANEL_NO_CATS_EN",
-                "no_categories_description": "PANEL_NO_CATS_DESC_EN",
-                "select_placeholder": "SELECT_CAT_EN",
-                "success_title": "PANEL_OK_EN",
-                "success_description": "PANEL_OK_DESC_EN",
-                "deploy_error_title": "PANEL_ERR_EN",
-                "deploy_error_description": "PANEL_ERR_DESC_EN",
-                "permission_denied_title": "PANEL_PERM_EN",
-                "permission_denied_description": "PANEL_PERM_DESC_EN",
-                "open_button": "OPEN_BTN_EN",
-            },
-            "create": {
-                "server_only_title": "CREATE_GUILD_ONLY_EN",
-                "server_only_description": "CREATE_GUILD_ONLY_DESC_EN",
-                "duplicate_title": "CREATE_DUP_EN",
-                "duplicate_description": "CREATE_DUP_DESC_{name}_EN",
-                "check_failed_title": "CREATE_CHECK_ERR_EN",
-                "check_failed_description": "CREATE_CHECK_ERR_DESC_EN",
-                "failed_title": "CREATE_ERR_EN",
-                "failed_description": "CREATE_ERR_DESC_EN",
-                "success_title": "CREATE_OK_EN",
-                "success_description": "CREATE_OK_DESC_{name}_{id}_EN",
-            },
-            "list": {
-                "id_label": "LIST_ID_EN",
-                "position_label": "LIST_POS_EN",
-                "failed_title": "LIST_ERR_EN",
-                "failed_description": "LIST_ERR_DESC_EN",
-                "empty_title": "LIST_EMPTY_EN",
-                "empty_description": "LIST_EMPTY_DESC_EN",
-                "title": "LIST_TITLE_EN",
-            },
-            "delete": {
-                "failed_title": "DEL_ERR_EN",
-                "failed_description": "DEL_ERR_DESC_EN",
-                "not_found_title": "DEL_NOT_FOUND_EN",
-                "not_found_description": "DEL_NOT_FOUND_DESC_{id}_EN",
-                "wrong_guild_title": "DEL_WRONG_GUILD_EN",
-                "wrong_guild_description": "DEL_WRONG_GUILD_DESC_EN",
-                "in_use_title": "DEL_IN_USE_EN",
-                "in_use_description": "DEL_IN_USE_DESC_{name}_{count}_EN",
-                "success_title": "DEL_OK_EN",
-                "success_description": "DEL_OK_DESC_{name}_EN",
-            },
-            "open": {
-                "server_only_title": "OPEN_GUILD_ONLY_EN",
-                "server_only_description": "OPEN_GUILD_ONLY_DESC_EN",
-                "no_categories_title": "OPEN_NO_CATS_EN",
-                "no_categories_description": "OPEN_NO_CATS_DESC_EN",
-                "select_category": "OPEN_SELECT_CAT_EN",
-                "config_error_title": "OPEN_CFG_ERR_EN",
-                "config_error_description": "OPEN_CFG_ERR_DESC_EN",
-                "invalid_category_title": "OPEN_INV_CAT_EN",
-                "invalid_category_description": "OPEN_INV_CAT_DESC_EN",
-                "permission_denied_title": "OPEN_PERM_EN",
-                "permission_denied_description": "OPEN_PERM_DESC_EN",
-                "channel_failed_title": "OPEN_CH_FAIL_EN",
-                "channel_failed_description": "OPEN_CH_FAIL_DESC_EN",
-                "creation_failed_title": "OPEN_CR_FAIL_EN",
-                "creation_failed_description": "OPEN_CR_FAIL_DESC_EN",
-                "success_title": "OPEN_OK_EN",
-                "success_description": "OPEN_OK_DESC_{channel}_EN",
-                "welcome_title": "OPEN_WELCOME_{number}_EN",
-                "welcome_title_with_subject": "OPEN_WELCOME_SUBJ_{number}_{subject}_EN",
-                "welcome_description": "OPEN_WELCOME_DESC_EN",
-                "welcome_claimed_title": "OPEN_CLAIMED_{number}_EN",
-                "welcome_claimed_description": "OPEN_CLAIMED_DESC_EN",
-                "welcome_claimed_by": "OPEN_CLAIMED_BY_EN",
-                "author_field": "OPEN_AUTHOR_EN",
-                "details_field": "OPEN_DETAILS_EN",
-                "footer": "OPEN_FOOTER_EN",
-            },
-            "actions": {
-                "claim_button": "CLAIM_BTN_EN",
-                "close_button": "CLOSE_BTN_EN",
-                "claim_mods_only_title": "CLAIM_MOD_EN",
-                "claim_mods_only_description": "CLAIM_MOD_DESC_EN",
-                "claim_failed_title": "CLAIM_FAIL_EN",
-                "claim_failed_description": "CLAIM_FAIL_DESC_EN",
-                "claim_not_ticket_description": "CLAIM_NO_TICKET_EN",
-                "claim_already_closed_description": "CLAIM_CLOSED_EN",
-                "claim_already_claimed_title": "CLAIM_ALREADY_EN",
-                "claim_already_claimed_description": "CLAIM_ALREADY_DESC_{user}_EN",
-                "claim_generic_error_description": "CLAIM_ERR_DESC_EN",
-                "close_failed_title": "CLOSE_FAIL_EN",
-                "close_not_ticket_description": "CLOSE_NO_TICKET_EN",
-                "close_already_closed_description": "CLOSE_CLOSED_EN",
-                "close_author_or_mod_title": "CLOSE_AUTH_MOD_EN",
-                "close_author_or_mod_description": "CLOSE_AUTH_MOD_DESC_EN",
-                "close_db_error_title": "CLOSE_DB_ERR_EN",
-                "close_db_error_description": "CLOSE_DB_ERR_DESC_EN",
-                "close_success_title": "CLOSE_OK_EN",
-                "close_success_description": "CLOSE_OK_DESC_EN",
-                "closed_channel_title": "CLOSED_CH_TITLE_EN",
-                "closed_channel_message": "CLOSED_CH_MSG_EN",
-                "closed_channel_transcript": "CLOSED_CH_TRANS_EN",
-                "edit_category_audit_title": "AUDIT_TITLE_EN",
-                "edit_category_audit_description": "AUDIT_DESC_{old_category}_{new_category}_{actor}_EN",
-            },
-            "subticket": {
-                "help_title": "SUB_HELP_EN",
-                "help_description": "SUB_HELP_DESC_EN",
-                "server_only_title": "SUB_GUILD_ONLY_EN",
-                "server_only_description": "SUB_GUILD_ONLY_DESC_EN",
-                "owner_not_found_title": "SUB_OWNER_NF_EN",
-                "owner_not_found_description": "SUB_OWNER_NF_DESC_EN",
-                "owner_not_found_resolve_title": "SUB_OWNER_RESOLVE_EN",
-                "owner_not_found_resolve_description": "SUB_OWNER_RESOLVE_DESC_EN",
-                "not_ticket_title": "SUB_NO_TICKET_EN",
-                "not_ticket_description": "SUB_NO_TICKET_DESC_EN",
-                "lookup_failed_title": "SUB_LOOKUP_ERR_EN",
-                "lookup_failed_description": "SUB_LOOKUP_ERR_DESC_EN",
-                "invalid_category_title": "SUB_INV_CAT_EN",
-                "invalid_category_description": "SUB_INV_CAT_DESC_EN",
-                "number_failed_title": "SUB_NUM_ERR_EN",
-                "number_failed_description": "SUB_NUM_ERR_DESC_EN",
-                "channel_failed_title": "SUB_CH_ERR_EN",
-                "channel_failed_description": "SUB_CH_ERR_DESC_EN",
-                "creation_failed_title": "SUB_CR_ERR_EN",
-                "creation_failed_description": "SUB_CR_ERR_DESC_EN",
-                "success_title": "SUB_OK_EN",
-                "success_description": "SUB_OK_DESC_{channel}_EN",
-            },
-            "reopen": {
-                "server_only_title": "REOPEN_GUILD_ONLY_EN",
-                "server_only_description": "REOPEN_GUILD_ONLY_DESC_EN",
-                "invalid_ref_title": "REOPEN_INV_REF_EN",
-                "invalid_ref_description": "REOPEN_INV_REF_DESC_{ref}_EN",
-                "lookup_failed_title": "REOPEN_LOOKUP_ERR_EN",
-                "lookup_failed_description": "REOPEN_LOOKUP_ERR_DESC_EN",
-                "not_found_title": "REOPEN_NF_EN",
-                "not_found_description": "REOPEN_NF_DESC_{number}_EN",
-                "not_found_uuid_title": "REOPEN_NF_UUID_EN",
-                "not_found_uuid_description": "REOPEN_NF_UUID_DESC_{id}_EN",
-                "wrong_guild_title": "REOPEN_WRONG_GUILD_EN",
-                "wrong_guild_description": "REOPEN_WRONG_GUILD_DESC_EN",
-                "not_ticket_title": "REOPEN_NO_TICKET_EN",
-                "not_ticket_description": "REOPEN_NO_TICKET_DESC_EN",
-                "failed_title": "REOPEN_FAIL_EN",
-                "failed_description": "REOPEN_FAIL_DESC_EN",
-                "not_closed_description": "REOPEN_NOT_CLOSED_{status}_EN",
-                "success_title": "REOPEN_OK_EN",
-                "success_description": "REOPEN_OK_DESC_EN",
-            },
-            "transfer": {
-                "server_only_title": "XFER_GUILD_ONLY_EN",
-                "server_only_description": "XFER_GUILD_ONLY_DESC_EN",
-                "not_ticket_title": "XFER_NO_TICKET_EN",
-                "not_ticket_description": "XFER_NO_TICKET_DESC_EN",
-                "lookup_failed_title": "XFER_LOOKUP_ERR_EN",
-                "lookup_failed_description": "XFER_LOOKUP_ERR_DESC_EN",
-                "failed_title": "XFER_FAIL_EN",
-                "failed_description": "XFER_FAIL_DESC_EN",
-                "success_title": "XFER_OK_EN",
-                "success_description": "XFER_OK_DESC_{member}_EN",
-            },
-            "note": {
-                "help_title": "NOTE_HELP_EN",
-                "help_description": "NOTE_HELP_DESC_EN",
-                "add_lookup_failed_title": "NOTE_LOOKUP_ERR_EN",
-                "add_lookup_failed_description": "NOTE_LOOKUP_ERR_DESC_EN",
-                "add_not_ticket_title": "NOTE_NO_TICKET_EN",
-                "add_not_ticket_description": "NOTE_NO_TICKET_DESC_EN",
-                "add_failed_title": "NOTE_ADD_ERR_EN",
-                "add_failed_description": "NOTE_ADD_ERR_DESC_EN",
-                "add_success_title": "NOTE_ADD_OK_EN",
-                "add_success_description": "NOTE_ADD_OK_DESC_{id}_EN",
-                "list_no_notes_title": "NOTE_LIST_EMPTY_EN",
-                "list_no_notes_description": "NOTE_LIST_EMPTY_DESC_EN",
-                "list_title": "NOTE_LIST_TITLE_EN",
-                "list_dm_failed_title": "NOTE_DM_ERR_EN",
-                "list_dm_failed_description": "NOTE_DM_ERR_DESC_EN",
-                "list_sent_title": "NOTE_SENT_EN",
-                "list_sent_description": "NOTE_SENT_DESC_EN",
-                "delete_lookup_failed_title": "NOTE_DEL_LOOKUP_EN",
-                "delete_lookup_failed_description": "NOTE_DEL_LOOKUP_DESC_EN",
-                "delete_not_ticket_title": "NOTE_DEL_NO_TICKET_EN",
-                "delete_not_ticket_description": "NOTE_DEL_NO_TICKET_DESC_EN",
-                "delete_failed_title": "NOTE_DEL_ERR_EN",
-                "delete_failed_description": "NOTE_DEL_ERR_DESC_EN",
-                "delete_success_title": "NOTE_DEL_OK_EN",
-                "delete_success_description": "NOTE_DEL_OK_DESC_{id}_EN",
-            },
-        },
-    }
-
     locale_dir = tmp_path / "locales"
     locale_dir.mkdir(parents=True, exist_ok=True)
-    (locale_dir / "es.json").write_text(json.dumps(es_data), encoding="utf-8")
-    (locale_dir / "en.json").write_text(json.dumps(en_data), encoding="utf-8")
+    (locale_dir / "es.json").write_text(
+        json.dumps(_build_nested_locale(_ES_MARKERS)), encoding="utf-8"
+    )
+    (locale_dir / "en.json").write_text(
+        json.dumps(_build_nested_locale(_swap_suffix(_ES_MARKERS, "_EN"))),
+        encoding="utf-8",
+    )
 
     load_locales(locale_dir)
     set_guild_language(_ES_GUILD_ID, "es")
     set_guild_language(_EN_GUILD_ID, "en")
 
     yield
-
-    # Restore original state so other test modules are not affected.
-    i18n_mod._locales.clear()
-    i18n_mod._locales.update(orig_locales)
-    i18n_mod._guild_languages.clear()
-    i18n_mod._guild_languages.update(orig_guild_langs)
 
 
 @pytest.fixture
@@ -557,206 +339,110 @@ def ticket_bot() -> MagicMock:
 
 
 @pytest.fixture
-def mock_ticket_channel() -> MagicMock:
-    """Return a mock TextChannel for ticket operations."""
-    ch = MagicMock(spec=discord.TextChannel)
-    ch.id = 444444444
-    ch.name = "ticket-0001"
-    ch.mention = "<#444444444>"
-    ch.send = AsyncMock()
-    ch.delete = AsyncMock()
-    ch.edit = AsyncMock()
-    return ch
+def cog(ticket_bot: MagicMock) -> TicketsCog:
+    """Return a TicketsCog wired to the shared mock bot.
 
-
-@pytest.fixture
-def ticket_guild_es(mock_ticket_channel: MagicMock) -> MagicMock:
-    """Return a mock guild with ES language configured."""
-    guild = MagicMock(spec=discord.Guild)
-    guild.id = int(_ES_GUILD_ID)
-    guild.default_role = MagicMock()
-    guild.me = MagicMock()
-    guild.create_text_channel = AsyncMock(return_value=mock_ticket_channel)
-    guild.get_channel = MagicMock(return_value=mock_ticket_channel)
-    guild.get_role = MagicMock(return_value=None)
-    return guild
-
-
-@pytest.fixture
-def ticket_guild_en(mock_ticket_channel: MagicMock) -> MagicMock:
-    """Return a mock guild with EN language configured."""
-    guild = MagicMock(spec=discord.Guild)
-    guild.id = int(_EN_GUILD_ID)
-    guild.default_role = MagicMock()
-    guild.me = MagicMock()
-    guild.create_text_channel = AsyncMock(return_value=mock_ticket_channel)
-    guild.get_channel = MagicMock(return_value=mock_ticket_channel)
-    guild.get_role = MagicMock(return_value=None)
-    return guild
-
-
-@pytest.fixture
-def cog_es(ticket_bot: MagicMock) -> TicketsCog:
-    """Return a TicketsCog wired to the ES bot."""
+    Language resolution happens inside t() from ``ctx.guild.id``, so a single
+    cog instance serves both locales of the matrix.
+    """
     return TicketsCog(bot=ticket_bot)
 
 
-@pytest.fixture
-def cog_en(ticket_bot: MagicMock) -> TicketsCog:
-    """Return a TicketsCog wired to the EN bot."""
-    return TicketsCog(bot=ticket_bot)
-
-
-def _make_ctx(guild: MagicMock) -> MagicMock:
-    """Build a mock commands.Context for ticket command tests."""
-    ctx = MagicMock()
-    ctx.guild = guild
-    ctx.guild.id = guild.id
-    ctx.send = AsyncMock()
-    ctx.channel = MagicMock()
-    ctx.channel.id = 444444444
-    ctx.author = MagicMock(spec=discord.Member)
-    ctx.author.id = 111111111
-    ctx.author.mention = "<@111111111>"
-    ctx.author.display_name = "TestUser"
+def _make_ctx(guild_id: int) -> MagicMock:
+    """Build a spec'd Context from the shared factory plus ticket extras."""
+    author = make_member(member_id=111111111)
+    ctx = make_ctx(guild_id=guild_id, author=author)
     ctx.interaction = None
+    ctx.channel.id = 444444444
     return ctx
 
 
+def _make_interaction(
+    guild_id: int,
+    *,
+    client: MagicMock | None = None,
+    admin: bool = False,
+) -> MagicMock:
+    """Build a mock Interaction wired with response mocks for view callbacks."""
+    interaction = make_interaction(
+        guild_id=guild_id,
+        client=client,
+        user=make_member(member_id=111111111, admin=admin),
+    )
+    interaction.response.send_message = AsyncMock()
+    return interaction
+
+
 # ---------------------------------------------------------------------------
-# 2.5 — RED: Test ticket commands return localized strings for es/en
+# Command-level i18n concepts — each parametrized over the ES/EN matrix
 # ---------------------------------------------------------------------------
 
 
 class TestTicketConfigMissingI18n:
-    """Test tickets.config_missing uses t() for es and en guilds."""
+    """subticket_create with unconfigured category uses t()."""
 
-    async def test_config_missing_es(
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    async def test_config_missing_is_localized(
         self,
-        cog_es: TicketsCog,
+        cog: TicketsCog,
         ticket_bot: MagicMock,
+        guild_id: str,
+        suffix: str,
     ) -> None:
-        """Subticket create with no ticket_category_id → localized ES error."""
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_ES_GUILD_ID)
-        guild.default_role = MagicMock()
-        guild.me = MagicMock()
-        guild.get_channel = MagicMock(return_value=MagicMock(spec=discord.CategoryChannel))
-
-        ctx = _make_ctx(guild)
+        """Subticket create with no ticket_category_id → localized error."""
+        ctx = _make_ctx(int(guild_id))
+        ctx.guild.get_channel = MagicMock(return_value=MagicMock(spec=discord.CategoryChannel))
 
         config = MagicMock()
         config.ticket_category_id = None
         config.mod_role_id = None
         ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
 
-        await cog_es.subticket_create.callback(cog_es, ctx)
+        await cog.subticket_create.callback(cog, ctx)
 
         embed = ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
-        assert "TICKET_NO_CONFIG_ES" in embed.title
-
-    async def test_config_missing_en(
-        self,
-        cog_en: TicketsCog,
-        ticket_bot: MagicMock,
-    ) -> None:
-        """Subticket create with no ticket_category_id → localized EN error."""
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_EN_GUILD_ID)
-        guild.default_role = MagicMock()
-        guild.me = MagicMock()
-        guild.get_channel = MagicMock(return_value=MagicMock(spec=discord.CategoryChannel))
-
-        ctx = _make_ctx(guild)
-
-        config = MagicMock()
-        config.ticket_category_id = None
-        config.mod_role_id = None
-        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
-
-        await cog_en.subticket_create.callback(cog_en, ctx)
-
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "TICKET_NO_CONFIG_EN" in embed.title
+        assert f"TICKET_NO_CONFIG_{suffix}" in embed.title
 
 
 class TestTicketOpenNoCategoriesI18n:
-    """Test TicketPanelView.open_ticket_button uses t() for no-categories error."""
+    """TicketPanelView.open_ticket_button uses t() for no-categories error."""
 
-    async def test_no_categories_es(
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    async def test_no_categories_is_localized(
         self,
         ticket_bot: MagicMock,
+        guild_id: str,
+        suffix: str,
     ) -> None:
-        """No categories → localized ES error embed."""
-
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_ES_GUILD_ID)
-
-        interaction = MagicMock(spec=discord.Interaction)
-        interaction.guild = guild
-        interaction.client = ticket_bot
-        interaction.response = MagicMock()
-        interaction.response.send_message = AsyncMock()
+        """No categories → localized error embed."""
+        interaction = _make_interaction(int(guild_id), client=ticket_bot)
 
         ticket_bot.db.get_ticket_categories = AsyncMock(return_value=[])
 
         view = TicketPanelView()
         await view.open_ticket_button.callback(interaction)
 
-        call_kwargs = interaction.response.send_message.call_args
-        embed = call_kwargs.kwargs.get("embed")
+        embed = interaction.response.send_message.call_args.kwargs.get("embed")
         assert embed is not None
         # Should use localized string, not hardcoded English
-        assert "PANEL_NO_CATS_ES" in embed.title
-
-    async def test_no_categories_en(
-        self,
-        ticket_bot: MagicMock,
-    ) -> None:
-        """No categories → localized EN error embed."""
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_EN_GUILD_ID)
-
-        interaction = MagicMock(spec=discord.Interaction)
-        interaction.guild = guild
-        interaction.client = ticket_bot
-        interaction.response = MagicMock()
-        interaction.response.send_message = AsyncMock()
-
-        ticket_bot.db.get_ticket_categories = AsyncMock(return_value=[])
-
-        view = TicketPanelView()
-        await view.open_ticket_button.callback(interaction)
-
-        call_kwargs = interaction.response.send_message.call_args
-        embed = call_kwargs.kwargs.get("embed")
-        assert embed is not None
-        assert "PANEL_NO_CATS_EN" in embed.title
+        assert f"PANEL_NO_CATS_{suffix}" in embed.title
 
 
 class TestTicketClaimI18n:
-    """Test claim button error messages use t()."""
+    """claim button error messages use t()."""
 
-    async def test_claim_not_ticket_es(
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    async def test_claim_not_ticket_is_localized(
         self,
         ticket_bot: MagicMock,
+        guild_id: str,
+        suffix: str,
     ) -> None:
-        """Claim on non-ticket channel → localized ES error."""
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_ES_GUILD_ID)
-
-        interaction = MagicMock(spec=discord.Interaction)
-        interaction.guild = guild
-        interaction.user = MagicMock(spec=discord.Member)
-        interaction.user.id = 111111111
-        interaction.user.guild_permissions.administrator = True
-        interaction.client = ticket_bot
-        interaction.channel_id = 444444444
-        interaction.response = MagicMock()
-        interaction.response.send_message = AsyncMock()
+        """Claim on non-ticket channel → localized error."""
+        interaction = _make_interaction(int(guild_id), client=ticket_bot, admin=True)
         interaction.response.edit_message = AsyncMock()
+        interaction.channel_id = 444444444
 
         ticket_bot.db.get_ticket_by_channel = AsyncMock(return_value=None)
 
@@ -765,63 +451,27 @@ class TestTicketClaimI18n:
 
         embed = interaction.response.send_message.call_args.kwargs.get("embed")
         assert embed is not None
-        assert "CLAIM_FAIL_ES" in embed.title
-        assert "CLAIM_NO_TICKET_ES" in embed.description
-
-    async def test_claim_not_ticket_en(
-        self,
-        ticket_bot: MagicMock,
-    ) -> None:
-        """Claim on non-ticket channel → localized EN error."""
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_EN_GUILD_ID)
-
-        interaction = MagicMock(spec=discord.Interaction)
-        interaction.guild = guild
-        interaction.guild_id = int(_EN_GUILD_ID)
-        interaction.user = MagicMock(spec=discord.Member)
-        interaction.user.id = 111111111
-        interaction.user.guild_permissions.administrator = True
-        interaction.client = ticket_bot
-        interaction.channel_id = 444444444
-        interaction.response = MagicMock()
-        interaction.response.send_message = AsyncMock()
-        interaction.response.edit_message = AsyncMock()
-
-        ticket_bot.db.get_ticket_by_channel = AsyncMock(return_value=None)
-
-        view = TicketActionsView()
-        await view.claim_button.callback(interaction)
-
-        embed = interaction.response.send_message.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "CLAIM_FAIL_EN" in embed.title
-        assert "CLAIM_NO_TICKET_EN" in embed.description
+        assert f"CLAIM_FAIL_{suffix}" in embed.title
+        assert f"CLAIM_NO_TICKET_{suffix}" in embed.description
 
 
 class TestTicketCloseI18n:
-    """Test close button error messages use t()."""
+    """close button error messages use t()."""
 
-    async def test_close_not_ticket_es(
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    async def test_close_not_ticket_is_localized(
         self,
         ticket_bot: MagicMock,
+        guild_id: str,
+        suffix: str,
     ) -> None:
-        """Close on non-ticket channel → localized ES error."""
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_ES_GUILD_ID)
-
-        interaction = MagicMock(spec=discord.Interaction)
-        interaction.guild = guild
-        interaction.user = MagicMock(spec=discord.Member)
-        interaction.user.id = 111111111
-        interaction.client = ticket_bot
-        interaction.channel_id = 444444444
-        interaction.channel = MagicMock()
-        interaction.response = MagicMock()
-        interaction.response.send_message = AsyncMock()
+        """Close on non-ticket channel → localized error."""
+        interaction = _make_interaction(int(guild_id), client=ticket_bot)
         interaction.response.defer = AsyncMock()
         interaction.followup = MagicMock()
         interaction.followup.send = AsyncMock()
+        interaction.channel_id = 444444444
+        interaction.channel = MagicMock()
 
         ticket_bot.db.get_ticket_by_channel = AsyncMock(return_value=None)
 
@@ -830,28 +480,22 @@ class TestTicketCloseI18n:
 
         embed = interaction.response.send_message.call_args.kwargs.get("embed")
         assert embed is not None
-        assert "CLOSE_FAIL_ES" in embed.title
-        assert "CLOSE_NO_TICKET_ES" in embed.description
+        assert f"CLOSE_FAIL_{suffix}" in embed.title
+        assert f"CLOSE_NO_TICKET_{suffix}" in embed.description
 
-    async def test_close_already_closed_en(
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    async def test_close_already_closed_is_localized(
         self,
         ticket_bot: MagicMock,
+        guild_id: str,
+        suffix: str,
     ) -> None:
-        """Close already-closed ticket → localized EN error."""
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_EN_GUILD_ID)
-
-        interaction = MagicMock(spec=discord.Interaction)
-        interaction.guild = guild
-        interaction.user = MagicMock(spec=discord.Member)
-        interaction.user.id = 111111111
-        interaction.client = ticket_bot
+        """Close already-closed ticket → localized error."""
+        interaction = _make_interaction(int(guild_id), client=ticket_bot)
         interaction.channel_id = 444444444
         interaction.channel = MagicMock()
-        interaction.response = MagicMock()
-        interaction.response.send_message = AsyncMock()
 
-        row = _ticket_row(status="closed", guild_id=_EN_GUILD_ID)
+        row = _ticket_row(status="closed", guild_id=guild_id)
         ticket_bot.db.get_ticket_by_channel = AsyncMock(return_value=row)
 
         view = TicketActionsView()
@@ -859,304 +503,222 @@ class TestTicketCloseI18n:
 
         embed = interaction.response.send_message.call_args.kwargs.get("embed")
         assert embed is not None
-        assert "CLOSE_FAIL_EN" in embed.title
-        assert "CLOSE_CLOSED_EN" in embed.description
+        assert f"CLOSE_FAIL_{suffix}" in embed.title
+        assert f"CLOSE_CLOSED_{suffix}" in embed.description
 
 
 class TestSubticketHelpI18n:
-    """Test /subticket help uses t()."""
+    """/subticket help uses t()."""
 
-    async def test_subticket_help_es(
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    async def test_subticket_help_is_localized(
         self,
-        cog_es: TicketsCog,
+        cog: TicketsCog,
+        guild_id: str,
+        suffix: str,
     ) -> None:
-        """/subticket help → localized ES embed."""
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_ES_GUILD_ID)
-        ctx = _make_ctx(guild)
+        """/subticket help → localized embed."""
+        ctx = _make_ctx(int(guild_id))
 
-        await cog_es.subticket.callback(cog_es, ctx)
+        await cog.subticket.callback(cog, ctx)
 
         embed = ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
-        assert "SUB_HELP_ES" in embed.title
-
-    async def test_subticket_help_en(
-        self,
-        cog_en: TicketsCog,
-    ) -> None:
-        """/subticket help → localized EN embed."""
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_EN_GUILD_ID)
-        ctx = _make_ctx(guild)
-
-        await cog_en.subticket.callback(cog_en, ctx)
-
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "SUB_HELP_EN" in embed.title
+        assert f"SUB_HELP_{suffix}" in embed.title
 
 
 class TestReopenI18n:
-    """Test /reopen error messages use t()."""
+    """/reopen error messages use t()."""
 
-    async def test_reopen_not_ticket_es(
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    async def test_reopen_not_ticket_is_localized(
         self,
-        cog_es: TicketsCog,
+        cog: TicketsCog,
         ticket_bot: MagicMock,
+        guild_id: str,
+        suffix: str,
     ) -> None:
-        """/reopen in non-ticket channel → localized ES error."""
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_ES_GUILD_ID)
-        ctx = _make_ctx(guild)
+        """/reopen in non-ticket channel → localized error."""
+        ctx = _make_ctx(int(guild_id))
 
         ticket_bot.db.get_ticket_by_channel = AsyncMock(return_value=None)
 
-        await cog_es.reopen.callback(cog_es, ctx)
+        await cog.reopen.callback(cog, ctx)
 
         embed = ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
-        assert "REOPEN_NO_TICKET_ES" in embed.title
-
-    async def test_reopen_not_ticket_en(
-        self,
-        cog_en: TicketsCog,
-        ticket_bot: MagicMock,
-    ) -> None:
-        """/reopen in non-ticket channel → localized EN error."""
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_EN_GUILD_ID)
-        ctx = _make_ctx(guild)
-
-        ticket_bot.db.get_ticket_by_channel = AsyncMock(return_value=None)
-
-        await cog_en.reopen.callback(cog_en, ctx)
-
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "REOPEN_NO_TICKET_EN" in embed.title
+        assert f"REOPEN_NO_TICKET_{suffix}" in embed.title
 
 
 class TestNoteHelpI18n:
-    """Test /note help uses t()."""
+    """/note help uses t()."""
 
-    async def test_note_help_es(
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    async def test_note_help_is_localized(
         self,
-        cog_es: TicketsCog,
+        cog: TicketsCog,
+        guild_id: str,
+        suffix: str,
     ) -> None:
-        """/note help → localized ES embed."""
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_ES_GUILD_ID)
-        ctx = _make_ctx(guild)
+        """/note help → localized embed."""
+        ctx = _make_ctx(int(guild_id))
 
-        await cog_es.note.callback(cog_es, ctx)
+        await cog.note.callback(cog, ctx)
 
         embed = ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
-        assert "NOTE_HELP_ES" in embed.title
-
-    async def test_note_help_en(
-        self,
-        cog_en: TicketsCog,
-    ) -> None:
-        """/note help → localized EN embed."""
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_EN_GUILD_ID)
-        ctx = _make_ctx(guild)
-
-        await cog_en.note.callback(cog_en, ctx)
-
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "NOTE_HELP_EN" in embed.title
+        assert f"NOTE_HELP_{suffix}" in embed.title
 
 
 class TestListCategoriesI18n:
-    """Test /list_categories uses t()."""
+    """/list_categories uses t()."""
 
-    async def test_list_categories_empty_es(
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    async def test_list_categories_empty_is_localized(
         self,
-        cog_es: TicketsCog,
+        cog: TicketsCog,
         ticket_bot: MagicMock,
+        guild_id: str,
+        suffix: str,
     ) -> None:
-        """/list_categories with no categories → localized ES embed."""
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_ES_GUILD_ID)
-        ctx = _make_ctx(guild)
+        """/list_categories with no categories → localized embed."""
+        ctx = _make_ctx(int(guild_id))
 
         ticket_bot.db.get_ticket_categories = AsyncMock(return_value=[])
 
-        await cog_es.list_categories.callback(cog_es, ctx)
+        await cog.list_categories.callback(cog, ctx)
 
         embed = ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
-        assert "LIST_EMPTY_ES" in embed.title
-
-    async def test_list_categories_empty_en(
-        self,
-        cog_en: TicketsCog,
-        ticket_bot: MagicMock,
-    ) -> None:
-        """/list_categories with no categories → localized EN embed."""
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_EN_GUILD_ID)
-        ctx = _make_ctx(guild)
-
-        ticket_bot.db.get_ticket_categories = AsyncMock(return_value=[])
-
-        await cog_en.list_categories.callback(cog_en, ctx)
-
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "LIST_EMPTY_EN" in embed.title
+        assert f"LIST_EMPTY_{suffix}" in embed.title
 
 
 class TestCreateCategoryI18n:
-    """Test /create_category uses t()."""
+    """/create_category uses t()."""
 
-    async def test_create_category_duplicate_es(
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    async def test_create_category_duplicate_is_localized(
         self,
-        cog_es: TicketsCog,
+        cog: TicketsCog,
         ticket_bot: MagicMock,
+        guild_id: str,
+        suffix: str,
     ) -> None:
-        """/create_category with duplicate name → localized ES error."""
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_ES_GUILD_ID)
-        ctx = _make_ctx(guild)
+        """/create_category with duplicate name → localized error."""
+        ctx = _make_ctx(int(guild_id))
 
-        ticket_bot.db.get_ticket_categories = AsyncMock(return_value=[_category_row()])
+        ticket_bot.db.get_ticket_categories = AsyncMock(
+            return_value=[_category_row(guild_id=guild_id)]
+        )
 
-        await cog_es.create_category.callback(cog_es, ctx, name="Support")
+        await cog.create_category.callback(cog, ctx, name="Support")
 
         embed = ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
-        assert "CREATE_DUP_ES" in embed.title
-
-    async def test_create_category_duplicate_en(
-        self,
-        cog_en: TicketsCog,
-        ticket_bot: MagicMock,
-    ) -> None:
-        """/create_category with duplicate name → localized EN error."""
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_EN_GUILD_ID)
-        ctx = _make_ctx(guild)
-
-        ticket_bot.db.get_ticket_categories = AsyncMock(return_value=[_category_row(guild_id=_EN_GUILD_ID)])
-
-        await cog_en.create_category.callback(cog_en, ctx, name="Support")
-
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "CREATE_DUP_EN" in embed.title
+        assert f"CREATE_DUP_{suffix}" in embed.title
 
 
 class TestDeleteCategoryI18n:
-    """Test /delete_category uses t()."""
+    """/delete_category uses t()."""
 
-    async def test_delete_category_not_found_es(
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    async def test_delete_category_not_found_is_localized(
         self,
-        cog_es: TicketsCog,
+        cog: TicketsCog,
         ticket_bot: MagicMock,
+        guild_id: str,
+        suffix: str,
     ) -> None:
-        """/delete_category with invalid ID → localized ES error."""
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_ES_GUILD_ID)
-        ctx = _make_ctx(guild)
+        """/delete_category with invalid ID → localized error."""
+        ctx = _make_ctx(int(guild_id))
 
         ticket_bot.db.get_ticket_category = AsyncMock(return_value=None)
 
-        await cog_es.delete_category.callback(cog_es, ctx, category_id="nonexistent")
+        await cog.delete_category.callback(cog, ctx, category_id="nonexistent")
 
         embed = ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
-        assert "DEL_NOT_FOUND_ES" in embed.title
+        assert f"DEL_NOT_FOUND_{suffix}" in embed.title
 
-    async def test_delete_category_in_use_en(
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    async def test_delete_category_in_use_is_localized(
         self,
-        cog_en: TicketsCog,
+        cog: TicketsCog,
         ticket_bot: MagicMock,
+        guild_id: str,
+        suffix: str,
     ) -> None:
-        """/delete_category with open tickets → localized EN error."""
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_EN_GUILD_ID)
-        ctx = _make_ctx(guild)
+        """/delete_category with open tickets → localized error."""
+        ctx = _make_ctx(int(guild_id))
 
-        row = _category_row(guild_id=_EN_GUILD_ID)
+        row = _category_row(guild_id=guild_id)
         ticket_bot.db.get_ticket_category = AsyncMock(return_value=row)
         ticket_bot.db.count_open_tickets_by_category = AsyncMock(return_value=3)
 
-        await cog_en.delete_category.callback(cog_en, ctx, category_id="cat-uuid-001")
+        await cog.delete_category.callback(cog, ctx, category_id="cat-uuid-001")
 
         embed = ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
-        assert "DEL_IN_USE_EN" in embed.title
+        assert f"DEL_IN_USE_{suffix}" in embed.title
 
 
 class TestTransferI18n:
-    """Test /transfer uses t()."""
+    """/transfer uses t()."""
 
-    async def test_transfer_not_ticket_es(
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    async def test_transfer_not_ticket_is_localized(
         self,
-        cog_es: TicketsCog,
+        cog: TicketsCog,
         ticket_bot: MagicMock,
+        guild_id: str,
+        suffix: str,
     ) -> None:
-        """/transfer in non-ticket channel → localized ES error."""
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_ES_GUILD_ID)
-        ctx = _make_ctx(guild)
+        """/transfer in non-ticket channel → localized error."""
+        ctx = _make_ctx(int(guild_id))
 
         ticket_bot.db.get_ticket_by_channel = AsyncMock(return_value=None)
 
-        target = MagicMock(spec=discord.Member)
-        target.id = 222222222
+        target = make_member(member_id=222222222)
 
-        await cog_es.transfer.callback(cog_es, ctx, member=target)
+        await cog.transfer.callback(cog, ctx, member=target)
 
         embed = ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
-        assert "XFER_NO_TICKET_ES" in embed.title
+        assert f"XFER_NO_TICKET_{suffix}" in embed.title
 
 
 class TestTicketEmbedI18n:
-    """Test _build_ticket_embed uses t() for titles and descriptions."""
+    """_build_ticket_embed uses t() for titles and descriptions."""
 
-    def test_open_ticket_embed_es(self) -> None:
-        """Open ticket embed uses localized ES strings."""
-        guild_id = _ES_GUILD_ID
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    def test_open_ticket_embed_is_localized(self, guild_id: str, suffix: str) -> None:
+        """Open ticket embed uses localized strings."""
         ticket = Ticket.from_db_row(_ticket_row(status="open", guild_id=guild_id))
         embed = _build_ticket_embed(ticket, guild_id=guild_id)
         assert embed.title is not None
         assert "OPEN_WELCOME_" in embed.title
-        assert embed.description is not None and "OPEN_WELCOME_DESC_ES" in embed.description
+        assert embed.description is not None
+        assert f"OPEN_WELCOME_DESC_{suffix}" in embed.description
 
-    def test_open_ticket_embed_en(self) -> None:
-        """Open ticket embed uses localized EN strings."""
-        guild_id = _EN_GUILD_ID
-        ticket = Ticket.from_db_row(_ticket_row(status="open", guild_id=guild_id))
-        embed = _build_ticket_embed(ticket, guild_id=guild_id)
-        assert embed.title is not None
-        assert "OPEN_WELCOME_" in embed.title
-        assert embed.description is not None and "OPEN_WELCOME_DESC_EN" in embed.description
-
-    def test_claimed_ticket_embed_es(self) -> None:
-        """Claimed ticket embed uses localized ES strings."""
-        guild_id = _ES_GUILD_ID
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    def test_claimed_ticket_embed_is_localized(self, guild_id: str, suffix: str) -> None:
+        """Claimed ticket embed uses localized strings."""
         ticket = Ticket.from_db_row(_ticket_row(status="claimed", guild_id=guild_id))
         claimed_by = MagicMock()
         claimed_by.mention = "<@999999>"
         embed = _build_ticket_embed(ticket, claimed_by=claimed_by, guild_id=guild_id)
         assert embed.title is not None
         assert "OPEN_CLAIMED_" in embed.title
-        assert embed.description is not None and "OPEN_CLAIMED_DESC_ES" in embed.description
+        assert embed.description is not None
+        assert f"OPEN_CLAIMED_DESC_{suffix}" in embed.description
 
 
 class TestTicketEmbedSubjectI18n:
-    """Test build_ticket_embed uses subject as title prefix when present."""
+    """build_ticket_embed subject handling uses localized keys."""
 
-    def test_embed_title_with_subject_es(self) -> None:
-        """Ticket with subject → embed title uses title_with_subject key (ES)."""
-        guild_id = _ES_GUILD_ID
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    def test_embed_title_with_subject(self, guild_id: str, suffix: str) -> None:
+        """Ticket with subject → embed title uses title_with_subject key."""
         row = _ticket_row(status="open", guild_id=guild_id)
         row["subject"] = "Login broken"
         ticket = Ticket.from_db_row(row)
@@ -1165,96 +727,73 @@ class TestTicketEmbedSubjectI18n:
         assert "OPEN_WELCOME_SUBJ_" in embed.title
         assert "Login broken" in embed.title
 
-    def test_embed_title_with_subject_en(self) -> None:
-        """Ticket with subject → embed title uses title_with_subject key (EN)."""
-        guild_id = _EN_GUILD_ID
-        row = _ticket_row(status="open", guild_id=guild_id)
-        row["subject"] = "Need help"
-        ticket = Ticket.from_db_row(row)
-        embed = _build_ticket_embed(ticket, guild_id=guild_id)
-        assert embed.title is not None
-        assert "OPEN_WELCOME_SUBJ_" in embed.title
-        assert "Need help" in embed.title
-
-    def test_embed_title_fallback_when_no_subject_es(self) -> None:
-        """Ticket without subject → embed title uses welcome_title fallback (ES)."""
-        guild_id = _ES_GUILD_ID
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    def test_embed_title_fallback_when_no_subject(self, guild_id: str, suffix: str) -> None:
+        """Ticket without subject → embed title uses welcome_title fallback."""
         row = _ticket_row(status="open", guild_id=guild_id)
         row["subject"] = None
         ticket = Ticket.from_db_row(row)
         embed = _build_ticket_embed(ticket, guild_id=guild_id)
         assert embed.title is not None
         assert "OPEN_WELCOME_" in embed.title
+        assert f"_{suffix}" in embed.title
         assert "SUBJ" not in embed.title
 
-    def test_embed_description_field_when_present_es(self) -> None:
-        """Ticket with description → embed includes details field (ES)."""
-        guild_id = _ES_GUILD_ID
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    def test_embed_description_field_when_present(self, guild_id: str, suffix: str) -> None:
+        """Ticket with description → embed includes details field."""
         row = _ticket_row(status="open", guild_id=guild_id)
         row["description"] = "Cannot access since Monday"
         ticket = Ticket.from_db_row(row)
         embed = _build_ticket_embed(ticket, guild_id=guild_id)
         field_names = [f.name for f in embed.fields]
-        assert "OPEN_DETAILS_ES" in field_names
+        assert f"OPEN_DETAILS_{suffix}" in field_names
 
-    def test_embed_no_description_field_when_absent_es(self) -> None:
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    def test_embed_no_description_field_when_absent(self, guild_id: str, suffix: str) -> None:
         """Ticket without description → embed has no details field."""
-        guild_id = _ES_GUILD_ID
         row = _ticket_row(status="open", guild_id=guild_id)
         row["description"] = None
         ticket = Ticket.from_db_row(row)
         embed = _build_ticket_embed(ticket, guild_id=guild_id)
         field_names = [f.name for f in embed.fields]
-        assert "OPEN_DETAILS_ES" not in field_names
+        assert f"OPEN_DETAILS_{suffix}" not in field_names
 
 
 class TestModalI18nKeys:
-    """Test modal i18n keys exist in both locales."""
+    """modal i18n keys resolve for both locales."""
 
-    def test_modal_keys_es(self) -> None:
-        """Modal i18n keys resolve for ES guild."""
-        from bot.core.i18n import t
-
-        assert t(_ES_GUILD_ID, "tickets.modal.title", category="Support") == "MODAL_TITLE_Support_ES"
-        assert t(_ES_GUILD_ID, "tickets.modal.subject_label") == "MODAL_SUBJECT_LABEL_ES"
-        assert t(_ES_GUILD_ID, "tickets.modal.subject_placeholder") == "MODAL_SUBJECT_PH_ES"
-        assert t(_ES_GUILD_ID, "tickets.modal.description_label") == "MODAL_DESC_LABEL_ES"
-        assert t(_ES_GUILD_ID, "tickets.modal.description_placeholder") == "MODAL_DESC_PH_ES"
-        assert t(_ES_GUILD_ID, "tickets.modal.empty_title") == "MODAL_EMPTY_TITLE_ES"
-        assert t(_ES_GUILD_ID, "tickets.modal.empty_title_description") == "MODAL_EMPTY_TITLE_DESC_ES"
-
-    def test_modal_keys_en(self) -> None:
-        """Modal i18n keys resolve for EN guild."""
-        from bot.core.i18n import t
-
-        assert t(_EN_GUILD_ID, "tickets.modal.title", category="Report") == "MODAL_TITLE_Report_EN"
-        assert t(_EN_GUILD_ID, "tickets.modal.subject_label") == "MODAL_SUBJECT_LABEL_EN"
-        assert t(_EN_GUILD_ID, "tickets.modal.subject_placeholder") == "MODAL_SUBJECT_PH_EN"
-        assert t(_EN_GUILD_ID, "tickets.modal.description_label") == "MODAL_DESC_LABEL_EN"
-        assert t(_EN_GUILD_ID, "tickets.modal.description_placeholder") == "MODAL_DESC_PH_EN"
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    def test_modal_keys_resolve(self, guild_id: str, suffix: str) -> None:
+        """Modal i18n keys resolve with the expected marker text."""
+        assert t(guild_id, "tickets.modal.title", category="Support") == (
+            f"MODAL_TITLE_Support_{suffix}"
+        )
+        assert t(guild_id, "tickets.modal.subject_label") == f"MODAL_SUBJECT_LABEL_{suffix}"
+        assert t(guild_id, "tickets.modal.subject_placeholder") == f"MODAL_SUBJECT_PH_{suffix}"
+        assert t(guild_id, "tickets.modal.description_label") == f"MODAL_DESC_LABEL_{suffix}"
+        assert t(guild_id, "tickets.modal.description_placeholder") == f"MODAL_DESC_PH_{suffix}"
+        assert t(guild_id, "tickets.modal.empty_title") == f"MODAL_EMPTY_TITLE_{suffix}"
+        assert t(guild_id, "tickets.modal.empty_title_description") == (
+            f"MODAL_EMPTY_TITLE_DESC_{suffix}"
+        )
 
 
 # ---------------------------------------------------------------------------
-# CRITICAL 1 fix: Button labels are localized when guild_id is provided
+# Button labels are localized when guild_id is provided
 # ---------------------------------------------------------------------------
 
 
 class TestButtonLabelI18n:
-    """Test persistent view button labels use t() when guild_id is provided."""
+    """persistent view button labels use t() when guild_id is provided."""
 
-    def test_panel_view_open_button_es(self) -> None:
-        """TicketPanelView with ES guild_id → button label localized to ES."""
-        view = TicketPanelView(guild_id=_ES_GUILD_ID)
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    def test_panel_view_open_button(self, guild_id: str, suffix: str) -> None:
+        """TicketPanelView with guild_id → button label localized."""
+        view = TicketPanelView(guild_id=guild_id)
         buttons = [c for c in view.children if isinstance(c, discord.ui.Button)]
         assert len(buttons) == 1
-        assert buttons[0].label == "OPEN_BTN_ES"
-
-    def test_panel_view_open_button_en(self) -> None:
-        """TicketPanelView with EN guild_id → button label localized to EN."""
-        view = TicketPanelView(guild_id=_EN_GUILD_ID)
-        buttons = [c for c in view.children if isinstance(c, discord.ui.Button)]
-        assert len(buttons) == 1
-        assert buttons[0].label == "OPEN_BTN_EN"
+        assert buttons[0].label == f"OPEN_BTN_{suffix}"
 
     def test_panel_view_no_guild_default(self) -> None:
         """TicketPanelView without guild_id → Spanish default label preserved."""
@@ -1263,19 +802,13 @@ class TestButtonLabelI18n:
         assert len(buttons) == 1
         assert buttons[0].label == "Abrir Ticket"
 
-    def test_actions_view_buttons_es(self) -> None:
-        """TicketActionsView with ES guild_id → claim/close labels localized."""
-        view = TicketActionsView(guild_id=_ES_GUILD_ID)
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    def test_actions_view_buttons(self, guild_id: str, suffix: str) -> None:
+        """TicketActionsView with guild_id → claim/close labels localized."""
+        view = TicketActionsView(guild_id=guild_id)
         buttons = {c.custom_id: c for c in view.children if isinstance(c, discord.ui.Button)}
-        assert buttons["ticket:claim"].label == "CLAIM_BTN_ES"
-        assert buttons["ticket:close"].label == "CLOSE_BTN_ES"
-
-    def test_actions_view_buttons_en(self) -> None:
-        """TicketActionsView with EN guild_id → claim/close labels localized."""
-        view = TicketActionsView(guild_id=_EN_GUILD_ID)
-        buttons = {c.custom_id: c for c in view.children if isinstance(c, discord.ui.Button)}
-        assert buttons["ticket:claim"].label == "CLAIM_BTN_EN"
-        assert buttons["ticket:close"].label == "CLOSE_BTN_EN"
+        assert buttons["ticket:claim"].label == f"CLAIM_BTN_{suffix}"
+        assert buttons["ticket:close"].label == f"CLOSE_BTN_{suffix}"
 
     def test_actions_view_no_guild_default(self) -> None:
         """TicketActionsView without guild_id → Spanish default labels preserved."""
@@ -1286,77 +819,47 @@ class TestButtonLabelI18n:
 
 
 # ---------------------------------------------------------------------------
-# CRITICAL 3: Dynamic label resolution at interaction time
+# Dynamic label resolution at interaction time
 # ---------------------------------------------------------------------------
 
 
 class TestDynamicLabelResolution:
-    """Test button labels resolve via t() at INTERACTION time, not just construction."""
+    """button labels resolve via t() at INTERACTION time, not just construction."""
 
-    async def test_panel_open_label_updates_at_interaction_es(self) -> None:
-        """Panel open button label resolves to ES at callback time."""
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    async def test_panel_open_label_updates_at_interaction(
+        self,
+        guild_id: str,
+        suffix: str,
+    ) -> None:
+        """Panel open button label resolves at callback time."""
         view = TicketPanelView()  # No guild_id → Spanish default "Abrir Ticket"
 
-        # Simulate interaction from ES guild.
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_ES_GUILD_ID)
-        interaction = MagicMock(spec=discord.Interaction)
-        interaction.guild = guild
-        interaction.guild_id = int(_ES_GUILD_ID)
-        interaction.client = MagicMock()
+        interaction = _make_interaction(int(guild_id))
         interaction.client.db = AsyncMock()
         interaction.client.db.get_ticket_categories = AsyncMock(return_value=[])
-        interaction.response = MagicMock()
-        interaction.response.send_message = AsyncMock()
 
         open_button = next(
             c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:open"
         )
         await open_button.callback(interaction)
 
-        # After callback, label should be updated to ES.
-        assert open_button.label == "OPEN_BTN_ES"
+        # After callback, label should be updated to the guild language.
+        assert open_button.label == f"OPEN_BTN_{suffix}"
 
-    async def test_panel_open_label_updates_at_interaction_en(self) -> None:
-        """Panel open button label resolves to EN at callback time."""
-        view = TicketPanelView()  # No guild_id → Spanish default "Abrir Ticket"
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    async def test_actions_claim_label_updates_at_interaction(
+        self,
+        guild_id: str,
+        suffix: str,
+    ) -> None:
+        """Claim button label resolves at callback time."""
+        view = TicketActionsView()  # No guild_id → default labels
 
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_EN_GUILD_ID)
-        interaction = MagicMock(spec=discord.Interaction)
-        interaction.guild = guild
-        interaction.guild_id = int(_EN_GUILD_ID)
-        interaction.client = MagicMock()
-        interaction.client.db = AsyncMock()
-        interaction.client.db.get_ticket_categories = AsyncMock(return_value=[])
-        interaction.response = MagicMock()
-        interaction.response.send_message = AsyncMock()
-
-        open_button = next(
-            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:open"
-        )
-        await open_button.callback(interaction)
-
-        assert open_button.label == "OPEN_BTN_EN"
-
-    async def test_actions_claim_label_updates_at_interaction_es(self) -> None:
-        """Claim button label resolves to ES at callback time."""
-        view = TicketActionsView()  # No guild_id → default English
-
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_ES_GUILD_ID)
-        interaction = MagicMock(spec=discord.Interaction)
-        interaction.guild = guild
-        interaction.guild_id = int(_ES_GUILD_ID)
-        interaction.user = MagicMock(spec=discord.Member)
-        interaction.user.id = 111111111
-        interaction.user.guild_permissions.administrator = True
-        interaction.client = MagicMock()
+        interaction = _make_interaction(int(guild_id), admin=True)
         interaction.client.db = AsyncMock()
         interaction.client.db.get_ticket_by_channel = AsyncMock(return_value=None)
         interaction.channel_id = 444444444
-        interaction.response = MagicMock()
-        interaction.response.send_message = AsyncMock()
         interaction.response.edit_message = AsyncMock()
 
         claim_button = next(
@@ -1364,96 +867,68 @@ class TestDynamicLabelResolution:
         )
         await claim_button.callback(interaction)
 
-        # After callback, label should be updated to ES.
-        assert claim_button.label == "CLAIM_BTN_ES"
+        assert claim_button.label == f"CLAIM_BTN_{suffix}"
 
-    async def test_actions_close_label_updates_at_interaction_en(self) -> None:
-        """Close button label resolves to EN at callback time."""
-        view = TicketActionsView()  # No guild_id → default English
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    async def test_actions_close_label_updates_at_interaction(
+        self,
+        guild_id: str,
+        suffix: str,
+    ) -> None:
+        """Close button label resolves at callback time."""
+        view = TicketActionsView()  # No guild_id → default labels
 
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_EN_GUILD_ID)
-        interaction = MagicMock(spec=discord.Interaction)
-        interaction.guild = guild
-        interaction.guild_id = int(_EN_GUILD_ID)
-        interaction.user = MagicMock(spec=discord.Member)
-        interaction.user.id = 111111111
-        interaction.client = MagicMock()
+        interaction = _make_interaction(int(guild_id))
         interaction.client.db = AsyncMock()
         interaction.client.db.get_ticket_by_channel = AsyncMock(return_value=None)
         interaction.channel_id = 444444444
-        interaction.response = MagicMock()
-        interaction.response.send_message = AsyncMock()
+        interaction.channel = MagicMock()
 
         close_button = next(
             c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:close"
         )
         await close_button.callback(interaction)
 
-        assert close_button.label == "CLOSE_BTN_EN"
+        assert close_button.label == f"CLOSE_BTN_{suffix}"
 
 
 # ---------------------------------------------------------------------------
-# CRITICAL 2 fix: reopen error uses t() instead of service's raw Spanish text
+# reopen ValueError surfaces localized error, not service's raw Spanish text
 # ---------------------------------------------------------------------------
 
 
 class TestReopenNotClosedI18n:
-    """Test /reopen ValueError surfaces localized error, not service's raw text."""
+    """/reopen ValueError surfaces localized error, not service's raw text."""
 
-    async def test_reopen_not_closed_es(
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    async def test_reopen_not_closed_is_localized(
         self,
-        cog_es: TicketsCog,
+        cog: TicketsCog,
         ticket_bot: MagicMock,
+        guild_id: str,
+        suffix: str,
     ) -> None:
-        """/reopen on open ticket → localized ES error (not Spanish raw text)."""
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_ES_GUILD_ID)
-        ctx = _make_ctx(guild)
+        """/reopen on open ticket → localized error (raw service text replaced)."""
+        ctx = _make_ctx(int(guild_id))
 
-        row = _ticket_row(status="open", guild_id=_ES_GUILD_ID)
+        row = _ticket_row(status="open", guild_id=guild_id)
         ticket_bot.db.get_ticket_by_channel = AsyncMock(return_value=row)
 
         ticket_bot.ticket_service.reopen_ticket = AsyncMock(
             side_effect=ValueError("Solo se pueden reabrir tickets cerrados. Estado actual: open")
         )
 
-        await cog_es.reopen.callback(cog_es, ctx)
+        await cog.reopen.callback(cog, ctx)
 
         embed = ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
         # Must use t() localized string, NOT the raw Spanish service text
-        assert "REOPEN_NOT_CLOSED_open_ES" in embed.description
-        assert "Solo se pueden" not in embed.description
-
-    async def test_reopen_not_closed_en(
-        self,
-        cog_en: TicketsCog,
-        ticket_bot: MagicMock,
-    ) -> None:
-        """/reopen on open ticket → localized EN error (English guild gets English)."""
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = int(_EN_GUILD_ID)
-        ctx = _make_ctx(guild)
-
-        row = _ticket_row(status="open", guild_id=_EN_GUILD_ID)
-        ticket_bot.db.get_ticket_by_channel = AsyncMock(return_value=row)
-
-        ticket_bot.ticket_service.reopen_ticket = AsyncMock(
-            side_effect=ValueError("Solo se pueden reabrir tickets cerrados. Estado actual: open")
-        )
-
-        await cog_en.reopen.callback(cog_en, ctx)
-
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        # Must use t() localized EN string
-        assert "REOPEN_NOT_CLOSED_open_EN" in embed.description
+        assert f"REOPEN_NOT_CLOSED_open_{suffix}" in embed.description
         assert "Solo se pueden" not in embed.description
 
 
 # ---------------------------------------------------------------------------
-# CRITICAL 3 fix: es.json translations — no English text for fixed keys
+# Production es.json contract — fixed keys must stay Spanish
 # ---------------------------------------------------------------------------
 
 
@@ -1487,32 +962,21 @@ class TestEsJsonTranslations:
 
 
 class TestEditCategoryAuditI18n:
-    """Test edit_category_audit_title/description keys in both locales."""
+    """edit_category_audit_title/description keys in both locales."""
 
-    def test_edit_category_audit_keys_es(self) -> None:
-        """edit_category_audit_title and _description resolve for ES guild."""
-        from bot.core.i18n import t
-
-        title = t(_ES_GUILD_ID, "tickets.actions.edit_category_audit_title")
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    def test_edit_category_audit_keys_resolve(self, guild_id: str, suffix: str) -> None:
+        """Audit title and description resolve to non-empty localized strings."""
+        title = t(guild_id, "tickets.actions.edit_category_audit_title")
         assert isinstance(title, str) and len(title) > 0
+        assert f"AUDIT_TITLE_{suffix}" == title
 
-        desc = t(_ES_GUILD_ID, "tickets.actions.edit_category_audit_description")
+        desc = t(guild_id, "tickets.actions.edit_category_audit_description")
         assert isinstance(desc, str) and len(desc) > 0
-
-    def test_edit_category_audit_keys_en(self) -> None:
-        """edit_category_audit_title and _description resolve for EN guild."""
-        from bot.core.i18n import t
-
-        title = t(_EN_GUILD_ID, "tickets.actions.edit_category_audit_title")
-        assert isinstance(title, str) and len(title) > 0
-
-        desc = t(_EN_GUILD_ID, "tickets.actions.edit_category_audit_description")
-        assert isinstance(desc, str) and len(desc) > 0
+        assert f"AUDIT_DESC_{{old_category}}_{{new_category}}_{{actor}}_{suffix}" == desc
 
     def test_edit_category_audit_placeholders_resolve(self) -> None:
         """Audit description placeholders resolve with no leftover braces."""
-        from bot.core.i18n import t
-
         result = t(
             _ES_GUILD_ID,
             "tickets.actions.edit_category_audit_description",
@@ -1533,7 +997,7 @@ class TestEditCategoryAuditI18n:
 
 
 class TestProductionLocaleAuditKeys:
-    """Test that bot/locales/en.json and es.json contain the audit keys with required placeholders."""
+    """bot/locales/{en,es}.json contain the audit keys with required placeholders."""
 
     @staticmethod
     def _load_locale(filename: str) -> dict:
@@ -1541,37 +1005,18 @@ class TestProductionLocaleAuditKeys:
         path = Path("bot/locales") / filename
         return json.loads(path.read_text(encoding="utf-8"))
 
-    def test_en_json_has_audit_title_key(self) -> None:
-        """en.json MUST contain tickets.actions.edit_category_audit_title."""
-        data = self._load_locale("en.json")
-        assert "edit_category_audit_title" in data["tickets"]["actions"]
+    @pytest.mark.parametrize("filename", ["en.json", "es.json"])
+    def test_audit_keys_exist(self, filename: str) -> None:
+        """Locale file MUST contain both edit_category_audit keys."""
+        data = self._load_locale(filename)
+        actions = data["tickets"]["actions"]
+        assert "edit_category_audit_title" in actions
+        assert "edit_category_audit_description" in actions
 
-    def test_en_json_has_audit_description_key(self) -> None:
-        """en.json MUST contain tickets.actions.edit_category_audit_description."""
-        data = self._load_locale("en.json")
-        assert "edit_category_audit_description" in data["tickets"]["actions"]
-
-    def test_es_json_has_audit_title_key(self) -> None:
-        """es.json MUST contain tickets.actions.edit_category_audit_title."""
-        data = self._load_locale("es.json")
-        assert "edit_category_audit_title" in data["tickets"]["actions"]
-
-    def test_es_json_has_audit_description_key(self) -> None:
-        """es.json MUST contain tickets.actions.edit_category_audit_description."""
-        data = self._load_locale("es.json")
-        assert "edit_category_audit_description" in data["tickets"]["actions"]
-
-    def test_en_audit_description_has_all_placeholders(self) -> None:
-        """en.json audit description MUST contain {old_category}, {new_category}, {actor} placeholders."""
-        data = self._load_locale("en.json")
-        desc = data["tickets"]["actions"]["edit_category_audit_description"]
-        assert "{old_category}" in desc
-        assert "{new_category}" in desc
-        assert "{actor}" in desc
-
-    def test_es_audit_description_has_all_placeholders(self) -> None:
-        """es.json audit description MUST contain {old_category}, {new_category}, {actor} placeholders."""
-        data = self._load_locale("es.json")
+    @pytest.mark.parametrize("filename", ["en.json", "es.json"])
+    def test_audit_description_has_all_placeholders(self, filename: str) -> None:
+        """Audit description MUST contain all three placeholders."""
+        data = self._load_locale(filename)
         desc = data["tickets"]["actions"]["edit_category_audit_description"]
         assert "{old_category}" in desc
         assert "{new_category}" in desc
