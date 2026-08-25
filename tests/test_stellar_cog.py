@@ -418,8 +418,11 @@ class TestRankCommand:
         # Must query the target's rank info, not self's
         mock_bot.economy_service.get_rank_info.assert_called_once_with("123456789", "222222222")
 
-        # Must send file
+        # Content twin: the rendered card ships as an ephemeral PNG file.
         ctx.send.assert_called_once()
+        send_kwargs = ctx.send.call_args.kwargs
+        assert send_kwargs["file"].filename == "rank.png"
+        assert send_kwargs["ephemeral"] is True
 
     @pytest.mark.asyncio
     async def test_rank_no_member_data(

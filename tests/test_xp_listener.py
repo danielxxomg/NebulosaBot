@@ -245,6 +245,9 @@ class TestXpListenerLevelUpChannel:
         # Embed should go to configured channel, not message channel.
         level_up_channel.send.assert_called_once()
         mock_message.channel.send.assert_not_called()
+        # Content twin: mention is interpolated into the localized body.
+        embed = level_up_channel.send.call_args.kwargs["embed"]
+        assert mock_message.author.mention in embed.description
 
     @pytest.mark.asyncio
     async def test_level_up_fallback_to_message_channel(
@@ -263,6 +266,8 @@ class TestXpListenerLevelUpChannel:
 
         # Embed should go to message channel.
         mock_message.channel.send.assert_called_once()
+        embed = mock_message.channel.send.call_args.kwargs["embed"]
+        assert mock_message.author.mention in embed.description
 
     @pytest.mark.asyncio
     async def test_level_up_configured_channel_not_found(
@@ -288,6 +293,8 @@ class TestXpListenerLevelUpChannel:
 
         # Should fallback to message.channel
         mock_message.channel.send.assert_called_once()
+        embed = mock_message.channel.send.call_args.kwargs["embed"]
+        assert mock_message.author.mention in embed.description
 
 
 # ---------------------------------------------------------------------------
