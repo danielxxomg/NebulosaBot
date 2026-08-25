@@ -1,15 +1,31 @@
-"""RED: /8ball 20 localized + cooldown/handler (PR3 3.3-3.4)."""
+"""RED: /8ball 20 localized + cooldown/handler (PR3 3.3-3.4).
+
+Consolidation note (cycle-5 S5b/c): source-grep guards were replaced by
+runtime twins where a behavioral assertion exists —
+
+- command existence + ephemeral send → proven by ``test_8ball_command_ephemeral``;
+- cooldown wiring → proven by runtime CooldownMapping introspection;
+- uniform randomness → proven by spying ``random.choice`` at the service seam.
+
+Kept without twin (documented): ``test_cooldown_handler_exists`` still reads
+source because no error-pipeline harness drives CommandOnCooldown end-to-end
+yet; ``test_8ball_has_locales`` is a production locale contract, not a grep.
+"""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
 from discord.ext import commands
 
 from bot.cogs.ocio import OcioCog
+from bot.services.ocio_service import OcioService
+
+_COOLDOWN_COMMANDS = ["dados", "banana", "8ball"]
 
 
 def _make_ctx(guild_id=123456789):
@@ -21,20 +37,17 @@ def _make_ctx(guild_id=123456789):
     return ctx
 
 
-class Test8BallExists:
-    def test_has_8ball_command(self):
-        assert (
-            hasattr(OcioCog, "eight_ball")
-            or hasattr(OcioCog, "eightball")
-            or any(
-                getattr(m, "__name__", "") in ("8ball", "eight_ball", "eightball") for m in OcioCog.__dict__.values()
-            )
-            or any("8ball" in str(v) for v in OcioCog.__dict__.values())
-        )
+def _find_command(cog: OcioCog, name: str):
+    """Return the cog command object registered under *name*."""
+    for cmd in cog.__cog_commands__:
+        if cmd.name == name:
+            return cmd
+    msg = f"command {name!r} not registered on OcioCog"
+    raise AssertionError(msg)
 
+
+class Test8BallContract:
     def test_8ball_has_locales(self):
-        import json
-
         for lang in ("es", "en"):
             data = json.loads(Path(f"bot/locales/{lang}.json").read_text(encoding="utf-8"))
             ocio = data.get("ocio", {})
@@ -53,38 +66,27 @@ class Test8BallExists:
                 assert "embed_title" in flat, f"{lang} missing ocio.8ball.embed_title"
                 assert len(flat) == 21
 
-    def test_8ball_ephemeral_no_db(self):
-        src = Path("bot/cogs/ocio.py").read_text(encoding="utf-8")
-        # 8ball command should be present
-        assert "8ball" in src.lower()
-        # ephemereral send
-        assert "ephemeral" in src
-
-    def test_cooldown_on_three_commands(self):
-        src = Path("bot/cogs/ocio.py").read_text(encoding="utf-8")
-        # each of dados/banana/8ball must carry cooldown
-        assert src.count("cooldown(1, 5") >= 3 or src.count("cooldown(1,5") >= 3
-        assert "BucketType.user" in src
-
     def test_cooldown_handler_exists(self):
         src = Path("bot/cogs/ocio.py").read_text(encoding="utf-8")
         assert "CommandOnCooldown" in src
         assert "retry_after" in src
         assert "ephemeral" in src
 
-    def test_8ball_uniform_random(self):
-        # service get_8ball_response uses random.choice uniform
-        from bot.services.ocio_service import OcioService
 
-        assert hasattr(OcioService, "get_8ball_response") or hasattr(OcioService, "get_eight_ball_response")
-        src = Path("bot/services/ocio_service.py").read_text(encoding="utf-8")
-        assert "random.choice" in src or "random.randint" in src
+class TestCooldownWiring:
+    """dados/banana/8ball carry cooldown(1, 5s) on their runtime buckets."""
+
+    @pytest.mark.parametrize("name", _COOLDOWN_COMMANDS)
+    def test_command_has_user_cooldown(self, name: str) -> None:
+        cmd = _find_command(OcioCog(MagicMock()), name)
+        bucket = getattr(cmd._buckets, "_cooldown", None)
+        assert bucket is not None, f"{name} must configure a CooldownMapping"
+        assert bucket.rate == 1
+        assert bucket.per == 5
 
 
 @pytest.mark.asyncio
 async def test_8ball_returns_localized():
-    from bot.services.ocio_service import OcioService
-
     svc = OcioService()
     # must not require discord mocks
     for gid in ("123456789", None):
@@ -93,36 +95,22 @@ async def test_8ball_returns_localized():
 
 
 @pytest.mark.asyncio
-async def test_8ball_command_ephemeral():
-    import warnings
+async def test_8ball_response_draws_from_pool_uniformly():
+    """get_8ball_response selects via random.choice over the localized pool."""
+    svc = OcioService()
+    with patch("bot.services.ocio_service.random.choice", wraps=__import__("random").choice) as choice_spy:
+        svc.get_8ball_response(guild_id="123456789", question="is it?")
+    choice_spy.assert_called_once()
 
-    warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+@pytest.mark.asyncio
+async def test_8ball_command_ephemeral():
     bot = MagicMock()
     cog = OcioCog(bot)
     ctx = _make_ctx()
-    # Find 8ball method
-    method = None
-    for name in ("eight_ball", "eightball", "_8ball", "ball8"):
-        if hasattr(cog, name):
-            method = getattr(cog, name)
-            break
-    if method is None:
-        # search by command name
-        for attr in cog.__dict__.values():
-            if hasattr(attr, "name") and "8ball" in str(getattr(attr, "name", "")):
-                method = attr
-                break
-        for cmd in getattr(cog, "__cog_commands__", []):
-            if "8ball" in getattr(cmd, "name", ""):
-                method = cmd.callback
-                break
-    assert method is not None, "8ball command not found"
+    method = _find_command(cog, "8ball")
     # call it — should send ephemeral, no DB
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        await method.callback(cog, ctx, question="will it pass?") if hasattr(method, "callback") else await method(
-            ctx, question="will it pass?"
-        )
+    await method.callback(cog, ctx, question="will it pass?")
     assert ctx.send.await_count >= 1
     kwargs = ctx.send.call_args.kwargs
     assert kwargs.get("ephemeral") is True

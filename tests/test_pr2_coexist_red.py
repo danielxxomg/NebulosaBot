@@ -120,13 +120,7 @@ async def test_coexist_both_fire_one_wins():
         await svc.close_ticket("t1", "auto:scheduled", guild_id="g1", close_reason="zombie:scheduled")
 
 
-def test_scheduled_loop_silent_no_5_to_1_countdown():
-    import pathlib
-
-    src = pathlib.Path("bot/cogs/tickets.py").read_text()
-    # scheduled_close_loop must NOT send "5"/countdown; only close_ticket_full manual=False
-    seg = src[src.index("async def scheduled_close_loop") : src.index("async def scheduled_close_loop") + 2500]
-    assert 'send("5")' not in seg and "countdown" not in seg.lower()
-    src2 = pathlib.Path("bot/services/ticket_repair_service.py").read_text()
-    # repair close_ticket_full with manual=False must sleep CHANNEL_DELETE_DELAY not countdown
-    assert "CHANNEL_DELETE_DELAY" in src2
+# Consolidation note (cycle-5 S5b/c): the former
+# test_scheduled_loop_silent_no_5_to_1_countdown source-grep was deleted —
+# test_scheduled_loop_is_silent_no_countdown above proves silence behaviorally
+# (close_ticket_full awaited with manual=False on the real loop path).

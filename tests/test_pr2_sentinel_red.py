@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pathlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -75,20 +74,9 @@ class TestTempbanCommandRed:
         assert len(cmd.checks) > 0, "tempban must have prefix checks"
         assert hasattr(cmd, "app_command") and cmd.app_command is not None
         assert len(cmd.app_command.checks) > 0, "tempban must have slash checks"
-        # Source must use can_check moderation.ban and default_permissions ban_members
-        src = pathlib.Path("bot/cogs/sentinel.py").read_text(encoding="utf-8")
-        lines = src.splitlines()
-        idx = next(i for i, line in enumerate(lines) if "async def tempban(" in line)
-        window = "\n".join(lines[max(0, idx - 12) : idx])
-        assert "can_check" in window and "moderation.ban" in window, "tempban must be @can_check(moderation.ban)"
-        assert "ban_members=True" in window or "ban_members = True" in window
-
-    def test_tempban_invalid_duration_proven_via_source(self) -> None:
-        """2.11: /tempban must guard via parse_duration_optional returning None → ephemeral error no ban."""
-        src = pathlib.Path("bot/cogs/sentinel.py").read_text(encoding="utf-8")
-        assert "parse_duration_optional" in src, "/tempban must use parse_duration_optional guard"
-        # The method should reference the None case
-        assert "None" in src
+        # Consolidation (S5b/c): the source-window grep was deleted — the gate key
+        # and ban_members default are proven behaviorally by the predicate-denial
+        # tests below and TestDefaultPermissions in test_ephemeral_standard.py.
 
     @pytest.mark.asyncio
     async def test_tempban_invalid_duration_sends_ephemeral_error_and_does_not_ban(self) -> None:
@@ -163,11 +151,8 @@ class TestTempbanCommandRed:
         assert len(cmd.checks) > 0
         assert hasattr(cmd, "app_command") and cmd.app_command is not None
         assert len(cmd.app_command.checks) > 0
-        src = pathlib.Path("bot/cogs/sentinel.py").read_text(encoding="utf-8")
-        lines = src.splitlines()
-        idx = next(i for i, line in enumerate(lines) if "async def unban(" in line)
-        window = "\n".join(lines[max(0, idx - 12) : idx])
-        assert "can_check" in window and "moderation.ban" in window
+        # Consolidation (S5b/c): the source-window grep was deleted — the
+        # behavioral unban tests below prove the gate end-to-end.
 
 
 class TestUnbanCommandRed:
@@ -309,46 +294,17 @@ class TestTempbanUnbanDeniedRed:
 
 
 class TestLoopRed:
-    def test_loop_exists_hours_1_and_before_loop_and_cog_unload(self) -> None:
-        """2.14-2.16: loop hours=1, before_loop wait_until_ready, cog_unload cancel."""
-        import pathlib
+    def test_decay_expiry_loop_interval_is_one_hour(self) -> None:
+        """2.14: decay/expiry loop configured for a one-hour interval.
 
-        src = pathlib.Path("bot/cogs/sentinel.py").read_text(encoding="utf-8")
-        assert "tasks.loop" in src and "hours=1" in src, "must have @tasks.loop(hours=1)"
-        assert "before_loop" in src, "must have @before_loop"
-        assert "wait_until_ready" in src, "before_loop must await wait_until_ready"
-        assert "cog_unload" in src, "must have cog_unload"
-        # Check cog_unload cancels
-        assert "cancel" in src
-
-    def test_loop_uses_brand_tokens_no_hex(self) -> None:
-        """2.17: loop logs must use brand tokens, no hex literal."""
-        import pathlib
-        import re
-
-        src = pathlib.Path("bot/cogs/sentinel.py").read_text(encoding="utf-8")
-        # Find the loop method body (approx between decay_expiry_loop def and next def)
-        assert "brand." in src or "from bot.utils.brand" in src
-        # No hex literal in loop area beyond brand.py
-        # Simple check: no 0x[0-9a-fA-F]{6} in sentinel.py outside brand import line
-        hexes = re.findall(r"0x[0-9a-fA-F]{6}", src)
-        assert len(hexes) == 0, f"sentinel.py must not contain hex literals, found {hexes}"
-
-    def test_loop_restart_durability_db_sourced(self) -> None:
-        """2.18: restart durability — expiry is DB-sourced (no in-memory timer).
-
-        The loop delegates tempban expiry to ``InfractionService.expire_tempbans``,
-        which scans ``db.get_expired_tempbans`` each iteration. Prove the service
-        path is DB-sourced rather than scanning cog source text (which moved).
+        Consolidation (S5b/c): before_loop/cog_unload greps were replaced by the
+        behavioral twins below (wait_for_ready, unload cancels); hex-literal
+        scanning is subsumed by tests/test_brand.py::TestNoHardcodedHexColors;
+        restart durability rides the behavioral delegation tests.
         """
-        import inspect
-
-        from bot.services.infraction_service import InfractionService
-
-        src = inspect.getsource(InfractionService.expire_tempbans)
-        assert "get_expired_tempbans" in src, "expire_tempbans must be DB-sourced via get_expired_tempbans"
-        sentinel_src = pathlib.Path("bot/cogs/sentinel.py").read_text(encoding="utf-8")
-        assert "decay_warnings" in sentinel_src, "loop must run decay_warnings"
+        loop = SentinelCog.__dict__.get("decay_expiry_loop")
+        assert loop is not None, "SentinelCog.decay_expiry_loop must exist"
+        assert loop.hours == 1, f"loop must run hourly, got hours={loop.hours}"
 
     @pytest.mark.asyncio
     async def test_loop_runs_decay_then_expiry_and_logs_via_logging_service(self) -> None:

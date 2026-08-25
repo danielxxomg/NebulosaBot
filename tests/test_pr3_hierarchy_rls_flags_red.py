@@ -11,12 +11,13 @@ escape/AllowedMentions, AsyncClientOptions flags, 023 RLS.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
 
 from bot.cogs.sentinel import SentinelCog
+from bot.core.database import Database
 
 
 def _make_member(role_val: int, member_id: int = 1) -> MagicMock:
@@ -103,24 +104,14 @@ class TestSentinelAuthorHierarchy:
         result = await cog._validate_target(ctx, target, action="warn")
         assert result is True, "owner must be exempt from author hierarchy"
 
-    def test_source_has_author_hierarchy(self):
-        src = Path("bot/cogs/sentinel.py").read_text(encoding="utf-8")
-        assert "author" in src and "top_role" in src
-        # must check author.top_role <= target.top_role
-        assert "ctx.author" in src or "author.top_role" in src
+    # Consolidation note (cycle-5 S5b/c): the former
+    # ``test_source_has_author_hierarchy`` source-grep was deleted — the three
+    # behavioral tests above exercise the real hierarchy path and subsume it.
 
 
-class TestDeleteCategoryGuard:
-    def test_is_admin_on_delete_category(self):
-        src = Path("bot/cogs/tickets.py").read_text(encoding="utf-8")
-        assert "delete_category" in src
-        assert "@is_admin" in src
-        # delete_category's decorator must be is_admin, not is_mod — check the
-        # 600 chars immediately before the function definition
-        func_idx = src.index("async def delete_category")
-        window = src[max(0, func_idx - 600) : func_idx + 200]
-        assert "@is_admin" in window, "delete_category must be decorated with @is_admin"
-        assert "@is_mod" not in window, "delete_category must not use @is_mod"
+# Consolidation note (cycle-5 S5b/c): the former TestDeleteCategoryGuard
+# source-window grep was deleted — its assertion now lives as behavioral
+# predicate tests in tests/test_pr4_tickets_red.py::TestDeleteCategoryAdminGate.
 
 
 class TestEscapeAndMentions:
@@ -142,15 +133,26 @@ class TestEscapeAndMentions:
 
 
 class TestAsyncClientOptionsFlags:
-    def test_flags_present(self):
-        src = Path("bot/core/db/base.py").read_text(encoding="utf-8")
-        assert "auto_refresh_token=False" in src
-        assert "persist_session=False" in src
-        assert 'schema="public"' in src or "schema='public'" in src or 'schema="public"' in src
+    async def test_connect_creates_scoped_async_client(self) -> None:
+        """connect() builds the async client with schema/public + sessionless flags."""
+        client = MagicMock()
+        with (
+            patch("bot.core.db.base.validate_service_role_key") as validate_mock,
+            patch("bot.core.db.base.acreate_client", new=AsyncMock(return_value=client)) as create_mock,
+            patch.object(Database, "health_check", new=AsyncMock(return_value=True)),
+        ):
+            db = Database(url="https://test.supabase.co", key="sb_secret_placeholder")
+            await db.connect()
 
-    def test_service_role_validation_still(self):
-        src = Path("bot/core/db/base.py").read_text(encoding="utf-8")
-        assert "validate" in src.lower() and "service" in src.lower()
+        # Service-role key validated before any network call (fail-closed).
+        validate_mock.assert_called_once_with("sb_secret_placeholder")
+        # AsyncClientOptions carry the AGENTS.md-mandated flags.
+        create_mock.assert_awaited_once()
+        options = create_mock.call_args.args[2]
+        assert options.schema == "public"
+        assert options.auto_refresh_token is False
+        assert options.persist_session is False
+        assert db._client is client
 
 
 class TestMigration023:
