@@ -64,6 +64,28 @@ def _load_real_locales() -> None:
     load_locales()
 
 
+@pytest.fixture(autouse=True)
+def _isolate_i18n_state():
+    """Snapshot and restore i18n module globals around every test.
+
+    Several suites deliberately overwrite module-level i18n state
+    (``_locales`` / ``_guild_languages``) with distinctive test locales.
+    Under pytest-randomly those mutations leaked into unrelated modules,
+    producing seed-dependent failures (core-help-builder resolving raw
+    keys, xp-listener/confirm-view trios, etc.). Restoring after each
+    test makes order irrelevant. Cost: two small dict copies per test.
+    """
+    from bot.core import i18n as i18n_mod
+
+    orig_locales = dict(i18n_mod._locales)
+    orig_guild_langs = dict(i18n_mod._guild_languages)
+    yield
+    i18n_mod._locales.clear()
+    i18n_mod._guild_languages.clear()
+    i18n_mod._locales.update(orig_locales)
+    i18n_mod._guild_languages.update(orig_guild_langs)
+
+
 # ---------------------------------------------------------------------------
 # Event-loop factory — force PollSelector on Python ≥ 3.14
 # ---------------------------------------------------------------------------
@@ -226,6 +248,77 @@ def mock_interaction(mock_guild: MagicMock, mock_member: MagicMock) -> MagicMock
     interaction.user = mock_member
     interaction.client = MagicMock()
     interaction.guild_id = mock_guild.id
+    return interaction
+
+
+# ---------------------------------------------------------------------------
+# Discord mock factories — shared builders (cycle-5 S5b/c factory hoist).
+# Import from tests.conftest: ``from tests.conftest import make_ctx`` etc.
+# These replace the per-file _make_ctx/_make_member local variants.
+# ---------------------------------------------------------------------------
+
+
+def make_member(
+    *,
+    roles: list[MagicMock] | tuple[MagicMock, ...] = (),
+    admin: bool = False,
+    member_id: int = 111222333,
+    display_name: str = "TestUser",
+) -> MagicMock:
+    """Return a mock discord.Member.
+
+    No ``spec`` — avoids auto-created async children whose coroutines leak
+    on GC (same rationale as the ``mock_member`` fixture). ``__class__`` is
+    overridden so ``isinstance(member, discord.Member)`` still works.
+    """
+    member = MagicMock()
+    member.__class__ = discord.Member
+    member.id = member_id
+    member.display_name = display_name
+    member.mention = f"<@{member_id}>"
+    member.guild_permissions.administrator = admin
+    member.roles = list(roles)
+    return member
+
+
+def make_ctx(
+    *,
+    guild_id: int | None = 123456789,
+    author: MagicMock | None = None,
+    send: bool = True,
+    spec: type | None = None,
+) -> MagicMock:
+    """Return a mock prefix-command context (NebulosaContext stand-in).
+
+    ``guild_id=None`` simulates a DM context; ``spec=commands.Context``
+    serves red-file needs for a spec'd mock; ``send=False`` omits the
+    ``ctx.send`` AsyncMock for builders that never send.
+    """
+    ctx = MagicMock(spec=spec) if spec is not None else MagicMock()
+    ctx.author = author if author is not None else make_member()
+    if guild_id is not None:
+        ctx.guild = MagicMock(spec=discord.Guild)
+        ctx.guild.id = guild_id
+    else:
+        ctx.guild = None
+    if send:
+        ctx.send = AsyncMock()
+    return ctx
+
+
+def make_interaction(
+    *,
+    guild_id: int | None = 123456789,
+    user: MagicMock | None = None,
+    client: MagicMock | None = None,
+) -> MagicMock:
+    """Return a mock discord.Interaction wired with guild/user/client."""
+    interaction = MagicMock(spec=discord.Interaction)
+    interaction.guild = MagicMock(spec=discord.Guild)
+    interaction.guild.id = guild_id if guild_id is not None else 123456789
+    interaction.user = user if user is not None else make_member()
+    interaction.client = client if client is not None else MagicMock()
+    interaction.guild_id = interaction.guild.id
     return interaction
 
 
