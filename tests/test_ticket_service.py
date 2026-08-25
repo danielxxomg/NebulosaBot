@@ -14,26 +14,36 @@ Covers:
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import pathlib
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import Any, ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
 
-if TYPE_CHECKING:
-    from bot.services.ticket_invariants import RepairAuthority
-
 import bot.services.ticket_lifecycle_service as lifecycle_service_module
 import bot.services.ticket_repair_service as repair_service_module
+from bot.config import INTEGRITY_BACKOFF_SECONDS, INTEGRITY_MAX_BACKOFF_SECONDS
 from bot.core.cache import TTLCache
-from bot.models.ticket import IntegrityEvidence, Ticket
+from bot.models.ticket import IntegrityEvidence, RepairResult, Ticket
 from bot.models.ticket_note import TicketNote
+from bot.services.integrity_report import evaluate_live_preflight
+from bot.services.ticket_invariants import GlobalMutationGrant, RepairAuthority
 from bot.services.ticket_lifecycle_service import TicketLifecycleService
 from bot.services.ticket_query_service import TicketQueryService
 from bot.services.ticket_repair_service import TicketRepairService
-from bot.services.ticket_service import MAX_RETRIES, TicketService
+from bot.services.ticket_service import (
+    MAX_RETRIES,
+    TicketCategoryNotConfiguredError,
+    TicketService,
+    backoff_delay,
+    evaluate_repair_eligibility,
+    plan_sweep_batch,
+    probe_channel_absence,
+)
 
 # ---------------------------------------------------------------------------
 # Helper fixtures
@@ -1720,7 +1730,6 @@ async def test_reopen_no_category_raises_typed_exception(
     """reopen_ticket MUST raise TicketCategoryNotConfiguredError (not raw
     ValueError) when no ticket category is configured for the guild.
     """
-    from bot.services.ticket_service import TicketCategoryNotConfiguredError
 
     ticket_id = "ticket-uuid-003"
     closed_row = _closed_ticket_row()
@@ -1748,7 +1757,6 @@ async def test_reopen_deleted_category_raises_typed_exception(
     """reopen_ticket MUST raise TicketCategoryNotConfiguredError when the
     configured Discord category channel no longer exists.
     """
-    from bot.services.ticket_service import TicketCategoryNotConfiguredError
 
     ticket_id = "ticket-uuid-003"
     closed_row = _closed_ticket_row()
@@ -2320,7 +2328,6 @@ async def test_claim_success_audit_failure_continues(
     When insert_audit_row raises on the success path, the claim
     UI action (role assignment) proceeds normally and a WARNING is logged.
     """
-    import logging
 
     ticket_id = ticket_row["id"]
     staff_id = "999999999"
@@ -2352,7 +2359,6 @@ async def test_close_success_audit_failure_continues(
     When insert_audit_row raises on the success path, the close
     UI action (channel delete, transcript) proceeds normally and a WARNING is logged.
     """
-    import logging
 
     ticket_id = ticket_row["id"]
 
@@ -2512,8 +2518,6 @@ async def test_close_ticket_full_countdown_cancelled_error_logs_and_reraises(
     Design contract (design.md): "It logs and re-raises CancelledError, so a
     cancelled task never reaches deletion."
     """
-    import asyncio
-    import logging
 
     channel = _mock_channel_for_close()
     bot = _mock_bot_for_close()
@@ -2567,7 +2571,6 @@ async def test_close_ticket_full_countdown_failure_fallback(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """When countdown edit fails, MUST log warning and fall back to silent delete."""
-    import logging
 
     channel = _mock_channel_for_close()
     bot = _mock_bot_for_close()
@@ -2840,7 +2843,6 @@ async def test_edit_ticket_category_rename_failure_does_not_block_db(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """When channel rename raises HTTPException, DB update MUST still succeed."""
-    import logging
 
     ticket_id = "ticket-uuid-edit"
     open_row = _open_ticket_row_for_edit(category_id="cat-uuid-support")
@@ -3094,175 +3096,102 @@ async def test_edit_ticket_category_not_found(
 # resolve_member_safe, resolve_category_name).
 
 
-class TestCreateTicketChannelOverwrites:
-    """Characterization: create_ticket_channel permission overwrites paths."""
+class TestTicketChannelOverwriteMatrix:
+    """Characterization: permission overwrites across both channel constructors.
 
+    One matrix over (mode, mod-role resolution): ``create_ticket_channel`` and
+    ``reopen_ticket`` include the mod principal exactly when it resolves, and
+    always carry default_role (denied), bot, and author.
+    """
+
+    _OVERWRITE_MATRIX: ClassVar[list[Any]] = [
+        pytest.param("create", True, id="create-with-mod-role"),
+        pytest.param("create", False, id="create-without-mod-role"),
+        pytest.param("reopen", True, id="reopen-with-mod-role"),
+        pytest.param("reopen", False, id="reopen-without-mod-role"),
+    ]
+
+    @pytest.mark.parametrize(("mode", "with_mod_role"), _OVERWRITE_MATRIX)
     @pytest.mark.asyncio
-    async def test_overwrites_include_mod_role_when_provided(
+    async def test_channel_overwrites_matrix(
         self,
         service: TicketService,
         mock_db: AsyncMock,
         ticket_row: dict,
+        mode: str,
+        with_mod_role: bool,
     ) -> None:
-        """With mod_role provided, overwrites MUST include 4 principals:
-        default_role (denied), bot (read+send), author (read+send), mod (read+send).
-        """
-        guild = _mock_guild_for_channel()
-        category = MagicMock(spec=discord.CategoryChannel)
-        author = _mock_author()
-        mod_role = MagicMock(name="ModRole")
-        mod_role.id = 222
+        """Overwrites: 3 base principals (+mod when resolved) with default_role denied."""
+        mod_role: MagicMock | None = None
+        if mode == "create":
+            guild = _mock_guild_for_channel()
+            category = MagicMock(spec=discord.CategoryChannel)
+            author = _mock_author()
+            mock_db.get_max_ticket_number.return_value = 0
+            mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1}
+            extra_kwargs: dict[str, Any] = {}
+            if with_mod_role:
+                mod_role = MagicMock(name="ModRole")
+                mod_role.id = 222
+                extra_kwargs["mod_role"] = mod_role
 
-        mock_db.get_max_ticket_number.return_value = 0
-        mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1}
+            await service.create_ticket_channel(
+                guild,
+                category,
+                author,
+                guild_id="123456789",
+                category_name="Support",
+                **extra_kwargs,
+            )
+        else:
+            ticket_id = "ticket-uuid-003"
+            closed_row = _closed_ticket_row()
+            reopened_row = {**closed_row, "channelId": "555555555", "status": "open", "closedAt": None}
 
-        await service.create_ticket_channel(
-            guild,
-            category,
-            author,
-            guild_id="123456789",
-            category_name="Support",
-            mod_role=mod_role,
-        )
+            mock_db.get_ticket.side_effect = [closed_row, reopened_row]
+            mock_db.get_guild.return_value = {
+                "id": "123456789",
+                "ticketCategoryId": "100000000",
+                "modRoleId": "222222222" if with_mod_role else None,
+            }
+            mock_db.get_ticket_category = AsyncMock(return_value={"name": "Soporte"})
+
+            category_channel = MagicMock(spec=discord.CategoryChannel)
+            guild = _mock_guild_for_reopen(category_channel=category_channel)
+            if with_mod_role:
+                mod_role = MagicMock(name="ModRole")
+                mod_role.id = 222222222
+                guild.get_role = MagicMock(return_value=mod_role)
+
+            author = MagicMock()
+            author.display_name = "DanielXX"
+            guild.get_member = MagicMock(return_value=author)
+
+            await service.reopen_ticket(ticket_id, guild=guild)
 
         create_kwargs = guild.create_text_channel.call_args.kwargs
         overwrites = create_kwargs["overwrites"]
 
-        # 4 principals: default_role, bot, author, mod
-        assert len(overwrites) == 4
+        assert len(overwrites) == (4 if with_mod_role else 3)
         assert guild.default_role in overwrites
         assert guild.me in overwrites
         assert author in overwrites
-        assert mod_role in overwrites
-
-        # Permissions: default_role denied, others get read+send.
-        assert overwrites[guild.default_role].read_messages is False
-        assert overwrites[guild.me].read_messages is True
-        assert overwrites[guild.me].send_messages is True
-        assert overwrites[author].read_messages is True
-        assert overwrites[author].send_messages is True
-        assert overwrites[mod_role].read_messages is True
-        assert overwrites[mod_role].send_messages is True
-
-    @pytest.mark.asyncio
-    async def test_overwrites_exclude_mod_role_when_none(
-        self,
-        service: TicketService,
-        mock_db: AsyncMock,
-        ticket_row: dict,
-    ) -> None:
-        """Without mod_role, overwrites MUST include 3 principals only."""
-        guild = _mock_guild_for_channel()
-        category = MagicMock(spec=discord.CategoryChannel)
-        author = _mock_author()
-
-        mock_db.get_max_ticket_number.return_value = 0
-        mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1}
-
-        await service.create_ticket_channel(
-            guild,
-            category,
-            author,
-            guild_id="123456789",
-            category_name="Support",
-        )
-
-        create_kwargs = guild.create_text_channel.call_args.kwargs
-        overwrites = create_kwargs["overwrites"]
-
-        # 3 principals: default_role, bot, author (no mod).
-        assert len(overwrites) == 3
-        assert guild.default_role in overwrites
-        assert guild.me in overwrites
-        assert author in overwrites
+        if mod_role is not None:
+            # Mod principal present: read+send allowed, default_role denied.
+            assert mod_role in overwrites
+            assert overwrites[guild.default_role].read_messages is False
+            assert overwrites[mod_role].read_messages is True
+            assert overwrites[mod_role].send_messages is True
+        if mode == "create" and mod_role is not None:
+            # Full permission grid pinned on the create path.
+            assert overwrites[guild.me].read_messages is True
+            assert overwrites[guild.me].send_messages is True
+            assert overwrites[author].read_messages is True
+            assert overwrites[author].send_messages is True
 
 
 class TestReopenTicketChannelConstruction:
     """Characterization: reopen_ticket channel-construction block."""
-
-    @pytest.mark.asyncio
-    async def test_reopen_overwrites_include_mod_role_from_guild_config(
-        self,
-        service: TicketService,
-        mock_db: AsyncMock,
-    ) -> None:
-        """When guild config has modRoleId, reopen overwrites MUST include the mod role."""
-        ticket_id = "ticket-uuid-003"
-        closed_row = _closed_ticket_row()
-        reopened_row = {**closed_row, "channelId": "555555555", "status": "open", "closedAt": None}
-
-        mock_db.get_ticket.side_effect = [closed_row, reopened_row]
-        mock_db.get_guild.return_value = {
-            "id": "123456789",
-            "ticketCategoryId": "100000000",
-            "modRoleId": "222222222",
-        }
-        mock_db.get_ticket_category = AsyncMock(return_value={"name": "Soporte"})
-
-        category_channel = MagicMock(spec=discord.CategoryChannel)
-        guild = _mock_guild_for_reopen(category_channel=category_channel)
-
-        mod_role = MagicMock(name="ModRole")
-        mod_role.id = 222222222
-        guild.get_role = MagicMock(return_value=mod_role)
-
-        author_member = MagicMock()
-        author_member.display_name = "DanielXX"
-        guild.get_member = MagicMock(return_value=author_member)
-
-        await service.reopen_ticket(ticket_id, guild=guild)
-
-        create_kwargs = guild.create_text_channel.call_args.kwargs
-        overwrites = create_kwargs["overwrites"]
-
-        # 4 principals when mod role resolves.
-        assert len(overwrites) == 4
-        assert guild.default_role in overwrites
-        assert guild.me in overwrites
-        assert author_member in overwrites
-        assert mod_role in overwrites
-
-        # Permissions verified.
-        assert overwrites[guild.default_role].read_messages is False
-        assert overwrites[mod_role].read_messages is True
-        assert overwrites[mod_role].send_messages is True
-
-    @pytest.mark.asyncio
-    async def test_reopen_overwrites_exclude_mod_role_when_not_configured(
-        self,
-        service: TicketService,
-        mock_db: AsyncMock,
-    ) -> None:
-        """When no modRoleId in guild config, reopen overwrites MUST exclude mod."""
-        ticket_id = "ticket-uuid-003"
-        closed_row = _closed_ticket_row()
-        reopened_row = {**closed_row, "channelId": "555555555", "status": "open", "closedAt": None}
-
-        mock_db.get_ticket.side_effect = [closed_row, reopened_row]
-        mock_db.get_guild.return_value = {
-            "id": "123456789",
-            "ticketCategoryId": "100000000",
-            "modRoleId": None,
-        }
-        mock_db.get_ticket_category = AsyncMock(return_value={"name": "Soporte"})
-
-        category_channel = MagicMock(spec=discord.CategoryChannel)
-        guild = _mock_guild_for_reopen(category_channel=category_channel)
-
-        author_member = MagicMock()
-        author_member.display_name = "DanielXX"
-        guild.get_member = MagicMock(return_value=author_member)
-
-        await service.reopen_ticket(ticket_id, guild=guild)
-
-        create_kwargs = guild.create_text_channel.call_args.kwargs
-        overwrites = create_kwargs["overwrites"]
-
-        # 3 principals: default_role, bot, author (no mod).
-        assert len(overwrites) == 3
-        assert guild.default_role in overwrites
-        assert guild.me in overwrites
-        assert author_member in overwrites
 
     @pytest.mark.asyncio
     async def test_reopen_channel_name_from_category_author_ticket_number(
@@ -3327,7 +3256,6 @@ async def test_countdown_not_found_on_edit_triggers_channel_delete(
     Before the fix, the broad except NotFound would swallow the error and
     return, leaving an accessible closed-ticket channel.
     """
-    import logging
 
     channel = _mock_channel_for_close()
     channel.send = AsyncMock()
@@ -3360,7 +3288,6 @@ async def test_countdown_not_found_on_final_delete_is_tolerated(
     also raises NotFound, _countdown_and_delete MUST log info and return
     cleanly (no exception propagated).
     """
-    import logging
 
     channel = _mock_channel_for_close()
     channel.send = AsyncMock()
@@ -3396,7 +3323,6 @@ async def test_countdown_not_found_on_final_delete_http_error_logged(
     """R3-001: When msg.edit raises NotFound but channel.delete raises a
     non-NotFound HTTPException, _countdown_and_delete MUST log the exception.
     """
-    import logging
 
     channel = _mock_channel_for_close()
     channel.send = AsyncMock()
@@ -3588,7 +3514,6 @@ class TestRepairTicketFromEvidence:
         ticket_row: dict,
     ) -> None:
         """Corroborated evidence + successful close -> repaired."""
-        from bot.models.ticket import IntegrityEvidence, RepairResult
 
         evidence = IntegrityEvidence(
             ticket_id=ticket_row["id"],
@@ -3628,7 +3553,6 @@ class TestRepairTicketFromEvidence:
         ticket_row: dict,
     ) -> None:
         """Transition returns None -> already_closed."""
-        from bot.models.ticket import IntegrityEvidence, RepairResult
 
         evidence = IntegrityEvidence(
             ticket_id=ticket_row["id"],
@@ -3658,7 +3582,6 @@ class TestRepairTicketFromEvidence:
         ticket_row: dict,
     ) -> None:
         """Channel exists -> not corroborated -> skipped."""
-        from bot.models.ticket import IntegrityEvidence, RepairResult
 
         evidence = IntegrityEvidence(
             ticket_id=ticket_row["id"],
@@ -3690,9 +3613,6 @@ class TestRepairTicketFromEvidence:
         ticket_row: dict,
     ) -> None:
         """MODEL-2.4: transient Discord verification error must map to outcome=error with exception class name."""
-        import discord
-
-        from bot.models.ticket import IntegrityEvidence, RepairResult
 
         evidence = IntegrityEvidence(
             ticket_id=ticket_row["id"],
@@ -3739,7 +3659,6 @@ class TestRepairTicketFromEvidence:
         ticket_row: dict,
     ) -> None:
         """RepairResult(action='close') MUST have evidence_id or it raises ValueError."""
-        from bot.models.ticket import RepairResult
 
         # Direct construction: close/repaired without evidence_id → ValueError.
         with pytest.raises(ValueError, match="evidence_id"):
@@ -3750,7 +3669,7 @@ class TestRepairTicketFromEvidence:
                 outcome="repaired",
                 reason=None,
                 evidence_id=None,  # missing!
-                timestamp=__import__("datetime").datetime.now(__import__("datetime").UTC),
+                timestamp=datetime.now(UTC),
             )
 
     @pytest.mark.asyncio
@@ -3761,7 +3680,6 @@ class TestRepairTicketFromEvidence:
         ticket_row: dict,
     ) -> None:
         """When G.2 is gate_unresolved, repair_ticket_from_evidence MUST NOT mutate."""
-        from bot.models.ticket import IntegrityEvidence
 
         evidence = IntegrityEvidence(
             ticket_id=ticket_row["id"],
@@ -3835,14 +3753,12 @@ def _corroborated_evidence(ticket_row: dict) -> IntegrityEvidence:
 
 def _unresolved_preflight() -> object:
     """Return a read-only LivePreflightResult that is NOT resolved."""
-    from bot.services.integrity_report import evaluate_live_preflight
 
     return evaluate_live_preflight(observed_at=datetime.now(UTC).isoformat())
 
 
 def _resolved_preflight() -> object:
     """Return a read-only LivePreflightResult that IS resolved."""
-    from bot.services.integrity_report import evaluate_live_preflight
 
     return evaluate_live_preflight(
         project_status="ACTIVE_HEALTHY",
@@ -3862,7 +3778,6 @@ async def test_repair_denied_when_preflight_unresolved(
     ticket_row: dict,
 ) -> None:
     """Unresolved preflight MUST quarantine/skip without ANY ticket mutation."""
-    from bot.models.ticket import RepairResult
 
     evidence = _corroborated_evidence(ticket_row)
     preflight = _unresolved_preflight()
@@ -3897,7 +3812,6 @@ async def test_repair_quarantines_unknown_evidence(
     ticket_row: dict,
 ) -> None:
     """Unknown (None) channel existence MUST quarantine, never mutate."""
-    from bot.models.ticket import IntegrityEvidence, RepairResult
 
     evidence = IntegrityEvidence(
         ticket_id=ticket_row["id"],
@@ -3929,7 +3843,6 @@ async def test_repair_quarantines_stale_evidence(
     ticket_row: dict,
 ) -> None:
     """Stale absence evidence MUST quarantine (unresolved), never mutate."""
-    from bot.models.ticket import IntegrityEvidence, RepairResult
 
     evidence = IntegrityEvidence(
         ticket_id=ticket_row["id"],
@@ -3961,7 +3874,6 @@ async def test_repair_denied_when_channel_still_exists(
     ticket_row: dict,
 ) -> None:
     """A live channel (corroborated=False) MUST be denied/skipped, no mutation."""
-    from bot.models.ticket import IntegrityEvidence, RepairResult
 
     evidence = IntegrityEvidence(
         ticket_id=ticket_row["id"],
@@ -3993,7 +3905,6 @@ async def test_repair_denied_for_non_active_ticket(
     ticket_row: dict,
 ) -> None:
     """A closed-ticket evidence (corroborated=False) MUST be denied, no mutation."""
-    from bot.models.ticket import IntegrityEvidence, RepairResult
 
     evidence = IntegrityEvidence(
         ticket_id=ticket_row["id"],
@@ -4190,7 +4101,6 @@ def test_shared_evaluation_maps_evidence_to_denial_outcomes() -> None:
     unresolved preflight -> skipped, unknown/stale -> quarantined,
     live/non-active -> skipped. No adapter keeps a parallel copy.
     """
-    from bot.services.ticket_service import evaluate_repair_eligibility
 
     now = datetime.now(UTC)
     unknown = IntegrityEvidence("t1", "g1", "c1", "open", None, now)
@@ -4236,7 +4146,6 @@ async def test_repair_audit_failure_never_reports_repaired(
     semantics is ``close/error`` with a non-empty reason and no evidence
     success claim.
     """
-    from bot.models.ticket import RepairResult
 
     evidence = _corroborated_evidence(ticket_row)
     closed_row = {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"}
@@ -4286,7 +4195,6 @@ class TestPR5IdempotencyAndBestEffort:
         conditional transition). A best-effort audit row whose insert raises
         must be logged at WARNING and must NOT change the outcome or claim mutation.
         """
-        import logging
 
         evidence = _corroborated_evidence(ticket_row)
         # Transition returns None -> already_closed loser path.
@@ -4320,7 +4228,6 @@ class TestPR5IdempotencyAndBestEffort:
         The current semantics degrades repaired to close/error with a non-empty reason
         so no success is claimed without evidence.
         """
-        import logging
 
         evidence = _corroborated_evidence(ticket_row)
         closed_row = {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"}
@@ -4371,7 +4278,6 @@ class TestProbeChannelAbsence:
     @pytest.mark.asyncio
     async def test_not_found_corroborates_absence(self) -> None:
         """Only discord.NotFound yields channel_exists=False."""
-        from bot.services.ticket_service import probe_channel_absence
 
         guild = self._guild_with_fetch(None)
         guild.fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(), "Unknown Channel"))
@@ -4385,7 +4291,6 @@ class TestProbeChannelAbsence:
     @pytest.mark.asyncio
     async def test_live_channel_returns_true(self) -> None:
         """A resolvable channel is present (channel_exists=True)."""
-        from bot.services.ticket_service import probe_channel_absence
 
         channel = MagicMock(spec=discord.TextChannel)
         channel.id = 888888888
@@ -4399,7 +4304,6 @@ class TestProbeChannelAbsence:
     @pytest.mark.asyncio
     async def test_forbidden_is_unresolved(self) -> None:
         """403/missing permission is unresolved, never absence."""
-        from bot.services.ticket_service import probe_channel_absence
 
         guild = self._guild_with_fetch(None)
         guild.fetch_channel = AsyncMock(side_effect=discord.Forbidden(MagicMock(), "Missing Access"))
@@ -4412,7 +4316,6 @@ class TestProbeChannelAbsence:
     @pytest.mark.asyncio
     async def test_rate_limit_is_unresolved(self) -> None:
         """429 rate limit is unresolved, never absence."""
-        from bot.services.ticket_service import probe_channel_absence
 
         guild = self._guild_with_fetch(None)
         guild.fetch_channel = AsyncMock(side_effect=discord.RateLimited(0.5))
@@ -4425,7 +4328,6 @@ class TestProbeChannelAbsence:
     @pytest.mark.asyncio
     async def test_http_timeout_is_unresolved(self) -> None:
         """Generic HTTPException (timeout) is unresolved, never absence."""
-        from bot.services.ticket_service import probe_channel_absence
 
         guild = self._guild_with_fetch(None)
         guild.fetch_channel = AsyncMock(side_effect=discord.HTTPException(MagicMock(), "timeout"))
@@ -4438,7 +4340,6 @@ class TestProbeChannelAbsence:
     @pytest.mark.asyncio
     async def test_missing_guild_is_unresolved(self) -> None:
         """A guild not in the bot cache is unknown (None), never absence."""
-        from bot.services.ticket_service import probe_channel_absence
 
         bot = self._bot_with_guild(None)
 
@@ -4449,7 +4350,6 @@ class TestProbeChannelAbsence:
     @pytest.mark.asyncio
     async def test_malformed_channel_id_is_unresolved(self) -> None:
         """A non-numeric channel id is unknown (None), never absence."""
-        from bot.services.ticket_service import probe_channel_absence
 
         guild = self._guild_with_fetch(None)
         bot = self._bot_with_guild(guild)
@@ -4465,7 +4365,6 @@ class TestPlanSweepBatch:
 
     def test_batch_is_bounded_and_deduped(self) -> None:
         """Batch caps at batch_size and never re-emits a seen candidate."""
-        from bot.services.ticket_service import plan_sweep_batch
 
         candidates = [{"id": f"c{i}"} for i in range(5)]
         seen: set[str] = {"c0", "c2"}
@@ -4478,7 +4377,6 @@ class TestPlanSweepBatch:
 
     def test_batch_marks_seen(self) -> None:
         """Selected candidates are marked seen so a later call does not repeat them."""
-        from bot.services.ticket_service import plan_sweep_batch
 
         candidates = [{"id": "a"}, {"id": "b"}]
         seen: set[str] = set()
@@ -4495,8 +4393,6 @@ class TestBackoffDelay:
 
     def test_backoff_grows_and_is_bounded(self) -> None:
         """Backoff doubles each attempt but never exceeds the max."""
-        from bot.config import INTEGRITY_BACKOFF_SECONDS, INTEGRITY_MAX_BACKOFF_SECONDS
-        from bot.services.ticket_service import backoff_delay
 
         assert backoff_delay(0) == INTEGRITY_BACKOFF_SECONDS
         assert backoff_delay(1) == min(INTEGRITY_BACKOFF_SECONDS * 2, INTEGRITY_MAX_BACKOFF_SECONDS)
@@ -4647,7 +4543,6 @@ class TestRepairTicketManual:
         return bot
 
     def _guild_admin_authority(self, guild_id: str = "123456789") -> RepairAuthority:
-        from bot.services.ticket_invariants import RepairAuthority
 
         return RepairAuthority(
             actor_id="111111111",
@@ -4663,8 +4558,6 @@ class TestRepairTicketManual:
         mock_db: AsyncMock,
     ) -> None:
         """A plain user with no authority → denied, no probe, no mutation."""
-        from bot.models.ticket import RepairResult
-        from bot.services.ticket_invariants import RepairAuthority
 
         authority = RepairAuthority(
             actor_id="111111111",
@@ -4885,7 +4778,6 @@ class TestRepairTicketManualGrant:
         mock_db: AsyncMock,
     ) -> None:
         """A bot-owner operator without an explicit grant is denied before any probe."""
-        from bot.services.ticket_invariants import RepairAuthority
 
         authority = RepairAuthority(
             actor_id="owner-1",
@@ -4915,7 +4807,6 @@ class TestRepairTicketManualGrant:
         mock_db: AsyncMock,
     ) -> None:
         """A bot-owner operator WITH a confirmed, actor/target-matching grant repairs."""
-        from bot.services.ticket_invariants import GlobalMutationGrant, RepairAuthority
 
         authority = RepairAuthority(
             actor_id="owner-1",
@@ -4964,7 +4855,6 @@ class TestRepairTicketManualGrant:
         mock_db: AsyncMock,
     ) -> None:
         """A grant naming a different actor never authorizes this operator."""
-        from bot.services.ticket_invariants import GlobalMutationGrant, RepairAuthority
 
         authority = RepairAuthority(
             actor_id="owner-1",
