@@ -23,6 +23,7 @@ from bot.cogs.ticket_lifecycle_flow import TicketLifecycleFlow
 from bot.cogs.ticket_notes_flow import TicketNotesFlow
 from bot.core.context import NebulosaContext
 from bot.core.i18n import t
+from bot.services.ticket_repair_service import is_cancel_message
 from bot.utils.brand import SUCCESS, WARNING
 from bot.utils.checks import can_check, can_member, is_admin
 from bot.utils.embeds import build_ticket_embed, info_embed
@@ -271,15 +272,19 @@ class TicketsCog(commands.Cog, name="Tickets"):
         ticket_id = ticket_row.get("id")
         if not ticket_id:
             return
-        # Per-user debounce (S4.4): drop duplicate ',' messages inside the
-        # TTL window before they reach the timer state-machine.
+        # Per-user debounce (S4.4): drop duplicate ',' duration messages inside
+        # the TTL window before they reach the timer state-machine.
+        # ',cancel' is exempt (cycle-5 narrow fix): cancelling is urgent, so
+        # cancel messages neither check nor enter the window; the grammar
+        # lives in the service layer next to the parser itself.
         now = time.monotonic()
         self._evict_stale_timer_entries(now)
-        debounce_key = f"{gid}:{message.channel.id}:{author.id}"
-        last_fire = self._timer_debounce.get(debounce_key)
-        if last_fire is not None and now - last_fire < TIMER_DEBOUNCE_TTL:
-            return
-        self._timer_debounce[debounce_key] = now
+        if not is_cancel_message(content):
+            debounce_key = f"{gid}:{message.channel.id}:{author.id}"
+            last_fire = self._timer_debounce.get(debounce_key)
+            if last_fire is not None and now - last_fire < TIMER_DEBOUNCE_TTL:
+                return
+            self._timer_debounce[debounce_key] = now
         await self._dispatch_timer_message(ts, message, gid, ticket_id, ticket_row, content, author)
 
     def _evict_stale_timer_entries(self, now: float) -> None:

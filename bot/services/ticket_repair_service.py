@@ -796,9 +796,8 @@ class TicketRepairService:
         ticket_id = ticket_row.get("id")
         if not ticket_id:
             return None
-        content_lower = content.lower()
 
-        if content_lower.startswith(",cancel"):
+        if is_cancel_message(content):
             try:
                 await self.cancel_scheduled_close(guild_id, ticket_id)
             except Exception:
@@ -1232,3 +1231,15 @@ class TimerMessageResult:
     schedule_failed: bool = False
     prompt_title: str = ""
     prompt_desc: str = ""
+
+
+def is_cancel_message(content: str) -> bool:
+    """Return True when *content* invokes the ``,cancel`` timer command.
+
+    Single source of truth for the cancel grammar, shared by
+    :meth:`TicketRepairService.handle_timer_message` (state-machine branch)
+    and the ``TicketsCog.on_message`` debounce gate (cycle-5 narrow fix:
+    cancelling is urgent, so cancel messages bypass the duplicate-
+    suppression window entirely).
+    """
+    return content.strip().lower().startswith(",cancel")

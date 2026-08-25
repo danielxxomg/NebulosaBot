@@ -40,6 +40,7 @@ from bot.core.cache import TTLCache
 from bot.core.i18n import load_locales, set_guild_language
 from bot.models.ticket import RepairResult, Ticket
 from bot.models.ticket_note import TicketNote
+from bot.services.ticket_repair_service import TimerMessageResult
 from bot.services.ticket_service import TicketService
 from bot.views.confirmation import ConfirmCancelView
 from bot.views.tickets import TicketIntakeModal
@@ -991,6 +992,70 @@ class TestTimerMessageDebounce:
         # The stale entry was evicted, not left to grow unbounded.
         assert len(self.cog._timer_debounce) == 1
         assert self.cog._timer_debounce["123456789:444444444:111111111"] == 1100.0
+
+    # -- cycle-5 narrow fix: ',cancel' exempt from the debounce window ------
+
+    async def test_cancel_within_window_still_processed(self) -> None:
+        """A ',cancel' inside the 15s window MUST still reach the state-machine.
+
+        Maintainer decision (cycle-5-quality-zero narrow fix): cancelling is
+        urgent by nature — the duplicate-suppression window may never
+        silently drop it. Only duration-setting messages are debounced.
+        """
+        ts = self.bot.ticket_service
+        ts.handle_timer_message = AsyncMock(
+            side_effect=[
+                None,  # first fire: ',12h' parses as duration (dispatch only)
+                TimerMessageResult(
+                    action="cancelled",
+                    guild_id="123456789",
+                    ticket_id=_ticket_row()["id"],
+                    author_id="111111111",
+                ),
+            ]
+        )
+        self.message.channel.send = AsyncMock()
+
+        self.message.content = ",12h"
+        clock = [1000.0]
+        await self._run(clock)()
+
+        self.message.content = ",cancel"
+        clock[0] = 1005.0  # inside the 15s window of the ',12h' above
+        await self._run(clock)()
+
+        assert ts.handle_timer_message.await_count == 2
+        assert ts.handle_timer_message.await_args_list[1].args[2] == ",cancel"
+        # Cancel routed through the confirmation embed (schedule_close cancelled).
+        self.message.channel.send.assert_awaited_once()
+
+    async def test_cancel_does_not_enter_debounce_window(self) -> None:
+        """The exemption neither checks NOR refreshes the 15s duration window."""
+        self.message.content = ",12h"
+        clock = [1000.0]
+        await self._run(clock)()  # duration fire seeds the window
+
+        self.message.content = ",cancel"
+        clock[0] = 1010.0
+        await self._run(clock)()  # exempt — processed, window untouched
+
+        self.message.content = ",30m"
+        clock[0] = 1016.0  # 16s after the ',12h' seed — beyond the TTL
+        await self._run(clock)()
+
+        assert self.bot.ticket_service.handle_timer_message.await_count == 3
+
+    async def test_duration_messages_still_debounced(self) -> None:
+        """Duration-setting ',' messages remain debounced (regression guard)."""
+        self.message.content = ",12h"
+        clock = [1000.0]
+        await self._run(clock)()
+
+        self.message.content = ",30m"
+        clock[0] = 1005.0  # same user/channel/guild 5s later
+        await self._run(clock)()
+
+        assert self.bot.ticket_service.handle_timer_message.await_count == 1
 
 
 class TestCogLifecycle:
