@@ -8,8 +8,8 @@ warning, not pass as mocked — ``FakeSupabase`` never PASSes acceptance.
 Tables / views queried (read-only):
   * pg_constraint            — FK constraints
   * pg_policies / pg_policy  — RLS policies (0 expected)
-  * pg_publication_tables    — CDC publication (4 tables)
-  * supabase_migrations.schema_migrations  — 25 live migrations
+  * pg_publication_tables    — CDC publication (6 tables)
+  * supabase_migrations.schema_migrations  — 26 live migrations
 """
 
 from __future__ import annotations
@@ -136,7 +136,7 @@ class LiveAcceptanceGate:
     Contract (proposal Q4, creds real required):
       * Requires LIVE_SUPABASE=1 AND DB_URL (or SUPABASE_DB_URL)
         AND used_real_db=True AND report.resolved == True
-        AND exact 25 migration identity matches local stems.
+        AND exact migration identity matches local stems (names and count).
       * FakeSupabase / PostgREST PGRST205 / count-only → FAIL with warning.
     """
 
@@ -190,7 +190,7 @@ class LiveAcceptanceGate:
             reasons.append(f"live evidence unresolved: {', '.join(self.report.reasons) or 'unknown'}")
         remote_names = self._remote_names
         if remote_names is not None and set(remote_names) != set(local):
-            reasons.append("migration_identity_mismatch: remote names != local 25 stems (not count-only)")
+            reasons.append("migration_identity_mismatch: remote names != local stems (not count-only)")
         passed = not reasons
         return LiveGateResult(passed=passed, reasons=tuple(reasons), used_real_db=self._has_provenance())
 
@@ -259,7 +259,7 @@ def _sync_fetch_catalog(  # noqa: C901 -- 4-query provenance fetch; splitting wo
                     live_publication.append(str(r[0]))
             elif isinstance(r, str):
                 live_publication.append(r)
-        # Migrations — 25 identity
+        # Migrations — identity match (names and count)
         cur.execute("SELECT name FROM supabase_migrations.schema_migrations ORDER BY version")
         mig_rows = cur.fetchall()
         live_migrations: list[str] = []
