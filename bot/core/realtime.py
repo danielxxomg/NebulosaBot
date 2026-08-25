@@ -767,9 +767,7 @@ class RealtimeCacheSubscriber:
             if guild_id is not None:
                 self._cache.invalidate_guild(guild_id)
 
-        economy_builder = (
-            client.table("economy_config").select("guildId").gt("updatedAt", self._last_check)
-        )
+        economy_builder = client.table("economy_config").select("guildId").gt("updatedAt", self._last_check)
         for row in await self._safe_rows(economy_builder):
             guild_id = _row_value(row, "guildId")
             if guild_id is not None:

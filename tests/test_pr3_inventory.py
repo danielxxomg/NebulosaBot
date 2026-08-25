@@ -50,6 +50,7 @@ class TestGuildScopeInventory:
 
 class TestMigration015ParityInventory:
     """Migration 015 parity — unique (guildId, ticketNumber) inventory facts."""
+
     def test_015_migration_file_exists(self) -> None:
         """Migration 015 file MUST exist on disk (parity inventory)."""
         path = Path("migrations/015_ticket_lifecycle_reliability.sql")
