@@ -15,6 +15,7 @@ from discord.ext import commands
 
 from bot.cogs.core import _build_cog_help_embed, _build_help_pages
 from bot.core.i18n import load_locales, set_guild_language
+from tests.conftest import make_ctx
 
 # Ensure real locales are loaded for i18n-aware tests.
 load_locales()
@@ -51,10 +52,8 @@ def _make_bot(cogs_map: dict[str, MagicMock]) -> MagicMock:
 
 
 def _make_ctx(guild_id: int = 123456789) -> MagicMock:
-    """Create a mock NebulosaContext (guild config no longer read by builders)."""
-    ctx = MagicMock()
-    ctx.guild = MagicMock()
-    ctx.guild.id = guild_id
+    """Shared factory minus send (guild config no longer read by builders)."""
+    ctx = make_ctx(guild_id=guild_id, send=False)
     ctx.guild_config = None
     return ctx
 

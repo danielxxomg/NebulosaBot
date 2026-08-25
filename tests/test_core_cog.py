@@ -17,7 +17,6 @@ import logging
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import discord
 import pytest
 from discord.ext import commands, tasks
 
@@ -25,6 +24,7 @@ import bot.cogs.core
 from bot.cogs.core import CoreCog
 from bot.core import i18n as i18n_mod
 from bot.core.i18n import load_locales, set_guild_language
+from tests.conftest import make_ctx
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -117,14 +117,9 @@ def cog(mock_bot: MagicMock) -> CoreCog:
 def _make_ctx(
     guild_id: int | None = _GUILD_ID,
 ) -> MagicMock:
-    """Build a mock NebulosaContext for CoreCog tests."""
-    ctx = MagicMock()
-    ctx.send = AsyncMock()
-    ctx.guild = MagicMock(spec=discord.Guild) if guild_id else None
-    if ctx.guild:
-        ctx.guild.id = guild_id
+    """Shared factory plus CoreCog extras (config attr, display name)."""
+    ctx = make_ctx(guild_id=guild_id)
     ctx.guild_config = None
-    ctx.author = MagicMock(spec=discord.Member)
     ctx.author.display_name = "TestUser"
     return ctx
 

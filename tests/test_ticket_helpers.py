@@ -10,6 +10,7 @@ Covers:
 
 from __future__ import annotations
 
+import re
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -21,6 +22,7 @@ from bot.utils.ticket_helpers import (
     resolve_mod_role,
     sanitize_channel_name,
 )
+from tests.conftest import make_member
 
 # ---------------------------------------------------------------------------
 # Standard happy path
@@ -222,8 +224,6 @@ def test_mixed_case_folded() -> None:
 
 def test_result_is_valid_discord_channel_name() -> None:
     """Result must be lowercase alphanumeric with hyphens only."""
-    import re
-
     result = sanitize_channel_name("Soporte Técnico!", "user_123", 42)
     assert re.match(r"^[a-z0-9]+(-[a-z0-9]+)*$", result)
 
@@ -242,9 +242,9 @@ def _make_guild(*, default_role: MagicMock | None = None, me: MagicMock | None =
 
 
 def _make_member(name: str = "TestUser", member_id: int = 111) -> MagicMock:
-    """Create a mock member."""
-    member = MagicMock(name=name)
-    member.id = member_id
+    """Shared factory with the mock-name pinned to the display name."""
+    member = make_member(member_id=member_id, display_name=name)
+    member.name = name
     return member
 
 

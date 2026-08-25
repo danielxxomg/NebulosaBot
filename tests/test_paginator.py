@@ -17,6 +17,7 @@ import discord
 
 from bot.core.i18n import load_locales, set_guild_language
 from bot.utils.paginator import EmbedPaginator
+from tests.conftest import make_interaction
 
 # Ensure real locales are loaded.
 load_locales()
@@ -28,9 +29,8 @@ def _make_pages(n: int = 3) -> list[discord.Embed]:
 
 
 def _make_interaction() -> MagicMock:
-    """Return a mock interaction with an async edit_message."""
-    interaction = MagicMock(spec=discord.Interaction)
-    interaction.response = MagicMock()
+    """Shared interaction factory plus the async edit_message the buttons use."""
+    interaction = make_interaction()
     interaction.response.edit_message = AsyncMock()
     return interaction
 

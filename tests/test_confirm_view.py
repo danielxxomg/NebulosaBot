@@ -18,6 +18,7 @@ import pytest
 
 from bot.core.i18n import load_locales, set_guild_language
 from bot.views.confirmation import ConfirmCancelView
+from tests.conftest import make_interaction, make_member
 
 # Ensure real locales are loaded.
 load_locales()
@@ -30,14 +31,8 @@ set_guild_language("123456789", "en")
 
 
 def _make_interaction(user_id: int = 111111111, guild_id: int = 123456789) -> MagicMock:
-    """Return a mock discord.Interaction for a specific user and guild."""
-    interaction = MagicMock(spec=discord.Interaction)
-    interaction.user = MagicMock(spec=discord.Member)
-    interaction.user.id = user_id
-    interaction.guild = MagicMock(spec=discord.Guild)
-    interaction.guild.id = guild_id
-    interaction.guild_id = guild_id
-    interaction.response = MagicMock()
+    """Shared interaction factory plus the response mocks the view callbacks use."""
+    interaction = make_interaction(guild_id=guild_id, user=make_member(member_id=user_id))
     interaction.response.edit_message = AsyncMock()
     interaction.response.send_message = AsyncMock()
     return interaction
@@ -406,8 +401,6 @@ class TestDecoratorDefaults:
         """The @discord.ui.button default label for Confirm MUST be 'Confirmar'."""
         # Inspect the decorator callback registry on the class itself.
         # The decorator stores the default label on the class attribute.
-        from bot.views.confirmation import ConfirmCancelView
-
         # Build view with empty guild_id to see raw decorator defaults.
         view = ConfirmCancelView(guild_id="", owner_id=1, on_confirm=AsyncMock())
         confirm_btn = self._get_button_by_id(view, "confirm:confirm")
@@ -416,8 +409,6 @@ class TestDecoratorDefaults:
 
     def test_cancel_decorator_default_is_spanish(self) -> None:
         """The @discord.ui.button default label for Cancel MUST be 'Cancelar'."""
-        from bot.views.confirmation import ConfirmCancelView
-
         view = ConfirmCancelView(guild_id="", owner_id=1, on_confirm=AsyncMock())
         cancel_btn = self._get_button_by_id(view, "confirm:cancel")
         assert cancel_btn.label == "Cancelar"

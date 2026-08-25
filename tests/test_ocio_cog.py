@@ -17,8 +17,10 @@ import pytest
 from discord.ext import commands
 
 from bot.cogs.ocio import OcioCog
+from bot.core import i18n as i18n_mod
 from bot.core.i18n import load_locales, set_guild_language
 from bot.services.ocio_service import OcioService
+from tests.conftest import make_ctx
 
 # ---------------------------------------------------------------------------
 # i18n setup
@@ -30,8 +32,6 @@ _GUILD_ID = 123456789
 @pytest.fixture(autouse=True)
 def _load_i18n() -> None:
     """Load real locale files so t() returns actual strings."""
-    from bot.core import i18n as i18n_mod
-
     i18n_mod._locales.clear()
     i18n_mod._guild_languages.clear()
     load_locales(Path("bot/locales"))
@@ -56,23 +56,8 @@ def cog(mock_bot: MagicMock) -> OcioCog:
 
 
 def _make_ctx(guild_id: int | None = 123456789) -> MagicMock:
-    """Build a mock commands.Context for OcioCog tests.
-
-    Provides ``.send()``, ``.author``, and ``.guild``.
-    If guild_id is None, simulates a DM context.
-    """
-    ctx = MagicMock(spec=commands.Context)
-    ctx.send = AsyncMock()
-    ctx.author = MagicMock(spec=discord.Member)
-    ctx.author.display_name = "TestUser"
-
-    if guild_id is not None:
-        ctx.guild = MagicMock(spec=discord.Guild)
-        ctx.guild.id = guild_id
-    else:
-        ctx.guild = None
-
-    return ctx
+    """Delegates to the shared factory; keeps the DM-capable default."""
+    return make_ctx(guild_id=guild_id, spec=commands.Context)
 
 
 # ---------------------------------------------------------------------------
