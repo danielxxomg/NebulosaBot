@@ -8,7 +8,7 @@ without an HTTP server.
 
 Architecture decisions (see ``design.md`` for the full rationale):
 
-* One Realtime channel (``cache-sync``) with four ``on_postgres_changes``
+* One Realtime channel (``cache-sync``) with six ``on_postgres_changes``
   handlers — one per published table — to keep a single lifecycle.
 * Sync CDC callback schedules an ``asyncio.create_task`` for the async
   handler (awaiting inside the SDK callback is not supported per Context7).
@@ -51,6 +51,8 @@ SUBSCRIBED_TABLES: tuple[str, ...] = (
     "greeting_config",
     "ticket",
     "ticket_note",
+    "member",
+    "economy_config",
 )
 
 # Type alias for the injectable async client factory (eases testing).
@@ -109,15 +111,15 @@ def _normalize_cdc_payload(payload: dict[str, Any], table_hint: str | None = Non
 def _extract_guild_id(table: str, record: dict[str, Any]) -> str | None:
     """Map a CDC *record* to its guild_id based on the source *table*.
 
-    ``guild`` rows carry the guild snowflake as ``id``; ``greeting_config``
-    and ``ticket`` carry it as ``guildId``.  ``ticket_note`` has no direct
-    guild column and returns ``None`` — the caller resolves it via the
-    ticket cache / DB fallback.  Numeric ids are coerced to ``str`` so
-    cache keys stay consistent across write/read paths.
+    ``guild`` rows carry the guild snowflake as ``id``; ``greeting_config``,
+    ``ticket``, ``member``, and ``economy_config`` carry it as ``guildId``.
+    ``ticket_note`` has no direct guild column and returns ``None`` — the
+    caller resolves it via the ticket cache / DB fallback.  Numeric ids are
+    coerced to ``str`` so cache keys stay consistent across write/read paths.
     """
     if table == "guild":
         value = record.get("id")
-    elif table in ("greeting_config", "ticket"):
+    elif table in ("greeting_config", "ticket", "member", "economy_config"):
         value = record.get("guildId")
     else:
         return None
@@ -230,12 +232,19 @@ async def _default_client_factory(supabase_url: str, supabase_key: str) -> Any:
     Imported lazily so the module loads in test environments that mock the
     factory without instantiating a real HTTP transport.
     """
-    from supabase import AsyncClientOptions, acreate_client
+    from supabase import (  # noqa: PLC0415 -- optional-dependency probe; lazy import keeps the module loadable when tests stub the factory
+        AsyncClientOptions,
+        acreate_client,
+    )
 
     return await acreate_client(
         supabase_url,
         supabase_key,
-        AsyncClientOptions(schema="public"),
+        AsyncClientOptions(
+            schema="public",
+            auto_refresh_token=False,
+            persist_session=False,
+        ),
     )
 
 
@@ -263,11 +272,11 @@ def _silence_cancelled_task(task: asyncio.Task[None]) -> None:
 class RealtimeCacheSubscriber:
     """Subscribe to Supabase Realtime CDC and invalidate the bot cache.
 
-    The subscriber owns one Realtime channel (``cache-sync``) with four
+    The subscriber owns one Realtime channel (``cache-sync``) with six
     ``on_postgres_changes`` handlers (guild, greeting_config, ticket,
-    ticket_note).  CDC events are dispatched by table name, the guild_id
-    is extracted, self-echo writes are filtered, and
-    :meth:`TTLCache.invalidate_guild` is called for the affected guild.
+    ticket_note, member, economy_config).  CDC events are dispatched by
+    table name, the guild_id is extracted, self-echo writes are filtered,
+    and :meth:`TTLCache.invalidate_guild` is called for the affected guild.
 
     A 60 s health task tracks the socket status; when unhealthy for more
     than 60 s a 30 s poll fallback takes over.  A 30 s migration watchdog
@@ -364,7 +373,7 @@ class RealtimeCacheSubscriber:
         return self._client
 
     async def start(self) -> None:
-        """Create the async client, subscribe to the 4 tables, spawn tasks."""
+        """Create the async client, subscribe to the 6 tables, spawn tasks."""
         if self._started:
             return
         self._started = True
@@ -711,7 +720,10 @@ class RealtimeCacheSubscriber:
 
         Tickets are queried incrementally via the ``lastActivity`` window;
         guild lacks ``updatedAt`` so it is full-scanned; greeting_config uses
-        incremental ``updatedAt > last_check`` with null included (always-changed).
+        incremental ``updatedAt > last_check`` with null included (always-changed);
+        ``member`` and ``economy_config`` use plain incremental
+        ``updatedAt > last_check`` filters — migration 026 made the column
+        NOT NULL DEFAULT now(), so no null special-casing is needed.
         ``last_check`` advances only after the cycle runs.
         """
         client = await self._ensure_client()
@@ -743,6 +755,22 @@ class RealtimeCacheSubscriber:
             client.table("greeting_config").select("guildId").or_(f"updatedAt.gt.{self._last_check},updatedAt.is.null")
         )
         for row in await self._safe_rows(greeting_builder):
+            guild_id = _row_value(row, "guildId")
+            if guild_id is not None:
+                self._cache.invalidate_guild(guild_id)
+
+        # member + economy_config: incremental updatedAt queries (NOT NULL
+        # columns maintained by migration 026 triggers).
+        member_builder = client.table("member").select("guildId").gt("updatedAt", self._last_check)
+        for row in await self._safe_rows(member_builder):
+            guild_id = _row_value(row, "guildId")
+            if guild_id is not None:
+                self._cache.invalidate_guild(guild_id)
+
+        economy_builder = (
+            client.table("economy_config").select("guildId").gt("updatedAt", self._last_check)
+        )
+        for row in await self._safe_rows(economy_builder):
             guild_id = _row_value(row, "guildId")
             if guild_id is not None:
                 self._cache.invalidate_guild(guild_id)

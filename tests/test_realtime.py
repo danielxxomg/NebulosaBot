@@ -1,14 +1,18 @@
 """Unit tests for bot.core.realtime — Supabase Realtime CDC subscriber.
 
 Covers the cache-sync-realtime spec scenarios:
-    - Realtime subscriber lifecycle (start creates client + subscribes to 4
-      tables; stop removes channel + closes client; idempotent shutdown)
-    - CDC handler dispatch (guild / greeting_config / ticket / ticket_note)
+    - Realtime subscriber lifecycle (start creates client + subscribes to 6
+      tables incl member/economy_config; stop removes channel + closes
+      client; idempotent shutdown)
+    - CDC handler dispatch (guild / greeting_config / ticket / ticket_note /
+      member / economy_config)
     - DELETE events use old_record
     - Self-echo filtering (recent-writes set, 5s TTL, lazy eviction)
     - Health check (60s status log, CHANNEL_ERROR > 60s -> poll fallback)
-    - Poll fallback (30s ticket lastActivity window + guild/greeting scan)
+    - Poll fallback (30s ticket lastActivity window + guild/greeting scan +
+      member/economy_config incremental updatedAt queries)
     - Migration watchdog (30s no events -> warning)
+    - Hard ordering history guard (_on_write wiring precedes publication)
 
 Time is controlled via ``patch("bot.core.realtime.time.monotonic", ...)``
 matching the established test_cache.py pattern (freezegun does not advance
@@ -17,20 +21,34 @@ matching the established test_cache.py pattern (freezegun does not advance
 
 from __future__ import annotations
 
+import inspect
+import logging
+import shutil
+import subprocess
+import sys
+import types
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import bot.core.realtime as realtime_module
 from bot.core.cache import TTLCache
+from bot.core.database import Database
 from bot.core.realtime import (
+    SUBSCRIBED_TABLES,
     RealtimeCacheSubscriber,
     RecentWriteSet,
     TicketGuildCache,
+    _default_client_factory,
     _extract_guild_id,
     _extract_ticket_id,
     _record_for_event,
 )
+
+# Absolute git binary — resolved once (S607: no partial-path process spawns).
+GIT_BIN = shutil.which("git") or "/usr/bin/git"
 
 # ===========================================================================
 # Pure helpers — record selection + guild_id extraction (task 3.5 helpers)
@@ -87,6 +105,19 @@ class TestExtractGuildId:
     def test_coerces_non_string_to_string(self) -> None:
         """Numeric ids MUST be coerced to str for cache key consistency."""
         assert _extract_guild_id("guild", {"id": 123456}) == "123456"
+
+    def test_member_uses_guild_id(self) -> None:
+        """S6: member CDC rows carry guildId — mapped like greeting_config/ticket."""
+        assert _extract_guild_id("member", {"guildId": "444555666"}) == "444555666"
+
+    def test_economy_config_uses_guild_id(self) -> None:
+        """S6: economy_config CDC rows carry guildId."""
+        assert _extract_guild_id("economy_config", {"guildId": "999000111"}) == "999000111"
+
+    @pytest.mark.parametrize("table", ["member", "economy_config"])
+    def test_new_tables_coerce_numeric_guild_id(self, table: str) -> None:
+        """Numeric guildId on the S6 tables MUST coerce to str (cache-key consistency)."""
+        assert _extract_guild_id(table, {"guildId": 123456789}) == "123456789"
 
 
 class TestExtractTicketId:
@@ -232,7 +263,7 @@ def _make_subscriber(cache: TTLCache, client: MagicMock) -> RealtimeCacheSubscri
 
 
 class TestSubscriberStart:
-    """start() — creates async client, one channel, 4 on_postgres_changes, subscribe."""
+    """start() — creates async client, one channel, 6 on_postgres_changes, subscribe."""
 
     @pytest.mark.asyncio
     async def test_start_creates_client_and_subscribes(self, cache: TTLCache) -> None:
@@ -243,11 +274,11 @@ class TestSubscriberStart:
         await sub.start()
 
         client.channel.assert_called_once_with("cache-sync")
-        assert channel.on_postgres_changes.call_count == 4
+        assert channel.on_postgres_changes.call_count == 6
         channel.subscribe.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_start_subscribes_to_four_tables(self, cache: TTLCache) -> None:
+    async def test_start_subscribes_to_six_tables(self, cache: TTLCache) -> None:
         channel = _make_channel_mock()
         client = _make_client_mock(channel)
         sub = _make_subscriber(cache, client)
@@ -255,7 +286,34 @@ class TestSubscriberStart:
         await sub.start()
 
         tables_called = {call.kwargs.get("table") for call in channel.on_postgres_changes.call_args_list}
-        assert tables_called == {"guild", "greeting_config", "ticket", "ticket_note"}
+        assert tables_called == {"guild", "greeting_config", "ticket", "ticket_note", "member", "economy_config"}
+
+
+class TestSubscribedTableScope:
+    """S6: subscription scope extends to member + economy_config (6 tables).
+
+    Spec cache-sync-realtime "Member and economy_config subscription" +
+    "Published table scope is explicit": the subscribed table list MUST
+    contain exactly the six supported tables.
+    """
+
+    SIX_TABLE_CONTRACT = frozenset({"guild", "greeting_config", "ticket", "ticket_note", "member", "economy_config"})
+
+    def test_subscribed_tables_constant_matches_contract(self) -> None:
+        assert frozenset(SUBSCRIBED_TABLES) == self.SIX_TABLE_CONTRACT
+        assert len(SUBSCRIBED_TABLES) == 6
+
+    @pytest.mark.asyncio
+    async def test_start_registers_all_six_tables(self, cache: TTLCache) -> None:
+        channel = _make_channel_mock()
+        client = _make_client_mock(channel)
+        sub = _make_subscriber(cache, client)
+
+        await sub.start()
+
+        tables_called = {call.kwargs.get("table") for call in channel.on_postgres_changes.call_args_list}
+        assert tables_called == self.SIX_TABLE_CONTRACT
+        assert channel.on_postgres_changes.call_count == 6
 
     @pytest.mark.asyncio
     async def test_start_passes_event_and_schema(self, cache: TTLCache) -> None:
@@ -381,6 +439,8 @@ class TestCdcDispatch:
             ("guild", {"id": "G-guild"}, "G-guild"),
             ("greeting_config", {"guildId": "G-greet"}, "G-greet"),
             ("ticket", {"guildId": "G-ticket"}, "G-ticket"),
+            ("member", {"guildId": "G-member"}, "G-member"),
+            ("economy_config", {"guildId": "G-economy"}, "G-economy"),
         ],
     )
     @pytest.mark.asyncio
@@ -434,6 +494,24 @@ class TestCdcDispatch:
 
         assert cache.get("G-del:config") is None
 
+    @pytest.mark.parametrize("table", ["member", "economy_config"])
+    @pytest.mark.asyncio
+    async def test_delete_event_for_new_tables_uses_old_record(self, cache: TTLCache, table: str) -> None:
+        """Spec S6: DELETE CDC for member/economy_config resolves guildId from old_record."""
+        client = _make_client_mock()
+        sub = _make_subscriber(cache, client)
+        cache.set("G-gone:config", "v")
+
+        payload = _cdc_payload(
+            table=table,
+            record={},  # empty record on DELETE
+            old_record={"guildId": "G-gone"},
+            event_type="DELETE",
+        )
+        await sub._handle_cdc(payload)
+
+        assert cache.get("G-gone:config") is None
+
     @pytest.mark.asyncio
     async def test_ticket_note_resolves_via_ticket_cache(self, cache: TTLCache) -> None:
         """ticket_note -> guildId resolved from TicketGuildCache (no DB query)."""
@@ -468,8 +546,6 @@ class TestCdcDispatch:
     @pytest.mark.asyncio
     async def test_ticket_note_unresolvable_skips_invalidation(self, cache: TTLCache, caplog) -> None:
         """ticket_note unresolved (cache miss + DB None) MUST skip and log a warning."""
-        import logging
-
         client = _make_client_mock()
         ticket_resp = MagicMock()
         ticket_resp.data = []  # DB returns nothing
@@ -650,8 +726,6 @@ class TestOnSubscribe:
 
     def test_on_subscribe_is_synchronous(self, cache: TTLCache) -> None:
         """Spec: subscribe callback MUST be synchronous (SDK invokes it directly)."""
-        import inspect
-
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
 
@@ -705,8 +779,6 @@ class TestHealthCheck:
     @pytest.mark.asyncio
     async def test_healthy_subscribed_logs_debug(self, cache: TTLCache, caplog) -> None:
         """Spec: healthy subscription MUST log a DEBUG message."""
-        import logging
-
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
         sub._status = "SUBSCRIBED"
@@ -722,8 +794,6 @@ class TestHealthCheck:
     @pytest.mark.asyncio
     async def test_channel_error_over_60s_enables_fallback(self, cache: TTLCache, caplog) -> None:
         """Spec: disconnected state >60s MUST log a WARNING and enable poll fallback."""
-        import logging
-
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
         sub._status = "CHANNEL_ERROR"
@@ -745,8 +815,6 @@ class TestHealthCheck:
     @pytest.mark.asyncio
     async def test_recovery_disables_fallback(self, cache: TTLCache, caplog) -> None:
         """Spec: reconnection to SUBSCRIBED MUST disable poll fallback and log."""
-        import logging
-
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
         sub._poll_fallback_enabled = True
@@ -854,6 +922,76 @@ class TestPollFallback:
 
         assert sub._last_check > old
 
+    @pytest.mark.parametrize("table", ["member", "economy_config"])
+    @pytest.mark.asyncio
+    async def test_poll_new_tables_incremental_by_updated_at(self, cache: TTLCache, table: str) -> None:
+        """Spec S6: member/economy_config polls filter ``updatedAt > last_check``.
+
+        Migration 026 added trigger-maintained ``updatedAt`` (NOT NULL) to both
+        tables, so the poll MUST query incrementally instead of full-scanning,
+        and invalidate each returned guild.
+        """
+        client = _make_client_mock()
+        gt_calls: list[tuple[str, str]] = []
+
+        def _table(name: str) -> MagicMock:
+            r = MagicMock()
+            if name == table:
+                r.data = [{"guildId": f"G-inc-{table}"}]
+            else:
+                r.data = []
+            r.select = MagicMock(return_value=r)
+            r.gt = MagicMock(side_effect=lambda col, val: gt_calls.append((name, col)) or r)
+            r.lte = MagicMock(return_value=r)
+            return r
+
+        client.table = MagicMock(side_effect=_table)
+        client.select = MagicMock(return_value=client)
+        client.gt = MagicMock(return_value=client)
+        client.lte = MagicMock(return_value=client)
+        client.execute = AsyncMock()
+        sub = _make_subscriber(cache, client)
+        sub._last_check = "2025-06-01T00:00:00+00:00"
+        cache.set(f"G-inc-{table}:config", "v")
+
+        await sub._poll_once()
+
+        assert cache.get(f"G-inc-{table}:config") is None  # row invalidated
+        # The {table} builder was filtered incrementally by updatedAt.
+        assert (table, "updatedAt") in gt_calls
+
+    @pytest.mark.parametrize("table", ["member", "economy_config"])
+    @pytest.mark.asyncio
+    async def test_poll_new_tables_query_window_uses_last_check(self, cache: TTLCache, table: str) -> None:
+        """The incremental filter value MUST be the poll's ``last_check`` window start."""
+        client = _make_client_mock()
+        gt_values: dict[str, str] = {}
+
+        def _table(name: str) -> MagicMock:
+            r = MagicMock()
+            r.data = []
+            r.select = MagicMock(return_value=r)
+
+            def _record_gt(col: str, val: str, _n: str = name) -> MagicMock:
+                gt_values.setdefault(_n, val)
+                return r
+
+            r.gt = MagicMock(side_effect=_record_gt)
+            r.lte = MagicMock(return_value=r)
+            return r
+
+        client.table = MagicMock(side_effect=_table)
+        client.select = MagicMock(return_value=client)
+        client.gt = MagicMock(return_value=client)
+        client.lte = MagicMock(return_value=client)
+        client.execute = AsyncMock()
+        sub = _make_subscriber(cache, client)
+        sub._last_check = "2025-06-01T09:30:00+00:00"
+
+        await sub._poll_once()
+
+        assert gt_values[table] == "2025-06-01T09:30:00+00:00"
+
     @pytest.mark.asyncio
     async def test_poll_stops_on_recovery(self, cache: TTLCache) -> None:
         """Spec R4: when status returns to SUBSCRIBED the poll loop MUST stop
@@ -926,8 +1064,6 @@ class TestMigrationWatchdog:
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
         sub._status = "SUBSCRIBED"
-        import logging
-
         with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
             sub._subscribed_at = 965.0  # 35s ago
             sub._event_count = 0
@@ -943,8 +1079,6 @@ class TestMigrationWatchdog:
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
         sub._status = "SUBSCRIBED"
-        import logging
-
         with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
             sub._subscribed_at = 965.0
             sub._received_count = 0
@@ -960,8 +1094,6 @@ class TestMigrationWatchdog:
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
         sub._status = "SUBSCRIBED"
-        import logging
-
         with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
             sub._subscribed_at = 965.0
             sub._received_count = 3
@@ -975,8 +1107,6 @@ class TestMigrationWatchdog:
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
         sub._status = "SUBSCRIBED"
-        import logging
-
         with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
             sub._subscribed_at = 985.0  # 15s ago
             sub._event_count = 0
@@ -1035,8 +1165,6 @@ class TestReceivedCounter:
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
         sub._status = "SUBSCRIBED"
-        import logging
-
         # Send a skipped event — _received_count=1, _event_count=0
         await sub._handle_cdc(_cdc_payload(table="ticket_note", record={}))
         assert sub._received_count == 1
@@ -1062,8 +1190,6 @@ class TestCloseLogging:
     @pytest.mark.asyncio
     async def test_on_connect_error_logs_close_code(self, cache: TTLCache, caplog) -> None:
         """When WebSocket closes, close code and reason MUST be logged."""
-        import logging
-
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
         await sub.start()
@@ -1085,8 +1211,6 @@ class TestCloseLogging:
     @pytest.mark.asyncio
     async def test_channel_on_close_records_closed_state(self, cache: TTLCache, caplog) -> None:
         """Channel on_close wrapper MUST record CLOSED state."""
-        import logging
-
         client = _make_client_mock()
         channel = client.channel.return_value
         sub = _make_subscriber(cache, client)
@@ -1108,8 +1232,6 @@ class TestCloseLogging:
         catches AttributeError and logs a WARNING. start() continues normally
         and health/poll/watchdog tasks are created.
         """
-        import logging
-
         client = _make_client_mock()
         # Remove _on_connect_error to simulate SDK version without it.
         del client._on_connect_error
@@ -1145,8 +1267,6 @@ class TestCloseLogging:
     @pytest.mark.asyncio
     async def test_health_escalation_after_three_unhealthy_cycles(self, cache: TTLCache, caplog) -> None:
         """After 3 consecutive unhealthy cycles, log level escalates to ERROR."""
-        import logging
-
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
         sub._status = "CHANNEL_ERROR"
@@ -1332,8 +1452,6 @@ class TestDatabaseOnWriteCallback:
     @pytest.mark.asyncio
     async def test_database_on_write_set(self) -> None:
         """Setting _on_write callback stores it on the Database instance."""
-        from bot.core.database import Database
-
         db = Database("https://x.supabase.co", "anon-key")
         assert db._on_write is None
 
@@ -1342,3 +1460,118 @@ class TestDatabaseOnWriteCallback:
 
         db._on_write = fake_callback
         assert db._on_write is fake_callback
+
+
+# ===========================================================================
+# S6.8 hard ordering + docs contract
+# ===========================================================================
+
+
+class TestDefaultClientFactoryOptions:
+    """Default factory MUST build the canonical compliant AsyncClientOptions.
+
+    AGENTS.md Supabase rule (canonical form: ``bot/core/db/base.py``):
+    ``AsyncClientOptions(schema="public", auto_refresh_token=False,
+    persist_session=False)``.
+    """
+
+    @pytest.mark.asyncio
+    async def test_default_factory_passes_compliant_options(self) -> None:
+        sent_options: dict = {}
+
+        class FakeAsyncClientOptions:
+            def __init__(self, **kwargs: object) -> None:
+                sent_options.update(kwargs)
+
+        fake_supabase = types.SimpleNamespace(
+            AsyncClientOptions=FakeAsyncClientOptions,
+            acreate_client=AsyncMock(return_value="client"),
+        )
+        with patch.dict(sys.modules, {"supabase": fake_supabase}):
+            result = await _default_client_factory("https://x.supabase.co", "anon-key")
+
+        assert result == "client"
+        assert sent_options.get("schema") == "public"
+        assert sent_options.get("auto_refresh_token") is False
+        assert sent_options.get("persist_session") is False
+
+
+def _git(*args: str) -> subprocess.CompletedProcess[str]:
+    """Run a git command in the repo root and return the completed process."""
+    repo_root = Path(__file__).parents[1]
+    return subprocess.run(
+        [GIT_BIN, *args],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=repo_root,
+    )
+
+
+class TestHardOrderingHistory:
+    """Spec "Hard ordering is verifiable in history".
+
+    The commit wiring ``_on_write`` into the member/economy RPC mutators
+    MUST precede the migration-026 publication ALTER commit — inverting
+    the order lets every own RPC write bounce back as an unfiltered CDC
+    echo once ``member``/``economy_config`` join supabase_realtime.
+    """
+
+    def test_on_write_wiring_commit_precedes_publication_alter_commit(self) -> None:
+        # Oldest commit that introduced/removed "_on_write" in economy_db is
+        # the echo-suppression wiring commit (git log is newest-first).
+        hook_log = _git("log", "-S", "_on_write", "--format=%H", "--", "bot/core/db/economy_db.py").stdout.split()
+        assert hook_log, "no _on_write wiring commit found in history"
+        wiring_commit = hook_log[-1]
+
+        # Newest commit touching the 026 migration file is its introduction.
+        pub_log = _git("log", "--format=%H", "--", "migrations/026_realtime_member_economy_config.sql").stdout.split()
+        assert pub_log, "migration 026 publication commit missing from history"
+        alter_commit = pub_log[0]
+
+        ancestor = _git("merge-base", "--is-ancestor", wiring_commit, alter_commit)
+        assert ancestor.returncode == 0, (
+            f"wiring commit {wiring_commit[:12]} must precede publication commit {alter_commit[:12]}"
+        )
+
+    def test_wiring_commit_message_declares_hard_ordering(self) -> None:
+        """The wiring commit body documents WHY it must land before the ALTER."""
+        hook_log = _git("log", "-S", "_on_write", "--format=%H", "--", "bot/core/db/economy_db.py").stdout.split()
+        assert hook_log, "no _on_write wiring commit found in history"
+        body = _git("show", "--no-patch", "--format=%B", hook_log[-1]).stdout.lower()
+        assert "publication" in body or "echo" in body
+
+
+class TestRealtimeDocsContract:
+    """Spec "Realtime coverage and deferred cache scope are documented".
+
+    Docs MUST state six-table CDC coverage (including member/economy_config)
+    and no documentation MAY still describe those entities as outside the
+    Realtime contract.
+    """
+
+    def test_readme_states_six_handler_coverage(self) -> None:
+        readme_path = Path(__file__).parents[1] / "README.md"
+        coverage_lines = [
+            line
+            for line in readme_path.read_text(encoding="utf-8").splitlines()
+            if "on_postgres_changes" in line and "handlers" in line
+        ]
+        assert coverage_lines, "README must document the on_postgres_changes handler coverage"
+        for line in coverage_lines:
+            assert "member" in line and "economy_config" in line, (
+                f"coverage line must name all subscribed tables incl member/economy_config: {line!r}"
+            )
+            assert "4 `on_postgres_changes` handlers" not in line
+
+    def test_no_member_economy_deferral_wording_in_realtime_docs(self) -> None:
+        """The former member/economy deferral statement MUST be gone."""
+        readme = (Path(__file__).parents[1] / "README.md").read_text(encoding="utf-8").lower()
+        module_doc = (realtime_module.__doc__ or "").lower()
+        module_doc += (realtime_module.RealtimeCacheSubscriber.__doc__ or "").lower()
+        for text in (readme, module_doc):
+            if "deferr" in text:
+                # Any surviving mention must not defer member/economy coherence.
+                assert "member" not in text.split("deferr")[-1][:200], (
+                    "deferral wording about member/economy coherence must be removed"
+                )

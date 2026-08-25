@@ -41,7 +41,7 @@ dashboard/lib/actions/ → Server Actions gated by verifyGuildAdmin
 ```
 
 - **Cache-first**: RAM `TTLCache` → DB fallback → populate cache, with `cache_key(guild_id, entity)` guild-scoping.
-- **Realtime**: one `cache-sync` channel, 4 `on_postgres_changes` handlers, health/poll/watchdog loops, self-echo filtering.
+- **Realtime**: one `cache-sync` channel, 6 `on_postgres_changes` handlers (guild, greeting_config, ticket, ticket_note, member, economy_config), health/poll/watchdog loops, self-echo filtering.
 - **No blocking I/O** on the event loop (`asyncio.to_thread` for Pillow/file I/O).
 - **Tach boundaries**: 7 layers `cogs→views→services→utils→core→db→models` enforced by `tach check`; `ty` for types, `ruff` for lint/format, `prek` hooks.
 
