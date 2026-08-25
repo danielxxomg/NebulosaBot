@@ -130,9 +130,7 @@ class TestGuildScopeFiltersApplied:
         assert extra_filter in filters
 
     @pytest.mark.asyncio
-    async def test_get_audit_rows_applies_guild_filter(
-        self, db: Database, fake_client: FakeSupabaseClient
-    ) -> None:
+    async def test_get_audit_rows_applies_guild_filter(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """get_audit_rows scopes reads to the caller guild."""
         await db.get_audit_rows("guild-a")
         filters = fake_client.get_table_filters("ticket_audit")
@@ -159,9 +157,7 @@ class TestGuildScopeEmptyResults:
         assert result == expected
 
     @pytest.mark.asyncio
-    async def test_get_audit_rows_empty_cross_guild(
-        self, db: Database, fake_client: FakeSupabaseClient
-    ) -> None:
+    async def test_get_audit_rows_empty_cross_guild(self, db: Database, fake_client: FakeSupabaseClient) -> None:
         """Guild A querying guild B's audit rows sees nothing — filter still applied."""
         fake_client.set_table_data("ticket_audit", [])
         result = await db.get_audit_rows("guild-b")

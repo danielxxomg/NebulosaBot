@@ -1919,9 +1919,7 @@ class TestSubticketParentOwnerAccess:
         pytest.param("222222222", "fetch_member", 222222222, id="owner_via_fetch_fallback"),
     ]
 
-    @pytest.mark.parametrize(
-        ("parent_author_id", "resolver", "fetched_member_id"), _PARENT_OWNER_MATRIX
-    )
+    @pytest.mark.parametrize(("parent_author_id", "resolver", "fetched_member_id"), _PARENT_OWNER_MATRIX)
     async def test_channel_grants_resolved_parent_owner_access(
         self,
         tickets_cog: TicketsCog,
@@ -2042,9 +2040,7 @@ class TestDBErrorHandling:
         ),
     ]
 
-    @pytest.mark.parametrize(
-        ("command", "logger_target", "guarded_service"), _DB_FAILURE_MATRIX
-    )
+    @pytest.mark.parametrize(("command", "logger_target", "guarded_service"), _DB_FAILURE_MATRIX)
     async def test_parent_lookup_db_failure_sends_error(
         self,
         tickets_cog: TicketsCog,
@@ -2078,9 +2074,7 @@ class TestDBErrorHandling:
             elif command == "reopen":
                 await tickets_cog.reopen.callback(tickets_cog, slash_ctx)
             elif command == "transfer":
-                await tickets_cog.transfer.callback(
-                    tickets_cog, slash_ctx, member=MagicMock(spec=discord.Member)
-                )
+                await tickets_cog.transfer.callback(tickets_cog, slash_ctx, member=MagicMock(spec=discord.Member))
             else:  # note_add
                 await tickets_cog.note_add.callback(tickets_cog, slash_ctx, content="a note")
 

@@ -487,9 +487,7 @@ async def _send_of_leaderboard_permanent() -> AsyncMock:
     """Invoke /leaderboard via slash; return the ctx.send mock."""
     bot = MagicMock()
     bot.economy_service = MagicMock()
-    bot.economy_service.get_leaderboard = AsyncMock(
-        return_value=[{"userId": "111111111", "xp": 1000, "coins": 500}]
-    )
+    bot.economy_service.get_leaderboard = AsyncMock(return_value=[{"userId": "111111111", "xp": 1000, "coins": 500}])
 
     cog = StellarCog(bot)
     ctx = _make_slash_ctx()

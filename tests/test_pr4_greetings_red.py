@@ -145,9 +145,7 @@ class TestGreetingManageMatrix:
         ctx_admin.bot = MagicMock()
         ctx_admin.bot._guild_mod_role_cache = {}
         with patch("bot.utils.checks._get_guild_service") as gs_mock:
-            gs_mock.return_value.get_config = AsyncMock(
-                return_value=MagicMock(permission_matrix={}, mod_role_id=None)
-            )
+            gs_mock.return_value.get_config = AsyncMock(return_value=MagicMock(permission_matrix={}, mod_role_id=None))
             assert await can("greeting.manage", ctx_admin) is True
 
         # matrix
