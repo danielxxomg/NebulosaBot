@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar
@@ -2424,6 +2425,52 @@ class TestConfigMissingErrorMessages:
 # PR3 — /configure_fields set command
 # ===========================================================================
 
+_TOO_MANY_FIELDS_JSON = json.dumps([
+    {"key": "f1", "label": "F1"},
+    {"key": "f2", "label": "F2"},
+    {"key": "f3", "label": "F3"},
+    {"key": "f4", "label": "F4"},
+])
+_MISSING_LABEL_JSON = '[{"key": "no_label"}]'
+_INVALID_STYLE_JSON = '[{"key": "x", "label": "X", "style": "dropdown"}]'
+
+
+def _assert_json_error_text(send_kwargs: dict[str, Any]) -> None:
+    """Invalid JSON → ephemeral=True plus JSON wording on title/description."""
+    assert send_kwargs.get("ephemeral") is True
+    embed = send_kwargs["embed"]
+    assert "JSON" in (embed.title or "") or "json" in (embed.description or "").lower()
+
+
+def _assert_max_fields_error_text(send_kwargs: dict[str, Any]) -> None:
+    """4+ fields → error embed about the max of 3."""
+    embed = send_kwargs["embed"]
+    assert "3" in (embed.description or "") or "max" in (embed.description or "").lower()
+
+
+def _assert_missing_label_error_text(send_kwargs: dict[str, Any]) -> None:
+    """Field missing 'label' → error embed mentioning label."""
+    embed = send_kwargs["embed"]
+    assert "label" in (embed.description or "").lower()
+
+
+def _assert_invalid_style_error_text(send_kwargs: dict[str, Any]) -> None:
+    """Invalid style → error embed mentioning style/short."""
+    embed = send_kwargs["embed"]
+    assert "style" in (embed.description or "").lower() or "short" in (embed.description or "").lower()
+
+
+def _assert_not_found_title(send_kwargs: dict[str, Any]) -> None:
+    """Non-existent category → 'Not Found' title."""
+    embed = send_kwargs["embed"]
+    assert "Not Found" in (embed.title or "")
+
+
+def _assert_wrong_guild_title(send_kwargs: dict[str, Any]) -> None:
+    """Category owned by another guild → 'Wrong Guild'/'Servidor' title."""
+    embed = send_kwargs["embed"]
+    assert "Wrong Guild" in (embed.title or "") or "Servidor" in (embed.title or "")
+
 
 class TestConfigureFieldsCommand:
     """Tests for /configure_fields set <category_id> <fields_json>.
@@ -2488,117 +2535,67 @@ class TestConfigureFieldsCommand:
         assert call_kwargs["field_definitions"] == []
         slash_ctx.send.assert_awaited_once()
 
-    async def test_configure_fields_set_invalid_json(
+    # (fields_json input, content-assert over the send kwargs) — one matrix
+    # case per validation rule; each preserves its original wording assert.
+    _FIELDS_JSON_VALIDATION_ERRORS: ClassVar[list[Any]] = [
+        pytest.param("not-json", _assert_json_error_text, id="invalid_json"),
+        pytest.param(_TOO_MANY_FIELDS_JSON, _assert_max_fields_error_text, id="too_many_fields"),
+        pytest.param(_MISSING_LABEL_JSON, _assert_missing_label_error_text, id="missing_label"),
+        pytest.param(_INVALID_STYLE_JSON, _assert_invalid_style_error_text, id="invalid_style"),
+    ]
+
+    @pytest.mark.parametrize(("fields_json", "assert_error_text"), _FIELDS_JSON_VALIDATION_ERRORS)
+    async def test_malformed_fields_json_sends_error_embed(
         self,
         tickets_cog: TicketsCog,
         slash_ctx: MagicMock,
+        fields_json: str,
+        assert_error_text: Callable[[dict[str, Any]], None],
     ) -> None:
-        """Invalid JSON → ephemeral error embed."""
+        """Malformed fields_json → single error embed; wording per validation rule."""
         await tickets_cog.configure_fields_set.callback(
-            tickets_cog, slash_ctx, category_id="cat-uuid-001", fields_json="not-json"
+            tickets_cog, slash_ctx, category_id="cat-uuid-001", fields_json=fields_json
         )
 
         slash_ctx.send.assert_awaited_once()
         kwargs = slash_ctx.send.call_args.kwargs
-        assert kwargs.get("ephemeral") is True
-        embed = kwargs.get("embed")
-        assert embed is not None
-        assert "JSON" in (embed.title or "") or "json" in (embed.description or "").lower()
+        assert kwargs.get("embed") is not None
+        assert_error_text(kwargs)
 
-    async def test_configure_fields_set_too_many_fields(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-    ) -> None:
-        """4+ fields → ephemeral error embed about max 3."""
-        four_fields = json.dumps([
-            {"key": "f1", "label": "F1"},
-            {"key": "f2", "label": "F2"},
-            {"key": "f3", "label": "F3"},
-            {"key": "f4", "label": "F4"},
-        ])
-        await tickets_cog.configure_fields_set.callback(
-            tickets_cog, slash_ctx, category_id="cat-uuid-001", fields_json=four_fields
-        )
+    # (category_id, get_ticket_category row, title-content assert).
+    _CATEGORY_LOOKUP_FAILURES: ClassVar[list[Any]] = [
+        pytest.param("nonexistent", None, _assert_not_found_title, id="category_not_found"),
+        pytest.param(
+            "cat-uuid-001",
+            {**_category_row(), "guildId": "999999999"},
+            _assert_wrong_guild_title,
+            id="wrong_guild",
+        ),
+    ]
 
-        slash_ctx.send.assert_awaited_once()
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "3" in (embed.description or "") or "max" in (embed.description or "").lower()
-
-    async def test_configure_fields_set_missing_label(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-    ) -> None:
-        """Field missing 'label' → ephemeral error embed."""
-        bad_json = '[{"key": "no_label"}]'
-        await tickets_cog.configure_fields_set.callback(
-            tickets_cog, slash_ctx, category_id="cat-uuid-001", fields_json=bad_json
-        )
-
-        slash_ctx.send.assert_awaited_once()
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "label" in (embed.description or "").lower()
-
-    async def test_configure_fields_set_invalid_style(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-    ) -> None:
-        """Field with style='dropdown' → ephemeral error embed."""
-        bad_json = '[{"key": "x", "label": "X", "style": "dropdown"}]'
-        await tickets_cog.configure_fields_set.callback(
-            tickets_cog, slash_ctx, category_id="cat-uuid-001", fields_json=bad_json
-        )
-
-        slash_ctx.send.assert_awaited_once()
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "style" in (embed.description or "").lower() or "short" in (embed.description or "").lower()
-
-    async def test_configure_fields_set_category_not_found(
+    @pytest.mark.parametrize(("category_id", "db_row", "assert_error_title"), _CATEGORY_LOOKUP_FAILURES)
+    async def test_category_lookup_failure_sends_ephemeral_error(
         self,
         tickets_cog: TicketsCog,
         slash_ctx: MagicMock,
         mock_db,
+        category_id: str,
+        db_row: dict[str, Any] | None,
+        assert_error_title: Callable[[dict[str, Any]], None],
     ) -> None:
-        """Non-existent category → ephemeral error embed."""
-        mock_db.get_ticket_category = AsyncMock(return_value=None)
-
-        await tickets_cog.configure_fields_set.callback(
-            tickets_cog, slash_ctx, category_id="nonexistent", fields_json=self.VALID_FIELDS_JSON
-        )
-
-        slash_ctx.send.assert_awaited_once()
-        kwargs = slash_ctx.send.call_args.kwargs
-        assert kwargs.get("ephemeral") is True
-        embed = kwargs.get("embed")
-        assert embed is not None
-        assert "Not Found" in (embed.title or "")
-
-    async def test_configure_fields_set_wrong_guild(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        mock_db,
-    ) -> None:
-        """Category belongs to different guild → ephemeral error embed."""
+        """Category missing or owned by another guild → ephemeral error embed."""
         slash_ctx.guild.id = 123456789
-        other_row = {**_category_row(), "guildId": "999999999"}
-        mock_db.get_ticket_category = AsyncMock(return_value=other_row)
+        mock_db.get_ticket_category = AsyncMock(return_value=db_row)
 
         await tickets_cog.configure_fields_set.callback(
-            tickets_cog, slash_ctx, category_id="cat-uuid-001", fields_json=self.VALID_FIELDS_JSON
+            tickets_cog, slash_ctx, category_id=category_id, fields_json=self.VALID_FIELDS_JSON
         )
 
         slash_ctx.send.assert_awaited_once()
         kwargs = slash_ctx.send.call_args.kwargs
         assert kwargs.get("ephemeral") is True
-        embed = kwargs.get("embed")
-        assert embed is not None
-        assert "Wrong Guild" in (embed.title or "") or "Servidor" in (embed.title or "")
+        assert kwargs.get("embed") is not None
+        assert_error_title(kwargs)
 
     async def test_configure_fields_set_db_error(
         self,
