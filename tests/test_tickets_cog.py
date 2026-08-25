@@ -20,6 +20,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
+from bot.cogs.ticket_admin_flow import TicketAdminFlow
+from bot.cogs.ticket_integrity_flow import TicketIntegrityFlow
+from bot.cogs.ticket_lifecycle_flow import TicketLifecycleFlow
+from bot.cogs.ticket_notes_flow import TicketNotesFlow
 from bot.cogs.tickets import (
     TicketActionsView,
     TicketPanelView,
@@ -3721,3 +3725,58 @@ class TestScheduledCloseLoopLogNoise:
         debugs = [r for r in caplog.records if r.levelno == logging.DEBUG and "checking due tickets" in r.message]
         assert not infos, "per-cycle progress must NOT be INFO"
         assert debugs, "per-cycle progress must appear at DEBUG"
+
+
+# ---------------------------------------------------------------------------
+# Facade composition + guild scoping (merged from test_tickets_cog_facade.py,
+# cycle-5 S5b/c — unique behavioral assertions only; delegation mock-theater
+# and structural hasattr greps died with their twins in this file)
+# ---------------------------------------------------------------------------
+
+
+class TestFacadeComposition:
+    """TicketsCog MUST compose the 4 flow modules via real instances."""
+
+    def test_cog_exposes_four_flow_instances(self) -> None:
+        """Composition wiring: each flow attribute holds the real flow class."""
+        cog = TicketsCog(bot=MagicMock())
+
+        assert isinstance(cog._admin_flow, TicketAdminFlow)
+        assert isinstance(cog._lifecycle_flow, TicketLifecycleFlow)
+        assert isinstance(cog._notes_flow, TicketNotesFlow)
+        assert isinstance(cog._integrity_flow, TicketIntegrityFlow)
+
+    @pytest.mark.asyncio
+    async def test_lifecycle_guild_scoping_cross_guild_denied(self) -> None:
+        """568/685/722: cross-guild channel lookup MUST be denied (guild_id scoped).
+
+        Real lifecycle flow (no mock substitution): transfer against a channel
+        whose ticket row is None MUST consult the DB scoped to the invoking
+        guild before answering not_ticket.
+        """
+        bot = MagicMock()
+        bot.db = MagicMock()
+        bot.db.get_ticket_by_channel = AsyncMock(return_value=None)
+        bot.ticket_service = MagicMock()
+        bot.guild_service = MagicMock()
+        bot.guild_service.get_config = AsyncMock(return_value=MagicMock(ticket_category_id="1", mod_role_id=None))
+        bot.guilds = []
+        cog = TicketsCog(bot=bot)
+
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = 123456789
+        ctx = MagicMock()
+        ctx.guild = guild
+        ctx.author = MagicMock(spec=discord.Member)
+        ctx.author.id = 111111111
+        ctx.channel = MagicMock()
+        ctx.channel.id = 444444444
+        ctx.send = AsyncMock()
+        member = MagicMock(spec=discord.Member)
+
+        await cog._lifecycle_flow.transfer(ctx, member=member)
+
+        bot.db.get_ticket_by_channel.assert_awaited()
+        call_args = bot.db.get_ticket_by_channel.call_args
+        args, kwargs = call_args
+        assert kwargs.get("guild_id") == "123456789" or (len(args) > 1 and args[1] == "123456789")

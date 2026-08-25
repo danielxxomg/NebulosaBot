@@ -14,6 +14,7 @@ Covers:
 
 from __future__ import annotations
 
+import pathlib
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -24,9 +25,14 @@ import pytest
 if TYPE_CHECKING:
     from bot.services.ticket_invariants import RepairAuthority
 
+import bot.services.ticket_lifecycle_service as lifecycle_service_module
+import bot.services.ticket_repair_service as repair_service_module
 from bot.core.cache import TTLCache
 from bot.models.ticket import IntegrityEvidence, Ticket
 from bot.models.ticket_note import TicketNote
+from bot.services.ticket_lifecycle_service import TicketLifecycleService
+from bot.services.ticket_query_service import TicketQueryService
+from bot.services.ticket_repair_service import TicketRepairService
 from bot.services.ticket_service import MAX_RETRIES, TicketService
 
 # ---------------------------------------------------------------------------
@@ -4987,3 +4993,89 @@ class TestRepairTicketManualGrant:
         assert result.outcome == "skipped"
         assert result.reason == "grant_actor_mismatch"
         mock_db.get_ticket.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Sub-service ownership contracts (merged from the three ticket *_facade.py
+# files, cycle-5 S5b/c). Delegation mock-theater died there because the
+# behavioral twins above drive the same paths through real sub-services.
+# ---------------------------------------------------------------------------
+
+
+class TestSubServiceOwnership:
+    """Single-owner wiring between TicketService and its sub-services."""
+
+    def test_lifecycle_holds_query_instance(self, mock_db: AsyncMock) -> None:
+        """Lifecycle MUST delegate cache ops via the injected query service."""
+
+        qs = TicketQueryService(mock_db)
+        lc = TicketLifecycleService(db=mock_db, query=qs)
+
+        assert lc._query is qs
+
+    def test_query_service_is_single_cache_owner(self) -> None:
+        """Query service owns the channel set; add/discard are the only mutators."""
+
+        qs = TicketQueryService(AsyncMock())
+
+        assert qs._ticket_channel_cache == set()
+
+        qs.add_channel(42)
+        assert qs.is_ticket_channel(42) is True
+        qs.discard_channel(42)
+        assert qs.is_ticket_channel(42) is False
+
+        # sync replaces wholesale...
+        qs.sync_channel_cache({10, 20})
+        assert qs._ticket_channel_cache == {10, 20}
+        qs.sync_channel_cache()
+        assert qs._ticket_channel_cache == set()
+
+        # ...and copies instead of aliasing the caller's set.
+        src = {1, 2, 3}
+        qs.sync_channel_cache(src)
+        src.add(99)
+        assert 99 not in qs._ticket_channel_cache
+
+    def test_facade_cache_alias_points_at_single_owner(self, service: TicketService) -> None:
+        """Facade cache attribute MUST alias the query owner's set (no duplicate)."""
+        assert service._ticket_channel_cache is service._query._ticket_channel_cache
+
+        service._query.add_channel(99)
+        assert 99 in service._ticket_channel_cache
+
+        service._ticket_channel_cache = {1, 2}
+        assert service._query._ticket_channel_cache == {1, 2}
+
+    def test_repair_service_is_single_eligibility_owner(self) -> None:
+        """Repair MUST delegate to evaluate_repair_eligibility, not re-implement it."""
+
+        src = pathlib.Path(repair_service_module.__file__).read_text(encoding="utf-8")
+        assert "evaluate_repair_eligibility" in src
+        assert "from bot.services.ticket_repair import" in src
+
+    def test_orchestration_not_owned_by_lifecycle(self, mock_db: AsyncMock) -> None:
+        """Channel orchestration belongs to repair; lifecycle MUST NOT own it."""
+
+        lc = TicketLifecycleService(db=mock_db, query=TicketQueryService(mock_db))
+
+        assert not hasattr(lc, "create_ticket_channel")
+        assert not hasattr(lc, "close_ticket_full")
+        assert not hasattr(lc, "handle_channel_delete")
+        assert not hasattr(lc, "sweep_integrity")
+
+    def test_transcript_countdown_contract_lives_on_repair(self, mock_db: AsyncMock) -> None:
+        """Countdown/timeout handling MUST remain a repair-service helper."""
+
+        qs = TicketQueryService(mock_db)
+        rs = TicketRepairService(db=mock_db, query=qs, lifecycle=TicketLifecycleService(db=mock_db, query=qs))
+
+        assert hasattr(rs, "_countdown_and_delete") or hasattr(TicketRepairService, "_countdown_and_delete")
+
+    def test_lifecycle_is_single_audit_owner(self, mock_db: AsyncMock) -> None:
+        """Audit writes + claim invariants live in the lifecycle module only."""
+
+        src = pathlib.Path(lifecycle_service_module.__file__).read_text(encoding="utf-8")
+        assert "insert_audit_row" in src
+        assert "check_can_claim" in src
+        assert "add_channel" in src or "discard_channel" in src

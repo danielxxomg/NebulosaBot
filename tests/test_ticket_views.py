@@ -9,19 +9,23 @@ Covers Phase 2 of the ticket-category-fields change:
 
 from __future__ import annotations
 
+import inspect
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, MagicMock, patch
 
 if TYPE_CHECKING:
     from bot.views.tickets import TicketIntakeModal, _EditCategorySelect
 
-from unittest.mock import AsyncMock, MagicMock, patch
-
 import discord
 import pytest
 
+import bot.bot as bot_mod
 from bot.models.ticket import Ticket
+from bot.models.ticket_category import TicketCategory
 from bot.utils.embeds import build_ticket_embed
+from bot.views.ticket_category_select import _CategorySelect, _EditCategorySelect
+from bot.views.tickets import TicketActionsView, TicketPanelView, _CategorySelectView
 
 # ===========================================================================
 # deploy_ticket_panel — shared helper (ticket-panel-persistence, Phase 2)
@@ -2096,3 +2100,151 @@ class TestTicketViewDecoratorDefaults:
         view = TicketActionsView(guild_id="")
         btn = self._get_button_by_id(view, "ticket:edit-category")
         assert btn.label == "Editar Categoría"
+
+
+# ===========================================================================
+# Persistence + wiring contracts (merged from test_ticket_views_split_facade.py,
+# cycle-5 S5b/c — unique assertions only; structural hasattr seam-greps and
+# mock-weaker label/deploy twins died with their stronger survivors above)
+# ===========================================================================
+
+
+class TestPersistentViewContract:
+    """Static custom_ids + persistent timeouts (AGENTS.md persistent-view rules)."""
+
+    def test_persistent_custom_ids_exact_set(self) -> None:
+        """Panel+actions MUST expose exactly the 4 stable custom_ids."""
+
+        panel_ids = {c.custom_id for c in TicketPanelView(guild_id="123").children if hasattr(c, "custom_id")}
+        actions_ids = {c.custom_id for c in TicketActionsView(guild_id="123").children if hasattr(c, "custom_id")}
+
+        assert "ticket:open" in panel_ids, f"missing ticket:open in panel {panel_ids}"
+        assert {"ticket:claim", "ticket:close", "ticket:edit-category"} <= actions_ids
+        assert panel_ids | actions_ids == {
+            "ticket:open",
+            "ticket:claim",
+            "ticket:close",
+            "ticket:edit-category",
+        }
+
+    def test_persistent_views_timeout_none(self) -> None:
+        """TicketPanelView and TicketActionsView MUST have timeout=None (persistent)."""
+
+        assert TicketPanelView(guild_id="123").timeout is None
+        assert TicketActionsView(guild_id="123").timeout is None
+
+    def test_category_select_view_timeout_300(self) -> None:
+        """_CategorySelectView (ephemeral) MUST have timeout=300 like its edit twin."""
+
+        guild = MagicMock()
+        guild.id = 123456789
+        cats = [TicketCategory(id="c1", guild_id="123", name="Support", description="", position=0)]
+        opts = [discord.SelectOption(label="Support", value="c1")]
+
+        assert _CategorySelectView(opts, guild, cats).timeout == 300
+
+    def test_setup_hook_registers_persistent_views_from_facade(self) -> None:
+        """bot.setup_hook MUST add_view() both persistent views imported from the facade."""
+
+        src = inspect.getsource(bot_mod)
+        assert "from bot.views.tickets import" in src
+        assert "add_view(TicketPanelView" in src
+        assert "add_view(TicketActionsView" in src
+
+
+class TestCategorySelectFieldDefinitionsPassthrough:
+    """_CategorySelect.callback MUST hand field_definitions to the intake modal."""
+
+    @pytest.mark.asyncio
+    async def test_select_passes_field_definitions_to_modal(self) -> None:
+        guild = MagicMock()
+        guild.id = 123456789
+        cat = TicketCategory(
+            id="cat-uuid-1",
+            guild_id="123",
+            name="Reportes",
+            description="",
+            position=0,
+            field_definitions=[
+                {"key": "player_nick", "label": "Nick", "style": "short", "required": True, "max_length": 100}
+            ],
+        )
+        opts = [discord.SelectOption(label="Reportes", value="cat-uuid-1")]
+        select = _CategorySelect(opts, guild, [cat])
+        select._values = ["cat-uuid-1"]
+
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.response = MagicMock()
+        interaction.response.send_modal = AsyncMock()
+        interaction.guild = guild
+        interaction.client = MagicMock()
+
+        await select.callback(interaction)
+
+        sent_modal = interaction.response.send_modal.call_args.args[0]
+        assert sent_modal._field_definitions == cat.field_definitions
+
+
+class TestEditCategorySelectRevalidation:
+    """Combined non-mod + closed-mid-dropdown rejection through one real flow."""
+
+    @pytest.mark.asyncio
+    async def test_revalidates_is_mod_and_closed_state_before_mutation(self) -> None:
+        guild = MagicMock()
+        guild.id = 123456789
+        cat = TicketCategory(id="cat-uuid-2", guild_id="123", name="Billing", description="", position=1)
+        opts = [discord.SelectOption(label="Billing", value="cat-uuid-2")]
+        ticket_row_open = {
+            "id": "t1",
+            "ticketNumber": 1,
+            "guildId": "123",
+            "authorId": "1",
+            "channelId": "888",
+            "categoryId": "cat-uuid-1",
+            "status": "open",
+            "claimedBy": None,
+            "transcriptUrl": None,
+            "createdAt": "2026-01-01T00:00:00+00:00",
+            "closedAt": None,
+            "lastActivity": "2026-01-01T00:00:00+00:00",
+        }
+        select = _EditCategorySelect(opts, guild, [cat], ticket_row_open)
+        select._values = ["cat-uuid-2"]
+
+        # Case 1: now-non-mod must be rejected and never reach the service.
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.guild = guild
+        interaction.channel = MagicMock(spec=discord.TextChannel)
+        interaction.channel.id = 888
+        interaction.channel.send = AsyncMock()
+        interaction.user = MagicMock()
+        interaction.user.id = 111
+        interaction.response = MagicMock()
+        interaction.response.send_message = AsyncMock()
+        interaction.client = MagicMock()
+        interaction.client.db.get_ticket_by_channel = AsyncMock(return_value=ticket_row_open)
+        interaction.client.ticket_service.edit_ticket_category = AsyncMock()
+
+        with patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=False):
+            await select.callback(interaction)
+        interaction.client.ticket_service.edit_ticket_category.assert_not_called()
+
+        # Case 2: ticket closed while the dropdown was open must be rejected
+        # after the fresh state re-fetch.
+        interaction2 = MagicMock(spec=discord.Interaction)
+        interaction2.guild = guild
+        interaction2.channel = MagicMock(spec=discord.TextChannel)
+        interaction2.channel.id = 888
+        interaction2.channel.send = AsyncMock()
+        interaction2.user = MagicMock()
+        interaction2.user.id = 111
+        interaction2.response = MagicMock()
+        interaction2.response.send_message = AsyncMock()
+        interaction2.client = MagicMock()
+        closed_row = {**ticket_row_open, "status": "closed"}
+        interaction2.client.db.get_ticket_by_channel = AsyncMock(return_value=closed_row)
+        interaction2.client.ticket_service.edit_ticket_category = AsyncMock()
+
+        with patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=True):
+            await select.callback(interaction2)
+        interaction2.client.ticket_service.edit_ticket_category.assert_not_called()
