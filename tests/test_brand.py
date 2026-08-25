@@ -7,6 +7,22 @@ with the correct hex values from the purple/violet palette.
 from __future__ import annotations
 
 import importlib
+import re
+from pathlib import Path
+
+import pytest
+
+from bot.utils import brand
+
+# Palette matrix: every exported token with its pinned hex value.
+_TOKEN_MATRIX = [
+    pytest.param("PRIMARY", 0x9B5DE5, id="primary"),
+    pytest.param("ACCENT", 0xA855F7, id="accent"),
+    pytest.param("SUCCESS", 0x10B981, id="success"),
+    pytest.param("WARNING", 0xF59E0B, id="warning"),
+    pytest.param("ERROR", 0xEF4444, id="error"),
+    pytest.param("INFO", 0x8B5CF6, id="info"),
+]
 
 
 class TestBrandModuleExports:
@@ -17,50 +33,12 @@ class TestBrandModuleExports:
         mod = importlib.import_module("bot.utils.brand")
         assert mod is not None
 
-    def test_exports_primary(self) -> None:
-        """brand.py must export PRIMARY (#9B5DE5)."""
-        from bot.utils.brand import PRIMARY
-
-        assert PRIMARY == 0x9B5DE5
-
-    def test_exports_accent(self) -> None:
-        """brand.py must export ACCENT (#A855F7)."""
-        from bot.utils.brand import ACCENT
-
-        assert ACCENT == 0xA855F7
-
-    def test_exports_success(self) -> None:
-        """brand.py must export SUCCESS (#10B981)."""
-        from bot.utils.brand import SUCCESS
-
-        assert SUCCESS == 0x10B981
-
-    def test_exports_warning(self) -> None:
-        """brand.py must export WARNING (#F59E0B)."""
-        from bot.utils.brand import WARNING
-
-        assert WARNING == 0xF59E0B
-
-    def test_exports_error(self) -> None:
-        """brand.py must export ERROR (#EF4444)."""
-        from bot.utils.brand import ERROR
-
-        assert ERROR == 0xEF4444
-
-    def test_exports_info(self) -> None:
-        """brand.py must export INFO (#8B5CF6)."""
-        from bot.utils.brand import INFO
-
-        assert INFO == 0x8B5CF6
-
-    def test_all_six_tokens_present(self) -> None:
-        """brand.py __all__ or dir() must contain all 6 tokens."""
-        from bot.utils import brand
-
-        tokens = {"PRIMARY", "ACCENT", "SUCCESS", "WARNING", "ERROR", "INFO"}
-        for token in tokens:
-            assert hasattr(brand, token), f"Missing token: {token}"
-            assert isinstance(getattr(brand, token), int), f"{token} must be int"
+    @pytest.mark.parametrize(("token", "expected"), _TOKEN_MATRIX)
+    def test_export_value(self, token: str, expected: int) -> None:
+        """brand.py must export the token pinned to its palette value."""
+        value = getattr(brand, token)
+        assert value == expected, f"{token} must be {expected:#x}"
+        assert isinstance(value, int), f"{token} must be int"
 
 
 class TestNoHardcodedHexColors:
@@ -72,9 +50,6 @@ class TestNoHardcodedHexColors:
         Spec (brand-tokens/spec.md — no hardcoded hex scenario): "THEN zero
         matches are found in embed color assignments."
         """
-        import re
-        from pathlib import Path
-
         bot_dir = Path(__file__).resolve().parent.parent / "bot"
         hex_pattern = re.compile(r"0x[0-9A-Fa-f]{6}\b")
         violations: list[str] = []
