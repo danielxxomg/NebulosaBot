@@ -59,11 +59,12 @@ LOCAL_MIGRATION_STEMS: tuple[str, ...] = (
     "023_rls_remaining_tables",
     "024_permission_matrix_indexes",
     "025_drop_ticket_backup_categoryid_text_20260818",
+    "026_realtime_member_economy_config",
 )
 
 
 def get_local_migration_names(*, migrations_dir: str = "migrations") -> list[str]:
-    """Return exact 25 local migration stems (no extension) — sorted.
+    """Return exact 26 local migration stems (no extension) — sorted.
 
     The returned names must match ``supabase_migrations.schema_migrations``
     remote entries exactly (version/name pair), not just count equality.
@@ -244,7 +245,7 @@ def _sync_fetch_catalog(  # noqa: C901 -- 4-query provenance fetch; splitting wo
             cur.execute("SELECT * FROM pg_policy")
             pol_rows = cur.fetchall()
         live_policies: list[dict[str, Any]] = [dict(r) if isinstance(r, dict) else {"raw": r} for r in pol_rows]
-        # Publication — 4 CDC tables
+        # Publication — 6 CDC tables
         cur.execute("SELECT tablename FROM pg_publication_tables WHERE pubname='supabase_realtime'")
         pub_rows = cur.fetchall()
         live_publication: list[str] = []

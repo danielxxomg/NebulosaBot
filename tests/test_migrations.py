@@ -381,3 +381,58 @@ class TestMigration024:
         sql = _read_migration("024_permission_matrix_indexes.sql")
         assert "024/024" in sql, "migration 024 must document the live 024/024 sync state"
         assert "LIVE" in sql.upper(), "migration 024 must document that it is applied live"
+
+
+class TestMigration026:
+    """Structural tests for migration 026_realtime_member_economy_config.sql.
+
+    Spec cache-sync-realtime "Migration prerequisite": an idempotent,
+    re-runnable DO-block migration extends the supabase_realtime publication
+    with ``member`` and ``economy_config``, plus trigger-maintained
+    ``updatedAt`` columns enabling the incremental poll fallback.
+    """
+
+    def test_adds_member_and_economy_config_to_publication(self) -> None:
+        """The publication ALTER MUST add both tables (007 DO-block pattern)."""
+        sql = _read_migration("026_realtime_member_economy_config.sql")
+        assert "ALTER PUBLICATION SUPABASE_REALTIME ADD TABLE" in sql.upper()
+        assert "member" in sql
+        assert "economy_config" in sql
+
+    def test_publication_alter_is_idempotent_do_block(self) -> None:
+        """ALTER PUBLICATION MUST run inside a DO block catching duplicate_object.
+
+        Verbatim 007_realtime_publication.sql pattern: adding an
+        already-published table raises SQLSTATE 42710, which the block
+        swallows so re-runs are a no-op.
+        """
+        sql = _read_migration("026_realtime_member_economy_config.sql")
+        assert "DO $$" in sql
+        assert "duplicate_object" in sql
+
+    def test_adds_updated_at_columns_idempotently(self) -> None:
+        """Both tables MUST gain ``updatedAt timestamptz NOT NULL DEFAULT now()`` guarded by IF NOT EXISTS."""
+        sql = _read_migration("026_realtime_member_economy_config.sql")
+        upper = sql.upper()
+        # Two guarded column adds, one per table.
+        assert upper.count('ADD COLUMN IF NOT EXISTS "UPDATEDAT"') == 2, (
+            "both member and economy_config must guard the updatedAt ADD COLUMN"
+        )
+        assert upper.count("TIMESTAMPTZ") >= 2
+        assert upper.count("NOT NULL DEFAULT NOW()") >= 2
+
+    def test_updated_at_trigger_is_idempotent(self) -> None:
+        """Trigger maintenance MUST be re-runnable: OR REPLACE fn + DROP TRIGGER IF EXISTS + CREATE TRIGGER."""
+        sql = _read_migration("026_realtime_member_economy_config.sql")
+        assert "CREATE OR REPLACE FUNCTION" in sql
+        assert "DROP TRIGGER IF EXISTS" in sql
+        assert "CREATE TRIGGER" in sql
+        # Trigger sets updatedAt on UPDATE for both tables.
+        assert sql.count("CREATE TRIGGER") >= 2
+        assert "BEFORE UPDATE" in sql
+
+    def test_documents_idempotency_and_rollback(self) -> None:
+        """Migration comment MUST document idempotency and the rollback path (repo convention)."""
+        sql = _read_migration("026_realtime_member_economy_config.sql")
+        assert "idempotent" in sql.lower() or "safe to re-run" in sql.lower()
+        assert "Rollback:" in sql or "rollback:" in sql.lower()

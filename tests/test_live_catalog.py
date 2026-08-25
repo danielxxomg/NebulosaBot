@@ -1,6 +1,6 @@
 """S4.2A RED: catalog real DB/RPC only — bypass PostgREST PGRST205.
 
-Specs: live-schema-verifier catalog parity measurable 25↔25 9/7/0 6FKs 4 pubs via DB_URL/LIVE_SUPABASE real, not fake.
+Specs: live-schema-verifier catalog parity measurable 26↔26 9/7/0 6FKs 6 pubs via DB_URL/LIVE_SUPABASE real, not fake.
 Proposal Q4: creds real required — verifier MUST FAIL without creds, FakeSupabase never PASS.
 """
 
@@ -36,7 +36,7 @@ from bot.services.schema_inventory import (
 )
 
 # ---------------------------------------------------------------------------
-# Helpers — must mirror exact local migration identity (25 stems)
+# Helpers — must mirror exact local migration identity (26 stems)
 # ---------------------------------------------------------------------------
 
 EXPECTED_LOCAL_MIGRATIONS = sorted([
@@ -65,6 +65,7 @@ EXPECTED_LOCAL_MIGRATIONS = sorted([
     "023_rls_remaining_tables",
     "024_permission_matrix_indexes",
     "025_drop_ticket_backup_categoryid_text_20260818",
+    "026_realtime_member_economy_config",
 ])
 
 
@@ -80,17 +81,17 @@ def _mocked_fks() -> list[dict[str, str]]:
 
 
 class TestRedLiveCatalogModuleExists:
-    """RED: live_catalog module exists and pins exact 25-stem migration identity."""
+    """RED: live_catalog module exists and pins exact 26-stem migration identity."""
 
     def test_live_catalog_module_importable(self) -> None:
 
         mod = importlib.import_module("bot.services.live_catalog")
         assert mod is not None
 
-    def test_local_migration_identity_is_25_exact(self) -> None:
+    def test_local_migration_identity_is_26_exact(self) -> None:
 
         names = get_local_migration_names()
-        assert len(names) == 25
+        assert len(names) == 26
         assert sorted(names) == EXPECTED_LOCAL_MIGRATIONS
 
     def test_live_catalog_exposes_db_adapter(self) -> None:
@@ -107,7 +108,7 @@ class TestRedLiveCatalogModuleExists:
 class TestCatalogParityMeasurableRealDB:
     """Catalog parity is measurable only against a real DB — fakes never PASS."""
 
-    def test_9_7_0_6_4_25_exact_passes_with_real_db(self) -> None:
+    def test_9_7_0_6_6_26_exact_passes_with_real_db(self) -> None:
 
         local = get_local_migration_names()
         # Build via real-DB evidence path — include 9/7/0 binding

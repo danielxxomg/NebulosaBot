@@ -40,6 +40,8 @@ CDC_TABLES: tuple[str, ...] = (
     "greeting_config",
     "ticket",
     "ticket_note",
+    "member",
+    "economy_config",
 )
 
 TTL_SECONDS: int = 300
@@ -366,7 +368,7 @@ class SchemaInventory:
         """Bind read-only live evidence; fail-closed with documented reasons.
 
         No DDL — SELECT-only semantics: validates 9 zero-policy RLS tables,
-        6 guild CASCADE FKs, 4 CDC publication tables, 25 migrations, 12 gaps,
+        6 guild CASCADE FKs, 6 CDC publication tables, 26 migrations, 12 gaps,
         and the TEXT/UUID categoryId mismatch flag. Any absent/mismatched fact
         yields ``resolved=False`` with non-empty ``reasons``.
         """
@@ -404,10 +406,10 @@ class SchemaInventory:
         # RLS: 9 tables, zero policies
         if live_policies:
             reasons.append("rls_policies_present_expected_zero")
-        # Publication: 4 CDC
+        # Publication: 6 CDC
         if frozenset(live_publication) != frozenset(CDC_TABLES):
             reasons.append("publication_mismatch")
-        # Migrations: 25 exact version/name pairs (not count-only).
+        # Migrations: 26 exact version/name pairs (not count-only).
         # Cycle-break import: live_catalog imports LiveEvidenceReport from this
         # module at top level, so the reverse import must stay local.
         from bot.services.live_catalog import (
@@ -424,7 +426,7 @@ class SchemaInventory:
             if "/" in s:
                 s = s.rsplit("/", 1)[-1]
             normalized_live.add(s)
-        if len(live_migrations) != 25 or not any("015" in str(m) for m in live_migrations):
+        if len(live_migrations) != 26 or not any("015" in str(m) for m in live_migrations):
             reasons.append("migration_count_mismatch")
         if normalized_live != local_stems:
             reasons.append("migration_identity_mismatch")
