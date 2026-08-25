@@ -300,9 +300,7 @@ def _load_ticket_i18n(tmp_path: Path) -> Generator[None, None, None]:
     """
     locale_dir = tmp_path / "locales"
     locale_dir.mkdir(parents=True, exist_ok=True)
-    (locale_dir / "es.json").write_text(
-        json.dumps(_build_nested_locale(_ES_MARKERS)), encoding="utf-8"
-    )
+    (locale_dir / "es.json").write_text(json.dumps(_build_nested_locale(_ES_MARKERS)), encoding="utf-8")
     (locale_dir / "en.json").write_text(
         json.dumps(_build_nested_locale(_swap_suffix(_ES_MARKERS, "_EN"))),
         encoding="utf-8",
@@ -607,9 +605,7 @@ class TestCreateCategoryI18n:
         """/create_category with duplicate name → localized error."""
         ctx = _make_ctx(int(guild_id))
 
-        ticket_bot.db.get_ticket_categories = AsyncMock(
-            return_value=[_category_row(guild_id=guild_id)]
-        )
+        ticket_bot.db.get_ticket_categories = AsyncMock(return_value=[_category_row(guild_id=guild_id)])
 
         await cog.create_category.callback(cog, ctx, name="Support")
 
@@ -766,17 +762,13 @@ class TestModalI18nKeys:
     @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
     def test_modal_keys_resolve(self, guild_id: str, suffix: str) -> None:
         """Modal i18n keys resolve with the expected marker text."""
-        assert t(guild_id, "tickets.modal.title", category="Support") == (
-            f"MODAL_TITLE_Support_{suffix}"
-        )
+        assert t(guild_id, "tickets.modal.title", category="Support") == (f"MODAL_TITLE_Support_{suffix}")
         assert t(guild_id, "tickets.modal.subject_label") == f"MODAL_SUBJECT_LABEL_{suffix}"
         assert t(guild_id, "tickets.modal.subject_placeholder") == f"MODAL_SUBJECT_PH_{suffix}"
         assert t(guild_id, "tickets.modal.description_label") == f"MODAL_DESC_LABEL_{suffix}"
         assert t(guild_id, "tickets.modal.description_placeholder") == f"MODAL_DESC_PH_{suffix}"
         assert t(guild_id, "tickets.modal.empty_title") == f"MODAL_EMPTY_TITLE_{suffix}"
-        assert t(guild_id, "tickets.modal.empty_title_description") == (
-            f"MODAL_EMPTY_TITLE_DESC_{suffix}"
-        )
+        assert t(guild_id, "tickets.modal.empty_title_description") == (f"MODAL_EMPTY_TITLE_DESC_{suffix}")
 
 
 # ---------------------------------------------------------------------------
