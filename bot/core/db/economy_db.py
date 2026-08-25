@@ -44,6 +44,10 @@ class EconomyDBMixin:
 
         logger.debug("DB upsert_economy_config(%r)", config.guild_id)
         await self._client.table("economy_config").upsert(config.to_db_dict()).execute()
+        # CDC echo suppression: mark the write so the subscriber skips the
+        # Realtime echo for this guild's economy_config row.
+        if self._on_write is not None:
+            await self._on_write("economy_config", config.guild_id)
 
     async def update_member_xp(
         self: Any,
@@ -78,20 +82,25 @@ class EconomyDBMixin:
             },
         ).execute()
         rows = _unwrap(response)
-        if not rows:
-            return {"xp": 0, "level": 0}
-        result = rows[0]
-        # If caller provides a level override, update it separately.
-        if new_level is not None:
-            await (
-                self._client
-                .table("member")
-                .update({"level": new_level})
-                .eq("guildId", guild_id)
-                .eq("userId", user_id)
-                .execute()
-            )
-            result["level"] = new_level
+        result: dict[str, Any] = {"xp": 0, "level": 0}
+        if rows:
+            result = rows[0]
+            # If caller provides a level override, update it separately.
+            if new_level is not None:
+                await (
+                    self._client
+                    .table("member")
+                    .update({"level": new_level})
+                    .eq("guildId", guild_id)
+                    .eq("userId", user_id)
+                    .execute()
+                )
+                result["level"] = new_level
+        # CDC echo suppression: marked on every completed-execute path (with
+        # or without a returned row, and after the optional level update) so
+        # every echo for this guild's member row is suppressed.
+        if self._on_write is not None:
+            await self._on_write("member", guild_id)
         return result
 
     async def update_member_coins(self: Any, guild_id: str, user_id: str, coin_delta: int) -> dict[str, Any]:
@@ -119,6 +128,10 @@ class EconomyDBMixin:
             },
         ).execute()
         rows = _unwrap(response)
+        # CDC echo suppression: marked on every completed-execute path so the
+        # member echo is suppressed even when the RPC returns no row.
+        if self._on_write is not None:
+            await self._on_write("member", guild_id)
         if not rows:
             return {"coins": 0}
         return rows[0]
@@ -161,6 +174,10 @@ class EconomyDBMixin:
             },
         ).execute()
         rows = _unwrap(response)
+        # CDC echo suppression: marked on every completed-execute path so the
+        # member echo is suppressed even when the RPC returns no row.
+        if self._on_write is not None:
+            await self._on_write("member", guild_id)
         if not rows:
             return {"coins": 0, "dailyStreak": streak, "lastDailyReset": last_daily_reset, "lastDaily": last_daily}
         return rows[0]

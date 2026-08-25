@@ -21,7 +21,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from freezegun import freeze_time
 
+from bot.config import ServiceRoleValidationError
 from bot.core.database import Database
+from bot.core.realtime import RecentWriteSet
+from bot.models.economy_config import EconomyConfig
 from bot.models.guild import GuildConfig
 
 # ---------------------------------------------------------------------------
@@ -244,8 +247,6 @@ class TestConnect:
     @pytest.mark.asyncio
     async def test_connect_logs_warning_on_health_failure(self) -> None:
         """connect() MUST fail-closed when health check fails — client cleared and error raised."""
-        from bot.config import ServiceRoleValidationError
-
         database = Database(url="https://test.supabase.co", key="test-key")
 
         mock_client = MagicMock()
@@ -1726,12 +1727,16 @@ class TestDatabaseFacade:
 
     def test_import_database_from_core_database(self) -> None:
         """from bot.core.database import Database MUST succeed after mixin split."""
+        # PLC0415 documented exception — facade-indirection probe: asserting
+        # post-split importability REQUIRES the import inside the test.
         from bot.core.database import Database as Db
 
         assert Db is not None
 
     def test_import_create_realtime_client(self) -> None:
         """from bot.core.database import create_realtime_client MUST still work."""
+        # PLC0415 documented exception — facade-indirection probe: asserting
+        # post-split importability REQUIRES the import inside the test.
         from bot.core.database import create_realtime_client
 
         assert callable(create_realtime_client)
@@ -1953,3 +1958,121 @@ class TestUpdateGuildPanelOnWrite:
         """update_guild_panel() MUST raise RuntimeError if connect() wasn't called."""
         with pytest.raises(RuntimeError, match="connect"):
             await disconnected_db.update_guild_panel("g1", "msg", "ch")
+
+
+# ===========================================================================
+# CDC echo suppression — _on_write hooks on member/economy mutators (S6)
+# ===========================================================================
+
+
+class TestMemberEconomyOnWriteHooks:
+    """Every member/economy RPC mutator MUST mark recent writes via ``_on_write``.
+
+    Spec cache-sync-realtime "Echo suppression wired before publication":
+    bot-originated member/economy writes MUST be recorded in the recent-writes
+    set BEFORE the publication migration adds ``member``/``economy_config`` to
+    the Realtime publication — otherwise every own RPC write bounces back as
+    an unfiltered CDC echo event.
+    """
+
+    @pytest.mark.asyncio
+    async def test_update_member_xp_marks_member_write(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """update_member_xp() MUST call _on_write('member', guild_id) after the RPC."""
+        on_write = AsyncMock()
+        db._on_write = on_write
+        fake_client.set_rpc_result([{"xp": 50}])
+
+        await db.update_member_xp("g1", "u1", 50)
+
+        on_write.assert_awaited_once_with("member", "g1")
+
+    @pytest.mark.asyncio
+    async def test_update_member_coins_marks_member_write(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """update_member_coins() MUST call _on_write('member', guild_id) after the RPC."""
+        on_write = AsyncMock()
+        db._on_write = on_write
+        fake_client.set_rpc_result([{"coins": 75}])
+
+        await db.update_member_coins("g1", "u1", 75)
+
+        on_write.assert_awaited_once_with("member", "g1")
+
+    @pytest.mark.asyncio
+    async def test_update_member_daily_marks_member_write(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """update_member_daily() MUST call _on_write('member', guild_id) after the RPC."""
+        on_write = AsyncMock()
+        db._on_write = on_write
+        fake_client.set_rpc_result([{"coins": 100}])
+
+        await db.update_member_daily("g1", "u1", 100, streak=2, last_daily_reset=None, last_daily=None)
+
+        on_write.assert_awaited_once_with("member", "g1")
+
+    @pytest.mark.asyncio
+    async def test_update_member_warnings_marks_member_write(
+        self, db: Database, fake_client: FakeSupabaseClient
+    ) -> None:
+        """update_member_warnings() MUST call _on_write('member', guild_id) after the RPC."""
+        on_write = AsyncMock()
+        db._on_write = on_write
+
+        await db.update_member_warnings("g1", "u1", 1)
+
+        on_write.assert_awaited_once_with("member", "g1")
+
+    @pytest.mark.asyncio
+    async def test_upsert_economy_config_marks_config_write(
+        self, db: Database, fake_client: FakeSupabaseClient
+    ) -> None:
+        """upsert_economy_config() MUST call _on_write('economy_config', guild_id)."""
+        on_write = AsyncMock()
+        db._on_write = on_write
+        config = EconomyConfig(guild_id="g1", daily_reward=150)
+
+        await db.upsert_economy_config(config)
+
+        on_write.assert_awaited_once_with("economy_config", "g1")
+
+    @pytest.mark.asyncio
+    async def test_update_member_xp_marks_after_level_override_too(
+        self, db: Database, fake_client: FakeSupabaseClient
+    ) -> None:
+        """With new_level set, the hook fires AFTER the level UPDATE so its CDC
+        echo is suppressed too (mark covers both writes of the same guild row).
+        """
+        on_write = AsyncMock()
+        db._on_write = on_write
+        fake_client.set_rpc_result([{"xp": 100}])
+
+        await db.update_member_xp("g1", "u1", 100, new_level=6)
+
+        on_write.assert_awaited_once_with("member", "g1")
+        # Level override issued a second write — the mark still happens once,
+        # after it.
+        assert len(fake_client.get_table_calls("member")) == 1
+
+    @pytest.mark.asyncio
+    async def test_mutators_succeed_without_hook(self, db: Database, fake_client: FakeSupabaseClient) -> None:
+        """Mutators MUST NOT raise when no subscriber is wired (_on_write is None)."""
+        db._on_write = None
+        fake_client.set_rpc_result([{"xp": 10}])
+
+        await db.update_member_xp("g1", "u1", 10)
+        await db.update_member_warnings("g1", "u1", 1)
+        await db.upsert_economy_config(EconomyConfig(guild_id="g1"))
+
+    @pytest.mark.asyncio
+    async def test_hook_marks_recent_writes_set_for_echo_skip(
+        self, db: Database, fake_client: FakeSupabaseClient
+    ) -> None:
+        """Spec 'Echo of own write is skipped': wiring the subscriber's recent-
+        writes set as the hook means a completed mutator write leaves
+        ``{table}:{guild_id}`` marked BEFORE any CDC echo could arrive.
+        """
+        rws = RecentWriteSet()
+        db._on_write = rws.mark
+        fake_client.set_rpc_result([{"xp": 5}])
+
+        await db.update_member_xp("G1", "u1", 5)
+
+        assert await rws.contains("member", "G1") is True

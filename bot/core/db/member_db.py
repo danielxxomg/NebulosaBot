@@ -57,3 +57,6 @@ class MemberDBMixin:
                 "p_amount": delta,
             },
         ).execute()
+        # CDC echo suppression: mark the member write for this guild.
+        if self._on_write is not None:
+            await self._on_write("member", guild_id)
