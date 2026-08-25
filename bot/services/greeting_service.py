@@ -120,9 +120,7 @@ class GreetingService:
             raise AttributeError(msg)
         return render_fn
 
-    async def dispatch_greeting(
-        self, member: discord.Member, kind: Literal["welcome", "goodbye"]
-    ) -> None:
+    async def dispatch_greeting(self, member: discord.Member, kind: Literal["welcome", "goodbye"]) -> None:
         """Unified dispatch for welcome/goodbye — DRY for cache key + card flow.
 
         Args:

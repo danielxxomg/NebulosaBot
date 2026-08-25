@@ -92,9 +92,7 @@ class TestProtocolOnlyConstructor:
             "the deprecated shim is removed in S5a; inject greeting_renderer."
         )
 
-    def test_no_image_service_back_compat_alias_after_init(
-        self, cache: TTLCache, mock_db: AsyncMock
-    ) -> None:
+    def test_no_image_service_back_compat_alias_after_init(self, cache: TTLCache, mock_db: AsyncMock) -> None:
         """The ``_image_service`` back-compat alias must not exist post-init."""
         renderer = MagicMock(spec=PillowGreetingRenderer)
         service = GreetingService(db=mock_db, cache=cache, greeting_renderer=renderer)
@@ -102,9 +100,7 @@ class TestProtocolOnlyConstructor:
             "_image_service back-compat alias must be absent — use _greeting_renderer."
         )
 
-    def test_resolve_renderer_raises_when_render_absent(
-        self, cache: TTLCache, mock_db: AsyncMock
-    ) -> None:
+    def test_resolve_renderer_raises_when_render_absent(self, cache: TTLCache, mock_db: AsyncMock) -> None:
         """A renderer without ``.render`` must raise AttributeError (no legacy fallback)."""
 
         class LegacyOnlyRenderer:
@@ -114,7 +110,9 @@ class TestProtocolOnlyConstructor:
                 return io.BytesIO(b"legacy")
 
         service = GreetingService(
-            db=mock_db, cache=cache, greeting_renderer=LegacyOnlyRenderer()  # type: ignore[arg-type]
+            db=mock_db,
+            cache=cache,
+            greeting_renderer=LegacyOnlyRenderer(),  # type: ignore[arg-type]
         )
         with pytest.raises(AttributeError, match="render"):
             service.resolve_renderer()
