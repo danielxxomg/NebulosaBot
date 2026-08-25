@@ -6,6 +6,7 @@ import base64
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import jwt as pyjwt
 import pytest
 
 from bot.core.database import Database
@@ -62,8 +63,6 @@ class TestServiceRoleConnect:
         )
         secret = "s3-guard-secret-32bytes-strong-123456"
         with patch.dict("os.environ", {"SUPABASE_JWT_SECRET": secret}):
-            import jwt as pyjwt
-
             # Re-sign with the same secret so PyJWT verification passes
             signed = pyjwt.encode({"role": "service_role"}, secret, algorithm="HS256")
             db._key = signed
@@ -127,8 +126,6 @@ class TestServiceRoleConnect:
 
         os.environ["SUPABASE_JWT_SECRET"] = secret
         try:
-            import jwt as pyjwt
-
             signed = pyjwt.encode({"role": "service_role"}, secret, algorithm="HS256")
             validate_service_role_key(signed)
         finally:
@@ -146,8 +143,6 @@ class TestServiceRoleConnect:
 
         os.environ["SUPABASE_JWT_SECRET"] = secret
         try:
-            import jwt as pyjwt
-
             signed = pyjwt.encode({"role": "service_role"}, secret, algorithm="HS256")
             validate_supabase_key(signed)
         finally:

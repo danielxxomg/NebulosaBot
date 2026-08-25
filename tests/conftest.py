@@ -22,6 +22,7 @@ import discord
 import pytest
 from freezegun import freeze_time
 
+from bot.core import i18n as i18n_mod
 from bot.core.cache import TTLCache
 from bot.core.i18n import load_locales
 from bot.models.guild import GuildConfig
@@ -75,8 +76,6 @@ def _isolate_i18n_state():
     keys, xp-listener/confirm-view trios, etc.). Restoring after each
     test makes order irrelevant. Cost: two small dict copies per test.
     """
-    from bot.core import i18n as i18n_mod
-
     orig_locales = dict(i18n_mod._locales)
     orig_guild_langs = dict(i18n_mod._guild_languages)
     yield

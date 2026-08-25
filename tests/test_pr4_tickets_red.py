@@ -19,6 +19,7 @@ import pytest
 from discord.ext import commands
 
 from bot.cogs.tickets import TicketsCog
+from bot.utils.checks import can
 
 # Every command wired with @can_check("tickets.manage") in bot/cogs/tickets.py.
 _TICKETS_MANAGE_COMMANDS = [
@@ -136,8 +137,6 @@ class TestTicketsManageMatrix:
 
     async def test_mod_role_does_not_grant_tickets_manage(self) -> None:
         """modRoleId must NOT grant tickets.manage (non-moderation, no fallback)."""
-        from bot.utils.checks import can
-
         guild_id = 123456789
         mod_role = 777
         # Member holds modRole but no matrix grant
@@ -166,8 +165,6 @@ class TestTicketsManageMatrix:
 
     async def test_admin_and_matrix_grant_tickets_manage(self) -> None:
         """admin pass and matrix-granted role must pass tickets.manage."""
-        from bot.utils.checks import can
-
         guild_id = 123456789
         role_c = 9001
 

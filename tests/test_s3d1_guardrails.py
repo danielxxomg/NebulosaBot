@@ -15,6 +15,7 @@ import subprocess
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import jwt as pyjwt
 import pytest
 
 # ---------------------------------------------------------------------------
@@ -169,8 +170,6 @@ class TestSbSecretProbe:
         # With real secret + real signature, service_role is accepted, anon still rejected
         secret = "s3-guard-secret-32bytes-strong-123456"
         monkeypatch.setenv("SUPABASE_JWT_SECRET", secret)
-        import jwt as pyjwt
-
         real = pyjwt.encode({"role": "service_role"}, secret, algorithm="HS256")
         anon_real = pyjwt.encode({"role": "anon"}, secret, algorithm="HS256")
         validate_supabase_key(real)

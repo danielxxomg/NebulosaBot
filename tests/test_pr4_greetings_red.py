@@ -20,6 +20,7 @@ import pytest
 from discord.ext import commands
 
 from bot.cogs.greetings import GreetingsCog
+from bot.utils.checks import can
 
 
 def _make_ctx(admin: bool, role_ids: tuple[int, ...], mod_role_id: str | None = None) -> MagicMock:
@@ -96,8 +97,6 @@ class TestGreetingManageMatrix:
 
     async def test_mod_role_does_not_grant_greeting_manage(self) -> None:
         """modRoleId must NOT grant greeting.manage (non-moderation, no fallback)."""
-        from bot.utils.checks import can
-
         guild_id = 123456789
         mod_role = 777
         # Member holds modRole but no matrix grant
@@ -126,8 +125,6 @@ class TestGreetingManageMatrix:
 
     async def test_admin_and_matrix_grant_greeting_manage(self) -> None:
         """admin and matrix-granted role must pass greeting.manage."""
-        from bot.utils.checks import can
-
         guild_id = 123456789
         role_c = 9002
         guild = MagicMock(spec=discord.Guild)

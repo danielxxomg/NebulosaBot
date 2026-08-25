@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from bot.core.cache import TTLCache, cache_key
+from bot.core.cache import DEFAULT_TTL, ECONOMY_CONFIG_TTL, TTLCache, cache_key
 from bot.models.economy_config import EconomyConfig
 from bot.services.economy_service import EconomyService
 
@@ -980,6 +980,4 @@ class TestEconomyConfigCache:
         mock_db.get_economy_config.assert_awaited_once()
 
     def test_economy_config_ttl_reexported(self) -> None:
-        from bot.core.cache import DEFAULT_TTL, ECONOMY_CONFIG_TTL
-
         assert ECONOMY_CONFIG_TTL == DEFAULT_TTL
