@@ -8,13 +8,13 @@ Replace inbound webhook (Cloudflare Tunnel + HMAC) with outbound Supabase Realti
 
 ### Requirement: Realtime subscriber lifecycle
 
-The bot SHALL connect to Supabase Realtime via `acreate_client` (async) on startup and subscribe to INSERT/UPDATE/DELETE events on `guild`, `greeting_config`, `ticket`, and `ticket_note` tables. The subscriber MUST start in `setup_hook` and stop on `cog_unload` or shutdown. Connection status MUST be tracked via the `on_subscribe(status, err)` callback using `RealtimeSubscribeStates`.
+The bot SHALL connect to Supabase Realtime via `acreate_client` (async) on startup and subscribe to INSERT/UPDATE/DELETE events on `guild`, `greeting_config`, `ticket`, `ticket_note`, `member`, and `economy_config` tables. The subscriber MUST start in `setup_hook` and stop on `cog_unload` or shutdown. Connection status MUST be tracked via the `on_subscribe(status, err)` callback using `RealtimeSubscribeStates`.
 
 #### Scenario: Subscriber starts on bot startup
 
 - GIVEN the bot is starting up
 - WHEN `setup_hook` executes
-- THEN a Supabase Realtime channel is created and subscribed to all 4 tables
+- THEN a Supabase Realtime channel is created and subscribed to all 6 tables
 - AND the subscription callback is registered
 
 #### Scenario: Subscriber stops on shutdown
@@ -62,6 +62,54 @@ When a CDC event fires, the bot MUST extract the identifier from the payload's `
 - GIVEN a CDC event with `type=DELETE`
 - WHEN the `record` object is empty or missing identifiers
 - THEN the bot reads from `old_record` instead
+
+<!-- BEGIN DELTA: cycle-5-quality-zero (cache-sync-realtime) -->
+## ADDED Requirements
+
+### Requirement: Member and economy_config subscription
+
+The subscriber MUST extend coverage to the `member` and `economy_config` tables (INSERT/UPDATE/DELETE). `_extract_guild_id` MUST resolve both tables from `record["guildId"]`, coercing numeric ids to string for cache-key consistency. Invalidation MUST follow the existing pattern: `cache.invalidate_guild(guild_id)`.
+
+#### Scenario: Member CDC event invalidates guild cache
+
+- GIVEN a CDC event fires for the `member` table
+- WHEN the record is processed
+- THEN `_extract_guild_id` returns `str(record["guildId"])` and `cache.invalidate_guild()` is called
+
+#### Scenario: Economy config CDC event invalidates guild cache
+
+- GIVEN a CDC event fires for the `economy_config` table
+- WHEN the record is processed
+- THEN `_extract_guild_id` returns `str(record["guildId"])` and `cache.invalidate_guild()` is called
+
+#### Scenario: DELETE events use old_record
+
+- GIVEN a DELETE CDC event for `member` or `economy_config`
+- WHEN the record object is empty or missing identifiers
+- THEN the guild id is resolved from `old_record["guildId"]`
+
+### Requirement: Echo suppression wired before publication
+
+Every RPC mutator in `member_db` and `economy_db` MUST invoke the injected `self._on_write(table, guild_id)` hook (recent-writes marking) so bot-originated writes are recorded before any CDC echo can arrive. This wiring MUST land BEFORE the publication migration adds `member`/`economy_config` to the Realtime publication (hard ordering — inverting it lets every own RPC write bounce back as an unfiltered echo event).
+
+#### Scenario: RPC mutator marks recent write
+
+- GIVEN the bot calls a `member_db` or `economy_db` RPC mutator for guild G
+- WHEN the write completes
+- THEN the recent-writes set contains `{table}:G` before any CDC echo could arrive
+
+#### Scenario: Echo of own write is skipped
+
+- GIVEN the bot wrote to `member` 2 seconds ago
+- WHEN the CDC echo arrives for that table/guild
+- THEN invalidation is skipped per the existing Self-echo filtering semantics
+
+#### Scenario: Hard ordering is verifiable in history
+
+- GIVEN the slice's commit history is inspected
+- WHEN the `_on_write` wiring commit is compared with the publication ALTER commit
+- THEN the wiring precedes the ALTER
+<!-- END DELTA: cycle-5-quality-zero (cache-sync-realtime) -->
 
 ### Requirement: Payload table resolution
 
@@ -123,7 +171,7 @@ supabase-py handles WebSocket reconnection internally. The bot SHALL check subsc
 
 ### Requirement: Poll fallback
 
-When the WebSocket is down, the bot MUST poll Supabase every 30 seconds to detect changes. The `ticket` table has a `lastActivity` (timestamptz) column suitable for incremental queries. Config tables (`guild`, `greeting_config`) lack `updated_at` columns; the poll SHALL query all guild IDs from `guild` and invalidate their caches.
+When the WebSocket is down, the bot MUST poll Supabase every 30 seconds to detect changes. Tables carrying a suitable timestamp column support incremental queries filtered by that column against `last_check`: `ticket` uses `lastActivity`; `member` and `economy_config` MAY gain optional `updatedAt` columns enabling incremental polls. Config-style tables lacking such columns (`guild`, `greeting_config`) fall back to querying all guild IDs from `guild` and invalidating their caches.
 
 #### Scenario: Poll detects recent ticket activity
 
@@ -131,6 +179,18 @@ When the WebSocket is down, the bot MUST poll Supabase every 30 seconds to detec
 - WHEN the poll queries `SELECT "guildId" FROM ticket WHERE "lastActivity" > $last_check`
 - THEN `cache.invalidate_guild()` is called for each returned guild_id
 - AND `last_check` is updated to the current timestamp
+
+#### Scenario: Incremental poll uses updatedAt when available
+
+- GIVEN `member` carries the optional `updatedAt` column
+- WHEN the poll runs for `member`
+- THEN the query filters `"updatedAt" > $last_check` instead of scanning all rows
+
+#### Scenario: Full-scan fallback without updatedAt
+
+- GIVEN `economy_config` lacks the optional `updatedAt` column
+- WHEN the poll runs for `economy_config`
+- THEN all guild ids are invalidated via the config-table full scan
 
 #### Scenario: Poll invalidates all guild configs
 
@@ -171,18 +231,18 @@ The bot MUST track recent writes in an ephemeral in-memory set (RAM only, not pe
 
 ### Requirement: Migration prerequisite — watchdog event counting
 
-Before the subscriber can receive events, the migration `ALTER PUBLICATION supabase_realtime ADD TABLE guild, greeting_config, ticket, ticket_note;` MUST be applied. The watchdog MUST count RECEIVED events (incremented at the top of `_handle_cdc` before any filtering), not PROCESSED events. If no CDC events are received within 30 seconds of `SUBSCRIBED`, log a warning. The migration is idempotent.
+Before the subscriber can receive the new tables' events, an idempotent, re-runnable DO-block migration MUST extend the publication: `ALTER PUBLICATION supabase_realtime ADD TABLE member, economy_config;` (alongside the already-published four tables). The watchdog MUST count RECEIVED events (incremented at the top of `_handle_cdc` before any filtering), not PROCESSED events. If no CDC events are received within 30 seconds of `SUBSCRIBED`, log a warning.
 
 #### Scenario: Migration applied — events received
 
-- GIVEN the migration has been applied
-- WHEN the bot subscribes and a dashboard write occurs
+- GIVEN the publication migration has been applied
+- WHEN the bot subscribes and a member write occurs externally
 - THEN CDC events are received within 5 seconds
 - AND the watchdog counter increments even if the event is later skipped
 
 #### Scenario: Migration not applied — warning logged
 
-- GIVEN the migration has NOT been applied
+- GIVEN the extension migration has NOT been applied
 - WHEN 30 seconds pass after `SUBSCRIBED` with zero events
 - THEN a warning is logged about missing publication
 
@@ -195,8 +255,8 @@ Before the subscriber can receive events, the migration `ALTER PUBLICATION supab
 
 #### Scenario: Idempotent migration safe to re-run
 
-- GIVEN the migration was already applied
-- WHEN the migration SQL is executed again
+- GIVEN the publication migration was already applied
+- WHEN the DO-block SQL is executed again
 - THEN no error occurs (adding an already-published table is a no-op)
 
 (Previously: Watchdog counted only events that passed filtering and triggered cache invalidation)
@@ -230,33 +290,35 @@ The Realtime subscriber MUST gracefully handle missing private SDK attributes (e
 
 - GIVEN the bot is starting up
 - WHEN `setup_hook` executes
-- THEN a Supabase Realtime channel is created and subscribed to all 4 tables
+- THEN a Supabase Realtime channel is created and subscribed to all 6 tables
 - AND the subscription callback is registered
 - AND health/poll/watchdog tasks are scheduled regardless of close-logging outcome
 
 <!-- BEGIN DELTA: cleanup-stability (cache-sync-realtime) -->
-<!-- Delta: cleanup-stability — Hygiene & Stability (S1 L3) — deferred cache scope explicit -->
+<!-- Delta: cleanup-stability → cycle-5-quality-zero — deferred cache scope superseded: member/economy_config now covered -->
 
 ### Requirement: Realtime coverage and deferred cache scope are documented
 
-The cache/Realtime documentation MUST state that CDC coverage is limited to `guild`, `greeting_config`, `ticket`, and `ticket_note`. Member and economy changes MUST be documented as outside the current Realtime publication/invalidation contract, with cross-instance coherence work deferred to S2. S1 MUST NOT claim immediate Realtime invalidation for those entities.
+The cache/Realtime documentation MUST state that CDC coverage includes all six subscribed tables: `guild`, `greeting_config`, `ticket`, `ticket_note`, `member`, and `economy_config`. The former deferral of member/economy coherence MUST be removed — no documentation MAY still describe those entities as outside the Realtime contract.
+
+(Previously: coverage was limited to four tables and member/economy changes were documented as a deferred S2 item.)
 
 #### Scenario: Published table scope is explicit
 
 - GIVEN the Realtime configuration and cache documentation are reviewed
 - WHEN the subscribed table list is compared with the contract
-- THEN it contains the four supported tables and excludes member/economy tables
+- THEN it contains exactly the six supported tables including member/economy_config
 
-#### Scenario: Member and economy changes remain a documented deferral
+#### Scenario: Deferral wording is gone
 
-- GIVEN a member balance or economy configuration changes
-- WHEN S1 cache behavior is evaluated
-- THEN no Realtime guarantee is asserted and the S2 deferral is recorded
+- GIVEN the same documentation is reviewed
+- WHEN searched for the former deferral statement about member/economy changes
+- THEN no such deferral remains
 
 #### Scenario: Existing CDC behavior is preserved
 
 - GIVEN a supported table emits INSERT, UPDATE, or DELETE
-- WHEN the existing subscriber handles the event
-- THEN the current guild cache invalidation behavior remains unchanged
+- WHEN the subscriber handles the event
+- THEN the existing guild cache invalidation behavior remains unchanged
 
 <!-- END DELTA: cleanup-stability (cache-sync-realtime) -->
