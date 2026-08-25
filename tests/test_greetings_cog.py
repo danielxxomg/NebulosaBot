@@ -54,36 +54,35 @@ def mock_greeting_service() -> MagicMock:
 
 
 @pytest.fixture
-def mock_image_service() -> MagicMock:
-    """Return a mock ImageService with generate_greeting_card returning BytesIO.
+def mock_renderer() -> MagicMock:
+    """Return a mock greeting renderer whose ``render`` yields a BytesIO PNG.
 
     Returns a real io.BytesIO so discord.File receives a seekable/readable
     buffer instead of MagicMock (whose __index__ returns 1, causing
     open(MagicMock, 'rb') to corrupt stdout fd 1).
     """
-    svc = MagicMock()
+    renderer = MagicMock(spec=["render"])
 
     def _make_card(**_kwargs: object) -> io.BytesIO:
         return io.BytesIO(_MINIMAL_PNG)
 
-    svc.generate_greeting_card = MagicMock(side_effect=_make_card)
-    return svc
+    renderer.render = MagicMock(side_effect=_make_card)
+    return renderer
 
 
 @pytest.fixture
-def mock_bot(mock_greeting_service: MagicMock, mock_image_service: MagicMock) -> MagicMock:
-    """Return a mock NebulosaBot with greeting_service and image_service.
+def mock_bot(mock_greeting_service: MagicMock, mock_renderer: MagicMock) -> MagicMock:
+    """Return a mock NebulosaBot with greeting_service attached.
 
     The cog resolves the render callable via ``greeting_service.resolve_renderer()``
     (Phase 2: renderer-dispatch policy lives in the service, single copy). Wire
-    the mock so the resolver returns the image_service's ``generate_greeting_card``
-    — tests that assert on its ``call_args`` keep working, and error-side tests
-    that set ``side_effect`` on it still propagate through the cog.
+    the mock so the resolver returns the renderer's ``render`` — tests that
+    assert on its ``call_args`` keep working, and error-side tests that set
+    ``side_effect`` on it still propagate through the cog.
     """
     bot = MagicMock(spec=commands.Bot)
     bot.greeting_service = mock_greeting_service
-    bot.image_service = mock_image_service
-    mock_greeting_service.resolve_renderer = MagicMock(return_value=mock_image_service.generate_greeting_card)
+    mock_greeting_service.resolve_renderer = MagicMock(return_value=mock_renderer.render)
     return bot
 
 
@@ -248,10 +247,11 @@ class TestWelcomeTestCommand:
         self,
         cog: GreetingsCog,
         mock_bot: MagicMock,
+        mock_renderer: MagicMock,
     ) -> None:
         """When card generation fails, an error embed is sent."""
         ctx = _make_context(admin=True)
-        mock_bot.image_service.generate_greeting_card.side_effect = RuntimeError("Pillow crash")
+        mock_renderer.render.side_effect = RuntimeError("Pillow crash")
 
         await cog.welcome_test.callback(cog, ctx)
 
@@ -266,6 +266,7 @@ class TestWelcomeTestCommand:
         self,
         cog: GreetingsCog,
         mock_bot: MagicMock,
+        mock_renderer: MagicMock,
     ) -> None:
         """Spanish test cards must receive the same localized inputs as live cards."""
         ctx = _make_context(admin=True)
@@ -282,7 +283,7 @@ class TestWelcomeTestCommand:
         with patch("bot.cogs.greetings.t", side_effect=localized):
             await cog.welcome_test.callback(cog, ctx)
 
-        kwargs = mock_bot.image_service.generate_greeting_card.call_args.kwargs
+        kwargs = mock_renderer.render.call_args.kwargs
         assert kwargs["greeting_title"] == "¡Bienvenido!"
         assert kwargs["member_count_text"] == "Miembro #150"
         assert kwargs["guild_icon_url"] == "https://cdn.discordapp.com/icons/guild/icon.png"
@@ -333,10 +334,11 @@ class TestGoodbyeTestCommand:
         self,
         cog: GreetingsCog,
         mock_bot: MagicMock,
+        mock_renderer: MagicMock,
     ) -> None:
         """When card generation fails, an error embed is sent."""
         ctx = _make_context(admin=True)
-        mock_bot.image_service.generate_greeting_card.side_effect = RuntimeError("Font missing")
+        mock_renderer.render.side_effect = RuntimeError("Font missing")
 
         await cog.goodbye_test.callback(cog, ctx)
 

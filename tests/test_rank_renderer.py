@@ -2,8 +2,8 @@
 
 Renderer must produce a valid PNG through the shared-assets pipeline and
 respect services-layer import boundaries. (The former byte-identity golden
-tests compared against the deleted ImageService shim and were removed with
-it in cycle-5 S5a.)
+tests compared renderer output against the retired compatibility shim and
+were removed together with it in cycle-5 S5a.)
 """
 
 from __future__ import annotations

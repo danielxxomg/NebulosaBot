@@ -13,11 +13,13 @@ from __future__ import annotations
 
 import inspect
 import io
+from collections.abc import Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
 
+from bot.core import i18n as i18n_mod
 from bot.core.cache import TTLCache
 from bot.core.i18n import set_guild_language
 from bot.models.greeting_config import GreetingConfig
@@ -27,6 +29,23 @@ from bot.services.greeting_service import GreetingService
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _restore_i18n_state() -> Generator[None, None, None]:
+    """Snapshot and restore the process-global i18n registries around each test.
+
+    ``set_guild_language`` writes into module-global dicts; without a restore,
+    leaked locales under ``pytest-randomly`` can flip assertions in unrelated
+    modules that share the fixture guild id.
+    """
+    orig_locales = dict(i18n_mod._locales)
+    orig_guild_langs = dict(i18n_mod._guild_languages)
+    yield
+    i18n_mod._locales.clear()
+    i18n_mod._locales.update(orig_locales)
+    i18n_mod._guild_languages.clear()
+    i18n_mod._guild_languages.update(orig_guild_langs)
 
 
 @pytest.fixture
@@ -39,7 +58,7 @@ def mock_db() -> AsyncMock:
 
 
 @pytest.fixture
-def mock_image_service() -> MagicMock:
+def mock_renderer() -> MagicMock:
     """Return a MagicMock for a GreetingRenderer (spec=PillowGreetingRenderer).
 
     Phase 2: the service resolves the render callable via ``resolve_renderer()``
@@ -56,10 +75,10 @@ def mock_image_service() -> MagicMock:
 def service(
     cache: TTLCache,
     mock_db: AsyncMock,
-    mock_image_service: MagicMock,
+    mock_renderer: MagicMock,
 ) -> GreetingService:
     """Return a fresh GreetingService with mocked dependencies."""
-    return GreetingService(db=mock_db, cache=cache, greeting_renderer=mock_image_service)
+    return GreetingService(db=mock_db, cache=cache, greeting_renderer=mock_renderer)
 
 
 class TestProtocolOnlyConstructor:
@@ -379,7 +398,7 @@ class TestDispatchWelcome:
         self,
         service: GreetingService,
         mock_db: AsyncMock,
-        mock_image_service: MagicMock,
+        mock_renderer: MagicMock,
         greeting_config_row: dict,
     ) -> None:
         """When welcome_card_enabled is True, a card is generated and sent with a file."""
@@ -389,7 +408,7 @@ class TestDispatchWelcome:
         await service.dispatch_welcome(member)
 
         channel = member.guild.get_channel.return_value
-        mock_image_service.render.assert_called_once()
+        mock_renderer.render.assert_called_once()
         channel.send.assert_called_once()
         assert "file" in channel.send.call_args.kwargs
 
@@ -413,7 +432,7 @@ class TestDispatchWelcome:
         self,
         service: GreetingService,
         mock_db: AsyncMock,
-        mock_image_service: MagicMock,
+        mock_renderer: MagicMock,
         greeting_config_row: dict,
     ) -> None:
         """A resolvable onboarding channel is included in welcome content and renderer inputs."""
@@ -429,16 +448,16 @@ class TestDispatchWelcome:
         channel = member.guild.get_channel.return_value
         content = channel.send.call_args.kwargs["content"]
         assert "Start here: <#999999999>" in content
-        assert "greeting_title" in mock_image_service.render.call_args.kwargs
-        assert "member_count_text" in mock_image_service.render.call_args.kwargs
-        assert mock_image_service.render.call_args.kwargs["greeting_title"] == "Welcome to the server!"
+        assert "greeting_title" in mock_renderer.render.call_args.kwargs
+        assert "member_count_text" in mock_renderer.render.call_args.kwargs
+        assert mock_renderer.render.call_args.kwargs["greeting_title"] == "Welcome to the server!"
 
     @pytest.mark.asyncio
     async def test_spanish_live_welcome_dispatch_passes_localized_copy_and_cta(
         self,
         service: GreetingService,
         mock_db: AsyncMock,
-        mock_image_service: MagicMock,
+        mock_renderer: MagicMock,
         greeting_config_row: dict,
     ) -> None:
         """A Spanish join resolves localized card copy and onboarding CTA together."""
@@ -452,7 +471,7 @@ class TestDispatchWelcome:
 
         await service.dispatch_welcome(member)
 
-        renderer_kwargs = mock_image_service.render.call_args.kwargs
+        renderer_kwargs = mock_renderer.render.call_args.kwargs
         assert renderer_kwargs["greeting_title"] == "¡Bienvenido al servidor!"
         assert renderer_kwargs["member_count_text"] == "Eres el miembro número 150"
         assert member.guild.get_channel.return_value.send.call_args.kwargs["content"] == (
@@ -536,7 +555,7 @@ class TestDispatchWelcome:
         self,
         service: GreetingService,
         mock_db: AsyncMock,
-        mock_image_service: MagicMock,
+        mock_renderer: MagicMock,
         greeting_config_row: dict,
     ) -> None:
         """When welcome_card_enabled is False and a message is set, send text only (no file)."""
@@ -547,7 +566,7 @@ class TestDispatchWelcome:
         await service.dispatch_welcome(member)
 
         channel = member.guild.get_channel.return_value
-        mock_image_service.render.assert_not_called()
+        mock_renderer.render.assert_not_called()
         channel.send.assert_called_once()
         assert "file" not in channel.send.call_args.kwargs
         content = channel.send.call_args.kwargs.get("content", "")
@@ -559,7 +578,7 @@ class TestDispatchWelcome:
         self,
         service: GreetingService,
         mock_db: AsyncMock,
-        mock_image_service: MagicMock,
+        mock_renderer: MagicMock,
         greeting_config_row: dict,
     ) -> None:
         """When welcome_card_enabled is False and no message is set, send nothing."""
@@ -574,7 +593,7 @@ class TestDispatchWelcome:
         await service.dispatch_welcome(member)
 
         channel = member.guild.get_channel.return_value
-        mock_image_service.render.assert_not_called()
+        mock_renderer.render.assert_not_called()
         channel.send.assert_not_called()
 
     @pytest.mark.asyncio
@@ -582,7 +601,7 @@ class TestDispatchWelcome:
         self,
         service: GreetingService,
         mock_db: AsyncMock,
-        mock_image_service: MagicMock,
+        mock_renderer: MagicMock,
         greeting_config_row: dict,
     ) -> None:
         """Top-level welcome_enabled guard MUST short-circuit before the card toggle.
@@ -597,7 +616,7 @@ class TestDispatchWelcome:
         await service.dispatch_welcome(member)
 
         channel = member.guild.get_channel.return_value
-        mock_image_service.render.assert_not_called()
+        mock_renderer.render.assert_not_called()
         channel.send.assert_not_called()
 
     @pytest.mark.asyncio
@@ -942,7 +961,7 @@ class TestDispatchWelcome:
         self,
         service: GreetingService,
         mock_db: AsyncMock,
-        mock_image_service: MagicMock,
+        mock_renderer: MagicMock,
         greeting_config_row: dict,
     ) -> None:
         """Pre-change rows remain readable and dispatch stays silent."""
@@ -964,7 +983,7 @@ class TestDispatchWelcome:
             await service.dispatch_welcome(member)
 
         mock_db.upsert_greeting_config.assert_not_awaited()
-        mock_image_service.render.assert_not_called()
+        mock_renderer.render.assert_not_called()
         resolve_cta.assert_not_called()
         member.guild.get_channel.return_value.send.assert_not_awaited()
 
@@ -1052,7 +1071,7 @@ class TestDispatchGoodbye:
         self,
         service: GreetingService,
         mock_db: AsyncMock,
-        mock_image_service: MagicMock,
+        mock_renderer: MagicMock,
         greeting_config_row: dict,
         language: str,
         expected_title: str,
@@ -1066,8 +1085,8 @@ class TestDispatchGoodbye:
         await service.dispatch_goodbye(member)
 
         channel = member.guild.get_channel.return_value
-        mock_image_service.render.assert_called_once()
-        renderer_kwargs = mock_image_service.render.call_args.kwargs
+        mock_renderer.render.assert_called_once()
+        renderer_kwargs = mock_renderer.render.call_args.kwargs
         assert renderer_kwargs["greeting_title"] == expected_title
         assert renderer_kwargs["member_count_text"] == expected_count
         channel.send.assert_called_once()
@@ -1098,7 +1117,7 @@ class TestDispatchGoodbye:
         self,
         service: GreetingService,
         mock_db: AsyncMock,
-        mock_image_service: MagicMock,
+        mock_renderer: MagicMock,
         greeting_config_row: dict,
     ) -> None:
         """When goodbye_card_enabled is False and a message is set, send text only (no file)."""
@@ -1109,7 +1128,7 @@ class TestDispatchGoodbye:
         await service.dispatch_goodbye(member)
 
         channel = member.guild.get_channel.return_value
-        mock_image_service.render.assert_not_called()
+        mock_renderer.render.assert_not_called()
         channel.send.assert_called_once()
         assert "file" not in channel.send.call_args.kwargs
         content = channel.send.call_args.kwargs.get("content", "")
@@ -1120,7 +1139,7 @@ class TestDispatchGoodbye:
         self,
         service: GreetingService,
         mock_db: AsyncMock,
-        mock_image_service: MagicMock,
+        mock_renderer: MagicMock,
         greeting_config_row: dict,
     ) -> None:
         """When goodbye_card_enabled is False and no message is set, send nothing."""
@@ -1135,7 +1154,7 @@ class TestDispatchGoodbye:
         await service.dispatch_goodbye(member)
 
         channel = member.guild.get_channel.return_value
-        mock_image_service.render.assert_not_called()
+        mock_renderer.render.assert_not_called()
         channel.send.assert_not_called()
 
     @pytest.mark.asyncio
@@ -1143,7 +1162,7 @@ class TestDispatchGoodbye:
         self,
         service: GreetingService,
         mock_db: AsyncMock,
-        mock_image_service: MagicMock,
+        mock_renderer: MagicMock,
         greeting_config_row: dict,
     ) -> None:
         """Top-level goodbye_enabled guard MUST short-circuit before the card toggle.
@@ -1158,5 +1177,5 @@ class TestDispatchGoodbye:
         await service.dispatch_goodbye(member)
 
         channel = member.guild.get_channel.return_value
-        mock_image_service.render.assert_not_called()
+        mock_renderer.render.assert_not_called()
         channel.send.assert_not_called()

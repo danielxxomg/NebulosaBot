@@ -11,6 +11,8 @@ Strict TDD: RED phase — tests written BEFORE the implementation exists.
 
 from __future__ import annotations
 
+import io
+from collections.abc import Generator
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
@@ -18,7 +20,9 @@ import pytest
 from discord.ext import commands
 
 from bot.cogs.stellar import StellarCog
+from bot.core import i18n as i18n_mod
 from bot.core.i18n import load_locales, set_guild_language
+from bot.services.rank_renderer import RankRenderer
 from bot.utils.brand import ERROR, INFO, SUCCESS, WARNING
 
 # ---------------------------------------------------------------------------
@@ -27,10 +31,13 @@ from bot.utils.brand import ERROR, INFO, SUCCESS, WARNING
 
 
 @pytest.fixture
-def mock_bot() -> MagicMock:
-    """Return a mock NebulosaBot with economy_service and image_service attached."""
-    # Ensure real locales are loaded and guild language is set.
+def mock_bot() -> Generator[MagicMock, None, None]:
+    """Return a mock NebulosaBot with economy_service and rank_renderer attached."""
+    # Ensure real locales are loaded and guild language is set; restore the
+    # process-global i18n registry afterwards so tests stay independent.
     load_locales()
+    orig_locales = dict(i18n_mod._locales)
+    orig_guild_langs = dict(i18n_mod._guild_languages)
     set_guild_language("123456789", "en")
 
     bot = MagicMock(spec=commands.Bot)
@@ -39,15 +46,16 @@ def mock_bot() -> MagicMock:
     bot.economy_service.get_balance = AsyncMock()
     bot.economy_service.get_leaderboard = AsyncMock()
     bot.economy_service.get_rank_info = AsyncMock()
-    bot.image_service = MagicMock()
-    bot.image_service.generate_rank_card = MagicMock()
     # rank_renderer is owned by the bot (stored in setup_hook) and used
     # directly by stellar.rank(); mock it so /rank tests don't hit Pillow.
-    from bot.services.rank_renderer import RankRenderer
-
     bot.rank_renderer = MagicMock(spec=RankRenderer)
     bot.rank_renderer.generate_rank_card = MagicMock()
-    return bot
+    yield bot
+
+    i18n_mod._locales.clear()
+    i18n_mod._locales.update(orig_locales)
+    i18n_mod._guild_languages.clear()
+    i18n_mod._guild_languages.update(orig_guild_langs)
 
 
 @pytest.fixture
@@ -358,8 +366,6 @@ class TestRankCommand:
         ctx.author.display_avatar.read = AsyncMock(return_value=b"fake-avatar-bytes")
 
         # Mock rank_renderer.generate_rank_card (owned by the bot).
-        import io
-
         fake_png = io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
         mock_bot.rank_renderer.generate_rank_card.return_value = fake_png
 
@@ -376,8 +382,6 @@ class TestRankCommand:
         call_kwargs = ctx.send.call_args[1]
         assert "file" in call_kwargs
         sent_file = call_kwargs["file"]
-        import discord
-
         assert isinstance(sent_file, discord.File)
         assert sent_file.filename == "rank.png"
 
@@ -405,8 +409,6 @@ class TestRankCommand:
             "xp_current": 300.0,
             "xp_needed": 600.0,
         }
-
-        import io
 
         fake_png = io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
         mock_bot.rank_renderer.generate_rank_card.return_value = fake_png
@@ -438,8 +440,6 @@ class TestRankCommand:
         call_kwargs = ctx.send.call_args[1]
         embed = call_kwargs.get("embed")
         assert embed is not None
-        import discord
-
         assert isinstance(embed, discord.Embed)
         assert embed.color is not None
         assert embed.color.value == ERROR

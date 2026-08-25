@@ -10,15 +10,16 @@ from __future__ import annotations
 import io
 from unittest.mock import AsyncMock, MagicMock
 
+import discord
 import pytest
 
+import bot.services.greeting_service as gs
 from bot.core.cache import TTLCache
+from bot.services.greeting_renderer import PillowGreetingRenderer
 from bot.services.greeting_service import GreetingService
 
 
 def _make_member(member_id: int = 333, name: str = "TestUser", guild_id: int = 123456789) -> MagicMock:
-    import discord
-
     mock_channel = MagicMock(spec=discord.TextChannel)
     mock_channel.send = AsyncMock(return_value=None)
     guild = MagicMock()
@@ -42,10 +43,8 @@ def _make_member(member_id: int = 333, name: str = "TestUser", guild_id: int = 1
 
 
 @pytest.mark.asyncio
-async def test_native_kwargs_path_calls_renderer_directly():
+async def test_native_kwargs_path_calls_renderer_directly() -> None:
     """GreetingService must call greeting_renderer.render with localized kwargs natively (no shim)."""
-    from bot.services.greeting_renderer import PillowGreetingRenderer
-
     db = AsyncMock()
     db.get_greeting_config.return_value = {
         "guildId": "123456789",
@@ -58,23 +57,7 @@ async def test_native_kwargs_path_calls_renderer_directly():
     cache = TTLCache()
     renderer = MagicMock(spec=PillowGreetingRenderer)
     renderer.render.return_value = io.BytesIO(b"fake-png")
-    # Also keep compat for ImageService-bypass verification — but new GreetingService takes renderer
-    # For guard test, construct with renderer and verify native kwargs.
-    try:
-        service = GreetingService(db=db, cache=cache, greeting_renderer=renderer)
-    except TypeError:
-        # Old signature: (db, cache, image_service) — still test native path via image_service mock
-        img = MagicMock()
-        img.generate_greeting_card.return_value = io.BytesIO(b"fake-png")
-        service = GreetingService(db=db, cache=cache, image_service=img)
-        member = _make_member()
-        await service.dispatch_welcome(member)
-        assert img.generate_greeting_card.called
-        kwargs = img.generate_greeting_card.call_args.kwargs
-        assert "greeting_title" in kwargs
-        assert "member_count_text" in kwargs
-        assert "guild_icon_url" in kwargs
-        return
+    service = GreetingService(db=db, cache=cache, greeting_renderer=renderer)
 
     member = _make_member()
     await service.dispatch_welcome(member)
@@ -86,7 +69,7 @@ async def test_native_kwargs_path_calls_renderer_directly():
     assert kwargs["card_type"] == "welcome"
 
 
-def test_shim_absent_after_migration():
+def test_shim_absent_after_migration() -> None:
     """After GREEN 4.9, the compat shim must be deleted.
 
     This guards the removal: the named symbol ``_generate_greeting_card_compatibly``
@@ -94,8 +77,6 @@ def test_shim_absent_after_migration():
     a tautological ``assert True``) proves the shim was actually removed and
     blocks any reintroduction.
     """
-    import bot.services.greeting_service as gs
-
     assert not hasattr(gs, "_generate_greeting_card_compatibly"), (
         "_generate_greeting_card_compatibly shim must be absent after 4.9"
     )

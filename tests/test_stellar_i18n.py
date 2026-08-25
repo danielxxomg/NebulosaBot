@@ -21,7 +21,9 @@ import pytest
 from discord.ext import commands
 
 from bot.cogs.stellar import StellarCog
+from bot.core import i18n as i18n_mod
 from bot.core.i18n import load_locales, set_guild_language
+from bot.services.rank_renderer import RankRenderer
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -110,8 +112,6 @@ _EN_MARKERS = {
 @pytest.fixture(autouse=True)
 def _load_i18n(tmp_path: Path) -> Generator[None, None, None]:
     """Load custom locale overrides for stellar i18n tests."""
-    from bot.core import i18n as i18n_mod
-
     # Save original state.
     orig_locales = dict(i18n_mod._locales)
     orig_guild_langs = dict(i18n_mod._guild_languages)
@@ -147,12 +147,8 @@ def mock_bot() -> MagicMock:
     bot.economy_service.get_balance = AsyncMock()
     bot.economy_service.get_leaderboard = AsyncMock()
     bot.economy_service.get_rank_info = AsyncMock()
-    bot.image_service = MagicMock()
-    bot.image_service.generate_rank_card = MagicMock()
     # rank_renderer is owned by the bot (stored in setup_hook) and used
     # directly by stellar.rank(); mock it for parity with the real bot shape.
-    from bot.services.rank_renderer import RankRenderer
-
     bot.rank_renderer = MagicMock(spec=RankRenderer)
     bot.rank_renderer.generate_rank_card = MagicMock()
     return bot
