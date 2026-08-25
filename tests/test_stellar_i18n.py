@@ -16,7 +16,6 @@ from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
-import discord
 import pytest
 from discord.ext import commands
 
@@ -24,6 +23,7 @@ from bot.cogs.stellar import StellarCog
 from bot.core import i18n as i18n_mod
 from bot.core.i18n import load_locales, set_guild_language
 from bot.services.rank_renderer import RankRenderer
+from tests.conftest import make_ctx, make_member
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -155,211 +155,189 @@ def mock_bot() -> MagicMock:
 
 
 @pytest.fixture
-def cog_es(mock_bot: MagicMock) -> StellarCog:
-    """Return a StellarCog for the ES guild."""
+def cog(mock_bot: MagicMock) -> StellarCog:
+    """Return a StellarCog (locale resolved per-call via guild language)."""
     return StellarCog(mock_bot)
 
 
 def _make_ctx(guild_id: int, user_id: int = 111111111) -> MagicMock:
-    """Build a mock Context with the given guild_id."""
-    ctx = MagicMock(spec=commands.Context)
-    ctx.send = AsyncMock()
+    """Build a spec'd Context from the shared factory plus stellar extras."""
+    author = make_member(member_id=user_id)
+    author.display_avatar = MagicMock()
+    author.display_avatar.url = "https://cdn.discord.com/avatars/test.png"
+    ctx = make_ctx(guild_id=guild_id, author=author, spec=commands.Context)
     ctx.defer = AsyncMock()
-    ctx.author = MagicMock(spec=discord.Member)
-    ctx.author.id = user_id
-    ctx.author.display_name = "TestUser"
-    ctx.author.display_avatar = MagicMock()
-    ctx.author.display_avatar.url = "https://cdn.discord.com/avatars/test.png"
-    ctx.guild = MagicMock(spec=discord.Guild)
-    ctx.guild.id = guild_id
     return ctx
 
 
+# Locale matrix shared by every command concept below.
+_LOCALE_MATRIX = [
+    pytest.param(_GUILD_ID_ES, "ES", id="es"),
+    pytest.param(_GUILD_ID_EN, "EN", id="en"),
+]
+
+
 # ---------------------------------------------------------------------------
-# /daily — ES vs EN
+# /daily — localized per guild language
 # ---------------------------------------------------------------------------
 
 
 class TestDailyI18n:
-    """daily command returns localized strings."""
+    """daily returns localized strings for every guild language."""
 
-    async def test_daily_success_es(
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    async def test_success_title_is_localized(
         self,
-        cog_es: StellarCog,
+        cog: StellarCog,
         mock_bot: MagicMock,
+        guild_id: int,
+        suffix: str,
     ) -> None:
-        """ES guild gets Spanish daily success title."""
-        ctx = _make_ctx(_GUILD_ID_ES)
-        mock_bot.economy_service.claim_daily.return_value = (True, 130, 4, 0)
-
-        await cog_es.daily.callback(cog_es, ctx)
-
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "DAILY_SUCCESS_TITLE_ES" in embed.title
-
-    async def test_daily_success_en(
-        self,
-        mock_bot: MagicMock,
-    ) -> None:
-        """EN guild gets English daily success title."""
-        cog = StellarCog(mock_bot)
-        ctx = _make_ctx(_GUILD_ID_EN)
+        """claim_daily(True) renders the localized success title."""
+        ctx = _make_ctx(guild_id)
         mock_bot.economy_service.claim_daily.return_value = (True, 130, 4, 0)
 
         await cog.daily.callback(cog, ctx)
 
         embed = ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
-        assert "DAILY_SUCCESS_TITLE_EN" in embed.title
+        assert f"DAILY_SUCCESS_TITLE_{suffix}" in embed.title
 
-    async def test_daily_cooldown_es(
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    async def test_cooldown_title_is_localized(
         self,
-        cog_es: StellarCog,
+        cog: StellarCog,
         mock_bot: MagicMock,
+        guild_id: int,
+        suffix: str,
     ) -> None:
-        """ES guild gets Spanish cooldown title."""
-        ctx = _make_ctx(_GUILD_ID_ES)
+        """claim_daily(False) renders the localized cooldown title."""
+        ctx = _make_ctx(guild_id)
         mock_bot.economy_service.claim_daily.return_value = (False, 0, 3, 22 * 3600)
 
-        await cog_es.daily.callback(cog_es, ctx)
+        await cog.daily.callback(cog, ctx)
 
         embed = ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
-        assert "DAILY_COOLDOWN_TITLE_ES" in embed.title
+        assert f"DAILY_COOLDOWN_TITLE_{suffix}" in embed.title
 
 
 # ---------------------------------------------------------------------------
-# /coins — ES vs EN
+# /coins — localized per guild language
 # ---------------------------------------------------------------------------
 
 
 class TestCoinsI18n:
-    """coins command returns localized strings."""
+    """coins returns localized strings for every guild language."""
 
-    async def test_coins_self_es(
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    async def test_self_balance_title_is_localized(
         self,
-        cog_es: StellarCog,
+        cog: StellarCog,
         mock_bot: MagicMock,
+        guild_id: int,
+        suffix: str,
     ) -> None:
-        """ES guild gets Spanish coin balance title."""
-        ctx = _make_ctx(_GUILD_ID_ES)
-        mock_bot.economy_service.get_balance.return_value = 500
-
-        await cog_es.coins.callback(cog_es, ctx, member=None)
-
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "COINS_BALANCE_TITLE_ES" in embed.title
-
-    async def test_coins_self_en(
-        self,
-        mock_bot: MagicMock,
-    ) -> None:
-        """EN guild gets English coin balance title."""
-        cog = StellarCog(mock_bot)
-        ctx = _make_ctx(_GUILD_ID_EN)
+        """Self balance embed renders the localized title."""
+        ctx = _make_ctx(guild_id)
         mock_bot.economy_service.get_balance.return_value = 500
 
         await cog.coins.callback(cog, ctx, member=None)
 
         embed = ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
-        assert "COINS_BALANCE_TITLE_EN" in embed.title
+        assert f"COINS_BALANCE_TITLE_{suffix}" in embed.title
 
 
 # ---------------------------------------------------------------------------
-# /leaderboard — ES vs EN
+# /leaderboard — localized per guild language
 # ---------------------------------------------------------------------------
 
 
 class TestLeaderboardI18n:
-    """leaderboard command returns localized strings."""
+    """leaderboard returns localized strings for every guild language."""
 
-    async def test_leaderboard_xp_es(
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    @pytest.mark.parametrize("lb_type", ["xp", "coins"])
+    async def test_title_is_localized(
         self,
-        cog_es: StellarCog,
+        cog: StellarCog,
         mock_bot: MagicMock,
+        lb_type: str,
+        guild_id: int,
+        suffix: str,
     ) -> None:
-        """ES guild gets Spanish XP leaderboard title."""
-        ctx = _make_ctx(_GUILD_ID_ES)
+        """Both leaderboard types render their localized title."""
+        ctx = _make_ctx(guild_id)
         mock_bot.economy_service.get_leaderboard.return_value = [
             {"userId": "111", "xp": 500, "coins": 50},
         ]
 
-        await cog_es.leaderboard.callback(cog_es, ctx, lb_type="xp")
+        await cog.leaderboard.callback(cog, ctx, lb_type=lb_type)
 
         embed = ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
-        assert "LB_XP_TITLE_ES" in embed.title
+        assert f"LB_{lb_type.upper()}_TITLE_{suffix}" in embed.title
 
-    async def test_leaderboard_coins_en(
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    async def test_empty_title_is_localized(
         self,
+        cog: StellarCog,
         mock_bot: MagicMock,
+        guild_id: int,
+        suffix: str,
     ) -> None:
-        """EN guild gets English coins leaderboard title."""
-        cog = StellarCog(mock_bot)
-        ctx = _make_ctx(_GUILD_ID_EN)
-        mock_bot.economy_service.get_leaderboard.return_value = [
-            {"userId": "111", "xp": 50, "coins": 500},
-        ]
-
-        await cog.leaderboard.callback(cog, ctx, lb_type="coins")
-
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "LB_COINS_TITLE_EN" in embed.title
-
-    async def test_leaderboard_empty_es(
-        self,
-        cog_es: StellarCog,
-        mock_bot: MagicMock,
-    ) -> None:
-        """ES guild gets Spanish empty leaderboard message."""
-        ctx = _make_ctx(_GUILD_ID_ES)
+        """Empty leaderboard renders the localized empty state."""
+        ctx = _make_ctx(guild_id)
         mock_bot.economy_service.get_leaderboard.return_value = []
 
-        await cog_es.leaderboard.callback(cog_es, ctx, lb_type="xp")
+        await cog.leaderboard.callback(cog, ctx, lb_type="xp")
 
         embed = ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
-        assert "LB_EMPTY_TITLE_ES" in embed.title
+        assert f"LB_EMPTY_TITLE_{suffix}" in embed.title
 
 
 # ---------------------------------------------------------------------------
-# /rank — ES
+# /rank — localized per guild language
 # ---------------------------------------------------------------------------
 
 
 class TestRankI18n:
-    """rank command returns localized strings."""
+    """rank returns localized strings for every guild language."""
 
-    async def test_rank_no_data_es(
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    async def test_no_data_title_is_localized(
         self,
-        cog_es: StellarCog,
+        cog: StellarCog,
         mock_bot: MagicMock,
+        guild_id: int,
+        suffix: str,
     ) -> None:
-        """ES guild gets Spanish 'no rank data' message."""
-        ctx = _make_ctx(_GUILD_ID_ES)
+        """Missing rank info renders the localized no-data title."""
+        ctx = _make_ctx(guild_id)
         mock_bot.economy_service.get_rank_info.return_value = None
 
-        await cog_es.rank.callback(cog_es, ctx, member=None)
+        await cog.rank.callback(cog, ctx, member=None)
 
         embed = ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
-        assert "RANK_NODATA_TITLE_ES" in embed.title
+        assert f"RANK_NODATA_TITLE_{suffix}" in embed.title
 
-    async def test_rank_error_es(
+    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    async def test_error_title_is_localized(
         self,
-        cog_es: StellarCog,
+        cog: StellarCog,
         mock_bot: MagicMock,
+        guild_id: int,
+        suffix: str,
     ) -> None:
-        """ES guild gets Spanish rank error message."""
-        ctx = _make_ctx(_GUILD_ID_ES)
+        """Rank lookup failure renders the localized failure title."""
+        ctx = _make_ctx(guild_id)
         mock_bot.economy_service.get_rank_info.side_effect = RuntimeError("DB down")
 
-        await cog_es.rank.callback(cog_es, ctx, member=None)
+        await cog.rank.callback(cog, ctx, member=None)
 
         embed = ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
-        assert "RANK_FAIL_TITLE_ES" in embed.title
+        assert f"RANK_FAIL_TITLE_{suffix}" in embed.title

@@ -14,13 +14,13 @@ from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import discord
 import pytest
 from discord.ext import commands
 
 from bot.cogs.ocio import OcioCog
 from bot.core.i18n import load_locales, set_guild_language
 from bot.services.ocio_service import OcioService
+from tests.conftest import make_ctx
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -82,16 +82,8 @@ def cog(mock_bot: MagicMock) -> OcioCog:
 
 
 def _make_ctx(guild_id: int | None = _GUILD_ID) -> MagicMock:
-    ctx = MagicMock(spec=commands.Context)
-    ctx.send = AsyncMock()
-    ctx.author = MagicMock(spec=discord.Member)
-    ctx.author.display_name = "TestUser"
-    if guild_id is not None:
-        ctx.guild = MagicMock(spec=discord.Guild)
-        ctx.guild.id = guild_id
-    else:
-        ctx.guild = None
-    return ctx
+    """Delegates to the shared factory; keeps the DM-capable default."""
+    return make_ctx(guild_id=guild_id, spec=commands.Context)
 
 
 # ---------------------------------------------------------------------------
@@ -101,19 +93,12 @@ def _make_ctx(guild_id: int | None = _GUILD_ID) -> MagicMock:
 
 class TestDadosI18n:
     @pytest.mark.asyncio
-    async def test_dados_title_from_locale(self, cog: OcioCog) -> None:
-        """Dados embed title MUST use t()."""
+    async def test_dados_embed_from_locale(self, cog: OcioCog) -> None:
+        """Dados embed MUST use t() for title and interpolated description."""
         ctx = _make_ctx()
         await cog.dados.callback(cog, ctx, sides=6)
         embed = ctx.send.call_args[1]["embed"]
         assert "TEST_DICE" in embed.title
-
-    @pytest.mark.asyncio
-    async def test_dados_description_from_locale(self, cog: OcioCog) -> None:
-        """Dados embed description MUST use t() with interpolated values."""
-        ctx = _make_ctx()
-        await cog.dados.callback(cog, ctx, sides=6)
-        embed = ctx.send.call_args[1]["embed"]
         assert "d6" in embed.description
 
 
@@ -127,46 +112,20 @@ class TestBananaI18n:
     @patch.object(
         OcioService, "get_random_banana", new_callable=AsyncMock, return_value=(b"fakewebp", "banana_01.webp", 7)
     )
-    async def test_banana_title_from_locale(
+    async def test_banana_embed_from_locale(
         self,
         mock_banana: AsyncMock,
         cog: OcioCog,
     ) -> None:
-        """Banana embed title MUST use t()."""
+        """Banana embed MUST use t() for title and interpolated size.
+
+        Pool fallback means banana never errors — the success path IS the
+        fallback path (former error-path twin asserted the same body).
+        """
         ctx = _make_ctx()
         await cog.banana.callback(cog, ctx)
         embed = ctx.send.call_args[1]["embed"]
         assert "TEST_BANANA" in embed.title
-
-    @pytest.mark.asyncio
-    @patch.object(
-        OcioService, "get_random_banana", new_callable=AsyncMock, return_value=(b"fakewebp", "banana_01.webp", 7)
-    )
-    async def test_banana_description_from_locale(
-        self,
-        mock_banana: AsyncMock,
-        cog: OcioCog,
-    ) -> None:
-        """Banana embed description MUST use t() with interpolated size."""
-        ctx = _make_ctx()
-        await cog.banana.callback(cog, ctx)
-        embed = ctx.send.call_args[1]["embed"]
-        assert "cm" in embed.description
-
-    @pytest.mark.asyncio
-    @patch.object(
-        OcioService, "get_random_banana", new_callable=AsyncMock, return_value=(b"fakewebp", "banana_01.webp", 7)
-    )
-    async def test_banana_error_from_locale(
-        self,
-        mock_banana: AsyncMock,
-        cog: OcioCog,
-    ) -> None:
-        """Banana via OcioService never shows error — fallback succeeds."""
-        # With pool fallback, banana never errors; verify cm still present
-        ctx = _make_ctx()
-        await cog.banana.callback(cog, ctx)
-        embed = ctx.send.call_args[1]["embed"]
         assert "cm" in embed.description
 
     @pytest.mark.asyncio
