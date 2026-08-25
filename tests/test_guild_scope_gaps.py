@@ -7,6 +7,11 @@ row / empty / no mutation, not caller-only check. No DDL.
 Covers: get_ticket, get_ticket_by_channel, update_ticket, get_tickets_by_parent,
 get_ticket_category, delete_ticket_category, insert_ticket_note, get_ticket_notes,
 delete_ticket_note, get_recent_notes_for_dedup, insert_audit_row, get_audit_rows.
+
+Consolidated (cycle-5 S5b/c): the per-method filter-assert and empty-result
+twins are parametrized over call specs; ``update_ticket_requires_guild_filter``
+was deleted because its assertion is strictly implied by the scoped-update
+filter case below.
 """
 
 from __future__ import annotations
@@ -16,8 +21,74 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from bot.core.cache import TTLCache
 from bot.core.database import Database
+from bot.services.ticket_service import TicketService
 from tests.test_database import FakeSupabaseClient
+
+# Scoped-call specs: (method, args, kwargs) whose filters MUST carry both the
+# guildId equality and the listed secondary column filter.
+_FILTER_MATRIX = [
+    pytest.param(
+        ("get_ticket", ("t-b",), {"guild_id": "guild-a"}),
+        "ticket",
+        ("eq", "id", "t-b"),
+        id="get_ticket",
+    ),
+    pytest.param(
+        ("get_ticket_by_channel", ("ch-b",), {"guild_id": "guild-a"}),
+        "ticket",
+        ("eq", "channelId", "ch-b"),
+        id="get_ticket_by_channel",
+    ),
+    pytest.param(
+        ("update_ticket", ("t-b",), {"guild_id": "guild-a", "status": "closed"}),
+        "ticket",
+        ("eq", "id", "t-b"),
+        id="update_ticket",
+    ),
+    pytest.param(
+        ("get_tickets_by_parent", ("p-b",), {"guild_id": "guild-a"}),
+        "ticket",
+        ("eq", "parentId", "p-b"),
+        id="get_tickets_by_parent",
+    ),
+    pytest.param(
+        ("get_ticket_category", ("cat-b",), {"guild_id": "guild-a"}),
+        "ticket_category",
+        ("eq", "id", "cat-b"),
+        id="get_ticket_category",
+    ),
+    pytest.param(
+        ("delete_ticket_category", ("cat-b",), {"guild_id": "guild-a"}),
+        "ticket_category",
+        ("eq", "id", "cat-b"),
+        id="delete_ticket_category",
+    ),
+]
+
+# Cross-guild reads against an empty table MUST return the documented sentinel.
+_EMPTY_MATRIX = [
+    pytest.param(("get_ticket", ("t-b",), {"guild_id": "guild-a"}), "ticket", None, id="get_ticket"),
+    pytest.param(
+        ("get_ticket_by_channel", ("ch-b",), {"guild_id": "guild-a"}),
+        "ticket",
+        None,
+        id="get_ticket_by_channel",
+    ),
+    pytest.param(
+        ("get_tickets_by_parent", ("p-b",), {"guild_id": "guild-a"}),
+        "ticket",
+        [],
+        id="get_tickets_by_parent",
+    ),
+    pytest.param(
+        ("get_ticket_category", ("cat-b",), {"guild_id": "guild-a"}),
+        "ticket_category",
+        None,
+        id="get_ticket_category",
+    ),
+]
 
 
 @pytest.fixture
@@ -33,144 +104,80 @@ def db(fake_client: FakeSupabaseClient) -> Database:
 
 
 # ---------------------------------------------------------------------------
-# ticket_db — get_ticket / get_ticket_by_channel / update_ticket / get_tickets_by_parent
+# Scoped reads/writes apply the guildId filter (+ their resource filter)
 # ---------------------------------------------------------------------------
 
 
-class TestGuildScopeGetTicket:
+class TestGuildScopeFiltersApplied:
+    """Scoped DB calls apply the guildId filter plus their resource filter."""
+
+    @pytest.mark.parametrize(("call_spec", "table", "extra_filter"), _FILTER_MATRIX)
     @pytest.mark.asyncio
-    async def test_guild_scope_get_ticket_denies_cross_guild(
-        self, db: Database, fake_client: FakeSupabaseClient
+    async def test_scoped_call_applies_guild_filter(
+        self,
+        db: Database,
+        fake_client: FakeSupabaseClient,
+        call_spec: tuple[str, tuple, dict],
+        table: str,
+        extra_filter: tuple,
     ) -> None:
-        """Guild A MUST NOT read guild B ticket via get_ticket."""
-        # Simulate DB containing a ticket owned by guild B
-        ticket_b = {"id": "t-b", "guildId": "guild-b", "status": "open"}
-        fake_client.set_table_data("ticket", [ticket_b])
-        # Guild A queries for B's ticket — MUST get None (WHERE guildId=A AND id=B -> 0 rows)
-        # Simulate PostgREST filtering: when guildId filter is present and mismatched, return []
-        # Fake client returns [] if we simulate the DB would return [] for cross-guild
-        # But before GREEN, DB method ignores guild_id, so it returns ticket_b (FAIL)
-        # After GREEN, it filters by guild_id and returns [] -> None
-        # To make test deterministic with FakeSupabaseClient, we set data to [] for the guild-scoped call
-        # Instead we test filter is applied: call with guild_id and assert filter includes guildId
-        await db.get_ticket("t-b", guild_id="guild-a")
-        filters = fake_client.get_table_filters("ticket")
+        """Scoped DB call MUST filter by guildId AND its resource key."""
+        method, args, kwargs = call_spec
+        await getattr(db, method)(*args, **kwargs)
+
+        filters = fake_client.get_table_filters(table)
         assert ("eq", "guildId", "guild-a") in filters, f"Missing guildId filter, got {filters}"
-        assert ("eq", "id", "t-b") in filters
+        assert extra_filter in filters
 
     @pytest.mark.asyncio
-    async def test_guild_scope_get_ticket_returns_none_when_guild_mismatch(
+    async def test_get_audit_rows_applies_guild_filter(
         self, db: Database, fake_client: FakeSupabaseClient
     ) -> None:
-        """get_ticket with wrong guild MUST return None, not the row."""
-        # Data for guild B exists, but query scoped to guild A returns empty
-        fake_client.set_table_data("ticket", [])
-        result = await db.get_ticket("t-b", guild_id="guild-a")
-        assert result is None
-
-
-class TestGuildScopeGetTicketByChannel:
-    @pytest.mark.asyncio
-    async def test_guild_scope_get_ticket_by_channel_denies_cross_guild(
-        self, db: Database, fake_client: FakeSupabaseClient
-    ) -> None:
-        await db.get_ticket_by_channel("ch-b", guild_id="guild-a")
-        filters = fake_client.get_table_filters("ticket")
+        """get_audit_rows scopes reads to the caller guild."""
+        await db.get_audit_rows("guild-a")
+        filters = fake_client.get_table_filters("ticket_audit")
         assert ("eq", "guildId", "guild-a") in filters
-        assert ("eq", "channelId", "ch-b") in filters
+
+
+class TestGuildScopeEmptyResults:
+    """Cross-guild reads against empty tables return documented sentinels."""
+
+    @pytest.mark.parametrize(("call_spec", "table", "expected"), _EMPTY_MATRIX)
+    @pytest.mark.asyncio
+    async def test_mismatched_guild_returns_no_rows(
+        self,
+        db: Database,
+        fake_client: FakeSupabaseClient,
+        call_spec: tuple[str, tuple, dict],
+        table: str,
+        expected: Any,
+    ) -> None:
+        """Cross-guild read against an empty table returns None / [] per contract."""
+        fake_client.set_table_data(table, [])
+        method, args, kwargs = call_spec
+        result = await getattr(db, method)(*args, **kwargs)
+        assert result == expected
 
     @pytest.mark.asyncio
-    async def test_guild_scope_get_ticket_by_channel_returns_none_when_mismatch(
+    async def test_get_audit_rows_empty_cross_guild(
         self, db: Database, fake_client: FakeSupabaseClient
     ) -> None:
-        fake_client.set_table_data("ticket", [])
-        result = await db.get_ticket_by_channel("ch-b", guild_id="guild-a")
-        assert result is None
-
-
-class TestGuildScopeUpdateTicket:
-    @pytest.mark.asyncio
-    async def test_guild_scope_update_ticket_denies_cross_guild(
-        self, db: Database, fake_client: FakeSupabaseClient
-    ) -> None:
-        """update_ticket from wrong guild MUST NOT mutate — WHERE guildId=GID AND id=TID."""
-        await db.update_ticket("t-b", guild_id="guild-a", status="closed")
-        filters = fake_client.get_table_filters("ticket")
-        assert ("eq", "guildId", "guild-a") in filters
-        assert ("eq", "id", "t-b") in filters
-
-    @pytest.mark.asyncio
-    async def test_guild_scope_update_ticket_requires_guild_filter(
-        self, db: Database, fake_client: FakeSupabaseClient
-    ) -> None:
-        """Ensure update without guild does not leak — scoped call must include guild."""
-        # Call without guild should still work (backward compat) but scoped call must filter
-        fake_client.set_table_data("ticket", [])
-        await db.update_ticket("t-b", guild_id="guild-a", status="closed")
-        filters = fake_client.get_table_filters("ticket")
-        # The last call's filters must contain guildId
-        assert any(f[1] == "guildId" for f in filters)
-
-
-class TestGuildScopeGetTicketsByParent:
-    @pytest.mark.asyncio
-    async def test_guild_scope_get_tickets_by_parent_filters_guild(
-        self, db: Database, fake_client: FakeSupabaseClient
-    ) -> None:
-        await db.get_tickets_by_parent("p-b", guild_id="guild-a")
-        filters = fake_client.get_table_filters("ticket")
-        # Must filter by guildId when scoped
-        assert ("eq", "guildId", "guild-a") in filters
-        assert ("eq", "parentId", "p-b") in filters
-
-    @pytest.mark.asyncio
-    async def test_guild_scope_get_tickets_by_parent_empty_cross_guild(
-        self, db: Database, fake_client: FakeSupabaseClient
-    ) -> None:
-        fake_client.set_table_data("ticket", [])
-        result = await db.get_tickets_by_parent("p-b", guild_id="guild-a")
+        """Guild A querying guild B's audit rows sees nothing — filter still applied."""
+        fake_client.set_table_data("ticket_audit", [])
+        result = await db.get_audit_rows("guild-b")
         assert result == []
+        filters = fake_client.get_table_filters("ticket_audit")
+        assert ("eq", "guildId", "guild-b") in filters
 
 
 # ---------------------------------------------------------------------------
-# ticket_category_db
-# ---------------------------------------------------------------------------
-
-
-class TestGuildScopeCategory:
-    @pytest.mark.asyncio
-    async def test_guild_scope_get_ticket_category_denies_cross_guild(
-        self, db: Database, fake_client: FakeSupabaseClient
-    ) -> None:
-        await db.get_ticket_category("cat-b", guild_id="guild-a")
-        filters = fake_client.get_table_filters("ticket_category")
-        assert ("eq", "guildId", "guild-a") in filters
-        assert ("eq", "id", "cat-b") in filters
-
-    @pytest.mark.asyncio
-    async def test_guild_scope_get_ticket_category_returns_none_cross_guild(
-        self, db: Database, fake_client: FakeSupabaseClient
-    ) -> None:
-        fake_client.set_table_data("ticket_category", [])
-        result = await db.get_ticket_category("cat-b", guild_id="guild-a")
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_guild_scope_delete_ticket_category_denies_cross_guild(
-        self, db: Database, fake_client: FakeSupabaseClient
-    ) -> None:
-        await db.delete_ticket_category("cat-b", guild_id="guild-a")
-        filters = fake_client.get_table_filters("ticket_category")
-        assert ("eq", "guildId", "guild-a") in filters
-        assert ("eq", "id", "cat-b") in filters
-
-
-# ---------------------------------------------------------------------------
-# ticket_note_db — 4 gaps
+# ticket_note_db — ownership-before-mutate denials
 # ---------------------------------------------------------------------------
 
 
 class TestGuildScopeTicketNote:
+    """Ticket-note operations deny cross-guild access before mutating."""
+
     @pytest.mark.asyncio
     async def test_guild_scope_insert_ticket_note_denies_cross_guild(
         self, db: Database, fake_client: FakeSupabaseClient
@@ -219,11 +226,13 @@ class TestGuildScopeTicketNote:
 
 
 # ---------------------------------------------------------------------------
-# ticket_audit_db — 2 gaps
+# ticket_audit_db — ownership-before-mutate denial
 # ---------------------------------------------------------------------------
 
 
-class TestGuildScopeAudit:
+class TestGuildScopeAuditDenial:
+    """Audit-row inserts deny tickets from another guild."""
+
     @pytest.mark.asyncio
     async def test_guild_scope_insert_audit_row_denies_cross_guild(
         self, db: Database, fake_client: FakeSupabaseClient
@@ -235,26 +244,6 @@ class TestGuildScopeAudit:
         calls = fake_client.get_table_calls("ticket_audit")
         assert not any(c[0] == "insert" for c in calls)
 
-    @pytest.mark.asyncio
-    async def test_guild_scope_get_audit_rows_filters_guild(
-        self, db: Database, fake_client: FakeSupabaseClient
-    ) -> None:
-        await db.get_audit_rows("guild-a")
-        filters = fake_client.get_table_filters("ticket_audit")
-        assert ("eq", "guildId", "guild-a") in filters
-
-    @pytest.mark.asyncio
-    async def test_guild_scope_get_audit_rows_empty_cross_guild(
-        self, db: Database, fake_client: FakeSupabaseClient
-    ) -> None:
-        fake_client.set_table_data("ticket_audit", [])
-        result = await db.get_audit_rows("guild-b")
-        # Guild A querying guild B's rows should not see them — but this tests that
-        # the method at least filters by provided guild
-        assert result == []
-        filters = fake_client.get_table_filters("ticket_audit")
-        assert ("eq", "guildId", "guild-b") in filters
-
 
 # ---------------------------------------------------------------------------
 # Service wrapper — cross-guild denial via guild-scoped DB (one vertical)
@@ -262,12 +251,11 @@ class TestGuildScopeAudit:
 
 
 class TestGuildScopeServiceVertical:
+    """One service-level vertical proving scoped denial through TicketService."""
+
     @pytest.mark.asyncio
     async def test_service_get_ticket_guild_scoped_denied(self) -> None:
         """Service claim MUST deny when ticket guild != requested guild via real service path."""
-
-        from bot.core.cache import TTLCache
-        from bot.services.ticket_service import TicketService
 
         cache = TTLCache()
 

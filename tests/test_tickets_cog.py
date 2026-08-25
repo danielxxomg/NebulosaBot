@@ -14,7 +14,10 @@ TDD cycle: RED → GREEN — tests specify expected behavior of existing code.
 from __future__ import annotations
 
 import json
+import logging
 from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any, ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -31,7 +34,13 @@ from bot.cogs.tickets import (
     _build_ticket_embed,
     _CategorySelect,
 )
-from bot.models.ticket import Ticket
+from bot.core import i18n as i18n_mod
+from bot.core.cache import TTLCache
+from bot.core.i18n import load_locales, set_guild_language
+from bot.models.ticket import RepairResult, Ticket
+from bot.models.ticket_note import TicketNote
+from bot.services.ticket_service import TicketService
+from bot.views.confirmation import ConfirmCancelView
 from bot.views.tickets import TicketIntakeModal
 
 # ---------------------------------------------------------------------------
@@ -42,11 +51,6 @@ from bot.views.tickets import TicketIntakeModal
 @pytest.fixture(autouse=True)
 def _load_real_locales() -> None:
     """Load real locale files so t() resolves ticket keys."""
-    from pathlib import Path
-
-    from bot.core import i18n as i18n_mod
-    from bot.core.i18n import load_locales, set_guild_language
-
     i18n_mod._locales.clear()
     i18n_mod._guild_languages.clear()
 
@@ -619,8 +623,6 @@ class TestTicketActionsView:
         mock_db,
     ) -> None:
         """Close button → ephemeral ConfirmCancelView sent (close deferred to confirm)."""
-        from bot.views.confirmation import ConfirmCancelView
-
         ticket_interaction.client = ticket_bot
         ticket_interaction.channel = mock_ticket_channel
 
@@ -1533,8 +1535,6 @@ class TestNoteCommands:
     ) -> None:
         """/note add → create_note called with author + content."""
         mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
-        from bot.models.ticket_note import TicketNote
-
         note = TicketNote.from_db_row(_note_row_cog())
         ticket_bot.ticket_service.create_note = AsyncMock(return_value=note)
 
@@ -1569,8 +1569,6 @@ class TestNoteCommands:
     ) -> None:
         """/note list → embed with notes."""
         mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
-        from bot.models.ticket_note import TicketNote
-
         notes = [TicketNote.from_db_row(_note_row_cog(note_id=f"n-{i}")) for i in range(3)]
         ticket_bot.ticket_service.get_notes = AsyncMock(return_value=notes)
 
@@ -1674,8 +1672,6 @@ class TestNoteListPrivacy:
 
     @staticmethod
     def _notes_with(content: str = "Secret staff note") -> list:
-        from bot.models.ticket_note import TicketNote
-
         return [TicketNote.from_db_row(_note_row_cog(note_id="n-1", content=content))]
 
     async def test_note_list_slash_is_ephemeral(
@@ -1914,89 +1910,50 @@ class TestSubticketParentOwnerAccess:
             ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, subticket))
         return parent_row
 
-    async def test_overwrites_grant_parent_owner_not_invoker(
+    # Parent-owner resolution scenarios: (parent_author_id, resolver, fetched_member_id).
+    # resolver "get_member" → guild.get_member resolves; "self" → invoker IS the owner;
+    # "fetch_member" → get_member misses, fetch_member fallback resolves.
+    _PARENT_OWNER_MATRIX: ClassVar[list[Any]] = [
+        pytest.param("222222222", "get_member", None, id="owner_via_get_member"),
+        pytest.param("111111111", "self", None, id="invoker_is_owner"),
+        pytest.param("222222222", "fetch_member", 222222222, id="owner_via_fetch_fallback"),
+    ]
+
+    @pytest.mark.parametrize(
+        ("parent_author_id", "resolver", "fetched_member_id"), _PARENT_OWNER_MATRIX
+    )
+    async def test_channel_grants_resolved_parent_owner_access(
         self,
         tickets_cog: TicketsCog,
         slash_ctx: MagicMock,
         ticket_bot: MagicMock,
         mock_db,
         mock_ticket_channel: MagicMock,
+        parent_author_id: str,
+        resolver: str,
+        fetched_member_id: int | None,
     ) -> None:
-        """B3.1: overwrites include parent owner (read+send), NOT invoker."""
-        parent_owner = _parent_owner_member(222222222)
-        self._wire_subticket_base(slash_ctx, ticket_bot, mock_db, "222222222", mock_ticket_channel)
-        slash_ctx.guild.get_member = MagicMock(return_value=parent_owner)
+        """B3: resolved parent owner becomes the channel author and gets mentioned."""
+        owner = _parent_owner_member(222222222)
+        self._wire_subticket_base(slash_ctx, ticket_bot, mock_db, parent_author_id, mock_ticket_channel)
+        if resolver == "get_member":
+            slash_ctx.guild.get_member = MagicMock(return_value=owner)
+        elif resolver == "fetch_member":
+            slash_ctx.guild.get_member = MagicMock(return_value=None)
+            slash_ctx.guild.fetch_member = AsyncMock(return_value=owner)
 
         await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
 
+        if fetched_member_id is not None:
+            slash_ctx.guild.fetch_member.assert_awaited_once_with(fetched_member_id)
         ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
         call_args = ticket_bot.ticket_service.create_ticket_channel.call_args
-        # The parent_owner is passed as the `author` argument to create_ticket_channel.
-        assert call_args.args[2] == parent_owner  # author
-
-    async def test_channel_send_mentions_parent_owner(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db,
-        mock_ticket_channel: MagicMock,
-    ) -> None:
-        """B3.2: the new channel's initial message mentions the parent owner."""
-        parent_owner = _parent_owner_member(222222222)
-        self._wire_subticket_base(slash_ctx, ticket_bot, mock_db, "222222222", mock_ticket_channel)
-        slash_ctx.guild.get_member = MagicMock(return_value=parent_owner)
-
-        await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
-
+        # The resolved parent owner is passed as the `author` argument.
+        expected_author = slash_ctx.author if resolver == "self" else owner
+        assert call_args.args[2] == expected_author
+        # The new channel's initial message mentions the resolved owner.
         mock_ticket_channel.send.assert_awaited_once()
-        content = mock_ticket_channel.send.call_args.kwargs.get("content")
-        assert content == parent_owner.mention
-        assert content != slash_ctx.author.mention
-
-    async def test_invoker_is_parent_owner_keeps_access(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db,
-        mock_ticket_channel: MagicMock,
-    ) -> None:
-        """B3.3: when invoker IS the parent owner, access is granted once (no duplicate)."""
-        # parent_author_id == invoker id (111111111).
-        self._wire_subticket_base(slash_ctx, ticket_bot, mock_db, "111111111", mock_ticket_channel)
-
-        await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
-
-        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
-        call_args = ticket_bot.ticket_service.create_ticket_channel.call_args
-        # Invoker (= parent owner) is passed as the `author` argument.
-        assert call_args.args[2] == slash_ctx.author  # author
-        # No fetch needed when invoker is the parent owner.
-        # Mention is the author (who is the parent owner).
-        mock_ticket_channel.send.assert_awaited_once()
-        assert mock_ticket_channel.send.call_args.kwargs.get("content") == slash_ctx.author.mention
-
-    async def test_offline_parent_owner_fetch_fallback(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db,
-        mock_ticket_channel: MagicMock,
-    ) -> None:
-        """B3 triangulation: offline parent owner resolved via fetch_member."""
-        parent_owner = _parent_owner_member(222222222)
-        self._wire_subticket_base(slash_ctx, ticket_bot, mock_db, "222222222", mock_ticket_channel)
-        slash_ctx.guild.get_member = MagicMock(return_value=None)
-        slash_ctx.guild.fetch_member = AsyncMock(return_value=parent_owner)
-
-        await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
-
-        slash_ctx.guild.fetch_member.assert_awaited_once_with(222222222)
-        call_args = ticket_bot.ticket_service.create_ticket_channel.call_args
-        # Parent owner is passed as the `author` argument.
-        assert call_args.args[2] == parent_owner
+        assert mock_ticket_channel.send.call_args.kwargs.get("content") == expected_author.mention
 
     async def test_parent_owner_unresolvable_sends_error(
         self,
@@ -2056,90 +2013,82 @@ class TestDBErrorHandling:
         assert "Traceback" not in (embed.description or "")
         mock_exc.assert_called_once()
 
-    async def test_subticket_create_db_failure_sends_error(
+    # Commands whose parent lookup (get_ticket_by_channel) is the guarded DB call.
+    # (command, logger_patch_target, service_attribute_that_must_stay_unawaited)
+    _DB_FAILURE_MATRIX: ClassVar[list[Any]] = [
+        pytest.param(
+            "subticket_create",
+            "bot.cogs.tickets.logger.exception",
+            "create_ticket_channel",
+            id="subticket_create",
+        ),
+        pytest.param(
+            "reopen",
+            "bot.utils.ticket_helpers.logger.exception",
+            "reopen_ticket",
+            id="reopen",
+        ),
+        pytest.param(
+            "transfer",
+            "bot.cogs.tickets.logger.exception",
+            "transfer_ticket",
+            id="transfer",
+        ),
+        pytest.param(
+            "note_add",
+            "bot.utils.ticket_helpers.logger.exception",
+            "create_note",
+            id="note_add",
+        ),
+    ]
+
+    @pytest.mark.parametrize(
+        ("command", "logger_target", "guarded_service"), _DB_FAILURE_MATRIX
+    )
+    async def test_parent_lookup_db_failure_sends_error(
         self,
         tickets_cog: TicketsCog,
         slash_ctx: MagicMock,
         ticket_bot: MagicMock,
         mock_db,
+        command: str,
+        logger_target: str,
+        guarded_service: str,
     ) -> None:
-        """B4.2: get_ticket_by_channel raises in /subticket create → error_embed."""
-        config = MagicMock()
-        config.ticket_category_id = "100000000"
-        config.mod_role_id = None
-        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
-        category_channel = MagicMock(spec=discord.CategoryChannel)
-        slash_ctx.guild.get_channel = MagicMock(return_value=category_channel)
+        """B4: get_ticket_by_channel raising → error_embed + logger.exception, service untouched."""
+        if command == "subticket_create":
+            config = MagicMock()
+            config.ticket_category_id = "100000000"
+            config.mod_role_id = None
+            ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
+            category_channel = MagicMock(spec=discord.CategoryChannel)
+            slash_ctx.guild.get_channel = MagicMock(return_value=category_channel)
+        elif command == "reopen":
+            ticket_bot.ticket_service.reopen_ticket = AsyncMock()
+        elif command == "transfer":
+            ticket_bot.ticket_service.transfer_ticket = AsyncMock()
+        else:  # note_add
+            ticket_bot.ticket_service.create_note = AsyncMock()
+
         mock_db.get_ticket_by_channel = AsyncMock(side_effect=Exception("DB down"))
 
-        with patch("bot.cogs.tickets.logger.exception") as mock_exc:
-            await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
+        with patch(logger_target) as mock_exc:
+            if command == "subticket_create":
+                await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
+            elif command == "reopen":
+                await tickets_cog.reopen.callback(tickets_cog, slash_ctx)
+            elif command == "transfer":
+                await tickets_cog.transfer.callback(
+                    tickets_cog, slash_ctx, member=MagicMock(spec=discord.Member)
+                )
+            else:  # note_add
+                await tickets_cog.note_add.callback(tickets_cog, slash_ctx, content="a note")
 
-        # Channel not created when the parent lookup fails.
-        ticket_bot.ticket_service.create_ticket_channel.assert_not_awaited()
+        getattr(ticket_bot.ticket_service, guarded_service).assert_not_awaited()
         embed = slash_ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
         assert "DB down" not in (embed.description or "")
-        mock_exc.assert_called_once()
-
-    async def test_reopen_db_failure_sends_error(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db,
-    ) -> None:
-        """B4.3: get_ticket_by_channel raises in /reopen → error_embed."""
-        mock_db.get_ticket_by_channel = AsyncMock(side_effect=Exception("DB down"))
-        ticket_bot.ticket_service.reopen_ticket = AsyncMock()
-
-        with patch("bot.utils.ticket_helpers.logger.exception") as mock_exc:
-            await tickets_cog.reopen.callback(tickets_cog, slash_ctx)
-
-        ticket_bot.ticket_service.reopen_ticket.assert_not_awaited()
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "DB down" not in (embed.description or "")
-        mock_exc.assert_called_once()
-
-    async def test_transfer_db_failure_sends_error(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db,
-    ) -> None:
-        """B4 triangulation: get_ticket_by_channel raises in /transfer → error_embed."""
-        mock_db.get_ticket_by_channel = AsyncMock(side_effect=Exception("DB down"))
-        ticket_bot.ticket_service.transfer_ticket = AsyncMock()
-
-        with patch("bot.cogs.tickets.logger.exception") as mock_exc:
-            await tickets_cog.transfer.callback(tickets_cog, slash_ctx, member=MagicMock(spec=discord.Member))
-
-        ticket_bot.ticket_service.transfer_ticket.assert_not_awaited()
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "DB down" not in (embed.description or "")
-        mock_exc.assert_called_once()
-
-    async def test_note_add_db_failure_sends_error(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db,
-    ) -> None:
-        """B4 triangulation: get_ticket_by_channel raises in /note add → error_embed."""
-        mock_db.get_ticket_by_channel = AsyncMock(side_effect=Exception("DB down"))
-        ticket_bot.ticket_service.create_note = AsyncMock()
-
-        with patch("bot.utils.ticket_helpers.logger.exception") as mock_exc:
-            await tickets_cog.note_add.callback(tickets_cog, slash_ctx, content="a note")
-
-        ticket_bot.ticket_service.create_note.assert_not_awaited()
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "DB down" not in (embed.description or "")
+        assert "Traceback" not in (embed.description or "")
         mock_exc.assert_called_once()
 
     async def test_subticket_create_max_number_failure_sends_error(
@@ -2403,10 +2352,6 @@ class TestConfigMissingErrorMessages:
     @pytest.fixture(autouse=True)
     def _load_locales(self):
         """Load i18n locales so t() resolves real keys."""
-        from pathlib import Path
-
-        from bot.core.i18n import load_locales, set_guild_language
-
         load_locales(Path("bot/locales"))
         set_guild_language("123456789", "en")
         yield
@@ -2437,8 +2382,6 @@ class TestConfigMissingErrorMessages:
         modal_interaction.response.defer = AsyncMock()
         modal_interaction.followup = MagicMock()
         modal_interaction.followup.send = AsyncMock()
-
-        from bot.views.tickets import TicketIntakeModal
 
         modal = TicketIntakeModal(
             guild=ticket_guild,
@@ -2771,8 +2714,6 @@ class TestUnclaimCommand:
         claimed_row["claimedBy"] = "111111111"
         mock_db.get_ticket_by_channel = AsyncMock(return_value=claimed_row)
 
-        from bot.models.ticket import Ticket
-
         unclaimed = Ticket.from_db_row({**claimed_row, "status": "open", "claimedBy": None})
         ticket_bot.ticket_service.unclaim_ticket = AsyncMock(return_value=unclaimed)
 
@@ -2803,8 +2744,6 @@ class TestUnclaimCommand:
         claimed_row = _ticket_row(status="claimed")
         claimed_row["claimedBy"] = "111111111"
         mock_db.get_ticket_by_channel = AsyncMock(return_value=claimed_row)
-
-        from bot.models.ticket import Ticket
 
         unclaimed = Ticket.from_db_row({**claimed_row, "status": "open", "claimedBy": None})
         ticket_bot.ticket_service.unclaim_ticket = AsyncMock(return_value=unclaimed)
@@ -3325,8 +3264,6 @@ class TestSweepIntegrityCommand:
         ticket_bot: MagicMock,
     ) -> None:
         """A valid invocation delegates to ticket_service.sweep_integrity."""
-        from bot.models.ticket import RepairResult
-
         ctx = self._sweep_ctx(ticket_bot)
         ticket_bot.ticket_service.sweep_integrity = AsyncMock(
             return_value=[
@@ -3370,8 +3307,6 @@ class TestSweepIntegrityCommand:
         ticket_bot: MagicMock,
     ) -> None:
         """The summary reports the number of repaired vs skipped candidates."""
-        from bot.models.ticket import RepairResult
-
         ctx = self._sweep_ctx(ticket_bot)
         results = [
             RepairResult(
@@ -3426,8 +3361,6 @@ class TestRepairTicketCommand:
         mock_db,
     ) -> None:
         """An admin repair delegates with a RepairAuthority built from the actor."""
-        from bot.models.ticket import RepairResult
-
         ctx = self._repair_ctx(ticket_bot)
         row = {
             "id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
@@ -3486,9 +3419,6 @@ class TestRepairTicketCommand:
         reached with a fabricated ticket id — no fake id is ever passed to the
         service and no repair mutation is attempted.
         """
-        from bot.core.cache import TTLCache
-        from bot.services.ticket_service import TicketService
-
         service = TicketService(db=mock_db, cache=TTLCache())
         ticket_bot.ticket_service = service
         ctx = self._repair_ctx(ticket_bot)
@@ -3513,9 +3443,6 @@ class TestRepairTicketCommand:
         structured evidence (audit + log) without fabricating a ticket id or
         reaching the repair service with a fake id.
         """
-        from bot.core.cache import TTLCache
-        from bot.services.ticket_service import TicketService
-
         service = TicketService(db=mock_db, cache=TTLCache())
         ticket_bot.ticket_service = service
         ctx = self._repair_ctx(ticket_bot)
@@ -3540,9 +3467,6 @@ class TestRepairTicketCommand:
         the audit carries guild + the raw reference and never fabricates a
         ticket id.
         """
-        from bot.core.cache import TTLCache
-        from bot.services.ticket_service import TicketService
-
         service = TicketService(db=mock_db, cache=TTLCache())
         ticket_bot.ticket_service = service
         ctx = self._repair_ctx(ticket_bot)
@@ -3709,10 +3633,6 @@ class TestScheduledCloseLoopLogNoise:
         self,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        import logging
-
-        from bot.cogs.tickets import TicketsCog
-
         bot = MagicMock()
         bot.ticket_service = None
         bot.db = None
