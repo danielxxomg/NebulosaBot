@@ -10,6 +10,7 @@ escape/AllowedMentions, AsyncClientOptions flags, 023 RLS.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -38,7 +39,7 @@ def _make_member(role_val: int, member_id: int = 1) -> MagicMock:
 
 class TestSentinelAuthorHierarchy:
     @pytest.mark.asyncio
-    async def test_author_below_target_denied(self):
+    async def test_author_below_target_denied(self) -> None:
         """author.top_role <= target.top_role → deny ephemeral + False."""
         bot = MagicMock()
         bot.user = MagicMock()
@@ -62,7 +63,7 @@ class TestSentinelAuthorHierarchy:
         ctx.send.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_author_above_target_allowed(self):
+    async def test_author_above_target_allowed(self) -> None:
         bot = MagicMock()
         bot.user = MagicMock()
         bot.user.id = 999
@@ -84,7 +85,7 @@ class TestSentinelAuthorHierarchy:
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_owner_exempt(self):
+    async def test_owner_exempt(self) -> None:
         bot = MagicMock()
         bot.user = MagicMock()
         bot.user.id = 999
@@ -114,22 +115,13 @@ class TestSentinelAuthorHierarchy:
 # predicate tests in tests/test_pr4_tickets_red.py::TestDeleteCategoryAdminGate.
 
 
-class TestEscapeAndMentions:
-    def test_escape_markdown_present(self):
-        found = False
-        for p in Path("bot").rglob("*.py"):
-            if "escape_markdown" in p.read_text(encoding="utf-8"):
-                found = True
-                break
-        assert found, "escape_markdown must be used on echo paths"
-
-    def test_allowed_mentions_present(self):
-        found = False
-        for p in Path("bot").rglob("*.py"):
-            if "AllowedMentions" in p.read_text(encoding="utf-8"):
-                found = True
-                break
-        assert found, "AllowedMentions must be used on echo paths"
+# Consolidation note (cycle-5 S5b/c): the former TestEscapeAndMentions rglob
+# source-greps (``escape_markdown`` / ``AllowedMentions`` anywhere in bot/) were
+# deleted — their behavioral twins live in
+# tests/test_remediation_final_partials.py::TestGuardsEscapeBehavioral, which
+# injects a markdown+mention payload through the real ticket-subject, ban-reason
+# and 8ball echo paths and asserts the escaped output plus
+# ``allowed_mentions`` with everyone/roles/users suppressed on the actual send.
 
 
 class TestAsyncClientOptionsFlags:
@@ -156,17 +148,39 @@ class TestAsyncClientOptionsFlags:
 
 
 class TestMigration023:
-    def test_file_exists(self):
-        p = Path("migrations/023_rls_remaining_tables.sql")
-        assert p.exists(), "023 migration missing"
+    """Migration 023 RLS contract — parsed statement semantics, not substring greps.
 
-    def test_enables_rls_7_tables(self):
-        src = Path("migrations/023_rls_remaining_tables.sql").read_text(encoding="utf-8")
-        for tbl in ("guild", "member", "infraction", "ticket", "ticket_category", "economy_config", "greeting_config"):
-            assert tbl in src
-        assert "ENABLE ROW LEVEL SECURITY" in src
-        assert "DISABLE ROW LEVEL SECURITY" in src or "DISABLE" in src
+    Consolidation note (cycle-5 S5b/c): the former file-existence and raw
+    substring greps were replaced. Existence + additive marker are subsumed by
+    tests/test_remediation_cycle2_behavior.py::TestLiveIdentityAndRemaining::
+    test_migrations_021_022_023_exist_and_are_additive; this suite now asserts
+    the semantic contract: the ENABLE statements name exactly the 7 tables and
+    the rollback path is documented.
+    """
 
-    def test_rollback_documented(self):
-        src = Path("migrations/023_rls_remaining_tables.sql").read_text(encoding="utf-8").lower()
-        assert "rollback" in src or "disable" in src
+    _RLS_TABLES = frozenset({
+        "guild",
+        "member",
+        "infraction",
+        "ticket",
+        "ticket_category",
+        "economy_config",
+        "greeting_config",
+    })
+
+    @staticmethod
+    def _enabled_tables() -> set[str]:
+        sql = Path("migrations/023_rls_remaining_tables.sql").read_text(encoding="utf-8")
+        return {
+            m.group(1) for m in re.finditer(r"(?im)^ALTER\s+TABLE\s+\"?(\w+)\"?\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY", sql)
+        }
+
+    def test_enables_rls_exactly_on_7_tables(self) -> None:
+        enabled = self._enabled_tables()
+        assert enabled == self._RLS_TABLES, f"023 must ENABLE RLS on exactly the 7 tables, got {sorted(enabled)}"
+
+    def test_rollback_documented(self) -> None:
+        sql = Path("migrations/023_rls_remaining_tables.sql").read_text(encoding="utf-8")
+        assert re.search(r"(?im)^--.*Rollback:.*DISABLE\s+ROW\s+LEVEL\s+SECURITY", sql), (
+            "023 must document the DISABLE ROW LEVEL SECURITY rollback path"
+        )

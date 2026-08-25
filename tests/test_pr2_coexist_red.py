@@ -1,19 +1,24 @@
 """RED for PR2 2.13-2.14 coexistence + silent scheduled close."""
 
+from __future__ import annotations
+
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
 
+from bot.cogs.tickets import TicketsCog
+from bot.core.cache import TTLCache
+from bot.core.database import Database
+from bot.models.ticket import Ticket
+from bot.services.ticket_service import TicketService
+from tests.test_database import FakeQueryBuilder, FakeSupabaseClient
+
 
 @pytest.mark.asyncio
-async def test_scheduled_loop_is_silent_no_countdown():
+async def test_scheduled_loop_is_silent_no_countdown() -> None:
     # scheduled_close_loop must call close_ticket_full with manual=False (silent), not countdown
-    from datetime import UTC, datetime
-
-    from bot.cogs.tickets import TicketsCog
-    from bot.models.ticket import Ticket
-
     bot = MagicMock()
     bot.db = MagicMock()
     row = {
@@ -50,33 +55,27 @@ async def test_scheduled_loop_is_silent_no_countdown():
     # manual False is the silent proof
 
 
+# Consolidation note (cycle-5 S5b/c): the former
+# test_scheduled_loop_silent_no_5_to_1_countdown source-grep was deleted —
+# test_scheduled_loop_is_silent_no_countdown above proves silence behaviorally
+# (close_ticket_full awaited with manual=False on the real loop path).
+#
+# The former test_auto_close_clears_scheduled_fields inspect.getsource greps
+# ("close_ticket MUST call _clear_scheduled_fields" / helper carries
+# scheduledCloseAt) were deleted — behavioral twin:
+# tests/test_remediation_cycle2_behavior.py::TestScheduledLoopEndToEnd::
+# test_loop_closes_clears_scheduled_and_deletes_channel drives the real
+# close_ticket_full → TicketLifecycleService.close_ticket →
+# _clear_scheduled_fields chain against a stateful DB fake and asserts the
+# UPDATE payload carries scheduledCloseAt=None; if close_ticket ever stopped
+# clearing, that twin fails.
+
+
 @pytest.mark.asyncio
-async def test_auto_close_clears_scheduled_fields():
-    # AUTO_CLOSE sweep should clear scheduledCloseAt/By via lifecycle/service.
-    # Round 2: the clear was extracted into _clear_scheduled_fields (DRY across
-    # both close_ticket branches); assert close_ticket still triggers it, and
-    # the helper itself carries the scheduledCloseAt field clear.
-    import inspect
-
-    from bot.services.ticket_lifecycle_service import TicketLifecycleService
-
-    close_src = inspect.getsource(TicketLifecycleService.close_ticket)
-    helper_src = inspect.getsource(TicketLifecycleService._clear_scheduled_fields)
-    assert "_clear_scheduled_fields" in close_src, "close_ticket MUST call _clear_scheduled_fields"
-    assert "scheduledCloseAt" in helper_src or "scheduled_close" in helper_src.lower()
-
-
-@pytest.mark.asyncio
-async def test_coexist_both_fire_one_wins():
+async def test_coexist_both_fire_one_wins() -> None:
     # CF5 remediation: real transition_ticket_to_closed idempotency via production
     # TicketService.close_ticket against a stateful DB fake (not a self-fulfilling
     # mock). First close wins (Ticket), second raises ValueError (already_closed).
-    from datetime import UTC, datetime
-
-    from bot.core.cache import TTLCache
-    from bot.core.database import Database
-    from bot.services.ticket_service import TicketService
-    from tests.test_database import FakeQueryBuilder, FakeSupabaseClient
 
     class _StatefulTicket(FakeQueryBuilder):
         def __init__(self, row):

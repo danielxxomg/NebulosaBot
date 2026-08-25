@@ -5,16 +5,21 @@ runtime twins where a behavioral assertion exists —
 
 - command existence + ephemeral send → proven by ``test_8ball_command_ephemeral``;
 - cooldown wiring → proven by runtime CooldownMapping introspection;
-- uniform randomness → proven by spying ``random.choice`` at the service seam.
+- uniform randomness → proven by spying ``random.choice`` at the service seam;
+- cooldown error handling → proven by driving the real ``cog_command_error``
+  with a ``CommandOnCooldown`` and asserting the ephemeral embed carries the
+  actual ``retry_after`` (companion twin:
+  tests/test_remediation_cycle2_behavior.py::test_cooldown_handler_emits_localized_retry_after).
 
-Kept without twin (documented): ``test_cooldown_handler_exists`` still reads
-source because no error-pipeline harness drives CommandOnCooldown end-to-end
-yet; ``test_8ball_has_locales`` is a production locale contract, not a grep.
+Kept without twin (documented): ``test_8ball_has_locales`` reads the production
+locale JSON contract (data files, not implementation source), mirroring the
+protected i18n key-coverage hygiene tests.
 """
 
 from __future__ import annotations
 
 import json
+import random
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -28,7 +33,7 @@ from bot.services.ocio_service import OcioService
 _COOLDOWN_COMMANDS = ["dados", "banana", "8ball"]
 
 
-def _make_ctx(guild_id=123456789):
+def _make_ctx(guild_id: int = 123456789) -> MagicMock:
     ctx = MagicMock(spec=commands.Context)
     ctx.send = AsyncMock()
     ctx.author = MagicMock(spec=discord.Member)
@@ -37,7 +42,7 @@ def _make_ctx(guild_id=123456789):
     return ctx
 
 
-def _find_command(cog: OcioCog, name: str):
+def _find_command(cog: OcioCog, name: str) -> commands.Command:
     """Return the cog command object registered under *name*."""
     for cmd in cog.__cog_commands__:
         if cmd.name == name:
@@ -47,7 +52,7 @@ def _find_command(cog: OcioCog, name: str):
 
 
 class Test8BallContract:
-    def test_8ball_has_locales(self):
+    def test_8ball_has_locales(self) -> None:
         for lang in ("es", "en"):
             data = json.loads(Path(f"bot/locales/{lang}.json").read_text(encoding="utf-8"))
             ocio = data.get("ocio", {})
@@ -66,11 +71,25 @@ class Test8BallContract:
                 assert "embed_title" in flat, f"{lang} missing ocio.8ball.embed_title"
                 assert len(flat) == 21
 
-    def test_cooldown_handler_exists(self):
-        src = Path("bot/cogs/ocio.py").read_text(encoding="utf-8")
-        assert "CommandOnCooldown" in src
-        assert "retry_after" in src
-        assert "ephemeral" in src
+    @pytest.mark.asyncio
+    async def test_cooldown_error_carries_retry_after_ephemerally(self) -> None:
+        """cog_command_error turns CommandOnCooldown into an ephemeral embed
+        whose description carries the actual retry_after seconds."""
+        cog = OcioCog(MagicMock())
+        ctx = MagicMock(spec=commands.Context)
+        ctx.guild = MagicMock(id=123456789)
+        ctx.guild.id = 123456789
+        ctx.send = AsyncMock()
+
+        err = commands.CommandOnCooldown(commands.Cooldown(1, 5.0), 3.5, commands.BucketType.user)
+        await cog.cog_command_error(ctx, err)
+
+        ctx.send.assert_awaited_once()
+        kwargs = ctx.send.call_args.kwargs
+        assert kwargs.get("ephemeral") is True
+        embed = kwargs.get("embed")
+        assert embed is not None
+        assert "3.5" in (embed.description or ""), "cooldown embed MUST carry the actual retry_after seconds"
 
 
 class TestCooldownWiring:
@@ -86,7 +105,7 @@ class TestCooldownWiring:
 
 
 @pytest.mark.asyncio
-async def test_8ball_returns_localized():
+async def test_8ball_returns_localized() -> None:
     svc = OcioService()
     # must not require discord mocks
     for gid in ("123456789", None):
@@ -95,16 +114,16 @@ async def test_8ball_returns_localized():
 
 
 @pytest.mark.asyncio
-async def test_8ball_response_draws_from_pool_uniformly():
+async def test_8ball_response_draws_from_pool_uniformly() -> None:
     """get_8ball_response selects via random.choice over the localized pool."""
     svc = OcioService()
-    with patch("bot.services.ocio_service.random.choice", wraps=__import__("random").choice) as choice_spy:
+    with patch("bot.services.ocio_service.random.choice", wraps=random.choice) as choice_spy:  # noqa: S311 -- entertainment randomness
         svc.get_8ball_response(guild_id="123456789", question="is it?")
     choice_spy.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_8ball_command_ephemeral():
+async def test_8ball_command_ephemeral() -> None:
     bot = MagicMock()
     cog = OcioCog(bot)
     ctx = _make_ctx()
