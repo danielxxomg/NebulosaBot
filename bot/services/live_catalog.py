@@ -9,7 +9,7 @@ Tables / views queried (read-only):
   * pg_constraint            — FK constraints
   * pg_policies / pg_policy  — RLS policies (0 expected)
   * pg_publication_tables    — CDC publication (6 tables)
-  * supabase_migrations.schema_migrations  — 26 live migrations
+  * supabase_migrations.schema_migrations  — 27 live migrations
 """
 
 from __future__ import annotations
@@ -60,11 +60,12 @@ LOCAL_MIGRATION_STEMS: tuple[str, ...] = (
     "024_permission_matrix_indexes",
     "025_drop_ticket_backup_categoryid_text_20260818",
     "026_realtime_member_economy_config",
+    "027_private_transcript_bucket",
 )
 
 
 def get_local_migration_names(*, migrations_dir: str = "migrations") -> list[str]:
-    """Return exact 26 local migration stems (no extension) — sorted.
+    """Return exact 27 local migration stems (no extension) — sorted.
 
     The returned names must match ``supabase_migrations.schema_migrations``
     remote entries exactly (version/name pair), not just count equality.
@@ -74,6 +75,7 @@ def get_local_migration_names(*, migrations_dir: str = "migrations") -> list[str
     directory — the historical phantom ``003_subtickets_notes`` entry (a
     pre-renumber artifact; the file lives on as ``019_subtickets_notes``)
     was dropped and migrations 019-025 were added, matching remote 25/25.
+    S1 (clean-1.0): 027_private_transcript_bucket added for triple-path Storage.
     """
     expected = sorted(LOCAL_MIGRATION_STEMS)
     try:
