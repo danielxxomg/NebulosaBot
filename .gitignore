@@ -56,5 +56,5 @@ supabase/.temp/
 # Local audit report (GGA cycles) — not tracked
 AUDITORIA-GGA-C1-C3.md
 
-# GGA review config is machine-local (provider/model churn)
-.gga
+# GGA review config — tracked (project policy). Local provider override: .gga.local
+.gga.local

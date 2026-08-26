@@ -1,0 +1,13 @@
+# Gentleman Guardian Angel — NebulosaBot
+# Provider: OpenCode Zen
+# Model: Muse Spark 1.2 Free (opencode/muse-spark-1.2-contributor-free)
+
+PROVIDER="opencode:opencode/muse-spark-1.2-contributor-free"
+
+FILE_PATTERNS="*.py"
+EXCLUDE_PATTERNS="__pycache__,*.pyc,.mypy_cache,.pytest_cache"
+RULES_FILE="AGENTS.md"
+STRICT_MODE="true"
+TIMEOUT=1500
+
+PR_BASE_BRANCH="master"
