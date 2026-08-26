@@ -36,6 +36,8 @@ from bot.views.tickets import TicketActionsView, TicketPanelView, deploy_ticket_
 if TYPE_CHECKING:
     from bot.config import BotConfig
 
+from bot.config import RANK_RENDER_MAX_CONCURRENT
+
 # Concurrency cap for on_ready guild backfill. Bounded to avoid overwhelming
 # Supabase with concurrent requests when the bot is in many guilds at once.
 BACKFILL_CONCURRENCY_LIMIT = 50
@@ -112,6 +114,7 @@ class NebulosaBot(commands.Bot):
         "guild_service",
         "infraction_service",
         "logging_service",
+        "rank_render_sem",
         "rank_renderer",
         "ticket_service",
         "transcript_service",
@@ -140,6 +143,10 @@ class NebulosaBot(commands.Bot):
         # Used by bot/utils/checks.py is_mod() to resolve the moderator
         # role without a DB query.  Populated by GuildService.
         self._guild_mod_role_cache: dict[int, str] = {}
+
+        # S0.11: bot-wide semaphore capping concurrent /rank Pillow renders
+        # so burst requests cannot saturate the thread pool.
+        self.rank_render_sem = asyncio.Semaphore(RANK_RENDER_MAX_CONCURRENT)
 
         # Realtime CDC subscriber (replaces the webhook in PR 2).  Started in
         # setup_hook() and stopped in close(); None in degraded mode.

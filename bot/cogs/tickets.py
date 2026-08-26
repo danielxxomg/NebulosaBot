@@ -21,6 +21,7 @@ from bot.cogs.ticket_admin_flow import TicketAdminFlow
 from bot.cogs.ticket_integrity_flow import TicketIntegrityFlow
 from bot.cogs.ticket_lifecycle_flow import TicketLifecycleFlow
 from bot.cogs.ticket_notes_flow import TicketNotesFlow
+from bot.config import TICKET_TIMER_ENABLED
 from bot.core.context import NebulosaContext
 from bot.core.i18n import t
 from bot.services.ticket_repair_service import is_cancel_message
@@ -94,16 +95,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
         if not self.integrity_sweep_loop.is_running():
             self.integrity_sweep_loop.start()
             logger.info("Integrity sweep task started (periodic)")
-        if not self.scheduled_close_loop.is_running():
-            try:
-                from bot.config import TICKET_TIMER_ENABLED
-
-                timer_enabled = TICKET_TIMER_ENABLED
-            except ImportError:
-                timer_enabled = True
-            if timer_enabled:
-                self.scheduled_close_loop.start()
-                logger.info("Scheduled-close loop started (interval: 60s)")
+        if not self.scheduled_close_loop.is_running() and TICKET_TIMER_ENABLED:
+            self.scheduled_close_loop.start()
+            logger.info("Scheduled-close loop started (interval: 60s)")
 
     @tasks.loop(seconds=60)
     async def scheduled_close_loop(self) -> None:
@@ -247,7 +241,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
         if ts is None or not ts.is_ticket_channel(message.channel.id):
             return
         if self.bot.db is None:
-            logger.error("db not initialised in TicketsCog.on_message — skipping message")
+            logger.warning("db not initialised in TicketsCog.on_message — skipping message")
             return
         gid = str(message.guild.id)
         # Always update lastActivity first
@@ -358,12 +352,10 @@ class TicketsCog(commands.Cog, name="Tickets"):
     async def _send_cancel_confirmation(self, channel: discord.abc.Messageable, gid: str, ticket_id: str) -> None:
         """Post the localized timer-cancelled confirmation embed."""
         try:
+            # i18n (AGENTS.md): resolve through t() only — no literal fallbacks;
+            # key coverage is enforced by tests/test_i18n_key_coverage.py.
             title = t(gid, "tickets.timer.cancel_title")
-            if title.startswith("tickets.timer"):
-                title = "Timer Cancelled"
             desc = t(gid, "tickets.timer.cancel_description")
-            if desc.startswith("tickets.timer"):
-                desc = "Scheduled close cancelled."
             await channel.send(embed=info_embed(title, desc, guild_id=gid))
         except Exception:
             logger.exception("Failed to send cancel confirmation for ticket %s", ticket_id)
@@ -400,12 +392,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
                         await ts.upsert_timer_embed(message.channel, gid, ticket_id, res.due_ts, res.seconds)  # type: ignore[arg-type]
                     except Exception:
                         logger.exception("Failed to upsert timer embed on confirm for ticket %s", ticket_id)
+                # i18n (AGENTS.md): resolve through t() only — no literal fallbacks.
                 title = t(gid, "tickets.timer.confirm_success_title")
-                if title.startswith("tickets.timer"):
-                    title = "Timer Set"
                 desc = t(gid, "tickets.timer.confirm_success_description")
-                if desc.startswith("tickets.timer"):
-                    desc = "Scheduled close set."
                 # Confirm feedback is best-effort: the schedule already succeeded.
                 # Round 3: catch narrow discord.HTTPException + log instead of
                 # contextlib.suppress(Exception) (a semantically bare except).

@@ -10,10 +10,10 @@ import discord
 from bot.core.i18n import t
 from bot.services.ticket_service import TicketCategoryNotConfiguredError
 from bot.utils.checks import is_mod_check
+from bot.utils.embeds import build_ticket_embed, error_embed
 from bot.utils.embeds import cog_err as _err
 from bot.utils.embeds import cog_info as _info
 from bot.utils.embeds import cog_ok as _ok
-from bot.utils.embeds import error_embed
 from bot.utils.ticket_helpers import (
     resolve_category_name,
     resolve_member_safe,
@@ -136,9 +136,7 @@ class TicketLifecycleFlow:
             logger.exception("Failed to create sub-ticket in DB (parent=%s)", pid)
             await ctx.send(embed=_err(gid, "tickets.subticket.creation_failed"))
             return
-        from bot.utils.embeds import build_ticket_embed as _bte
-
-        await channel.send(content=parent_owner.mention, embed=_bte(subticket, guild_id=gid))
+        await channel.send(content=parent_owner.mention, embed=build_ticket_embed(subticket, guild_id=gid))
         await ctx.send(embed=_ok(gid, "tickets.subticket.success", channel=channel.mention))
         logger.info(
             "Sub-ticket #%d created (parent=%s, guild=%s, author=%s)", subticket.ticket_number, pid, guild.id, author.id
@@ -185,6 +183,11 @@ class TicketLifecycleFlow:
             await ctx.send(embed=_err(None, "tickets.transfer.server_only"))
             return
         gid = str(ctx.guild.id)
+        # S0.11: UI pre-validation — transferring a ticket to yourself is a
+        # guaranteed no-op that used to surface as a service-level failure.
+        if member.id == ctx.author.id:
+            await ctx.send(embed=_err(gid, "tickets.transfer.self_transfer"), ephemeral=True)
+            return
         if self.bot.ticket_service is None:
             msg = "ticket_service not initialised"
             raise RuntimeError(msg)
@@ -309,8 +312,6 @@ class TicketLifecycleFlow:
                 ephemeral=True,
             )
             return
-        from bot.utils.embeds import build_ticket_embed
-
         embed = build_ticket_embed(ticket, guild_id=gid, bot=self.bot, guild=ctx.guild)
         try:
             async for message in ctx.channel.history(limit=10):

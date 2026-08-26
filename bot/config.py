@@ -7,6 +7,7 @@ import binascii
 import json
 import logging
 import os
+import sys
 from dataclasses import dataclass, field
 
 from dotenv import load_dotenv
@@ -138,11 +139,9 @@ def _verify_jwt_rs256(key: str) -> str | None:
 
 
 def _is_test_env() -> bool:
-    import sys as _sys  # local import to avoid cycle
-
     if os.getenv("ENV", "").lower() == "test":
         return True
-    return "PYTEST_CURRENT_TEST" in os.environ or any("pytest" in (a or "") for a in _sys.argv)
+    return "PYTEST_CURRENT_TEST" in os.environ or any("pytest" in (a or "") for a in sys.argv)
 
 
 def validate_supabase_key(key: str) -> None:
@@ -219,6 +218,12 @@ INTEGRITY_BATCH_SIZE = 50
 INTEGRITY_BACKOFF_SECONDS = 1.0
 INTEGRITY_MAX_BACKOFF_SECONDS = 30.0
 INTEGRITY_EVIDENCE_FRESHNESS_SECONDS = 3600
+
+# /rank render throttle (S0.11): bot-wide semaphore capping concurrent
+# Pillow renders so parallel requests cannot saturate the thread pool.
+RANK_RENDER_MAX_CONCURRENT = 3
+# Per-user cooldown for /rank (seconds) — heavy image generation.
+RANK_COOLDOWN_SECONDS = 15
 
 TICKET_TIMER_ENABLED = True
 

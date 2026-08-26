@@ -11,6 +11,7 @@ Strict TDD: RED phase — tests written BEFORE the implementation exists.
 
 from __future__ import annotations
 
+import asyncio
 import io
 from collections.abc import Generator
 from unittest.mock import AsyncMock, MagicMock
@@ -50,6 +51,9 @@ def mock_bot() -> Generator[MagicMock, None, None]:
     # directly by stellar.rank(); mock it so /rank tests don't hit Pillow.
     bot.rank_renderer = MagicMock(spec=RankRenderer)
     bot.rank_renderer.generate_rank_card = MagicMock()
+    # S0.11: shared render semaphore lives on the real bot; supply one here
+    # since this spec-mocked Bot does not run NebulosaBot.__init__.
+    bot.rank_render_sem = asyncio.Semaphore(3)
     yield bot
 
     i18n_mod._locales.clear()

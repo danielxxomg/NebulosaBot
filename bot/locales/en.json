@@ -502,6 +502,8 @@
     "transfer": {
       "server_only_title": "Server Only",
       "server_only_description": "Tickets can only be transferred in a server.",
+      "self_transfer_title": "Invalid Transfer",
+      "self_transfer_description": "You cannot transfer the ticket to yourself.",
       "not_ticket_title": "Not a Ticket",
       "not_ticket_description": "This command must be used in a ticket channel.",
       "lookup_failed_title": "Lookup Failed",

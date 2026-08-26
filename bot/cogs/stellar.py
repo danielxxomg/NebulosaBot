@@ -22,6 +22,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from bot.config import RANK_COOLDOWN_SECONDS
 from bot.core.context import NebulosaContext
 from bot.core.i18n import t
 from bot.utils.brand import INFO
@@ -229,6 +230,7 @@ class StellarCog(commands.Cog, name="Stellar"):
         name="rank",
         description=app_commands.locale_str("Ver tu tarjeta de rango o la de otro.", key="slash.descriptions.rank"),
     )
+    @commands.cooldown(1, RANK_COOLDOWN_SECONDS, commands.BucketType.user)
     @app_commands.describe(
         member=app_commands.locale_str(
             "El miembro a consultar (por defecto: tú)",
@@ -287,23 +289,24 @@ class StellarCog(commands.Cog, name="Stellar"):
                 exc_info=True,
             )
 
-        # Generate the rank card in a thread to avoid blocking.
-        # The renderer is owned by the bot (stored in setup_hook) so the cog
-        # uses the shared instance directly — no lazy import or legacy
-        # fallback branch.
+        # Generate the rank card in a thread to avoid blocking. The bot-wide
+        # semaphore (S0.11) caps concurrent renders so bursts queue instead of
+        # saturating the thread pool; the renderer is owned by the bot (stored
+        # in setup_hook) so the cog uses the shared instance directly.
         if self.bot.rank_renderer is None:
             msg = "RankRenderer initialised in setup_hook"
             raise RuntimeError(msg)
-        buffer = await asyncio.to_thread(
-            self.bot.rank_renderer.generate_rank_card,
-            username=target.display_name,
-            avatar_url=avatar_url,
-            xp=rank_info["xp"],
-            level=rank_info["level"],
-            rank=rank_info["rank"],
-            xp_for_current=rank_info["xp_current"],
-            xp_for_next=rank_info["xp_needed"],
-        )
+        async with self.bot.rank_render_sem:
+            buffer = await asyncio.to_thread(
+                self.bot.rank_renderer.generate_rank_card,
+                username=target.display_name,
+                avatar_url=avatar_url,
+                xp=rank_info["xp"],
+                level=rank_info["level"],
+                rank=rank_info["rank"],
+                xp_for_current=rank_info["xp_current"],
+                xp_for_next=rank_info["xp_needed"],
+            )
 
         file = discord.File(buffer, filename="rank.png")
         await ctx.send(file=file, ephemeral=True)
