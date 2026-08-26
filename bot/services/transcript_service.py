@@ -11,6 +11,7 @@ import asyncio
 import html as _html_module
 import io
 import logging
+from dataclasses import dataclass
 
 import discord
 
@@ -28,6 +29,28 @@ from bot.utils.brand import (
 logger = logging.getLogger(__name__)
 
 MAX_MESSAGES = 5000
+
+
+# -- Delivery result --------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class TranscriptDeliveryResult:
+    """Result of triple-path transcript delivery (S1 D2).
+
+    Each branch is best-effort and independent — a failure in one never
+    aborts the others. ``storage_path`` is the durable Storage object path
+    (``transcripts/{guildId}/{ticketId}/{filename}``) used as
+    ``transcriptUrl``; it is NOT a CDN URL. ``log_url`` is the expiring
+    Discord CDN attachment URL from the log-channel post (if any).
+    """
+
+    dm_sent: bool
+    storage_path: str | None
+    log_url: str | None
+    dm_error: str | None = None
+    storage_error: str | None = None
+    log_error: str | None = None
 
 # -- HTML templates -----------------------------------------------------------
 # All colors resolve through bot.utils.brand tokens (AGENTS.md brand rule);
@@ -147,6 +170,167 @@ class TranscriptService:
             return None
         else:
             return None
+
+    async def deliver(
+        self,
+        *,
+        channel: discord.TextChannel,
+        creator: discord.abc.User | discord.Member | None,
+        guild_id: str,
+        ticket_id: str,
+        log_channel: discord.TextChannel | None,
+        supabase_client: object | None = None,
+    ) -> TranscriptDeliveryResult:
+        """Deliver a transcript through three independent best-effort paths (S1 D2).
+
+        Bytes are generated once via :meth:`generate` (single
+        ``channel.history`` scan + one ``asyncio.to_thread`` HTML build) and
+        then fanned out as fresh :class:`discord.File` instances — a
+        ``File``'s buffer is single-send, so each path receives its own
+        ``BytesIO`` wrapper over the same bytes.
+
+        Paths:
+            1. DM the ticket creator (``creator.send(file)``) — DM-closed is
+               logged at WARNING and never aborts remaining paths.
+            2. Upload to the PRIVATE Storage bucket
+               ``transcripts/{guildId}/{ticketId}/{filename}`` via
+               ``supabase_client.storage.from_("transcripts").upload`` —
+               Storage failure is logged at WARNING and never aborts close.
+            3. Post to the configured log channel via existing :meth:`upload`
+               — missing log channel skips only this path (preserved).
+
+        Args:
+            channel: The ticket channel to transcribe (source of history).
+            creator: The ticket creator's Discord user/member to DM (``None``
+                skips DM path).
+            guild_id: Guild snowflake as string (scopes Storage path).
+            ticket_id: Ticket UUID (scopes Storage path).
+            log_channel: Configured log channel (``None`` skips log path).
+            supabase_client: Async Supabase client (``None`` skips Storage
+                path). When provided, ``client.storage.from_("transcripts")``
+                is used.
+
+        Returns:
+            A :class:`TranscriptDeliveryResult` with ``storage_path`` (the
+            durable path persisted as ``transcriptUrl``), ``log_url`` (the
+            expiring CDN URL), and ``dm_sent``.
+        """
+        # --- 1. Generate once ---
+        try:
+            generated = await self.generate(channel)
+        except Exception:
+            logger.exception("Transcript generation failed for ticket %s", ticket_id)
+            return TranscriptDeliveryResult(dm_sent=False, storage_path=None, log_url=None, dm_error="generate failed", storage_error="generate failed", log_error="generate failed")
+
+        # Extract bytes + filename from the generated File (fresh buffer per path)
+        try:
+            fp = generated.fp  # type: ignore[attr-defined]
+            # BytesIO path — getvalue is most reliable; fall back to read
+            if hasattr(fp, "getvalue"):
+                try:
+                    data: bytes = fp.getvalue()  # type: ignore[union-attr]
+                except Exception:
+                    fp.seek(0)
+                    data = fp.read()
+            else:
+                fp.seek(0)
+                data = fp.read()
+            # Ensure bytes
+            if isinstance(data, str):
+                data = data.encode("utf-8")
+            filename: str = getattr(generated, "filename", None) or f"transcript-{ticket_id}.html"
+        except Exception:
+            logger.exception("Failed to extract transcript bytes for ticket %s", ticket_id)
+            return TranscriptDeliveryResult(dm_sent=False, storage_path=None, log_url=None, dm_error="extract failed", storage_error="extract failed", log_error="extract failed")
+
+        # --- 2. Fan out independently ---
+        dm_sent = False
+        dm_error: str | None = None
+        storage_path: str | None = None
+        storage_error: str | None = None
+        log_url: str | None = None
+        log_error: str | None = None
+
+        # Path 1: DM creator
+        if creator is not None:
+            try:
+                dm_file = discord.File(io.BytesIO(data), filename=filename)
+                # creator may be User or Member — both expose send
+                await creator.send(file=dm_file)  # type: ignore[union-attr]
+                dm_sent = True
+                logger.info("Transcript DM sent to user %s for ticket %s", getattr(creator, "id", "unknown"), ticket_id)
+            except Exception as exc:  # noqa: BLE001 — best-effort: any DM failure is logged, never propagates
+                dm_error = f"{type(exc).__name__}: {exc}"
+                logger.warning(
+                    "Failed to DM transcript to creator %s for ticket %s: %s",
+                    getattr(creator, "id", "unknown"),
+                    ticket_id,
+                    exc,
+                    exc_info=True,
+                )
+        else:
+            logger.debug("No creator resolved for ticket %s — skipping DM path", ticket_id)
+
+        # Path 2: Storage upload (PRIVATE bucket)
+        if supabase_client is not None:
+            object_path = f"transcripts/{guild_id}/{ticket_id}/{filename}"
+            try:
+                # supabase_client.storage is a property returning AsyncStorageClient
+                storage = getattr(supabase_client, "storage", None)
+                if storage is None:
+                    raise AttributeError("supabase_client has no storage attribute")
+                # storage.from_("transcripts") is sync, upload is async
+                bucket = storage.from_("transcripts")  # type: ignore[union-attr]
+                # storage bucket upload signature: upload(path, bytes, file_options={...})
+                # file_options with content-type ensures HTML is served correctly
+                try:
+                    await bucket.upload(object_path, data, file_options={"content-type": "text/html", "upsert": "true"})  # type: ignore[arg-type]
+                except TypeError:
+                    # Fallback for clients expecting file_options as dict positional
+                    await bucket.upload(object_path, data, {"content-type": "text/html"})  # type: ignore[misc]
+                storage_path = object_path
+                logger.info("Transcript uploaded to Storage %s for ticket %s", object_path, ticket_id)
+            except Exception as exc:  # noqa: BLE001 — best-effort: Storage failure never aborts close
+                storage_error = f"{type(exc).__name__}: {exc}"
+                logger.warning(
+                    "Failed to upload transcript to Storage %s for ticket %s: %s",
+                    object_path,
+                    ticket_id,
+                    exc,
+                    exc_info=True,
+                )
+        else:
+            logger.debug("No supabase client for ticket %s — skipping Storage path", ticket_id)
+
+        # Path 3: log channel (existing upload semantics, best-effort)
+        if log_channel is not None:
+            try:
+                log_file = discord.File(io.BytesIO(data), filename=filename)
+                url = await self.upload(log_file, log_channel)
+                log_url = url
+                if url is None:
+                    # upload already logged at WARNING when no attachment; keep error marker
+                    if log_error is None:
+                        log_error = "upload returned None"
+            except Exception as exc:  # noqa: BLE001 — best-effort
+                log_error = f"{type(exc).__name__}: {exc}"
+                logger.warning(
+                    "Failed to upload transcript to log channel for ticket %s: %s",
+                    ticket_id,
+                    exc,
+                    exc_info=True,
+                )
+        else:
+            logger.debug("No log channel for guild %s — skipping log path", guild_id)
+
+        return TranscriptDeliveryResult(
+            dm_sent=dm_sent,
+            storage_path=storage_path,
+            log_url=log_url,
+            dm_error=dm_error,
+            storage_error=storage_error,
+            log_error=log_error,
+        )
 
     # ----------------------------------------------------------------
     # Internal
