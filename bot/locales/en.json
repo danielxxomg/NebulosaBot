@@ -5,7 +5,11 @@
       "title": "Error",
       "unexpected_title": "Unexpected Error",
       "unexpected_message": "An unexpected error occurred. Please try again.",
-      "command_error_title": "Command Error"
+      "command_error_title": "Command Error",
+      "check_failure_title": "Access Denied",
+      "check_failure_description": "You don't have permission to use this command.",
+      "missing_permissions_title": "Missing Permissions",
+      "missing_permissions_description": "You are missing the following permissions: {permissions}"
     },
     "success": {
       "title": "Success"

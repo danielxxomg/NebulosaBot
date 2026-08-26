@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 
 from bot.core.cache import TTLCache
@@ -369,19 +370,43 @@ class NebulosaBot(commands.Bot):
             if cog is not None and cog.has_app_command_error_handler():
                 return
 
-        # Log first (spec logging-service): full exception + traceback must
-        # be on record before the user-facing embed is produced.
-        logger.error(
-            "Unhandled app-command error (guild=%s, command=%s)",
-            interaction.guild_id,
-            getattr(interaction.command, "qualified_name", None),
-            exc_info=error,
-        )
-
         guild_id = interaction.guild.id if interaction.guild else None
-        title = t(guild_id, "common.error.unexpected_title")
-        description = t(guild_id, "common.error.unexpected_message")
-        embed = error_embed(title, description)
+
+        # Permission denials get dedicated ephemeral replies (bot-core delta):
+        # localized, naming the missing permissions when applicable, and with
+        # NO full traceback shown to the user. MissingPermissions is a
+        # CheckFailure subclass, so it MUST be matched first.
+        if isinstance(error, app_commands.MissingPermissions):
+            missing = ", ".join(error.missing_permissions)
+            embed = error_embed(
+                t(guild_id, "common.error.missing_permissions_title"),
+                t(guild_id, "common.error.missing_permissions_description", permissions=missing),
+                guild_id=guild_id,
+            )
+        elif isinstance(error, app_commands.CheckFailure):
+            logger.warning(
+                "App-command check denied (guild=%s, command=%s)",
+                guild_id,
+                getattr(interaction.command, "qualified_name", None),
+            )
+            embed = error_embed(
+                t(guild_id, "common.error.check_failure_title"),
+                t(guild_id, "common.error.check_failure_description"),
+                guild_id=guild_id,
+            )
+        else:
+            # Log first (spec logging-service): full exception + traceback must
+            # be on record before the user-facing embed is produced.
+            logger.error(
+                "Unhandled app-command error (guild=%s, command=%s)",
+                interaction.guild_id,
+                getattr(interaction.command, "qualified_name", None),
+                exc_info=error,
+            )
+            embed = error_embed(
+                t(guild_id, "common.error.unexpected_title"),
+                t(guild_id, "common.error.unexpected_message"),
+            )
 
         try:
             if interaction.response.is_done():
@@ -427,24 +452,50 @@ class NebulosaBot(commands.Bot):
         if isinstance(error, ignored):
             return
 
-        # Log first (spec logging-service): full exception + traceback must
-        # be on record before any user-facing response is produced.
-        logger.error(
-            "Unhandled command error (guild=%s, command=%s)",
-            ctx.guild.id if ctx.guild else None,
-            getattr(ctx.command, "qualified_name", None),
-            exc_info=error,
-        )
-
         guild_id = ctx.guild.id if ctx.guild else None
-        embed = error_embed(
-            t(guild_id, "common.error.command_error_title"),
-            str(error),
-            guild_id=guild_id,
-        )
+        ephemeral = False
+
+        # Permission denials get dedicated ephemeral localized replies
+        # (bot-core delta) — no tracebacks surfaced, no DM path. The prefix
+        # surface is inert (bot-core), but the contract holds if it fires.
+        # MissingPermissions is a CheckFailure subclass — matched first.
+        if isinstance(error, commands.MissingPermissions):
+            missing = ", ".join(error.missing_permissions)
+            embed = error_embed(
+                t(guild_id, "common.error.missing_permissions_title"),
+                t(guild_id, "common.error.missing_permissions_description", permissions=missing),
+                guild_id=guild_id,
+            )
+            ephemeral = True
+        elif isinstance(error, commands.CheckFailure):
+            logger.warning(
+                "Command check denied (guild=%s, command=%s)",
+                guild_id,
+                getattr(ctx.command, "qualified_name", None),
+            )
+            embed = error_embed(
+                t(guild_id, "common.error.check_failure_title"),
+                t(guild_id, "common.error.check_failure_description"),
+                guild_id=guild_id,
+            )
+            ephemeral = True
+        else:
+            # Log first (spec logging-service): full exception + traceback must
+            # be on record before any user-facing response is produced.
+            logger.error(
+                "Unhandled command error (guild=%s, command=%s)",
+                guild_id,
+                getattr(ctx.command, "qualified_name", None),
+                exc_info=error,
+            )
+            embed = error_embed(
+                t(guild_id, "common.error.command_error_title"),
+                str(error),
+                guild_id=guild_id,
+            )
 
         try:
-            await ctx.send(embed=embed)
+            await ctx.send(embed=embed, ephemeral=ephemeral)
         except discord.HTTPException:
             logger.exception("Failed to send command error embed")
 
