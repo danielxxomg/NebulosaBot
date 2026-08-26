@@ -50,11 +50,11 @@ Chain strategy: stacked-to-main
 
 ## Phase S1: Transcript Triple-Path (PR 2, ~350 lines)
 
-- [ ] S1.1 RED: `tests/test_transcript_triple_path.py` — each branch fails alone, others succeed; DM-closed → Storage+log succeed; log-channel-missing → DM+Storage succeed, no error; `transcriptUrl` stores PATH not CDN URL. Ref: transcript-service "Triple-path transcript delivery" + "Log-channel-missing behavior preserved".
-- [ ] S1.2 Create `migrations/027_private_transcript_bucket.sql` — `INSERT INTO storage.buckets ('transcripts', public=false) ON CONFLICT` (idempotent). (Required by S1 Storage path before S3.)
-- [ ] S1.3 Extend `bot/services/transcript_service.py` with `deliver()` orchestrator: bytes once → fresh `discord.File` per path; DM creator (fail→log, continue); Storage upload PRIVATE `transcripts/{guildId}/{ticketId}/{filename}` (fail→log, continue); log channel (existing `upload()`). (D2)
-- [ ] S1.4 Wire `bot/services/ticket_repair_service.py._close_single_ticket` to call `deliver()`; set `transcriptUrl` = Storage object PATH (not CDN URL).
-- [ ] S1.5 `,` invariant grep guard (tickets-touching unit — repair service touches ticket close).
+- [x] S1.1 RED: `tests/test_transcript_triple_path.py` — each branch fails alone, others succeed; DM-closed → Storage+log succeed; log-channel-missing → DM+Storage succeed, no error; `transcriptUrl` stores PATH not CDN URL. Ref: transcript-service "Triple-path transcript delivery" + "Log-channel-missing behavior preserved".
+- [x] S1.2 Create `migrations/027_private_transcript_bucket.sql` — `INSERT INTO storage.buckets ('transcripts', public=false) ON CONFLICT` (idempotent). (Required by S1 Storage path before S3.)
+- [x] S1.3 Extend `bot/services/transcript_service.py` with `deliver()` orchestrator: bytes once → fresh `discord.File` per path; DM creator (fail→log, continue); Storage upload PRIVATE `transcripts/{guildId}/{ticketId}/{filename}` (fail→log, continue); log channel (existing `upload()`). (D2)
+- [x] S1.4 Wire `bot/services/ticket_repair_service.py._close_single_ticket` to call `deliver()`; set `transcriptUrl` = Storage object PATH (not CDN URL).
+- [x] S1.5 `,` invariant grep guard (tickets-touching unit — repair service touches ticket close).
 
 ## Phase S2a: /setup Panel Framework + Tickets Module (PR 3, ~800 lines)
 
