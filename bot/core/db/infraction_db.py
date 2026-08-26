@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from bot.core.db.base import _unwrap
@@ -148,8 +149,6 @@ class InfractionDBMixin:
             msg = "Database.connect() must be called first"
             raise RuntimeError(msg)
 
-        from datetime import UTC, datetime, timedelta
-
         cutoff = (datetime.now(UTC) - timedelta(days=30)).isoformat()
         logger.debug("DB get_expired_warns(guild=%s, cutoff=%s)", guild_id, cutoff)
         response = await (
@@ -175,8 +174,6 @@ class InfractionDBMixin:
             msg = "Database.connect() must be called first"
             raise RuntimeError(msg)
 
-        from datetime import UTC, datetime
-
         now_iso = datetime.now(UTC).isoformat()
         logger.debug("DB get_expired_tempbans(guild=%s, now=%s)", guild_id, now_iso)
 
@@ -191,11 +188,10 @@ class InfractionDBMixin:
             builder = lt_fn("expiresAt", now_iso)
         else:
             builder = builder.eq("expiresAt", now_iso)
-        neq_fn = getattr(builder, "neq", None)
-        if callable(neq_fn):
-            # Exclude permanent bans (NULL expiresAt). The callable() guard above
-            # proves neq is a real builder method; let any error propagate rather
-            # than swallowing it with a broad suppress.
-            builder = neq_fn("expiresAt", None)
+        # Exclude permanent bans (NULL expiresAt) with a null-safe PostgREST
+        # filter. ``neq("expiresAt", None)`` serialized into an invalid
+        # timestamp comparison (PostgREST 22007); ``not_.is_("expiresAt",
+        # "null")`` is the correct wire format (`expiresAt=not.is.null`).
+        builder = builder.not_.is_("expiresAt", "null")
         response = await builder.execute()
         return _unwrap(response)
