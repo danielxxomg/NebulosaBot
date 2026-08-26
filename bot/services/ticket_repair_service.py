@@ -1128,7 +1128,7 @@ class TicketRepairService:
 
         return channel, ticket
 
-    async def close_ticket_full(
+    async def close_ticket_full(  # noqa: C901 -- triple-path orchestration + creator/supabase resolve
         self,
         channel: discord.TextChannel,
         ticket: Ticket,
@@ -1137,35 +1137,98 @@ class TicketRepairService:
         bot: NebulosaBot,
         manual: bool = True,
     ) -> str | None:
-        """Close a single ticket end-to-end: transcript -> upload -> DB -> delete."""
+        """Close a single ticket end-to-end: transcript -> upload -> DB -> delete.
+
+        S1 triple-path: generates the HTML transcript once and delivers it
+        through three independent best-effort paths via
+        :meth:`TranscriptService.deliver` — DM creator, PRIVATE Storage bucket
+        ``transcripts/{guildId}/{ticketId}/{filename}``, and log channel.
+        The persisted ``transcriptUrl`` is the durable Storage PATH (not the
+        expiring CDN URL) per transcript-service spec.
+        """
         guild = channel.guild
         transcript_url: str | None = None
         transcript_service = bot.transcript_service
         if transcript_service is not None:
-            try:
-                transcript_file = await transcript_service.generate(channel)
-                log_channel: discord.TextChannel | None = None
-                guild_service = bot.guild_service
-                if guild_service is not None:
-                    try:
-                        config = await guild_service.get_config(str(guild.id))
-                    except (ValueError, TypeError):
-                        logger.warning(
-                            "Failed to resolve guild config for transcript log channel (guild=%s)",
-                            guild.id,
-                            exc_info=True,
-                        )
-                    else:
-                        if config.log_channel_id:
-                            ch = guild.get_channel(int(config.log_channel_id))
-                            if isinstance(ch, discord.TextChannel):
-                                log_channel = ch
-                if log_channel is not None:
-                    transcript_url = await transcript_service.upload(transcript_file, log_channel)
+            # --- Resolve log channel (existing behavior, preserved) ---
+            log_channel: discord.TextChannel | None = None
+            guild_service = bot.guild_service
+            if guild_service is not None:
+                try:
+                    config = await guild_service.get_config(str(guild.id))
+                except (ValueError, TypeError):
+                    logger.warning(
+                        "Failed to resolve guild config for transcript log channel (guild=%s)",
+                        guild.id,
+                        exc_info=True,
+                    )
                 else:
-                    logger.warning("No log channel configured for guild %s — skipping transcript upload", guild.id)
-            except discord.HTTPException:
-                logger.exception("Transcript generation failed for ticket %s", ticket.id)
+                    if config.log_channel_id:
+                        ch = guild.get_channel(int(config.log_channel_id))
+                        if isinstance(ch, discord.TextChannel):
+                            log_channel = ch
+            # --- Resolve creator for DM path (best-effort) ---
+            creator: discord.abc.User | discord.Member | None = None
+            try:
+                author_id = ticket.author_id
+                if author_id:
+                    maybe_member = None
+                    try:
+                        maybe_member = guild.get_member(int(author_id))
+                    except Exception:  # noqa: BLE001 -- guild.get_member may raise on invalid snowflake
+                        maybe_member = None
+                    if maybe_member is not None:
+                        creator = maybe_member
+                    else:
+                        # Fallback to fetch_user (works for DMs-closed users too, but may still fail)
+                        fetch = getattr(bot, "fetch_user", None)
+                        if fetch is not None:
+                            try:
+                                creator = await fetch(int(author_id))
+                            except Exception:
+                                logger.debug(
+                                    "Creator %s not resolvable for DM — skipping DM path", author_id, exc_info=True
+                                )
+                                creator = None
+            except (ValueError, TypeError):
+                logger.warning("Invalid author_id %r for ticket %s — skipping DM path", ticket.author_id, ticket.id)
+                creator = None
+
+            # --- Resolve supabase client for Storage path ---
+            supabase_client: object | None = None
+            for src in (getattr(self, "_db", None), getattr(bot, "db", None)):
+                if src is None:
+                    continue
+                cand = None
+                try:
+                    cand = getattr(src, "_client", None)
+                except Exception:  # noqa: BLE001 -- probe failure never propagates
+                    cand = None
+                if cand is not None:
+                    supabase_client = cand
+                    break
+
+            # --- Triple-path deliver (bytes once → fresh File per branch, best-effort) ---
+            try:
+                result = await transcript_service.deliver(
+                    channel=channel,
+                    creator=creator,
+                    guild_id=str(guild.id),
+                    ticket_id=ticket.id,
+                    log_channel=log_channel,
+                    supabase_client=supabase_client,
+                )
+                # S1: transcriptUrl stores Storage PATH (durable), not CDN URL (expiring)
+                transcript_url = result.storage_path
+                if transcript_url is None and result.log_url is not None:
+                    logger.info(
+                        "Storage upload failed for ticket %s — log_url present but not "
+                        "stored as transcriptUrl (PATH semantics)",
+                        ticket.id,
+                    )
+            except Exception:  # noqa: BLE001 -- best-effort: deliver failure never aborts close
+                logger.exception("Triple-path transcript delivery failed for ticket %s", ticket.id)
+                transcript_url = None
 
         await self._lifecycle.close_ticket(
             ticket.id, closed_by=closed_by, transcript_url=transcript_url, guild_id=ticket.guild_id

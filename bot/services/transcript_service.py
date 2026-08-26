@@ -52,6 +52,7 @@ class TranscriptDeliveryResult:
     storage_error: str | None = None
     log_error: str | None = None
 
+
 # -- HTML templates -----------------------------------------------------------
 # All colors resolve through bot.utils.brand tokens (AGENTS.md brand rule);
 # interpolated values are byte-identical to the original inline CSS.
@@ -171,7 +172,7 @@ class TranscriptService:
         else:
             return None
 
-    async def deliver(
+    async def deliver(  # noqa: C901 -- triple-path fan-out best-effort branches
         self,
         *,
         channel: discord.TextChannel,
@@ -218,18 +219,25 @@ class TranscriptService:
         # --- 1. Generate once ---
         try:
             generated = await self.generate(channel)
-        except Exception:
+        except Exception:  # noqa: BLE001 -- best-effort: generate failure never propagates
             logger.exception("Transcript generation failed for ticket %s", ticket_id)
-            return TranscriptDeliveryResult(dm_sent=False, storage_path=None, log_url=None, dm_error="generate failed", storage_error="generate failed", log_error="generate failed")
+            return TranscriptDeliveryResult(
+                dm_sent=False,
+                storage_path=None,
+                log_url=None,
+                dm_error="generate failed",
+                storage_error="generate failed",
+                log_error="generate failed",
+            )
 
         # Extract bytes + filename from the generated File (fresh buffer per path)
         try:
-            fp = generated.fp  # type: ignore[attr-defined]
+            fp = generated.fp
             # BytesIO path — getvalue is most reliable; fall back to read
             if hasattr(fp, "getvalue"):
                 try:
                     data: bytes = fp.getvalue()  # type: ignore[union-attr]
-                except Exception:
+                except Exception:  # noqa: BLE001 -- fallback from getvalue to read
                     fp.seek(0)
                     data = fp.read()
             else:
@@ -239,9 +247,16 @@ class TranscriptService:
             if isinstance(data, str):
                 data = data.encode("utf-8")
             filename: str = getattr(generated, "filename", None) or f"transcript-{ticket_id}.html"
-        except Exception:
+        except Exception:  # noqa: BLE001 -- best-effort: extract failure never propagates
             logger.exception("Failed to extract transcript bytes for ticket %s", ticket_id)
-            return TranscriptDeliveryResult(dm_sent=False, storage_path=None, log_url=None, dm_error="extract failed", storage_error="extract failed", log_error="extract failed")
+            return TranscriptDeliveryResult(
+                dm_sent=False,
+                storage_path=None,
+                log_url=None,
+                dm_error="extract failed",
+                storage_error="extract failed",
+                log_error="extract failed",
+            )
 
         # --- 2. Fan out independently ---
         dm_sent = False
@@ -278,16 +293,17 @@ class TranscriptService:
                 # supabase_client.storage is a property returning AsyncStorageClient
                 storage = getattr(supabase_client, "storage", None)
                 if storage is None:
-                    raise AttributeError("supabase_client has no storage attribute")
+                    msg = "supabase_client has no storage attribute"
+                    raise AttributeError(msg)  # noqa: TRY301 -- probe failure caught as storage_error
                 # storage.from_("transcripts") is sync, upload is async
-                bucket = storage.from_("transcripts")  # type: ignore[union-attr]
+                bucket = storage.from_("transcripts")
                 # storage bucket upload signature: upload(path, bytes, file_options={...})
                 # file_options with content-type ensures HTML is served correctly
                 try:
-                    await bucket.upload(object_path, data, file_options={"content-type": "text/html", "upsert": "true"})  # type: ignore[arg-type]
+                    await bucket.upload(object_path, data, file_options={"content-type": "text/html", "upsert": "true"})
                 except TypeError:
                     # Fallback for clients expecting file_options as dict positional
-                    await bucket.upload(object_path, data, {"content-type": "text/html"})  # type: ignore[misc]
+                    await bucket.upload(object_path, data, {"content-type": "text/html"})
                 storage_path = object_path
                 logger.info("Transcript uploaded to Storage %s for ticket %s", object_path, ticket_id)
             except Exception as exc:  # noqa: BLE001 — best-effort: Storage failure never aborts close
@@ -308,10 +324,8 @@ class TranscriptService:
                 log_file = discord.File(io.BytesIO(data), filename=filename)
                 url = await self.upload(log_file, log_channel)
                 log_url = url
-                if url is None:
-                    # upload already logged at WARNING when no attachment; keep error marker
-                    if log_error is None:
-                        log_error = "upload returned None"
+                if url is None and log_error is None:  # noqa: SIM102 -- preserve upload's own warning, just set marker
+                    log_error = "upload returned None"
             except Exception as exc:  # noqa: BLE001 — best-effort
                 log_error = f"{type(exc).__name__}: {exc}"
                 logger.warning(
