@@ -81,9 +81,9 @@ User runs /warn <member> <reason>
 ```python
 @dataclass
 class EscalationAction:
-    action: str       # "MUTE" | "KICK"
-    duration: int     # seconds (for MUTE), 0 for KICK
-    threshold: int    # warning count that triggered it
+    action: str  # "MUTE" | "KICK"
+    duration: int  # seconds (for MUTE), 0 for KICK
+    threshold: int  # warning count that triggered it
 ```
 
 ### InfractionService Public API

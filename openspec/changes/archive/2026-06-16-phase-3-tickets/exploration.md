@@ -153,9 +153,7 @@ async def auto_close_stale_tickets(self):
     stale = await self.bot.db.get_stale_tickets(cutoff)
     for row in stale:
         ticket = Ticket.from_db_row(row)
-        await self.bot.ticket_service.close_ticket(
-            ticket, reason="Auto-closed due to inactivity (48h)"
-        )
+        await self.bot.ticket_service.close_ticket(ticket, reason="Auto-closed due to inactivity (48h)")
 ```
 
 **DB query**: `SELECT * FROM ticket WHERE status != 'closed' AND "lastActivity" < $1`

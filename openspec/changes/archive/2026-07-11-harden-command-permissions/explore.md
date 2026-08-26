@@ -40,6 +40,7 @@
 def decorator(func):
     return _commands.check(_prefix_predicate)(app_commands.check(_app_predicate)(func))
 
+
 # is_mod() — BUG: slash-only
 return app_commands.check(predicate)  # no commands.check wrapper
 ```
@@ -94,6 +95,7 @@ async def _prefix_predicate(ctx: commands.Context) -> bool:
     if not _user_has_role(ctx.author, mod_role_id):
         raise commands.MissingRole(mod_role_id)
     return True
+
 
 def decorator(func):
     return commands.check(_prefix_predicate)(app_commands.check(_app_predicate)(func))

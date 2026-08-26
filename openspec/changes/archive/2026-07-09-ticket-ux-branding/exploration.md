@@ -173,13 +173,13 @@
 **Approach: Brand Tokens Module**
 - Create `bot/utils/brand.py` with named constants:
   ```python
-  PRIMARY = 0x9B5DE5      # Main purple
-  ACCENT = 0xA855F7        # Brighter purple
-  SUCCESS = 0x7C3AED       # Deep violet (mapped to success context)
-  WARNING = 0xF59E0B       # Amber (warm, palette-adjacent)
-  ERROR = 0xEF4444         # Red (keep distinct for errors)
-  INFO = 0x8B5CF6          # Light violet
-  SURFACE = 0x1E1B2E       # Dark surface (for embed backgrounds — N/A, Discord sets bg)
+  PRIMARY = 0x9B5DE5  # Main purple
+  ACCENT = 0xA855F7  # Brighter purple
+  SUCCESS = 0x7C3AED  # Deep violet (mapped to success context)
+  WARNING = 0xF59E0B  # Amber (warm, palette-adjacent)
+  ERROR = 0xEF4444  # Red (keep distinct for errors)
+  INFO = 0x8B5CF6  # Light violet
+  SURFACE = 0x1E1B2E  # Dark surface (for embed backgrounds — N/A, Discord sets bg)
   ```
 - Replace `COLOR_*` constants in `embeds.py` with brand tokens.
 - `FOOTER_ICON`: Use `bot.user.display_avatar.url` (resolved at runtime, not hardcoded).

@@ -40,10 +40,13 @@ CamelCase database keys, default handling, timestamp serialization, and JSONB pa
 ```python
 from typing import Any
 
+
 @classmethod
 def from_db_row(cls, row: dict[str, Any]) -> Model: ...
 
+
 def to_db_dict(self) -> dict[str, Any]: ...
+
 
 custom_fields: dict[str, Any] | None = None
 field_definitions: list[dict[str, Any]] = field(default_factory=list)

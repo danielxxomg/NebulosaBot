@@ -89,7 +89,7 @@ Message ──→ StellarCog.on_message()
 ```python
 @dataclass
 class EconomyConfig:
-    guild_id: str                          # PK, FK → guild(id)
+    guild_id: str  # PK, FK → guild(id)
     daily_reward: int = 100
     xp_per_message: int = 10
     xp_cooldown_seconds: int = 60

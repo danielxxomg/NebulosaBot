@@ -53,10 +53,16 @@ PR2 — greeting config:
 ```python
 async def claim_daily(guild_id: str, user_id: str) -> tuple[bool, int, int, int]: ...
 
+
 class ConfirmCancelView(discord.ui.View):
-    def __init__(self, *, guild_id: str, owner_id: int,
-                 on_confirm: Callable[[discord.Interaction], Awaitable[None]],
-                 timeout: float = 30) -> None: ...
+    def __init__(
+        self,
+        *,
+        guild_id: str,
+        owner_id: int,
+        on_confirm: Callable[[discord.Interaction], Awaitable[None]],
+        timeout: float = 30,
+    ) -> None: ...
 ```
 
 Greeting groups use `@commands.hybrid_group(..., fallback="config")`, `@app_commands.default_permissions(administrator=True)`, and an explicit runtime admin guard matching existing `welcome_test`/`goodbye_test` behavior.

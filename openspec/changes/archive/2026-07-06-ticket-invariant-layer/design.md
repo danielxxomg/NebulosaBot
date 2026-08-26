@@ -32,10 +32,12 @@ Bot `/reopen ticket:#0003` -> resolve by guild+number -> create channel -> updat
 ```python
 async def is_mod_check(interaction: discord.Interaction) -> bool: ...
 
+
 async def claim_button(self, interaction, button):
     if not await is_mod_check(interaction):
         await interaction.response.send_message(embed=error_embed("Denied", "Mods only"), ephemeral=True)
         return
+
 
 async def close_button(self, interaction, button):
     ticket_row, error = await self._get_ticket(bot, channel_id)

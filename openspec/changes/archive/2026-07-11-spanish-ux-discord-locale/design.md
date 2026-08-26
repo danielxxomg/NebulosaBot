@@ -54,9 +54,12 @@ es.json / en.json
 ```python
 class LocaleTranslator(app_commands.Translator):
     async def translate(
-        self, string: app_commands.locale_str, locale: discord.Locale,
+        self,
+        string: app_commands.locale_str,
+        locale: discord.Locale,
         context: app_commands.TranslationContextTypes,
     ) -> str | None: ...
+
 
 def validate_slash_localizations(tree: app_commands.CommandTree[...]) -> None: ...
 ```

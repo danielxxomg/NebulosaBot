@@ -26,8 +26,11 @@ Preserve ticket behavior while moving repeated Discord-resolution and naming pre
 
 ```python
 def build_ticket_overwrites(
-    guild: discord.Guild, author: discord.Member | None, mod_role: discord.Role | None,
+    guild: discord.Guild,
+    author: discord.Member | None,
+    mod_role: discord.Role | None,
 ) -> dict[discord.Role | discord.Member | discord.Object, discord.PermissionOverwrite]: ...
+
 
 def resolve_mod_role(guild: discord.Guild, role_id: object) -> discord.Role | None: ...
 def resolve_member_safe(guild: discord.Guild, member_id: object) -> discord.Member | None: ...

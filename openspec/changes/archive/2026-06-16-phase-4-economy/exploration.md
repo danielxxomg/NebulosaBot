@@ -95,19 +95,21 @@ def compute_level(total_xp: int, base: int = 100, multiplier: float = 1.5) -> in
     while total_xp >= xp_needed:
         total_xp -= xp_needed
         level += 1
-        xp_needed = int(base * (multiplier ** level))
+        xp_needed = int(base * (multiplier**level))
     return level
+
 
 def xp_for_next_level(level: int, base: int = 100, multiplier: float = 1.5) -> int:
     """Return the XP required to reach the next level from the start of *level*."""
-    return int(base * (multiplier ** level))
+    return int(base * (multiplier**level))
+
 
 def xp_progress(total_xp: int, base: int = 100, multiplier: float = 1.5) -> tuple[int, int, int]:
     """Return (current_level, xp_into_current_level, xp_needed_for_next_level)."""
     level = 0
     remaining = total_xp
     while True:
-        needed = int(base * (multiplier ** level))
+        needed = int(base * (multiplier**level))
         if remaining < needed:
             return level, remaining, needed
         remaining -= needed
@@ -124,14 +126,18 @@ New methods for `Database` class:
 async def get_leaderboard(self, guild_id: str, limit: int = 10, offset: int = 0) -> list[dict]:
     """Top members by XP for a guild. Ordered by xp DESC."""
 
+
 async def update_member_xp(self, guild_id: str, user_id: str, xp_delta: int) -> dict:
     """Increment XP and lastXpGain. Returns updated row. Creates row if missing."""
+
 
 async def update_member_coins(self, guild_id: str, user_id: str, coin_delta: int) -> dict:
     """Increment coins. Returns updated row. Creates row if missing."""
 
+
 async def claim_daily(self, guild_id: str, user_id: str, amount: int) -> dict:
     """Set lastDaily to now and increment coins by amount. Returns updated row."""
+
 
 async def get_member_rank(self, guild_id: str, user_id: str) -> int | None:
     """Return 1-based rank of user by XP within guild. None if member has no row."""
@@ -277,10 +283,7 @@ class StellarCog(commands.Cog, name="Stellar"):
 When `gain_xp()` returns `leveled_up=True`, the `on_message` listener sends an embed in the channel:
 
 ```python
-embed = success_embed(
-    "Level Up!",
-    f"{message.author.mention} has reached **Level {new_level}**!"
-)
+embed = success_embed("Level Up!", f"{message.author.mention} has reached **Level {new_level}**!")
 await message.channel.send(embed=embed)
 ```
 

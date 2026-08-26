@@ -70,9 +70,9 @@ Phase 1 (Foundation) is complete. The bot has a working skeleton with:
 ```python
 @dataclass
 class EscalationAction:
-    action: str        # "MUTE" | "KICK"
-    duration: int      # seconds (for MUTE), 0 for KICK
-    threshold: int     # warning count that triggered it
+    action: str  # "MUTE" | "KICK"
+    duration: int  # seconds (for MUTE), 0 for KICK
+    threshold: int  # warning count that triggered it
 ```
 
 **Cache strategy**: No caching for infractions in Phase 2. Moderation actions are low-frequency (a few per day per guild). The cost of a DB query per mod action is negligible. Cache invalidation complexity is not worth it here.
@@ -172,23 +172,30 @@ New methods on `bot/core/database.py`:
 async def insert_infraction(self, infraction: Infraction) -> dict:
     """Insert a new infraction row. Returns the inserted row."""
 
+
 async def get_infractions(self, guild_id: str, target_id: str) -> list[dict]:
     """Fetch all infractions for a member, ordered by createdAt DESC."""
+
 
 async def count_active_warnings(self, guild_id: str, target_id: str) -> int:
     """Count active WARN infractions for a member."""
 
+
 async def get_last_active_warning(self, guild_id: str, target_id: str) -> dict | None:
     """Fetch the most recent active WARN infraction (for unwarn)."""
+
 
 async def deactivate_infraction(self, infraction_id: str) -> None:
     """Set active=false on an infraction by ID."""
 
+
 async def get_member(self, guild_id: str, user_id: str) -> dict | None:
     """Fetch a member row."""
 
+
 async def upsert_member(self, member: Member) -> None:
     """Insert or update a member row."""
+
 
 async def update_member_warnings(self, guild_id: str, user_id: str, delta: int) -> None:
     """Increment/decrement the warnings counter atomically."""

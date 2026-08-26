@@ -43,7 +43,9 @@ Each decorator ignore applies only to the third-party stub's impossible callable
 ```python
 from typing import Any
 
+
 def _guild_id(ctx: commands.Context[Any]) -> str: ...
+
 
 # Before log_moderation_action(..., moderator=ctx.author, ...)
 assert isinstance(ctx.author, discord.Member)

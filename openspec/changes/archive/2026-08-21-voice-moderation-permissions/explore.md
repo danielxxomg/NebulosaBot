@@ -37,7 +37,8 @@ There is **no voice observatory**: `intents.voice_states` is not enabled in `bot
 ```python
 # Today: single modRoleId gates everything
 mod_role_id = guild_config.modRoleId
-if user_has_role(author, mod_role_id): allow
+if user_has_role(author, mod_role_id):
+    allow
 ```
 
 A guild that wants `/warn` available to "Helpers" but `/ban` restricted to "Moderators" has no way to express this — both fall back to the same `modRoleId`. The matrix approach adds a JSONB column `permissionMatrix` keyed by permission name → list of role IDs, with `moderation.*` falling back to `modRoleId` when the key is absent (backward-compatible).

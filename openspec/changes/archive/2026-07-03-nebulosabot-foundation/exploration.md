@@ -482,6 +482,7 @@ class Sentinel(commands.Cog):
     def __init__(self, bot: NebulosaBot):
         self.bot = bot
 
+
 async def setup(bot: NebulosaBot):
     await bot.add_cog(Sentinel(bot))
 ```
@@ -495,8 +496,7 @@ discord.py 2.x provides `hybrid_command` which registers both a prefix command a
 @commands.hybrid_command(name="warn", description="Warn a member")
 @app_commands.describe(member="The member to warn", reason="Reason for the warning")
 @commands.has_permissions(moderate_members=True)
-async def warn(self, ctx: NebulosaContext, member: discord.Member, reason: str):
-    ...
+async def warn(self, ctx: NebulosaContext, member: discord.Member, reason: str): ...
 ```
 
 **Key considerations**:
@@ -525,8 +525,8 @@ class TicketPanelView(discord.ui.View):
         super().__init__(timeout=None)  # Persistent (no timeout)
 
     @discord.ui.button(label="Open Ticket", style=discord.ButtonStyle.primary, custom_id="ticket:open")
-    async def open_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        ...
+    async def open_ticket(self, interaction: discord.Interaction, button: discord.ui.Button): ...
+
 
 # In cog setup or bot startup:
 bot.add_view(TicketPanelView())
@@ -544,6 +544,7 @@ bot.add_view(TicketPanelView())
 
 ```python
 from discord.ext import tasks
+
 
 class TicketAutoClose(commands.Cog):
     def __init__(self, bot):

@@ -229,7 +229,7 @@ if header.get("alg") != "RS256":
 and `config.py:105`:
 
 ```python
-algorithms=["RS256"],
+algorithms = (["RS256"],)
 ```
 
 The live JWKS endpoint returns an **ES256 EC P-256** key. Any legacy

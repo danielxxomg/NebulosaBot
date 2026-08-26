@@ -37,10 +37,12 @@ In `TicketsCog.reopen`, reuse the existing `ticket_row = await db.get_ticket_by_
 ```python
 status = ticket_row.get("status")
 if status != "closed":
-    await ctx.send(embed=error_embed(
-        "Reopen Failed",
-        f"Solo se pueden reabrir tickets cerrados. Estado actual: {status}",
-    ))
+    await ctx.send(
+        embed=error_embed(
+            "Reopen Failed",
+            f"Solo se pueden reabrir tickets cerrados. Estado actual: {status}",
+        )
+    )
     return
 ```
 

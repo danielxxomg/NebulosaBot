@@ -95,7 +95,9 @@ try:
                 new_category=category_name,
                 actor=interaction.user.mention,
             ),
-            guild_id=guild_id, bot=bot, guild=guild,
+            guild_id=guild_id,
+            bot=bot,
+            guild=guild,
         )
     )
 except discord.HTTPException:

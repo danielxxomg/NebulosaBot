@@ -45,9 +45,18 @@ on_ready -> bounded gather(ensure_guild_exists(guild_id)) -> GuildService -> DB
 ## Interfaces / Contracts
 
 ```python
-class Database(DatabaseBase, GuildDBMixin, MemberDBMixin, InfractionDBMixin,
-               TicketDBMixin, TicketNoteDBMixin, TicketCategoryDBMixin,
-               TicketAuditDBMixin, EconomyDBMixin, GreetingDBMixin):
+class Database(
+    DatabaseBase,
+    GuildDBMixin,
+    MemberDBMixin,
+    InfractionDBMixin,
+    TicketDBMixin,
+    TicketNoteDBMixin,
+    TicketCategoryDBMixin,
+    TicketAuditDBMixin,
+    EconomyDBMixin,
+    GreetingDBMixin,
+):
     pass
 ```
 

@@ -44,9 +44,7 @@ async def _watchdog_check_once(self) -> None:
     now = time.monotonic()
     elapsed = now - self._subscribed_at
     if elapsed >= WATCHDOG_DELAY and self._event_count == 0:
-        logger.warning(
-            "No CDC events received — check that supabase_realtime publication includes the required tables"
-        )
+        logger.warning("No CDC events received — check that supabase_realtime publication includes the required tables")
 ```
 
 The log from the live session shows `CDC event for None could not resolve a guild_id — skipping` firing repeatedly — these are RECEIVED events that fail extraction, but they don't reset the watchdog. The watchdog then fires every 30s with a misleading "No CDC events received" message.

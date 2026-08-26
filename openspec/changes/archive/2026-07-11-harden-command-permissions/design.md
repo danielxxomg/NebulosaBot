@@ -43,6 +43,7 @@ The shared resolver converts the cached string role ID to `int`, logs malformed 
 async def is_mod_check(interaction: discord.Interaction) -> bool:
     """Stable button-callback contract: never raises; returns authorization."""
 
+
 # Decorator test hooks, matching is_admin().
 is_mod().predicate: Callable[[discord.Interaction], Awaitable[bool]]
 is_mod().prefix_predicate: Callable[[commands.Context[Any]], Awaitable[bool]]
