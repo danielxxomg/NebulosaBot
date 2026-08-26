@@ -508,6 +508,21 @@ class NebulosaBot(commands.Bot):
         if self.guild_service is not None:
             await self.guild_service.on_guild_join(str(guild.id))
 
+    async def on_guild_remove(self, guild: discord.Guild) -> None:
+        """Evict ALL guild-scoped state when the bot leaves a server (S0.9/S0.10).
+
+        Cache-layer spec: every ``{guild_id}:*`` TTLCache key is evicted in
+        one pass (post-eviction reads miss → DB fallback), the mod-role RAM
+        map entry is dropped, and greeting raid semaphores are released.
+        Other guilds are untouched.
+        """
+        gid = str(guild.id)
+        if self.cache is not None:
+            self.cache.invalidate_guild(gid)
+        self._guild_mod_role_cache.pop(guild.id, None)
+        if self.greeting_service is not None:
+            self.greeting_service.evict_guild_sync(gid)
+
     async def on_ready(self) -> None:
         """Called once when the bot has connected to the Discord gateway."""
         logger.info("NebulosaBot is online — logged in as %s", self.user)

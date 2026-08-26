@@ -97,6 +97,15 @@ class GreetingService:
         ck = cache_key(config.guild_id, "greeting_config")
         self._cache.invalidate(ck)
 
+    def evict_guild_sync(self, guild_id: str) -> None:
+        """Drop the raid-guard semaphores for *guild_id* (S0 quick win).
+
+        Called from ``NebulosaBot.on_guild_remove`` so a departed guild does
+        not leave a permanent ``asyncio.Semaphore`` entry in RAM. Unknown
+        guilds are a no-op. Sync by design: pure dict eviction, no I/O.
+        """
+        self._raid_semaphores.pop(guild_id, None)
+
     def resolve_renderer(self) -> Any:
         """Resolve the render callable for greeting cards — single source of truth.
 
