@@ -34,19 +34,19 @@ Chain strategy: stacked-to-main
 
 ## Phase S0: Stability & Security (PR 1, ~450 lines)
 
-- [ ] S0.1 RED: `tests/test_tempban_serialization.py` — assert outgoing query string contains `expiresAt=not.is.null` and no `neq.null` (real postgrest builder, no fake masks). Ref: data-retention "Tempban expiry query serialization".
-- [ ] S0.2 Fix `bot/core/db/infraction_db.py:199` → `builder.not_.is_("expiresAt", "null")`; delete `neq(None)`. Verify scenario "Expired tempban deactivates without serialization error".
-- [ ] S0.3 RED: `tests/test_zombie_autoclose_audit.py` — sweep-closed zombie writes `zombie_autoclose` row (actorId=system, applied reason); channel-delete path same row; audit-insert failure → ticket stays closed + WARNING logged + nothing propagates. Ref: ticket-service "Zombie auto-close writes an audit entry".
-- [ ] S0.4 Add `_audit_zombie_autoclose(guild_id, ticket_id, outcome, reason)` on `bot/services/ticket_lifecycle_service.py`; wire at repair seam (`ticket_repair_service.py`) + lifecycle seam; relax strict `audit_persisted` to best-effort ONLY for automated zombie case (actorId=system ∧ reason startswith `zombie:`); manual repairs keep strict contract. (D6)
-- [ ] S0.5 RED: `tests/test_error_handler_branches.py` — CheckFailure/MissingPermissions → ephemeral localized reply (names missing perm); no-DM branch; unexpected error title+message via `t()` in guild language; guild_id extracted from interaction. Ref: bot-core "Global error handler".
-- [ ] S0.6 Implement branches in `bot/bot.py` `on_app_command_error`/`on_command_error`; remove any DM-first fallback; route titles via `t()`. Ref: ephemeral-standard "Slash-only error visibility".
-- [ ] S0.7 RED: `tests/test_token_never_logged.py` — capture all log records at DEBUG; assert no token substring at any level. Ref: operational-config "Token never logged at any level".
-- [ ] S0.8 Remove token-fragment INFO line at `bot/config.py:279`.
-- [ ] S0.9 RED: `tests/test_cache_eviction.py` — on_guild_remove evicts all `{G}:*`; other guilds unaffected; post-eviction read misses. Ref: cache-layer "Eviction on guild remove".
-- [ ] S0.10 Wire `on_guild_remove` → `invalidate_guild(guild_id)` in `bot/bot.py` using `bot/core/cache.py` existing helper.
-- [ ] S0.11 Ticket-timer `unix=` kwarg fix (transfer-to-self UI pre-validation + log ERROR→WARNING); `/rank` cooldown + shared semaphore; cache/semaphore eviction quick wins. (proposal S0 misc)
-- [ ] S0.12 Gate flips: betterleaks blocking ON; coverage floor 80; GGA hook includes `tests/`. (proposal S0)
-- [ ] S0.13 `,` invariant grep guard: add/run guard confirming no diff touches `TicketsCog.on_message` `,` close-timer parsing. (tickets-touching unit)
+- [x] S0.1 RED: `tests/test_tempban_serialization.py` — assert outgoing query string contains `expiresAt=not.is.null` and no `neq.null` (real postgrest builder, no fake masks). Ref: data-retention "Tempban expiry query serialization".
+- [x] S0.2 Fix `bot/core/db/infraction_db.py:199` → `builder.not_.is_("expiresAt", "null")`; delete `neq(None)`. Verify scenario "Expired tempban deactivates without serialization error".
+- [x] S0.3 RED: `tests/test_zombie_autoclose_audit.py` — sweep-closed zombie writes `zombie_autoclose` row (actorId=system, applied reason); channel-delete path same row; audit-insert failure → ticket stays closed + WARNING logged + nothing propagates. Ref: ticket-service "Zombie auto-close writes an audit entry".
+- [x] S0.4 Add `_audit_zombie_autoclose(guild_id, ticket_id, outcome, reason)` on `bot/services/ticket_lifecycle_service.py`; wire at repair seam (`ticket_repair_service.py`) + lifecycle seam; relax strict `audit_persisted` to best-effort ONLY for automated zombie case (actorId=system ∧ reason startswith `zombie:`); manual repairs keep strict contract. (D6)
+- [x] S0.5 RED: `tests/test_error_handler_branches.py` — CheckFailure/MissingPermissions → ephemeral localized reply (names missing perm); no-DM branch; unexpected error title+message via `t()` in guild language; guild_id extracted from interaction. Ref: bot-core "Global error handler".
+- [x] S0.6 Implement branches in `bot/bot.py` `on_app_command_error`/`on_command_error`; remove any DM-first fallback; route titles via `t()`. Ref: ephemeral-standard "Slash-only error visibility".
+- [x] S0.7 RED: `tests/test_token_never_logged.py` — capture all log records at DEBUG; assert no token substring at any level. Ref: operational-config "Token never logged at any level".
+- [x] S0.8 Remove token-fragment INFO line at `bot/config.py:279`.
+- [x] S0.9 RED: `tests/test_cache_eviction.py` — on_guild_remove evicts all `{G}:*`; other guilds unaffected; post-eviction read misses. Ref: cache-layer "Eviction on guild remove".
+- [x] S0.10 Wire `on_guild_remove` → `invalidate_guild(guild_id)` in `bot/bot.py` using `bot/core/cache.py` existing helper.
+- [x] S0.11 Ticket-timer `unix=` kwarg fix (transfer-to-self UI pre-validation + log ERROR→WARNING); `/rank` cooldown + shared semaphore; cache/semaphore eviction quick wins. (proposal S0 misc)
+- [x] S0.12 Gate flips: betterleaks blocking ON; coverage floor 80; GGA hook includes `tests/`. (proposal S0)
+- [x] S0.13 `,` invariant grep guard: add/run guard confirming no diff touches `TicketsCog.on_message` `,` close-timer parsing. (tickets-touching unit)
 
 ## Phase S1: Transcript Triple-Path (PR 2, ~350 lines)
 
