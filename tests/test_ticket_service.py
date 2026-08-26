@@ -28,6 +28,7 @@ import bot.services.ticket_lifecycle_service as lifecycle_service_module
 import bot.services.ticket_repair_service as repair_service_module
 from bot.config import INTEGRITY_BACKOFF_SECONDS, INTEGRITY_MAX_BACKOFF_SECONDS
 from bot.core.cache import TTLCache
+from bot.core.i18n import set_guild_language
 from bot.models.ticket import IntegrityEvidence, RepairResult, Ticket
 from bot.models.ticket_note import TicketNote
 from bot.services.integrity_report import evaluate_live_preflight
@@ -979,6 +980,10 @@ async def test_reopen_rejects_non_closed_ticket(
     non_closed_row = {**_closed_ticket_row(), "status": status}
     mock_db.get_ticket.return_value = non_closed_row
     guild = _mock_guild_for_reopen(category_channel=None)
+    # The denial text now resolves via t() — pin the expected language for
+    # this guild so the assertion is independent of module-level poisoning
+    # from other test files (test isolation).
+    set_guild_language("123456789", "es")
 
     with pytest.raises(ValueError, match=r"Solo se pueden reabrir tickets cerrados"):
         await service.reopen_ticket(ticket_id, guild=guild)
@@ -1592,6 +1597,7 @@ async def test_reopen_denied_audited(service: TicketService, mock_db: AsyncMock)
     open_row = {**_closed_ticket_row(), "status": "open"}
     mock_db.get_ticket.return_value = open_row
     guild = _mock_guild_for_reopen(category_channel=None)
+    set_guild_language("123456789", "es")  # denial text resolves via t()
 
     with pytest.raises(ValueError, match=r"cerrados"):
         await service.reopen_ticket(ticket_id, guild=guild)
@@ -3236,6 +3242,7 @@ class TestReopenTicketChannelConstruction:
         open_row = {**_closed_ticket_row(), "status": "open"}
         mock_db.get_ticket.return_value = open_row
         guild = _mock_guild_for_reopen(category_channel=None)
+        set_guild_language("123456789", "es")  # verbatim ES assertion needs ES
 
         with pytest.raises(ValueError, match=r"Solo se pueden reabrir tickets cerrados\. Estado actual: open"):
             await service.reopen_ticket(ticket_id, guild=guild)

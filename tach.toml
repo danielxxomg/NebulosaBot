@@ -42,5 +42,8 @@ from = ["bot.models"]
 # (no libcairo) the probe raises ImportError and PillowGreetingRenderer stays
 # the default. It is not a runtime dependency in Cycle 1, so tach does not
 # require it declared in pyproject.toml.
-exclude = ["pytest", "hypothesis", "freezegun", "pyyaml", "yaml", "cryptography", "cairosvg"]
+# postgrest: S0.1 real-serialization test drives the raw postgrest-py builder
+# (transitive dependency of supabase) over an httpx.MockTransport — never a
+# direct runtime import from bot/.
+exclude = ["pytest", "hypothesis", "freezegun", "pyyaml", "yaml", "cryptography", "cairosvg", "postgrest", "httpx"]
 rename = ["PIL:pillow", "psycopg:psycopg"]

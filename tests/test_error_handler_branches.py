@@ -145,7 +145,7 @@ class TestPrefixHandlerBranches:
         bot = _make_bot()
         ctx = _make_ctx(_GID_ES)
 
-        await bot.on_command_error(ctx, commands.CheckFailure())  # ty: ignore[invalid-argument-type]
+        await bot.on_command_error(ctx, commands.CheckFailure())
 
         ctx.author.send.assert_not_awaited()  # no DM-first branch
         kwargs = ctx.send.call_args.kwargs
@@ -162,7 +162,7 @@ class TestPrefixHandlerBranches:
 
         await bot.on_command_error(
             ctx,
-            commands.MissingPermissions(missing_permissions=["Manage Messages"]),  # ty: ignore[invalid-argument-type]
+            commands.MissingPermissions(missing_permissions=["Manage Messages"]),
         )
 
         ctx.author.send.assert_not_awaited()

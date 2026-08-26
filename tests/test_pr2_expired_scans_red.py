@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from bot.core.database import Database
-from tests.test_database import FakeSupabaseClient
+from tests.test_database import FakeQueryBuilder, FakeSupabaseClient
 
 # ------------------------------------------------------------------
 # 2.1 get_expired_warns
@@ -17,7 +17,6 @@ class TestGetExpiredWarnsRed:
     async def test_get_expired_warns_exists_and_filters(self, monkeypatch) -> None:
         """2.1: get_expired_warns(guild_id) returns only WARN active createdAt<NOW()-30d guild-scoped."""
         # Ensure lte/lt exist on FakeQueryBuilder for this test file too (patched if missing)
-        from tests.test_database import FakeQueryBuilder
 
         if not hasattr(FakeQueryBuilder, "lte"):
 
@@ -26,13 +25,19 @@ class TestGetExpiredWarnsRed:
                 return self
 
             monkeypatch.setattr(FakeQueryBuilder, "lte", _lte, raising=False)
-        if not hasattr(FakeQueryBuilder, "neq"):
+        if not hasattr(FakeQueryBuilder, "not_"):
+            # Mirrors postgrest-py: ``not_`` is a property namespace exposing
+            # ``is_()``; on this fake the same recorder serves both.
+            _not_ns = property(lambda self: self)
 
-            def _neq(self, column, value):
-                self._filters.append(("neq", column, value))
+            monkeypatch.setattr(FakeQueryBuilder, "not_", _not_ns, raising=False)
+        if not hasattr(FakeQueryBuilder, "is_"):
+
+            def _is(self, column, value):
+                self._filters.append(("not.is", column, value))
                 return self
 
-            monkeypatch.setattr(FakeQueryBuilder, "neq", _neq, raising=False)
+            monkeypatch.setattr(FakeQueryBuilder, "is_", _is, raising=False)
         fake = FakeSupabaseClient()
         db = Database(url="https://test.supabase.co", key="test-key")
         db._client = fake
@@ -67,7 +72,6 @@ class TestGetExpiredWarnsRed:
     @pytest.mark.asyncio
     async def test_get_expired_warns_future_not_returned_via_filters(self, monkeypatch) -> None:
         """Future WARN must be excluded by lt cutoff — proven via filter, not data."""
-        from tests.test_database import FakeQueryBuilder
 
         if not hasattr(FakeQueryBuilder, "lte"):
 
@@ -101,7 +105,6 @@ class TestGetExpiredTempbansRed:
     @pytest.mark.asyncio
     async def test_get_expired_tempbans_exists_and_filters(self, monkeypatch) -> None:
         """2.2: get_expired_tempbans returns only BAN active expiresAt<=NOW guild-scoped."""
-        from tests.test_database import FakeQueryBuilder
 
         if not hasattr(FakeQueryBuilder, "lte"):
 
@@ -110,13 +113,19 @@ class TestGetExpiredTempbansRed:
                 return self
 
             monkeypatch.setattr(FakeQueryBuilder, "lte", _lte, raising=False)
-        if not hasattr(FakeQueryBuilder, "neq"):
+        if not hasattr(FakeQueryBuilder, "not_"):
+            # Mirrors postgrest-py: ``not_`` is a property namespace exposing
+            # ``is_()``; on this fake the same recorder serves both.
+            _not_ns = property(lambda self: self)
 
-            def _neq(self, column, value):
-                self._filters.append(("neq", column, value))
+            monkeypatch.setattr(FakeQueryBuilder, "not_", _not_ns, raising=False)
+        if not hasattr(FakeQueryBuilder, "is_"):
+
+            def _is(self, column, value):
+                self._filters.append(("not.is", column, value))
                 return self
 
-            monkeypatch.setattr(FakeQueryBuilder, "neq", _neq, raising=False)
+            monkeypatch.setattr(FakeQueryBuilder, "is_", _is, raising=False)
         fake = FakeSupabaseClient()
         db = Database(url="https://test.supabase.co", key="test-key")
         db._client = fake
@@ -143,11 +152,14 @@ class TestGetExpiredTempbansRed:
         assert any(f[0] in ("lte", "lt") and f[1] == "expiresAt" for f in filters), (
             f"missing lte/lt expiresAt: {filters}"
         )
+        # clean-1.0 S0.2: permanent bans excluded via null-safe not.is — the
+        # old neq(None) serialized into PostgREST 22007 and MUST NOT return.
+        assert ("not.is", "expiresAt", "null") in filters, f"missing null-safe not.is filter: {filters}"
+        assert all(f[0] != "neq" for f in filters), f"invalid neq filter present: {filters}"
         assert len(result) == 1
 
     @pytest.mark.asyncio
     async def test_get_expired_tempbans_future_excluded(self, monkeypatch) -> None:
-        from tests.test_database import FakeQueryBuilder
 
         if not hasattr(FakeQueryBuilder, "lte"):
 
@@ -156,13 +168,19 @@ class TestGetExpiredTempbansRed:
                 return self
 
             monkeypatch.setattr(FakeQueryBuilder, "lte", _lte, raising=False)
-        if not hasattr(FakeQueryBuilder, "neq"):
+        if not hasattr(FakeQueryBuilder, "not_"):
+            # Mirrors postgrest-py: ``not_`` is a property namespace exposing
+            # ``is_()``; on this fake the same recorder serves both.
+            _not_ns = property(lambda self: self)
 
-            def _neq(self, column, value):
-                self._filters.append(("neq", column, value))
+            monkeypatch.setattr(FakeQueryBuilder, "not_", _not_ns, raising=False)
+        if not hasattr(FakeQueryBuilder, "is_"):
+
+            def _is(self, column, value):
+                self._filters.append(("not.is", column, value))
                 return self
 
-            monkeypatch.setattr(FakeQueryBuilder, "neq", _neq, raising=False)
+            monkeypatch.setattr(FakeQueryBuilder, "is_", _is, raising=False)
         fake = FakeSupabaseClient()
         db = Database(url="https://test.supabase.co", key="test-key")
         db._client = fake
@@ -171,6 +189,8 @@ class TestGetExpiredTempbansRed:
         await db.get_expired_tempbans("g1")
         filters = fake.get_table_filters("infraction")
         assert any(f[1] == "expiresAt" for f in filters), f"must filter expiresAt, got {filters}"
+        # clean-1.0 S0.2: future/permanent exclusion uses the null-safe wire format.
+        assert ("not.is", "expiresAt", "null") in filters, f"missing null-safe not.is filter: {filters}"
 
     @pytest.mark.asyncio
     async def test_get_expired_tempbans_raises_without_connect(self) -> None:

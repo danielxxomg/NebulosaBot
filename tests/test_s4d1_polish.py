@@ -7,11 +7,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
+import bot.views.ticket_panel as mod
+from bot.models.ticket import IntegrityEvidence
+from bot.services.ticket_invariants import RepairAuthority
+from bot.services.ticket_repair_service import TicketRepairService
+from bot.views.ticket_panel import TicketIntakeModal, TicketPanelView, _create_ticket_after_modal, deploy_ticket_panel
+
 
 @pytest.mark.asyncio
 async def test_repair_denied_audit_failure_branch() -> None:
-    from bot.models.ticket import IntegrityEvidence
-    from bot.services.ticket_repair_service import TicketRepairService
 
     db = MagicMock()
     db.insert_audit_row = AsyncMock(side_effect=Exception("audit fail"))
@@ -25,7 +29,6 @@ async def test_repair_denied_audit_failure_branch() -> None:
 
 @pytest.mark.asyncio
 async def test_handle_channel_delete_lookup_error() -> None:
-    from bot.services.ticket_repair_service import TicketRepairService
 
     db = MagicMock()
     db.get_active_ticket_by_channel = AsyncMock(side_effect=Exception("db down"))
@@ -37,7 +40,6 @@ async def test_handle_channel_delete_lookup_error() -> None:
 
 @pytest.mark.asyncio
 async def test_sweep_discovery_error() -> None:
-    from bot.services.ticket_repair_service import TicketRepairService
 
     db = MagicMock()
     db.get_open_ticket_channel_ids = AsyncMock(side_effect=Exception("discover fail"))
@@ -49,8 +51,6 @@ async def test_sweep_discovery_error() -> None:
 
 @pytest.mark.asyncio
 async def test_repair_by_ref_unparseable() -> None:
-    from bot.services.ticket_invariants import RepairAuthority
-    from bot.services.ticket_repair_service import TicketRepairService
 
     svc = TicketRepairService(db=MagicMock(), query=MagicMock(), lifecycle=MagicMock())
     auth = RepairAuthority(actor_id="u1", guild_id="g1", target_guild_id="g1", is_administrator=True)
@@ -62,7 +62,6 @@ async def test_repair_by_ref_unparseable() -> None:
 
 @pytest.mark.asyncio
 async def test_create_ticket_after_modal_config_error() -> None:
-    from bot.views.ticket_panel import _create_ticket_after_modal
 
     guild = MagicMock(spec=discord.Guild)
     guild.id = 123
@@ -83,7 +82,6 @@ async def test_create_ticket_after_modal_config_error() -> None:
 
 @pytest.mark.asyncio
 async def test_ticket_intake_modal_on_error_sends_embed() -> None:
-    from bot.views.ticket_panel import TicketIntakeModal
 
     guild = MagicMock(spec=discord.Guild)
     guild.id = 999
@@ -97,7 +95,6 @@ async def test_ticket_intake_modal_on_error_sends_embed() -> None:
 
 
 def test_deploy_ticket_panel_uses_facade_t_fallback() -> None:
-    import bot.views.ticket_panel as mod
 
     assert hasattr(mod, "deploy_ticket_panel")
     assert hasattr(mod, "_get_logger")
@@ -105,8 +102,6 @@ def test_deploy_ticket_panel_uses_facade_t_fallback() -> None:
 
 @pytest.mark.asyncio
 async def test_repair_manual_cross_guild_denied() -> None:
-    from bot.services.ticket_invariants import RepairAuthority
-    from bot.services.ticket_repair_service import TicketRepairService
 
     db = MagicMock()
     db.insert_audit_row = AsyncMock(return_value=None)
@@ -118,8 +113,6 @@ async def test_repair_manual_cross_guild_denied() -> None:
 
 @pytest.mark.asyncio
 async def test_repair_manual_db_error_branch() -> None:
-    from bot.services.ticket_invariants import RepairAuthority
-    from bot.services.ticket_repair_service import TicketRepairService
 
     db = MagicMock()
     db.get_ticket = AsyncMock(side_effect=Exception("db"))
@@ -132,7 +125,6 @@ async def test_repair_manual_db_error_branch() -> None:
 
 @pytest.mark.asyncio
 async def test_sweep_probe_unresolved_and_gate_branches() -> None:
-    from bot.services.ticket_repair_service import TicketRepairService
 
     db = MagicMock()
     db.get_open_ticket_channel_ids = AsyncMock(return_value=["ch1", "ch2"])
@@ -155,7 +147,6 @@ async def test_sweep_probe_unresolved_and_gate_branches() -> None:
 
 @pytest.mark.asyncio
 async def test_sweep_not_corroborated_branch() -> None:
-    from bot.services.ticket_repair_service import TicketRepairService
 
     db = MagicMock()
     db.get_open_ticket_channel_ids = AsyncMock(return_value=["ch1"])
@@ -170,14 +161,16 @@ async def test_sweep_not_corroborated_branch() -> None:
 
 @pytest.mark.asyncio
 async def test_sweep_repair_path_close() -> None:
-    from bot.services.ticket_repair_service import TicketRepairService
 
     db = MagicMock()
     db.get_open_ticket_channel_ids = AsyncMock(return_value=["ch1"])
     db.get_active_ticket_by_channel = AsyncMock(return_value={"id": "t1", "status": "open", "channelId": "ch1"})
     db.transition_ticket_to_closed = AsyncMock(return_value={"id": "t1"})
     db.insert_audit_row = AsyncMock(return_value=None)
-    svc = TicketRepairService(db=db, query=MagicMock(), lifecycle=MagicMock())
+    lifecycle = MagicMock()
+    # clean-1.0 D6: the repair seam now awaits the lifecycle audit helper.
+    lifecycle._audit_zombie_autoclose = AsyncMock()
+    svc = TicketRepairService(db=db, query=MagicMock(), lifecycle=lifecycle)
     bot = MagicMock()
     preflight = MagicMock(repair_activation_allowed=True)
     with patch("bot.services.ticket_repair_service.probe_channel_absence", new=AsyncMock(return_value=False)):
@@ -187,8 +180,6 @@ async def test_sweep_repair_path_close() -> None:
 
 @pytest.mark.asyncio
 async def test_repair_transition_error_and_audit_failure() -> None:
-    from bot.models.ticket import IntegrityEvidence
-    from bot.services.ticket_repair_service import TicketRepairService
 
     db = MagicMock()
     db.transition_ticket_to_closed = AsyncMock(side_effect=Exception("trans fail"))
@@ -204,7 +195,6 @@ async def test_repair_transition_error_and_audit_failure() -> None:
 
 @pytest.mark.asyncio
 async def test_create_ticket_channel_rename_failure() -> None:
-    from bot.services.ticket_repair_service import TicketRepairService
 
     db = MagicMock()
     db.count_user_open_tickets_in_category = AsyncMock(return_value=0)
@@ -236,7 +226,6 @@ async def test_create_ticket_channel_rename_failure() -> None:
 
 @pytest.mark.asyncio
 async def test_ticket_panel_open_no_guild() -> None:
-    from bot.views.ticket_panel import TicketPanelView
 
     view = TicketPanelView(guild_id="1")
     interaction = MagicMock(spec=discord.Interaction)
@@ -249,7 +238,6 @@ async def test_ticket_panel_open_no_guild() -> None:
 
 @pytest.mark.asyncio
 async def test_ticket_panel_open_no_categories() -> None:
-    from bot.views.ticket_panel import TicketPanelView
 
     view = TicketPanelView(guild_id="1")
     guild = MagicMock(spec=discord.Guild)
@@ -274,7 +262,6 @@ async def test_ticket_panel_open_no_categories() -> None:
 
 @pytest.mark.asyncio
 async def test_countdown_notfound_and_http_fallbacks() -> None:
-    from bot.services.ticket_repair_service import TicketRepairService
 
     # Countdown NotFound → final delete
     channel = MagicMock(spec=discord.TextChannel)
@@ -297,7 +284,6 @@ async def test_countdown_notfound_and_http_fallbacks() -> None:
 
 @pytest.mark.asyncio
 async def test_panel_deploy_and_create_flows() -> None:
-    from bot.views.ticket_panel import TicketIntakeModal, _create_ticket_after_modal, deploy_ticket_panel
 
     # deploy path — with and without guild_service
     bot = MagicMock()
