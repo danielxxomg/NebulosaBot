@@ -275,8 +275,9 @@ class BotConfig:
                 ", ".join(missing),
             )
 
-        if "discord_token" in values:
-            logger.info("Configuration loaded successfully (token: %s...)", values["discord_token"][:8])
+        # S0.8: no token material is EVER logged — the previous INFO line
+        # leaked the first 8 characters of the Discord token (operational-config
+        # spec: token never logged at any level).
 
         return cls(
             discord_token=values.get("discord_token", ""),
