@@ -55,7 +55,7 @@ jobs:
         run: uv audit
 
       - name: Tests with coverage
-        run: uv run pytest --cov-fail-under=75
+        run: uv run pytest --cov-fail-under=80
 
       - name: Upload coverage
         if: matrix.python-version == '3.12'

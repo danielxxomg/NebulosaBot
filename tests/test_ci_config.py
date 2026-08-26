@@ -90,10 +90,10 @@ class TestCIFailFast:
 
 
 class TestCICoverageGate:
-    """CI MUST pass --cov-fail-under=75 to pytest."""
+    """CI MUST pass --cov-fail-under=80 to pytest (clean-1.0 S0.12 floor)."""
 
-    def test_pytest_has_cov_fail_under_75(self, ci_config: dict) -> None:
-        """The 'Tests with coverage' step MUST pass --cov-fail-under=75."""
+    def test_pytest_has_cov_fail_under_80(self, ci_config: dict) -> None:
+        """The 'Tests with coverage' step MUST pass --cov-fail-under=80."""
         steps = ci_config["jobs"]["qa-matrix"]["steps"]
         test_step = None
         for step in steps:
@@ -106,4 +106,5 @@ class TestCICoverageGate:
 
         assert test_step is not None, "No pytest step found in qa-matrix job"
         run_cmd = test_step.get("run", "")
-        assert "--cov-fail-under=75" in run_cmd, f"--cov-fail-under=75 not in pytest command: {run_cmd}"
+        assert "--cov-fail-under=80" in run_cmd, f"--cov-fail-under=80 not in pytest command: {run_cmd}"
+        assert "--cov-fail-under=75" not in run_cmd, "stale 75 floor must not linger alongside the 80 gate"

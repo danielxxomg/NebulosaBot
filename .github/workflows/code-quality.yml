@@ -43,11 +43,10 @@ jobs:
           vulture bot/ --min-confidence 80
 
   security-advisory:
-    # Supply-chain + secrets scanning. Advisory until triaged; flip
-    # continue-on-error to false once baselines are accepted (see
-    # cycle-4 residual-debt.md and the dashboard-QA SDD).
+    # Supply-chain + secrets scanning. BLOCKING since clean-1.0 S0.12:
+    # the full-scan triage completed clean, so continue-on-error is
+    # REMOVED — any new finding fails the workflow.
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -65,8 +64,7 @@ jobs:
           curl -sL https://github.com/betterleaks/betterleaks/releases/download/v1.8.1/betterleaks_1.8.1_linux_x64.tar.gz | tar xz betterleaks
           ./betterleaks dir . --redact --no-banner
 
-      # ── Commented out: enable after baseline acceptance ──
-      # Blocking variant: remove `continue-on-error: true` from the job above.
+      # ── clean-1.0 S0.12: this job is BLOCKING (no continue-on-error) ──
       # History scan (expensive; schedule weekly, not per-PR):
       #   ./betterleaks git . --redact --log-opts="--all"
 

@@ -1,8 +1,8 @@
 """Validate Makefile for tooling-rigor change.
 
 Covers the makefile-dx spec scenarios:
-    - make cov target passes --cov-fail-under=75
-    - make test target passes --cov-fail-under=75
+    - make cov target passes --cov-fail-under=80
+    - make test target passes --cov-fail-under=80
 """
 
 from __future__ import annotations
@@ -34,16 +34,16 @@ def cov_target(makefile_content: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Scenario: make cov enforces 75% gate
+# Scenario: make cov enforces 80% gate (clean-1.0 S0.12)
 # ---------------------------------------------------------------------------
 
 
 class TestMakefileCov:
-    """make cov MUST pass --cov-fail-under=75."""
+    """make cov MUST pass --cov-fail-under=80 (clean-1.0 S0.12 floor)."""
 
-    def test_cov_target_has_fail_under_75(self, cov_target: str) -> None:
-        """cov target MUST include --cov-fail-under=75."""
-        assert "--cov-fail-under=75" in cov_target, f"--cov-fail-under=75 not in cov target:\n{cov_target}"
+    def test_cov_target_has_fail_under_80(self, cov_target: str) -> None:
+        """cov target MUST include --cov-fail-under=80."""
+        assert "--cov-fail-under=80" in cov_target, f"--cov-fail-under=80 not in cov target:\n{cov_target}"
 
     def test_cov_target_has_cov_report(self, cov_target: str) -> None:
         """cov target MUST include --cov-report for output."""
@@ -56,11 +56,11 @@ class TestMakefileCov:
 
 
 class TestMakefileTest:
-    """make test MUST pass --cov-fail-under=75."""
+    """make test MUST pass --cov-fail-under=80 (clean-1.0 S0.12 floor)."""
 
-    def test_test_target_has_fail_under_75(self, test_target: str) -> None:
-        """test target MUST include --cov-fail-under=75."""
-        assert "--cov-fail-under=75" in test_target, f"--cov-fail-under=75 not in test target:\n{test_target}"
+    def test_test_target_has_fail_under_80(self, test_target: str) -> None:
+        """test target MUST include --cov-fail-under=80."""
+        assert "--cov-fail-under=80" in test_target, f"--cov-fail-under=80 not in test target:\n{test_target}"
 
 
 # ---------------------------------------------------------------------------

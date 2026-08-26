@@ -30,9 +30,7 @@ class _RecordCollector(logging.Handler):
 
 
 @pytest.fixture
-def captured_boot_logs(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> Iterator[tuple[_RecordCollector, Path]]:
+def captured_boot_logs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[tuple[_RecordCollector, Path]]:
     """Capture every log record emitted while from_env boots, at DEBUG.
 
     Uses an EMPTY env file so the missing-var WARNING path fires (the

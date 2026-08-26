@@ -56,7 +56,7 @@ Repository = "https://github.com/gentle-programming/NebulosaBot"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "--cov=bot --cov-fail-under=75 --randomly-seed=42"
+addopts = "--cov=bot --cov-fail-under=80 --randomly-seed=42"
 markers = [
     "live: credential-gated live Supabase read-only verifier (requires LIVE_SUPABASE=1 + SUPABASE_URL or --run-live)",
 ]

@@ -71,9 +71,7 @@ class TestTimerEmbedKwargsThroughT:
         channel.send.assert_awaited_once()
         embed = channel.send.call_args.kwargs["embed"]
         expected_title = t(_GID_ES, "tickets.timer.scheduled_title", unix=1_800_000_000, remaining="1 hora")
-        assert embed.title == expected_title, (
-            f"title must be the single-pass localized format; got {embed.title!r}"
-        )
+        assert embed.title == expected_title, f"title must be the single-pass localized format; got {embed.title!r}"
         assert "1_800_000_000" in embed.title or "1800000000" in embed.title
         assert not any("Missing placeholder" in rec.message for rec in caplog.records), (
             "calling t() without kwargs triggers a spurious i18n warning — pass unix=/remaining="
@@ -125,14 +123,10 @@ class TestConfirmPromptThroughT:
 
     def test_description_resolves_localized(self) -> None:
         svc = _make_service()
-        assert svc._confirm_prompt_desc(_GID_ES) == (
-            "El cierre se programará al confirmar. Tienes 30 segundos."
-        )
+        assert svc._confirm_prompt_desc(_GID_ES) == ("El cierre se programará al confirmar. Tienes 30 segundos.")
         assert svc._confirm_prompt_desc(_GID_EN).startswith("The close will be scheduled")
 
-    def test_degraded_store_returns_raw_key_without_literal_fallback(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_degraded_store_returns_raw_key_without_literal_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """With no locales loaded the raw key surfaces — never hardcoded copy."""
         svc = _make_service()
         monkeypatch.setattr(i18n_mod, "_locales", {})

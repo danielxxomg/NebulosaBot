@@ -106,9 +106,7 @@ class TestSweepClosedZombieAudit:
 
         assert result.outcome == "repaired"
         actions = [(action, actor) for action, actor, _outcome, _reason in _audit_calls(db)]
-        assert ("zombie_autoclose", "system") in actions, (
-            f"expected zombie_autoclose audit by system, got: {actions}"
-        )
+        assert ("zombie_autoclose", "system") in actions, f"expected zombie_autoclose audit by system, got: {actions}"
         rows = [row for row in _audit_calls(db) if row[0] == "zombie_autoclose"]
         assert rows[0][3] == "zombie:sweep", "applied close reason MUST be stored verbatim"
         # The generic repair row is REPLACED for automated zombies, not duplicated.
@@ -176,7 +174,9 @@ class TestLifecycleSeamZombieClose:
         query = MagicMock(spec=TicketQueryService)
         lifecycle = TicketLifecycleService(db, query)
 
-        await lifecycle.close_ticket("t1", closed_by="auto:scheduled", close_reason="zombie:channel_missing", guild_id="g1")
+        await lifecycle.close_ticket(
+            "t1", closed_by="auto:scheduled", close_reason="zombie:channel_missing", guild_id="g1"
+        )
 
         rows = _audit_calls(db)
         assert ("zombie_autoclose", "system", "success", "zombie:channel_missing") in rows, (

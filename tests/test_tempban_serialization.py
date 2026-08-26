@@ -59,9 +59,7 @@ async def test_expired_tempban_query_uses_null_safe_not_is(
 
     assert transport.urls, "sweep must have issued exactly one request"
     query_string = transport.urls[0]
-    assert "expiresAt=not.is.null" in query_string, (
-        f"null-safe not.is filter missing from wire format: {query_string}"
-    )
+    assert "expiresAt=not.is.null" in query_string, f"null-safe not.is filter missing from wire format: {query_string}"
 
 
 @pytest.mark.asyncio
@@ -99,8 +97,14 @@ async def test_sweep_executes_without_serialization_error(
 ) -> None:
     """GIVEN one expired + one null-expires row WHEN the sweep queries THEN it executes cleanly."""
     rows = [
-        {"id": "expired-1", "guildId": "g1", "targetId": "u1", "type": "BAN", "active": True,
-         "expiresAt": "2026-01-01T00:00:00+00:00"},
+        {
+            "id": "expired-1",
+            "guildId": "g1",
+            "targetId": "u1",
+            "type": "BAN",
+            "active": True,
+            "expiresAt": "2026-01-01T00:00:00+00:00",
+        },
     ]
     transport = _CaptureTransport(rows=rows)
     client = AsyncPostgrestClient("https://example.supabase.co", http_client=httpx.AsyncClient(transport=transport))

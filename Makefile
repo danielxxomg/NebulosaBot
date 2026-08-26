@@ -21,10 +21,10 @@ type-full:
 	uv run ty check bot/ tests/
 
 test:
-	uv run pytest --cov-fail-under=75
+	uv run pytest --cov-fail-under=80
 
 cov:
-	uv run pytest --cov-fail-under=75 --cov-report=term --cov-report=html
+	uv run pytest --cov-fail-under=80 --cov-report=term --cov-report=html
 
 tach:
 	uv run tach check
