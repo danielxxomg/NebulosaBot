@@ -3722,9 +3722,12 @@ class TestRepairTicketFromEvidence:
 
         mock_db.insert_audit_row.assert_awaited_once()
         kwargs = _audit_kwargs(mock_db)
-        assert kwargs["action"] == "repair"
+        # clean-1.0 D6: automated zombie closures write a dedicated
+        # zombie_autoclose row (actorId=system) with the applied close reason
+        # verbatim, REPLACING the generic "repair" row.
+        assert kwargs["action"] == "zombie_autoclose"
         assert kwargs["outcome"] == "repaired"
-        assert kwargs["reason"] is None
+        assert kwargs["reason"] == "zombie:channel_deleted"
         assert kwargs["guild_id"] == ticket_row["guildId"]
         assert kwargs["actor_id"] == "system"
 
@@ -4139,12 +4142,13 @@ async def test_repair_audit_failure_never_reports_repaired(
     mock_db: AsyncMock,
     ticket_row: dict,
 ) -> None:
-    """When audit persistence fails, the repair result MUST NOT claim `repaired`.
+    """When audit persistence fails on an AUTOMATED zombie autoclose, the close stands.
 
-    The conditional close may have executed, but a repair whose audit could
-    not be persisted must never be reported as success. The smallest safe
-    semantics is ``close/error`` with a non-empty reason and no evidence
-    success claim.
+    clean-1.0 D6 relaxed the strict persistence contract for the automated
+    zombie case (actorId=system ∧ reason startswith ``zombie:``): the audit
+    insert is best-effort, the failure is logged at WARNING and the repair
+    result keeps its successful outcome. Manual repairs keep the strict
+    contract (see TestRepairTicketFromEvidence).
     """
 
     evidence = _corroborated_evidence(ticket_row)
@@ -4159,11 +4163,9 @@ async def test_repair_audit_failure_never_reports_repaired(
     )
 
     assert isinstance(result, RepairResult)
-    assert result.outcome != "repaired"
-    assert result.outcome == "error"
-    assert result.reason, "audit-failure result MUST carry a non-empty reason"
-    # No evidence success claim for a repair whose audit could not persist.
-    assert result.evidence_id is None
+    # Best-effort audit: closure outcome is NOT degraded by audit failure.
+    assert result.outcome == "repaired"
+    assert result.evidence_id == evidence.evidence_id
 
 
 # ===========================================================================
@@ -4224,9 +4226,10 @@ class TestPR5IdempotencyAndBestEffort:
     ) -> None:
         """When the success audit insert fails, the close STILL persists and WARNING is logged.
 
-        Threat: Audit best-effort — audit failure must not roll back the repair mutation.
-        The current semantics degrades repaired to close/error with a non-empty reason
-        so no success is claimed without evidence.
+        Threat: Audit best-effort — audit failure must not roll back the repair
+        mutation. clean-1.0 D6: for the AUTOMATED zombie case the outcome stays
+        ``repaired`` (best-effort audit); only manual repairs degrade to
+        close/error with ``audit_persistence_failed``.
         """
 
         evidence = _corroborated_evidence(ticket_row)
@@ -4235,17 +4238,16 @@ class TestPR5IdempotencyAndBestEffort:
         # This is the SUCCESS audit path (success -> insert fails).
         mock_db.insert_audit_row = AsyncMock(side_effect=RuntimeError("audit down"))
 
-        with caplog.at_level(logging.WARNING, logger="bot.services.ticket_service"):
+        with caplog.at_level(logging.WARNING, logger="bot.services.ticket_lifecycle_service"):
             result = await service.repair_ticket_from_evidence(
                 evidence, preflight=_resolved_preflight(), close_reason="zombie:channel_deleted"
             )
 
         # The DB row was closed (transition succeeded) even though audit persistence failed.
         mock_db.transition_ticket_to_closed.assert_awaited_once()
-        assert result.outcome == "error"
-        assert result.reason == "audit_persistence_failed"
-        assert result.evidence_id is None
-        assert any("audit" in r.message.lower() for r in caplog.records)
+        assert result.outcome == "repaired"
+        assert result.evidence_id == evidence.evidence_id
+        assert any("zombie_autoclose" in r.message.lower() or "audit" in r.message.lower() for r in caplog.records)
 
 
 # ===========================================================================

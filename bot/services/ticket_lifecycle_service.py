@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 import discord
 
+from bot.core.i18n import t
 from bot.models.ticket import Ticket
 from bot.models.ticket_note import TicketNote
 from bot.services.ticket_invariants import (
@@ -149,10 +150,13 @@ class TicketLifecycleService:
             is_zombie = close_reason is not None and close_reason.startswith("zombie:")
             if not is_zombie:
                 self._query.discard_channel(int(ticket.channel_id))
-            try:
-                await self._db.insert_audit_row(resolved_gid, ticket_id, "close", closed_by, "success", None)
-            except Exception:
-                logger.warning("Failed to write close audit row for ticket %s", ticket_id, exc_info=True)
+                try:
+                    await self._db.insert_audit_row(resolved_gid, ticket_id, "close", closed_by, "success", None)
+                except Exception:
+                    logger.warning("Failed to write close audit row for ticket %s", ticket_id, exc_info=True)
+            else:
+                # D6: automated zombie closure — best-effort dedicated audit row.
+                await self._audit_zombie_autoclose(resolved_gid, ticket_id, "success", close_reason)
             logger.info(
                 "Ticket %s closed by %s%s%s",
                 ticket_id,
@@ -190,10 +194,13 @@ class TicketLifecycleService:
         is_zombie = close_reason is not None and close_reason.startswith("zombie:")
         if not is_zombie:
             self._query.discard_channel(int(ticket.channel_id))
-        try:
-            await self._db.insert_audit_row(guild_id, ticket_id, "close", closed_by, "success", None)
-        except Exception:
-            logger.warning("Failed to write close audit row for ticket %s", ticket_id, exc_info=True)
+            try:
+                await self._db.insert_audit_row(guild_id, ticket_id, "close", closed_by, "success", None)
+            except Exception:
+                logger.warning("Failed to write close audit row for ticket %s", ticket_id, exc_info=True)
+        else:
+            # D6: automated zombie closure — best-effort dedicated audit row.
+            await self._audit_zombie_autoclose(guild_id, ticket_id, "success", close_reason)
         logger.info(
             "Ticket %s closed by %s%s%s",
             ticket_id,
@@ -204,6 +211,22 @@ class TicketLifecycleService:
         # PR2 round 2: clear scheduled timer fields on close (best-effort, logged).
         await self._clear_scheduled_fields(ticket_id, guild_id)
         return ticket
+
+    async def _audit_zombie_autoclose(self, guild_id: str, ticket_id: str, outcome: str, reason: str | None) -> None:
+        """Write the best-effort ``zombie_autoclose`` audit row (D6 single site).
+
+        Both automated zombie-closure seams (repair service sweep/channel-delete
+        and this lifecycle's scheduled-close path) call this ONE method. The
+        insert is best-effort per spec: failure is logged at WARNING and NEVER
+        propagates — the closure always stands.
+
+        Row contract: ``action="zombie_autoclose"``, ``actorId="system"``,
+        the applied close reason stored verbatim.
+        """
+        try:
+            await self._db.insert_audit_row(guild_id, ticket_id, "zombie_autoclose", "system", outcome, reason)
+        except Exception:
+            logger.warning("Failed to write zombie_autoclose audit row for ticket %s", ticket_id, exc_info=True)
 
     async def _clear_scheduled_fields(self, ticket_id: str, guild_id: str) -> None:
         """Clear scheduledCloseAt/By on close (best-effort, logged).
@@ -426,7 +449,9 @@ class TicketLifecycleService:
             check_can_reopen(closed_row.get("status", ""))
         except ValueError as exc:
             await self._db.insert_audit_row(guild_id, ticket_id, "reopen", None, "denied", str(exc))
-            msg = f"Solo se pueden reabrir tickets cerrados. Estado actual: {closed_row.get('status')}"
+            # User-facing denial text resolves through t() (AGENTS.md i18n);
+            # key: tickets.reopen.not_closed_description ("{status}" slot).
+            msg = t(reopen_gid, "tickets.reopen.not_closed_description", status=closed_row.get("status"))
             raise ValueError(msg) from exc
         guild_row = await self._db.get_guild(str(guild.id))
         category_channel = self._resolve_ticket_category(guild, guild_row)

@@ -73,13 +73,15 @@ async def test_automatic_repair_persists_repaired_not_success():
     assert result.outcome == "repaired"
     assert result.action == "close"
     assert result.evidence_id == evidence.evidence_id
-    # Exact audit contract
+    # Exact audit contract — clean-1.0 D6: automated zombie closures write the
+    # dedicated zombie_autoclose row (system actor, reason verbatim) instead
+    # of the generic "repair" row.
     assert db.insert_audit_row.await_count == 1
     kwargs = _audit_kwargs(db)
-    assert kwargs["action"] == "repair"
+    assert kwargs["action"] == "zombie_autoclose"
     assert kwargs["actor_id"] == "system"
     assert kwargs["outcome"] == "repaired"
-    assert kwargs["reason"] is None
+    assert kwargs["reason"] == "zombie:sweep"
 
 
 @pytest.mark.asyncio
@@ -193,9 +195,6 @@ async def test_cross_guild_by_ref_returns_skipped_no_value_error():
 @pytest.mark.asyncio
 async def test_listener_duplicate_race_yields_repaired_then_already_closed():
     """SERVICE-2.4: concurrent duplicate events must yield one repaired, one already_closed."""
-    from bot.core.cache import TTLCache
-    from bot.services.ticket_service import TicketService
-
     db = AsyncMock()
     row = {"id": "t1", "guildId": "123", "channelId": "555", "status": "open"}
     db.get_active_ticket_by_channel = AsyncMock(return_value=row)
