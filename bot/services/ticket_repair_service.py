@@ -14,6 +14,7 @@ import discord
 from bot.config import INTEGRITY_BATCH_SIZE
 from bot.core.i18n import t
 from bot.models.ticket import IntegrityEvidence, RepairResult, Ticket
+from bot.services.integrity_report import evaluate_live_preflight
 from bot.services.ticket_invariants import (
     GlobalMutationGrant,
     RepairAuthority,
@@ -186,6 +187,26 @@ class TicketRepairService:
                 reason=None,
                 evidence_id=None,
                 timestamp=now,
+            )
+
+        # D6: automated zombie closures (system actor + zombie:* reason) write
+        # a dedicated best-effort ``zombie_autoclose`` audit row via the single
+        # lifecycle helper, REPLACING the generic ``repair`` row. For this
+        # automated case the strict ``audit_persisted`` hard-fail is relaxed to
+        # best-effort per spec: an audit failure never blocks or rolls back the
+        # close. Manual repairs keep the strict contract unchanged below.
+        automated_zombie = actor_id == "system" and close_reason is not None and close_reason.startswith("zombie:")
+        if automated_zombie:
+            await self._lifecycle._audit_zombie_autoclose(guild_id, ticket_id, "repaired", close_reason)
+            return RepairResult(
+                ticket_id=ticket_id,
+                guild_id=guild_id,
+                action="close",
+                outcome="repaired",
+                reason=None,
+                evidence_id=evidence.evidence_id,
+                timestamp=now,
+                corroborated=True,
             )
 
         audit_persisted = True
@@ -705,8 +726,6 @@ class TicketRepairService:
             source="manual",
         )
 
-        from bot.services.integrity_report import evaluate_live_preflight
-
         manual_preflight = evaluate_live_preflight(
             project_status="ACTIVE_HEALTHY",
             migration_015_applied=True,
@@ -823,7 +842,7 @@ class TicketRepairService:
                 author_id=author_id,
                 seconds=seconds,
                 prompt_title=self._confirm_prompt_title(guild_id),
-                prompt_desc=self._confirm_prompt_desc(guild_id, seconds),
+                prompt_desc=self._confirm_prompt_desc(guild_id),
             )
 
         # Immediate schedule (within 2h..5d)
@@ -956,19 +975,25 @@ class TicketRepairService:
         """
         unix = int(due_ts)
         remaining = format_remaining(seconds, guild_id=guild_id)
-        title = t(guild_id, "tickets.timer.scheduled_title")
-        if title.startswith("tickets.timer"):
-            title = f"\u23f3 Cierra <t:{unix}:R> (<t:{unix}:F>)"
-        else:
-            try:
-                title = title.format(unix=unix, remaining=remaining)
-            except Exception:  # noqa: BLE001 -- title format best-effort; any failure uses fallback
-                title = f"\u23f3 Cierra <t:{unix}:R> (<t:{unix}:F>)"
-        if f"<t:{unix}:R>" not in title:
-            title = f"\u23f3 Cierra <t:{unix}:R> (<t:{unix}:F>)"
+        # S0.11 fix: pass unix/remaining INTO t() so interpolation happens in a
+        # single pass (calling t() without kwargs emitted a spurious
+        # "Missing placeholder" warning and forced a second manual format).
+        title = t(guild_id, "tickets.timer.scheduled_title", unix=unix, remaining=remaining)
+        if "<t:" not in title:
+            # Forced-default-locale retry; if locales are unavailable entirely
+            # the raw key surfaces (no hardcoded copy) with a WARNING.
+            logger.warning(
+                "tickets.timer.scheduled_title unresolved for guild %s — falling back to default locale",
+                guild_id,
+            )
+            title = t(None, "tickets.timer.scheduled_title", unix=unix, remaining=remaining)
         desc = t(guild_id, "tickets.timer.scheduled_description", remaining=remaining, unix=unix)
-        if desc.startswith("tickets.timer"):
-            desc = f"Cierre programado {remaining} — <t:{unix}:F>"
+        if "<t:" not in desc:
+            logger.warning(
+                "tickets.timer.scheduled_description unresolved for guild %s — falling back to default locale",
+                guild_id,
+            )
+            desc = t(None, "tickets.timer.scheduled_description", remaining=remaining, unix=unix)
         embed = discord.Embed(title=title, description=desc, color=WARNING)
         # Pin scan + pinned-edit are best-effort: if reading/editing existing
         # pinned timer embeds fails, fall through to sending a fresh embed.
@@ -1003,16 +1028,18 @@ class TicketRepairService:
 
     @staticmethod
     def _confirm_prompt_title(guild_id: str) -> str:
-        """Resolve the localized confirm-prompt title (with fallback)."""
+        """Resolve the localized confirm-prompt title (forced-default retry only)."""
         title = t(guild_id, "tickets.timer.confirm_title")
-        return "Confirm Scheduled Close" if title.startswith("tickets.timer") else title
+        if title.startswith("tickets.timer"):
+            title = t(None, "tickets.timer.confirm_title")
+        return title
 
     @staticmethod
-    def _confirm_prompt_desc(guild_id: str, seconds: int) -> str:
-        """Resolve the localized confirm-prompt description (with fallback)."""
+    def _confirm_prompt_desc(guild_id: str) -> str:
+        """Resolve the localized confirm-prompt description (forced-default retry only)."""
         desc = t(guild_id, "tickets.timer.confirm_description")
         if desc.startswith("tickets.timer"):
-            return f"Schedule close in {format_remaining(seconds, guild_id=guild_id)}? Confirm within 30s."
+            desc = t(None, "tickets.timer.confirm_description")
         return desc
 
     # -- orchestration (channel + transcript) -----------------------------
@@ -1122,16 +1149,17 @@ class TicketRepairService:
                 if guild_service is not None:
                     try:
                         config = await guild_service.get_config(str(guild.id))
+                    except (ValueError, TypeError):
+                        logger.warning(
+                            "Failed to resolve guild config for transcript log channel (guild=%s)",
+                            guild.id,
+                            exc_info=True,
+                        )
+                    else:
                         if config.log_channel_id:
                             ch = guild.get_channel(int(config.log_channel_id))
                             if isinstance(ch, discord.TextChannel):
                                 log_channel = ch
-                    except (ValueError, TypeError):
-                        logger.warning(
-                            "Invalid log_channel_id %r in guild %s config",
-                            config.log_channel_id,  # ty: ignore[possibly-unresolved-reference]  # guarded by enclosing try/except
-                            guild.id,
-                        )
                 if log_channel is not None:
                     transcript_url = await transcript_service.upload(transcript_file, log_channel)
                 else:
