@@ -342,9 +342,12 @@ class NebulosaBot(commands.Bot):
             if client is not None:
                 for key, days in retention_defaults.items():
                     try:
-                        await client.table("retention_setting").upsert(
-                            {"key": key, "days": days}, on_conflict="key"
-                        ).execute()
+                        await (
+                            client
+                            .table("retention_setting")
+                            .upsert({"key": key, "days": days}, on_conflict="key")
+                            .execute()
+                        )
                     except Exception:  # noqa: BLE001 -- best-effort retention/cron, never crash setup_hook
                         # Fallback: raw RPC / execute_sql if table helper fails
                         logger.debug("retention_setting upsert via table failed for %s", key, exc_info=True)

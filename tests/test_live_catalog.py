@@ -91,10 +91,10 @@ class TestRedLiveCatalogModuleExists:
         mod = importlib.import_module("bot.services.live_catalog")
         assert mod is not None
 
-    def test_local_migration_identity_is_27_exact(self) -> None:
+    def test_local_migration_identity_is_29_exact(self) -> None:
 
         names = get_local_migration_names()
-        assert len(names) == 27
+        assert len(names) == 29
         assert sorted(names) == EXPECTED_LOCAL_MIGRATIONS
 
     def test_live_catalog_exposes_db_adapter(self) -> None:
@@ -111,7 +111,7 @@ class TestRedLiveCatalogModuleExists:
 class TestCatalogParityMeasurableRealDB:
     """Catalog parity is measurable only against a real DB — fakes never PASS."""
 
-    def test_9_7_0_6_6_27_exact_passes_with_real_db(self) -> None:
+    def test_9_7_0_6_6_29_exact_passes_with_real_db(self) -> None:
 
         local = get_local_migration_names()
         # Build via real-DB evidence path — include 9/7/0 binding
