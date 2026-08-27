@@ -113,6 +113,39 @@ class TicketLifecycleService:
         msg = f"Failed to create ticket after {MAX_RETRIES} attempts (guild={guild_id})"
         raise RuntimeError(msg)
 
+    async def _finalize_close(
+        self,
+        ticket: Ticket,
+        closed_by: str | None,
+        close_reason: str | None,
+        transcript_url: str | None,
+    ) -> None:
+        """Dual-branch post-transition dedup (S5.6).
+
+        Hosts the formerly duplicated success/zombie + discard + audit + clear
+        body so both guild-scoped and fallback paths delegate here. Behavior-identical:
+        denied audit rows stay in the callers; this handles success/zombie skip,
+        discard, and _clear_scheduled_fields.
+        """
+        guild_id = ticket.guild_id
+        is_zombie = close_reason is not None and close_reason.startswith("zombie:")
+        if not is_zombie:
+            self._query.discard_channel(int(ticket.channel_id))
+            try:
+                await self._db.insert_audit_row(guild_id, ticket.id, "close", closed_by, "success", None)
+            except Exception:
+                logger.warning("Failed to write close audit row for ticket %s", ticket.id, exc_info=True)
+        else:
+            await self._audit_zombie_autoclose(guild_id, ticket.id, "success", close_reason)
+        logger.info(
+            "Ticket %s closed by %s%s%s",
+            ticket.id,
+            closed_by or "unknown",
+            f" (transcript: {transcript_url})" if transcript_url else "",
+            f" (reason: {close_reason})" if close_reason else "",
+        )
+        await self._clear_scheduled_fields(ticket.id, guild_id)
+
     async def close_ticket(
         self,
         ticket_id: str,
@@ -146,28 +179,7 @@ class TicketLifecycleService:
                     logger.warning("Failed to write denied close audit row for ticket %s", ticket_id, exc_info=True)
                 raise ValueError(denied_reason)
             ticket = Ticket.from_db_row(closed_row)
-            resolved_gid = ticket.guild_id
-            is_zombie = close_reason is not None and close_reason.startswith("zombie:")
-            if not is_zombie:
-                self._query.discard_channel(int(ticket.channel_id))
-                try:
-                    await self._db.insert_audit_row(resolved_gid, ticket_id, "close", closed_by, "success", None)
-                except Exception:
-                    logger.warning("Failed to write close audit row for ticket %s", ticket_id, exc_info=True)
-            else:
-                # D6: automated zombie closure — best-effort dedicated audit row.
-                await self._audit_zombie_autoclose(resolved_gid, ticket_id, "success", close_reason)
-            logger.info(
-                "Ticket %s closed by %s%s%s",
-                ticket_id,
-                closed_by or "unknown",
-                f" (transcript: {transcript_url})" if transcript_url else "",
-                f" (reason: {close_reason})" if close_reason else "",
-            )
-            # PR2 round 2: clear scheduled timer fields on close (best-effort).
-            # Log failures instead of contextlib.suppress(Exception) — suppress is a
-            # semantically bare except that leaves operators blind to write failures.
-            await self._clear_scheduled_fields(ticket_id, resolved_gid)
+            await self._finalize_close(ticket, closed_by, close_reason, transcript_url)
             return ticket
         pre = await self._db.get_ticket(ticket_id)
         guild_id = pre.get("guildId", "") if isinstance(pre, dict) else ""
@@ -190,26 +202,7 @@ class TicketLifecycleService:
                 logger.warning("Failed to write denied close audit row for ticket %s", ticket_id, exc_info=True)
             raise ValueError(denied_reason)
         ticket = Ticket.from_db_row(closed_row)
-        guild_id = ticket.guild_id
-        is_zombie = close_reason is not None and close_reason.startswith("zombie:")
-        if not is_zombie:
-            self._query.discard_channel(int(ticket.channel_id))
-            try:
-                await self._db.insert_audit_row(guild_id, ticket_id, "close", closed_by, "success", None)
-            except Exception:
-                logger.warning("Failed to write close audit row for ticket %s", ticket_id, exc_info=True)
-        else:
-            # D6: automated zombie closure — best-effort dedicated audit row.
-            await self._audit_zombie_autoclose(guild_id, ticket_id, "success", close_reason)
-        logger.info(
-            "Ticket %s closed by %s%s%s",
-            ticket_id,
-            closed_by or "unknown",
-            f" (transcript: {transcript_url})" if transcript_url else "",
-            f" (reason: {close_reason})" if close_reason else "",
-        )
-        # PR2 round 2: clear scheduled timer fields on close (best-effort, logged).
-        await self._clear_scheduled_fields(ticket_id, guild_id)
+        await self._finalize_close(ticket, closed_by, close_reason, transcript_url)
         return ticket
 
     async def _audit_zombie_autoclose(self, guild_id: str, ticket_id: str, outcome: str, reason: str | None) -> None:

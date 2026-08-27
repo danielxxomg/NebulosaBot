@@ -10,15 +10,6 @@
       "check_failure_description": "You don't have permission to use this command.",
       "missing_permissions_title": "Missing Permissions",
       "missing_permissions_description": "You are missing the following permissions: {permissions}"
-    },
-    "success": {
-      "title": "Success"
-    },
-    "info": {
-      "title": "Information"
-    },
-    "warning": {
-      "title": "Warning"
     }
   },
   "slash": {
@@ -248,9 +239,7 @@
       "no_module_desc": "Use `/help` without arguments to see available modules.",
       "no_commands": "No commands are registered yet.",
       "no_description": "No description available yet.",
-      "footer": "NebulosaBot • /help",
-      "prev_button": "◀ Previous",
-      "next_button": "Next ▶"
+      "footer": "NebulosaBot • /help"
     },
     "sync": {
       "title": "✅ Commands Synced",
@@ -284,12 +273,9 @@
     }
   },
   "setup": {
-    "success_title": "✅ Configuration Saved",
-    "success_description": "Guild settings have been updated successfully.",
     "error_title": "Setup Failed",
     "error_guild_only": "This command can only be used in a server.",
     "error_config_load": "Could not load guild configuration. Please try again.",
-    "error_save": "Could not save guild configuration. Please try again.",
     "panel": {
       "title": "Setup Panel",
       "description": "Select a module to configure the server.",
@@ -701,24 +687,8 @@
       "success_title": "✅ Ticket Transferred",
       "success_description": "The ticket has been transferred to {member}."
     },
-    "close": {
-      "summary_title": "🔒 Ticket #{number} Closed",
-      "summary_description": "This ticket has been closed.",
-      "closed_by_field": "Closed by",
-      "reason_field": "Close Reason",
-      "transcript_field": "Transcript",
-      "transcript_link": "View Transcript",
-      "dm_title": "Ticket #{number} Closed",
-      "dm_description": "Your support ticket has been closed. Thank you for reaching out!"
-    },
-    "close_modal": {
-      "title": "Close Ticket",
-      "reason_label": "Close Reason",
-      "reason_placeholder": "Why are you closing this ticket?",
-      "reason_empty_title": "Reason Required",
-      "reason_empty_description": "Please provide a reason for closing this ticket (1–500 characters).",
-      "already_closed_description": "This ticket has already been closed by another user or system process."
-    },
+    "close": {},
+    "close_modal": {},
     "note": {
       "help_title": "Staff Notes",
       "help_description": "Use `/note add`, `/note list`, or `/note delete`.",
@@ -801,9 +771,7 @@
     },
     "banana": {
       "title": "🍌 Banana",
-      "description": "This banana is **{size} cm**",
-      "error_title": "Image Missing",
-      "error_description": "The banana image asset is not available. Please contact the bot owner."
+      "description": "This banana is **{size} cm**"
     },
     "8ball": {
       "embed_title": "🎱 Magic 8-Ball",
@@ -967,7 +935,12 @@
       "failed_title": "Rank Card Error",
       "failed_description": "Could not retrieve rank data. Please try again later.",
       "no_data_title": "No Rank Data",
-      "no_data_description": "**{name}** has no stats yet.\nStart chatting to earn XP and level up!"
+      "no_data_description": "**{name}** has no stats yet.\nStart chatting to earn XP and level up!",
+      "card": {
+        "level": "Level {level}",
+        "xp": "{current} / {next} XP",
+        "rank": "#{rank}"
+      }
     },
     "level_up": {
       "title": "Level Up! 🎉",
