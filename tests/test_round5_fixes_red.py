@@ -174,7 +174,11 @@ class TestOcioCogCommandErrorRed:
         await cog.cog_app_command_error(inter, err)
 
         assert inter.response.send_message.await_count or inter.followup.send.await_count
-        kwargs = (inter.response.send_message.call_args.kwargs if inter.response.send_message.await_count else inter.followup.send.call_args.kwargs)
+        kwargs = (
+            inter.response.send_message.call_args.kwargs
+            if inter.response.send_message.await_count
+            else inter.followup.send.call_args.kwargs
+        )
         assert kwargs.get("ephemeral") is True, "cooldown embed MUST be ephemeral"
         assert kwargs.get("embed") is not None, "cooldown embed MUST be present"
 

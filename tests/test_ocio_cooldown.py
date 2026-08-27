@@ -7,9 +7,8 @@ ephemerally with localized retry_after and releases after 5s.
 
 from __future__ import annotations
 
-import inspect
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
@@ -70,7 +69,11 @@ async def test_app_cooldown_handler_replies_ephemerally(cog: OcioCog) -> None:
         await cog.cog_app_command_error(inter, err)
         if inter.response.send_message.await_count or inter.followup.send.await_count:
             handled = True
-            kwargs = inter.response.send_message.call_args.kwargs if inter.response.send_message.await_count else inter.followup.send.call_args.kwargs
+            kwargs = (
+                inter.response.send_message.call_args.kwargs
+                if inter.response.send_message.await_count
+                else inter.followup.send.call_args.kwargs
+            )
             assert kwargs.get("ephemeral") is True, "cooldown reply must be ephemeral"
             # Must be localized via t() — check embed title/description come from i18n
             embed = kwargs.get("embed")
@@ -81,7 +84,10 @@ async def test_app_cooldown_handler_replies_ephemerally(cog: OcioCog) -> None:
         from bot.bot import NebulosaBot
         from bot.config import BotConfig
 
-        bot = NebulosaBot(config=BotConfig(discord_token="t", supabase_url="https://x.supabase.co", supabase_key="k"), intents=discord.Intents.default())
+        bot = NebulosaBot(
+            config=BotConfig(discord_token="t", supabase_url="https://x.supabase.co", supabase_key="k"),
+            intents=discord.Intents.default(),
+        )
         inter2 = MagicMock(spec=discord.Interaction)
         inter2.guild = MagicMock()
         inter2.guild.id = 123456789
@@ -95,7 +101,11 @@ async def test_app_cooldown_handler_replies_ephemerally(cog: OcioCog) -> None:
         inter2.followup = MagicMock()
         inter2.followup.send = AsyncMock()
         await bot.on_app_command_error(inter2, err)
-        kwargs = inter2.response.send_message.call_args.kwargs if inter2.response.send_message.await_count else inter2.followup.send.call_args.kwargs
+        kwargs = (
+            inter2.response.send_message.call_args.kwargs
+            if inter2.response.send_message.await_count
+            else inter2.followup.send.call_args.kwargs
+        )
         assert kwargs.get("ephemeral") is True, "global cooldown branch must be ephemeral"
 
 
