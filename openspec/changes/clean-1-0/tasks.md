@@ -94,12 +94,12 @@ Chain strategy: stacked-to-main
 
 ## Phase S4: Operational Config (PR 6, ~350 lines)
 
-- [ ] S4.1 RED: `tests/test_operational_config.py` — valid file applies typed values; absent file → env-only boot (no error); malformed → `TOMLDecodeError` fail-fast naming parse failure; secrets-scan (no token/DB creds in config.toml); unknown keys → WARNING + ignored. Ref: operational-config "Typed TOML loader".
-- [ ] S4.2 RED: `tests/test_rotating_file_handler.py` — rollover at 10MB; ≤5 backups; oldest pruned beyond fifth. Ref: operational-config "RotatingFileHandler bounds disk usage".
-- [ ] S4.3 Create `bot/operational_config.py`: frozen dataclass tree (`LoggingSettings`, `LimitSettings`, `TimeoutSettings`, `RetentionSettings`, `FeatureFlags` → `OperationalConfig`); `tomllib` parse at boot; precedence built-in defaults ← config.toml; `.env` does NOT feed operational settings. (D4)
-- [ ] S4.4 Create `config.toml` + `config.example.toml` (defaults, no secrets).
-- [ ] S4.5 Modify `bot/__main__.py:20` bootstrap: `RotatingFileHandler(maxBytes=10*1024*1024, backupCount=5)` replaces `basicConfig` file sink; load `OperationalConfig` at boot. (D4)
-- [ ] S4.6 Feature-flag read API: `cfg.flags.retention_enabled` consumed by setup_hook cron reconcile.
+- [x] S4.1 RED: `tests/test_operational_config.py` — valid file applies typed values; absent file → env-only boot (no error); malformed → `TOMLDecodeError` fail-fast naming parse failure; secrets-scan (no token/DB creds in config.toml); unknown keys → WARNING + ignored. Ref: operational-config "Typed TOML loader".
+- [x] S4.2 RED: `tests/test_rotating_file_handler.py` — rollover at 10MB; ≤5 backups; oldest pruned beyond fifth. Ref: operational-config "RotatingFileHandler bounds disk usage".
+- [x] S4.3 Create `bot/operational_config.py`: frozen dataclass tree (`LoggingSettings`, `LimitSettings`, `TimeoutSettings`, `RetentionSettings`, `FeatureFlags` → `OperationalConfig`); `tomllib` parse at boot; precedence built-in defaults ← config.toml; `.env` does NOT feed operational settings. (D4)
+- [x] S4.4 Create `config.toml` + `config.example.toml` (defaults, no secrets).
+- [x] S4.5 Modify `bot/__main__.py:20` bootstrap: `RotatingFileHandler(maxBytes=10*1024*1024, backupCount=5)` replaces `basicConfig` file sink; load `OperationalConfig` at boot. (D4)
+- [x] S4.6 Feature-flag read API: `cfg.flags.retention_enabled` consumed by setup_hook cron reconcile.
 
 ## Phase S5: Hygiene & Debt (PR 7, ~400 lines)
 

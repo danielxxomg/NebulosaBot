@@ -70,7 +70,7 @@ class TestOperationalConfigLoader:
         # Flags
         assert cfg.flags.retention_enabled is False
         # Frozen
-        assert cfg.__dataclass_params__.frozen is True  # type: ignore[attr-defined]
+        assert cfg.__dataclass_params__.frozen is True
 
     def test_absent_file_falls_back_to_defaults(self, tmp_path: Path) -> None:
         try:
@@ -193,4 +193,4 @@ class TestOperationalConfigLoader:
         for attr in ("logging", "limits", "timeouts", "retention", "flags"):
             leaf = getattr(cfg, attr)
             assert dataclasses.is_dataclass(leaf)
-            assert leaf.__dataclass_params__.frozen is True  # type: ignore[attr-defined]
+            assert leaf.__dataclass_params__.frozen is True
