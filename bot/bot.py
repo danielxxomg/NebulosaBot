@@ -310,7 +310,7 @@ class NebulosaBot(commands.Bot):
             # Import lazily so S3 works before S4 lands (config file may not exist yet).
             spec = importlib.util.find_spec("bot.operational_config")
             if spec is not None:
-                import bot.operational_config as op_mod  # noqa: PLC0415 -- optional-dependency probe: S4 not yet landed  # type: ignore[import-untyped]
+                import bot.operational_config as op_mod  # noqa: PLC0415 -- optional-dependency probe: S4 not yet landed
 
                 # OperationalConfig may expose retention via .retention or .flags
                 cfg = None
