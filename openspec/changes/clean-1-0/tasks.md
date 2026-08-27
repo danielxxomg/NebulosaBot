@@ -72,14 +72,14 @@ Chain strategy: stacked-to-main
 
 ## Phase S2b: Welcome/Goodbye/Log/Language Modules + Legacy Group Deletion (PR 4, ~500 lines)
 
-- [ ] S2b.1 RED: `tests/test_setup_module_welcome.py` — module save matches legacy effect (channel updated + cache invalidated); test button delivers REAL localized preview to configured channel; preview failure (no channel) → ephemeral error, no mutation. Ref: welcome-goodbye "Setup-module configuration parity and preview".
-- [ ] S2b.2 RED: `tests/test_setup_module_goodbye.py` — same parity + preview for goodbye.
-- [ ] S2b.3 Create `bot/views/setup_modules/welcome.py`, `goodbye.py`, `log.py`, `language.py`; register in `MODULES` without framework edits. (D1)
-- [ ] S2b.4 Expose orphan columns (`cardEnabled`, `themeId`, `onboardingChannelId`) in Welcome module editors.
-- [ ] S2b.5 Implement test-button action `setup:{module}:test`: defer → render REAL artifact via `GreetingService` (identical path to join/leave) → deliver to configured channel → edit panel with outcome; missing/inaccessible channel → ephemeral followup error. (D1 preview mechanics)
-- [ ] S2b.6 Verify greeting card text via caller (title + member-count from `t()`), no hardcoded copy. Ref: welcome-goodbye "Localized greeting card text".
-- [ ] S2b.7 i18n: add `setup.module.welcome/goodbye/log/language.*` keys to es/en symmetric. Ref: setup-panel i18n.
-- [ ] S2b.8 Delete `/welcome` + `/goodbye` command groups and `*_test` commands in `bot/cogs/greetings.py` AFTER parity verified. (delete-before-migrate: deletions precede S6 migration of survivors). Ref: welcome-goodbye REMOVED.
+- [x] S2b.1 RED: `tests/test_setup_module_welcome.py` — module save matches legacy effect (channel updated + cache invalidated); test button delivers REAL localized preview to configured channel; preview failure (no channel) → ephemeral error, no mutation. Ref: welcome-goodbye "Setup-module configuration parity and preview".
+- [x] S2b.2 RED: `tests/test_setup_module_goodbye.py` — same parity + preview for goodbye.
+- [x] S2b.3 Create `bot/views/setup_modules/welcome.py`, `goodbye.py`, `log.py`, `language.py`; register in `MODULES` without framework edits. (D1)
+- [x] S2b.4 Expose orphan columns (`cardEnabled`, `themeId`, `onboardingChannelId`) in Welcome module editors.
+- [x] S2b.5 Implement test-button action `setup:{module}:test`: defer → render REAL artifact via `GreetingService` (identical path to join/leave) → deliver to configured channel → edit panel with outcome; missing/inaccessible channel → ephemeral followup error. (D1 preview mechanics)
+- [x] S2b.6 Verify greeting card text via caller (title + member-count from `t()`), no hardcoded copy. Ref: welcome-goodbye "Localized greeting card text".
+- [x] S2b.7 i18n: add `setup.module.welcome/goodbye/log/language.*` keys to es/en symmetric. Ref: setup-panel i18n.
+- [x] S2b.8 Delete `/welcome` + `/goodbye` command groups and `*_test` commands in `bot/cogs/greetings.py` AFTER parity verified. (delete-before-migrate: deletions precede S6 migration of survivors). Ref: welcome-goodbye REMOVED.
 
 ## Phase S3: Retention Engine (PR 5, ~400 lines)
 
