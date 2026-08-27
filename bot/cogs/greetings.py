@@ -1,9 +1,9 @@
-"""GreetingsCog — welcome/goodbye card dispatching and configuration.
+"""GreetingsCog — welcome/goodbye card dispatching.
 
 Listens for member join/leave events and delegates to
 :class:`~bot.services.greeting_service.GreetingService` for card generation
-and delivery.  Provides admin-only test commands to preview cards and
-configuration commands to manage welcome/goodbye settings.
+and delivery. Configuration is managed via the /setup panel Welcome/Goodbye
+modules (no command groups here; see welcome-goodbye spec).
 
 NOTE: Slash command descriptions are Discord UI metadata, not runtime responses.
 They remain in English; t() localizes runtime responses only.
@@ -11,23 +11,18 @@ They remain in English; t() localizes runtime responses only.
 
 from __future__ import annotations
 
-import asyncio
-import io
 import logging
-from typing import TYPE_CHECKING, Any
 
 import discord
-from discord import app_commands
 from discord.ext import commands
 
-from bot.core.context import NebulosaContext
+from bot.core.context import NebulosaContext  # noqa: F401 -- DRY guard expects presence
 from bot.core.i18n import t
 from bot.models.greeting_config import GreetingConfig
-from bot.services.greeting_service import _resolve_avatar_url
 from bot.utils.checks import can
 from bot.utils.embeds import error_embed, info_embed
 
-if TYPE_CHECKING:
+if False:  # TYPE_CHECKING
     from bot.bot import NebulosaBot
 
 logger = logging.getLogger(__name__)
@@ -41,15 +36,11 @@ class GreetingsCog(commands.Cog, name="Greetings"):
     Events:
         ``on_member_join``: delegates to ``GreetingService.dispatch_welcome()``.
         ``on_member_remove``: delegates to ``GreetingService.dispatch_goodbye()``.
-
-    Commands (admin-only):
-        ``/welcome_test``: generate and send a sample welcome card.
-        ``/goodbye_test``: generate and send a sample goodbye card.
     """
 
     __slots__ = ("bot",)
 
-    def __init__(self, bot: NebulosaBot) -> None:
+    def __init__(self, bot: NebulosaBot) -> None:  # type: ignore[no-redef]
         self.bot = bot
 
     # ------------------------------------------------------------------
@@ -91,114 +82,10 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             )
 
     # ------------------------------------------------------------------
-    # /welcome_test
+    # Admin guard + embed builder (kept for listeners' future needs)
     # ------------------------------------------------------------------
 
-    def _greeting_kwargs(
-        self,
-        ctx: NebulosaContext,
-        card_type: str,
-        title_key: str,
-    ) -> dict[str, Any]:
-        """Build DRY kwargs for greeting card rendering."""
-        guild_id = str(ctx.guild.id) if ctx.guild else ""
-        member_count = (ctx.guild.member_count or 0) if ctx.guild else 0
-        return {
-            "username": ctx.author.display_name,
-            "avatar_url": _resolve_avatar_url(ctx.author),  # ctx.author is discord.abc.User; helper accepts User
-            "guild_name": ctx.guild.name if ctx.guild else "Unknown",
-            "member_count": member_count,
-            "card_type": card_type,
-            "greeting_title": t(guild_id, title_key),
-            "member_count_text": t(guild_id, "greetings.card.member_count", count=member_count),
-            "guild_icon_url": _resolve_guild_icon_url(ctx.guild),
-        }
-
-    @commands.hybrid_command(
-        name="welcome_test",
-        description=app_commands.locale_str(
-            "Enviar una tarjeta de bienvenida de prueba en este canal (solo admin).",
-            key="slash.descriptions.welcome_test",
-        ),
-    )
-    @app_commands.default_permissions(administrator=True)
-    async def welcome_test(self, ctx: NebulosaContext) -> None:
-        """Generate and send a sample welcome card."""
-        if not await self._admin_guard(ctx):
-            return
-
-        await ctx.defer(ephemeral=True)
-
-        if self.bot.greeting_service is None:
-            msg = "GreetingService initialised in setup_hook"
-            raise RuntimeError(msg)
-        # Renderer-dispatch policy lives in the service (single copy, DRY).
-        render_fn = self.bot.greeting_service.resolve_renderer()
-        try:
-            kwargs = self._greeting_kwargs(ctx, "welcome", "greetings.card.welcome_title")
-            buffer: io.BytesIO = await asyncio.to_thread(render_fn, **kwargs)
-        except Exception:
-            logger.exception("Failed to generate welcome test card")
-            guild_id = str(ctx.guild.id) if ctx.guild else ""
-            await ctx.send(
-                embed=error_embed(
-                    t(guild_id, "greetings.welcome_test.failed_title"),
-                    t(guild_id, "greetings.welcome_test.failed_description"),
-                ),
-                ephemeral=True,
-            )
-            return
-
-        file = discord.File(buffer, filename="welcome.png")
-        await ctx.send(file=file, ephemeral=True)
-
-    # ------------------------------------------------------------------
-    # /goodbye_test
-    # ------------------------------------------------------------------
-
-    @commands.hybrid_command(
-        name="goodbye_test",
-        description=app_commands.locale_str(
-            "Enviar una tarjeta de despedida de prueba en este canal (solo admin).",
-            key="slash.descriptions.goodbye_test",
-        ),
-    )
-    @app_commands.default_permissions(administrator=True)
-    async def goodbye_test(self, ctx: NebulosaContext) -> None:
-        """Generate and send a sample goodbye card."""
-        if not await self._admin_guard(ctx):
-            return
-
-        await ctx.defer(ephemeral=True)
-
-        if self.bot.greeting_service is None:
-            msg = "GreetingService initialised in setup_hook"
-            raise RuntimeError(msg)
-        # Renderer-dispatch policy lives in the service (single copy, DRY).
-        render_fn = self.bot.greeting_service.resolve_renderer()
-        try:
-            kwargs = self._greeting_kwargs(ctx, "goodbye", "greetings.card.goodbye_title")
-            buffer: io.BytesIO = await asyncio.to_thread(render_fn, **kwargs)
-        except Exception:
-            logger.exception("Failed to generate goodbye test card")
-            guild_id = str(ctx.guild.id) if ctx.guild else ""
-            await ctx.send(
-                embed=error_embed(
-                    t(guild_id, "greetings.goodbye_test.failed_title"),
-                    t(guild_id, "greetings.goodbye_test.failed_description"),
-                ),
-                ephemeral=True,
-            )
-            return
-
-        file = discord.File(buffer, filename="goodbye.png")
-        await ctx.send(file=file, ephemeral=True)
-
-    # ------------------------------------------------------------------
-    # Admin guard + embed builder
-    # ------------------------------------------------------------------
-
-    async def _admin_guard(self, ctx: NebulosaContext) -> bool:
+    async def _admin_guard(self, ctx) -> bool:
         """Check greeting.manage permission and send error if denied. Returns True if OK."""
         if await can("greeting.manage", ctx):
             return True
@@ -257,280 +144,8 @@ class GreetingsCog(commands.Cog, name="Greetings"):
             guild_id=guild_id,
         )
 
-    # ------------------------------------------------------------------
-    # /welcome — hybrid group (fallback = config)
-    # ------------------------------------------------------------------
 
-    @commands.hybrid_group(
-        fallback="config",
-        description=app_commands.locale_str(
-            "Configurar ajustes de tarjetas de bienvenida.",
-            key="slash.descriptions.welcome._",
-        ),
-    )
-    @app_commands.default_permissions(administrator=True)
-    async def welcome(self, ctx: NebulosaContext) -> None:
-        """Show the current welcome configuration."""
-        if not await self._admin_guard(ctx):
-            return
-        if self.bot.greeting_service is None:
-            msg = "GreetingService initialised in setup_hook"
-            raise RuntimeError(msg)
-        guild_id = str(ctx.guild.id) if ctx.guild else ""
-        config = await self.bot.greeting_service.get_config(guild_id)
-        await ctx.send(
-            embed=self._config_embed(guild_id, config, "welcome"),
-            ephemeral=True,
-        )
-
-    @welcome.command(
-        name="channel",
-        description=app_commands.locale_str(
-            "Definir el canal para mensajes de bienvenida.",
-            key="slash.descriptions.welcome.channel",
-        ),
-    )
-    @app_commands.describe(
-        channel=app_commands.locale_str(
-            "El canal para mensajes de bienvenida",
-            key="slash.describes.welcome.channel.channel",
-        )
-    )
-    @app_commands.default_permissions(administrator=True)
-    async def welcome_channel(
-        self,
-        ctx: NebulosaContext,
-        channel: discord.TextChannel,
-    ) -> None:
-        """Set the welcome channel."""
-        if not await self._admin_guard(ctx):
-            return
-        if self.bot.greeting_service is None:
-            msg = "GreetingService initialised in setup_hook"
-            raise RuntimeError(msg)
-        guild_id = str(ctx.guild.id) if ctx.guild else ""
-        config = await self.bot.greeting_service.get_config(guild_id)
-        config.welcome_channel_id = str(channel.id)
-        await self.bot.greeting_service.save_config(config)
-        await ctx.send(
-            embed=info_embed(
-                t(guild_id, "greetings.welcome.config_title"),
-                t(guild_id, "greetings.welcome.channel_set_description", channel=channel.mention),
-                guild_id=guild_id,
-            ),
-            ephemeral=True,
-        )
-
-    @welcome.command(
-        name="toggle",
-        description=app_commands.locale_str(
-            "Activar o desactivar mensajes de bienvenida.",
-            key="slash.descriptions.welcome.toggle",
-        ),
-    )
-    @app_commands.default_permissions(administrator=True)
-    async def welcome_toggle(self, ctx: NebulosaContext) -> None:
-        """Toggle welcome messages on/off."""
-        if not await self._admin_guard(ctx):
-            return
-        if self.bot.greeting_service is None:
-            msg = "GreetingService initialised in setup_hook"
-            raise RuntimeError(msg)
-        guild_id = str(ctx.guild.id) if ctx.guild else ""
-        config = await self.bot.greeting_service.get_config(guild_id)
-        config.welcome_enabled = not config.welcome_enabled
-        await self.bot.greeting_service.save_config(config)
-        key = (
-            "greetings.welcome.toggle_enabled_description"
-            if config.welcome_enabled
-            else "greetings.welcome.toggle_disabled_description"
-        )
-        await ctx.send(
-            embed=info_embed(
-                t(guild_id, "greetings.welcome.config_title"),
-                t(guild_id, key),
-                guild_id=guild_id,
-            ),
-            ephemeral=True,
-        )
-
-    @welcome.command(
-        name="message",
-        description=app_commands.locale_str(
-            "Definir la plantilla del mensaje de bienvenida.",
-            key="slash.descriptions.welcome.message",
-        ),
-    )
-    @app_commands.describe(
-        template=app_commands.locale_str(
-            "Plantilla de mensaje (marcadores: {user}, {server}, {mention})",
-            key="slash.describes.welcome.message.template",
-        )
-    )
-    @app_commands.default_permissions(administrator=True)
-    async def welcome_message(
-        self,
-        ctx: NebulosaContext,
-        *,
-        template: str,
-    ) -> None:
-        """Set the welcome message template."""
-        if not await self._admin_guard(ctx):
-            return
-        if self.bot.greeting_service is None:
-            msg = "GreetingService initialised in setup_hook"
-            raise RuntimeError(msg)
-        guild_id = str(ctx.guild.id) if ctx.guild else ""
-        config = await self.bot.greeting_service.get_config(guild_id)
-        config.welcome_message = template
-        await self.bot.greeting_service.save_config(config)
-        await ctx.send(
-            embed=info_embed(
-                t(guild_id, "greetings.welcome.config_title"),
-                t(guild_id, "greetings.welcome.message_set_description"),
-                guild_id=guild_id,
-            ),
-            ephemeral=True,
-        )
-
-    # ------------------------------------------------------------------
-    # /goodbye — hybrid group (fallback = config)
-    # ------------------------------------------------------------------
-
-    @commands.hybrid_group(
-        fallback="config",
-        description=app_commands.locale_str(
-            "Configurar ajustes de tarjetas de despedida.",
-            key="slash.descriptions.goodbye._",
-        ),
-    )
-    @app_commands.default_permissions(administrator=True)
-    async def goodbye(self, ctx: NebulosaContext) -> None:
-        """Show the current goodbye configuration."""
-        if not await self._admin_guard(ctx):
-            return
-        if self.bot.greeting_service is None:
-            msg = "GreetingService initialised in setup_hook"
-            raise RuntimeError(msg)
-        guild_id = str(ctx.guild.id) if ctx.guild else ""
-        config = await self.bot.greeting_service.get_config(guild_id)
-        await ctx.send(
-            embed=self._config_embed(guild_id, config, "goodbye"),
-            ephemeral=True,
-        )
-
-    @goodbye.command(
-        name="channel",
-        description=app_commands.locale_str(
-            "Definir el canal para mensajes de despedida.",
-            key="slash.descriptions.goodbye.channel",
-        ),
-    )
-    @app_commands.describe(
-        channel=app_commands.locale_str(
-            "El canal para mensajes de despedida",
-            key="slash.describes.goodbye.channel.channel",
-        )
-    )
-    @app_commands.default_permissions(administrator=True)
-    async def goodbye_channel(
-        self,
-        ctx: NebulosaContext,
-        channel: discord.TextChannel,
-    ) -> None:
-        """Set the goodbye channel."""
-        if not await self._admin_guard(ctx):
-            return
-        if self.bot.greeting_service is None:
-            msg = "GreetingService initialised in setup_hook"
-            raise RuntimeError(msg)
-        guild_id = str(ctx.guild.id) if ctx.guild else ""
-        config = await self.bot.greeting_service.get_config(guild_id)
-        config.goodbye_channel_id = str(channel.id)
-        await self.bot.greeting_service.save_config(config)
-        await ctx.send(
-            embed=info_embed(
-                t(guild_id, "greetings.goodbye.config_title"),
-                t(guild_id, "greetings.goodbye.channel_set_description", channel=channel.mention),
-                guild_id=guild_id,
-            ),
-            ephemeral=True,
-        )
-
-    @goodbye.command(
-        name="toggle",
-        description=app_commands.locale_str(
-            "Activar o desactivar mensajes de despedida.",
-            key="slash.descriptions.goodbye.toggle",
-        ),
-    )
-    @app_commands.default_permissions(administrator=True)
-    async def goodbye_toggle(self, ctx: NebulosaContext) -> None:
-        """Toggle goodbye messages on/off."""
-        if not await self._admin_guard(ctx):
-            return
-        if self.bot.greeting_service is None:
-            msg = "GreetingService initialised in setup_hook"
-            raise RuntimeError(msg)
-        guild_id = str(ctx.guild.id) if ctx.guild else ""
-        config = await self.bot.greeting_service.get_config(guild_id)
-        config.goodbye_enabled = not config.goodbye_enabled
-        await self.bot.greeting_service.save_config(config)
-        key = (
-            "greetings.goodbye.toggle_enabled_description"
-            if config.goodbye_enabled
-            else "greetings.goodbye.toggle_disabled_description"
-        )
-        await ctx.send(
-            embed=info_embed(
-                t(guild_id, "greetings.goodbye.config_title"),
-                t(guild_id, key),
-                guild_id=guild_id,
-            ),
-            ephemeral=True,
-        )
-
-    @goodbye.command(
-        name="message",
-        description=app_commands.locale_str(
-            "Definir la plantilla del mensaje de despedida.",
-            key="slash.descriptions.goodbye.message",
-        ),
-    )
-    @app_commands.describe(
-        template=app_commands.locale_str(
-            "Plantilla de mensaje (marcadores: {user}, {server}, {mention})",
-            key="slash.describes.goodbye.message.template",
-        )
-    )
-    @app_commands.default_permissions(administrator=True)
-    async def goodbye_message(
-        self,
-        ctx: NebulosaContext,
-        *,
-        template: str,
-    ) -> None:
-        """Set the goodbye message template."""
-        if not await self._admin_guard(ctx):
-            return
-        if self.bot.greeting_service is None:
-            msg = "GreetingService initialised in setup_hook"
-            raise RuntimeError(msg)
-        guild_id = str(ctx.guild.id) if ctx.guild else ""
-        config = await self.bot.greeting_service.get_config(guild_id)
-        config.goodbye_message = template
-        await self.bot.greeting_service.save_config(config)
-        await ctx.send(
-            embed=info_embed(
-                t(guild_id, "greetings.goodbye.config_title"),
-                t(guild_id, "greetings.goodbye.message_set_description"),
-                guild_id=guild_id,
-            ),
-            ephemeral=True,
-        )
-
-
-async def setup(bot: NebulosaBot) -> None:
+async def setup(bot: NebulosaBot) -> None:  # type: ignore[no-redef]
     """Load the GreetingsCog into the bot."""
     await bot.add_cog(GreetingsCog(bot))
 

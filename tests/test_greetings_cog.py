@@ -15,7 +15,7 @@ Strict TDD: RED phase — tests written BEFORE the implementation exists.
 from __future__ import annotations
 
 import io
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
@@ -23,7 +23,6 @@ from discord.ext import commands
 
 from bot.cogs.greetings import GreetingsCog
 from bot.models.greeting_config import GreetingConfig
-from bot.utils.brand import ERROR
 
 # Minimal valid PNG for mock card buffers — avoids fd corruption when
 # discord.File opens the buffer (MagicMock.__index__() returns 1, which
@@ -198,429 +197,34 @@ class TestOnMemberRemove:
 
 
 # ---------------------------------------------------------------------------
-# /welcome_test
+# Legacy greeting commands — REMOVED in S2b.8 (welcome-goodbye spec)
+# /welcome and /goodbye hybrid groups + welcome_test/goodbye_test deleted
+# after parity verified via /setup modules. Guard ensures deletion sticks.
 # ---------------------------------------------------------------------------
 
 
-class TestWelcomeTestCommand:
-    """Tests for /welcome_test hybrid command."""
-
-    @pytest.mark.asyncio
-    async def test_admin_can_use_welcome_test(
-        self,
-        cog: GreetingsCog,
-        mock_bot: MagicMock,
-    ) -> None:
-        """Admin users must be able to trigger a welcome test card."""
-        ctx = _make_context(admin=True)
-        await cog.welcome_test.callback(cog, ctx)
-
-        ctx.defer.assert_awaited_once_with(ephemeral=True)
-        ctx.send.assert_awaited_once()
-        call_kwargs = ctx.send.call_args[1]
-        assert "file" in call_kwargs
-        assert isinstance(call_kwargs["file"], discord.File)
-        assert call_kwargs["file"].filename == "welcome.png"
-        assert call_kwargs["ephemeral"] is True
-
-    @pytest.mark.asyncio
-    async def test_non_admin_blocked_from_welcome_test(
-        self,
-        cog: GreetingsCog,
-        mock_bot: MagicMock,
-    ) -> None:
-        """Non-admin users must receive an error when using /welcome_test."""
-        ctx = _make_context(admin=False)
-        await cog.welcome_test.callback(cog, ctx)
-
-        ctx.defer.assert_not_awaited()
-        ctx.send.assert_awaited_once()
-        call_kwargs = ctx.send.call_args[1]
-        embed = call_kwargs["embed"]
-        assert isinstance(embed, discord.Embed)
-        assert embed.color.value == ERROR
-        title_lower = embed.title.lower() if embed.title else ""
-        assert "permission" in title_lower or "permiso" in title_lower
-
-    @pytest.mark.asyncio
-    async def test_welcome_test_card_generation_error(
-        self,
-        cog: GreetingsCog,
-        mock_bot: MagicMock,
-        mock_renderer: MagicMock,
-    ) -> None:
-        """When card generation fails, an error embed is sent."""
-        ctx = _make_context(admin=True)
-        mock_renderer.render.side_effect = RuntimeError("Pillow crash")
-
-        await cog.welcome_test.callback(cog, ctx)
-
-        ctx.send.assert_awaited_once()
-        call_kwargs = ctx.send.call_args[1]
-        assert "file" not in call_kwargs  # No file on error
-        embed = call_kwargs["embed"]
-        assert embed.color.value == ERROR
-
-    @pytest.mark.asyncio
-    async def test_welcome_test_passes_localized_copy_and_guild_icon(
-        self,
-        cog: GreetingsCog,
-        mock_bot: MagicMock,
-        mock_renderer: MagicMock,
-    ) -> None:
-        """Spanish test cards must receive the same localized inputs as live cards."""
-        ctx = _make_context(admin=True)
-        ctx.guild.name = "Servidor"
-        ctx.guild.icon = MagicMock()
-        ctx.guild.icon.url = "https://cdn.discordapp.com/icons/guild/icon.png"
-
-        def localized(_guild_id: str, key: str, **_kwargs: object) -> str:
-            return {
-                "greetings.card.welcome_title": "¡Bienvenido!",
-                "greetings.card.member_count": "Miembro #150",
-            }.get(key, key)
-
-        with patch("bot.cogs.greetings.t", side_effect=localized):
-            await cog.welcome_test.callback(cog, ctx)
-
-        kwargs = mock_renderer.render.call_args.kwargs
-        assert kwargs["greeting_title"] == "¡Bienvenido!"
-        assert kwargs["member_count_text"] == "Miembro #150"
-        assert kwargs["guild_icon_url"] == "https://cdn.discordapp.com/icons/guild/icon.png"
-
-
-# ---------------------------------------------------------------------------
-# /goodbye_test
-# ---------------------------------------------------------------------------
-
-
-class TestGoodbyeTestCommand:
-    """Tests for /goodbye_test hybrid command."""
-
-    @pytest.mark.asyncio
-    async def test_admin_can_use_goodbye_test(
-        self,
-        cog: GreetingsCog,
-        mock_bot: MagicMock,
-    ) -> None:
-        """Admin users must be able to trigger a goodbye test card."""
-        ctx = _make_context(admin=True)
-        await cog.goodbye_test.callback(cog, ctx)
-
-        ctx.defer.assert_awaited_once_with(ephemeral=True)
-        ctx.send.assert_awaited_once()
-        call_kwargs = ctx.send.call_args[1]
-        assert "file" in call_kwargs
-        assert isinstance(call_kwargs["file"], discord.File)
-        assert call_kwargs["file"].filename == "goodbye.png"
-
-    @pytest.mark.asyncio
-    async def test_non_admin_blocked_from_goodbye_test(
-        self,
-        cog: GreetingsCog,
-        mock_bot: MagicMock,
-    ) -> None:
-        """Non-admin users must receive an error when using /goodbye_test."""
-        ctx = _make_context(admin=False)
-        await cog.goodbye_test.callback(cog, ctx)
-
-        ctx.defer.assert_not_awaited()
-        ctx.send.assert_awaited_once()
-        embed = ctx.send.call_args[1]["embed"]
-        assert embed.color.value == ERROR
-
-    @pytest.mark.asyncio
-    async def test_goodbye_test_card_generation_error(
-        self,
-        cog: GreetingsCog,
-        mock_bot: MagicMock,
-        mock_renderer: MagicMock,
-    ) -> None:
-        """When card generation fails, an error embed is sent."""
-        ctx = _make_context(admin=True)
-        mock_renderer.render.side_effect = RuntimeError("Font missing")
-
-        await cog.goodbye_test.callback(cog, ctx)
-
-        ctx.send.assert_awaited_once()
-        call_kwargs = ctx.send.call_args[1]
-        assert "file" not in call_kwargs
-        embed = call_kwargs["embed"]
-        assert embed.color.value == ERROR
-
-
-# ---------------------------------------------------------------------------
-# /welcome config — config, channel, toggle, message
-# ---------------------------------------------------------------------------
-
-
-class TestWelcomeConfigCommand:
-    """Tests for /welcome hybrid group: config, channel, toggle, message."""
-
-    @pytest.mark.asyncio
-    async def test_config_shows_current_settings(
-        self,
-        cog: GreetingsCog,
-        mock_bot: MagicMock,
-    ) -> None:
-        """Admin invoking /welcome config gets an ephemeral embed with settings."""
-        config = GreetingConfig(
-            guild_id="123456789",
-            welcome_enabled=True,
-            welcome_channel_id="999888777",
-            welcome_message="Welcome {user}!",
-        )
-        mock_bot.greeting_service.get_config = AsyncMock(return_value=config)
-
-        ctx = _make_context(admin=True)
-        await cog.welcome.callback(cog, ctx)
-
-        ctx.send.assert_awaited_once()
-        call_kwargs = ctx.send.call_args[1]
-        assert call_kwargs["ephemeral"] is True
-        embed = call_kwargs["embed"]
-        assert isinstance(embed, discord.Embed)
-        # Embed description must contain the channel, toggle, and message values.
-        desc = embed.description or ""
-        assert "999888777" in desc
-        assert "Welcome {user}!" in desc
-
-    @pytest.mark.asyncio
-    async def test_config_no_channel_shows_not_configured(
-        self,
-        cog: GreetingsCog,
-        mock_bot: MagicMock,
-    ) -> None:
-        """When no welcome channel is set, config shows 'not configured'."""
-        config = GreetingConfig(guild_id="123456789")
-        mock_bot.greeting_service.get_config = AsyncMock(return_value=config)
-
-        ctx = _make_context(admin=True)
-        await cog.welcome.callback(cog, ctx)
-
-        embed = ctx.send.call_args[1]["embed"]
-        desc = embed.description or ""
-        # Should indicate no channel configured (key from locale or raw).
-        assert "not" in desc.lower() or "no" in desc.lower() or "config" in desc.lower()
-
-    @pytest.mark.asyncio
-    async def test_config_exposes_onboarding_channel_status(
-        self,
-        cog: GreetingsCog,
-        mock_bot: MagicMock,
-    ) -> None:
-        """Welcome config must show the configured onboarding channel."""
-        config = GreetingConfig(guild_id="123456789", onboarding_channel_id="444555666")
-        mock_bot.greeting_service.get_config = AsyncMock(return_value=config)
-
-        ctx = _make_context(admin=True)
-        await cog.welcome.callback(cog, ctx)
-
-        embed = ctx.send.call_args[1]["embed"]
-        assert "444555666" in (embed.description or "")
-
-    @pytest.mark.asyncio
-    async def test_non_admin_blocked_from_welcome_config(
-        self,
-        cog: GreetingsCog,
-        mock_bot: MagicMock,
-    ) -> None:
-        """Non-admin must be blocked from /welcome config."""
-        ctx = _make_context(admin=False)
-        await cog.welcome.callback(cog, ctx)
-
-        ctx.send.assert_awaited_once()
-        embed = ctx.send.call_args[1]["embed"]
-        assert isinstance(embed, discord.Embed)
-        assert embed.color is not None
-        assert embed.color.value == ERROR
-
-    @pytest.mark.asyncio
-    async def test_channel_saves_new_channel(
-        self,
-        cog: GreetingsCog,
-        mock_bot: MagicMock,
-    ) -> None:
-        """/welcome channel #general saves the channel and invalidates cache."""
-        config = GreetingConfig(guild_id="123456789")
-        mock_bot.greeting_service.get_config = AsyncMock(return_value=config)
-
-        ctx = _make_context(admin=True)
-        channel = MagicMock(spec=discord.TextChannel)
-        channel.id = 555666777
-        channel.mention = "<#555666777>"
-
-        await cog.welcome_channel.callback(cog, ctx, channel=channel)
-
-        mock_bot.greeting_service.save_config.assert_awaited_once()
-        saved = mock_bot.greeting_service.save_config.call_args[0][0]
-        assert saved.welcome_channel_id == "555666777"
-        ctx.send.assert_awaited_once()
-        assert ctx.send.call_args[1]["ephemeral"] is True
-
-    @pytest.mark.asyncio
-    async def test_toggle_flips_enabled(
-        self,
-        cog: GreetingsCog,
-        mock_bot: MagicMock,
-    ) -> None:
-        """/welcome toggle flips the enabled state and saves."""
-        config = GreetingConfig(guild_id="123456789", welcome_enabled=True)
-        mock_bot.greeting_service.get_config = AsyncMock(return_value=config)
-
-        ctx = _make_context(admin=True)
-        await cog.welcome_toggle.callback(cog, ctx)
-
-        mock_bot.greeting_service.save_config.assert_awaited_once()
-        saved = mock_bot.greeting_service.save_config.call_args[0][0]
-        assert saved.welcome_enabled is False
-        ctx.send.assert_awaited_once()
-        assert ctx.send.call_args[1]["ephemeral"] is True
-
-    @pytest.mark.asyncio
-    async def test_toggle_flips_disabled_to_enabled(
-        self,
-        cog: GreetingsCog,
-        mock_bot: MagicMock,
-    ) -> None:
-        """/welcome toggle when disabled flips to enabled."""
-        config = GreetingConfig(guild_id="123456789", welcome_enabled=False)
-        mock_bot.greeting_service.get_config = AsyncMock(return_value=config)
-
-        ctx = _make_context(admin=True)
-        await cog.welcome_toggle.callback(cog, ctx)
-
-        saved = mock_bot.greeting_service.save_config.call_args[0][0]
-        assert saved.welcome_enabled is True
-
-    @pytest.mark.asyncio
-    async def test_message_saves_template(
-        self,
-        cog: GreetingsCog,
-        mock_bot: MagicMock,
-    ) -> None:
-        """/welcome message saves the template and invalidates cache."""
-        config = GreetingConfig(guild_id="123456789")
-        mock_bot.greeting_service.get_config = AsyncMock(return_value=config)
-
-        ctx = _make_context(admin=True)
-        await cog.welcome_message.callback(cog, ctx, template="Welcome {user} to {server}!")
-
-        mock_bot.greeting_service.save_config.assert_awaited_once()
-        saved = mock_bot.greeting_service.save_config.call_args[0][0]
-        assert saved.welcome_message == "Welcome {user} to {server}!"
-        ctx.send.assert_awaited_once()
-        assert ctx.send.call_args[1]["ephemeral"] is True
-
-
-# ---------------------------------------------------------------------------
-# /goodbye config — config, channel, toggle, message
-# ---------------------------------------------------------------------------
-
-
-class TestGoodbyeConfigCommand:
-    """Tests for /goodbye hybrid group: config, channel, toggle, message."""
-
-    @pytest.mark.asyncio
-    async def test_config_shows_current_settings(
-        self,
-        cog: GreetingsCog,
-        mock_bot: MagicMock,
-    ) -> None:
-        """Admin invoking /goodbye config gets an ephemeral embed with settings."""
-        config = GreetingConfig(
-            guild_id="123456789",
-            goodbye_enabled=True,
-            goodbye_channel_id="111222333",
-            goodbye_message="Goodbye {user}!",
-        )
-        mock_bot.greeting_service.get_config = AsyncMock(return_value=config)
-
-        ctx = _make_context(admin=True)
-        await cog.goodbye.callback(cog, ctx)
-
-        ctx.send.assert_awaited_once()
-        call_kwargs = ctx.send.call_args[1]
-        assert call_kwargs["ephemeral"] is True
-        embed = call_kwargs["embed"]
-        assert isinstance(embed, discord.Embed)
-        desc = embed.description or ""
-        assert "111222333" in desc
-        assert "Goodbye {user}!" in desc
-
-    @pytest.mark.asyncio
-    async def test_non_admin_blocked_from_goodbye_config(
-        self,
-        cog: GreetingsCog,
-        mock_bot: MagicMock,
-    ) -> None:
-        """Non-admin must be blocked from /goodbye config."""
-        ctx = _make_context(admin=False)
-        await cog.goodbye.callback(cog, ctx)
-
-        ctx.send.assert_awaited_once()
-        embed = ctx.send.call_args[1]["embed"]
-        assert isinstance(embed, discord.Embed)
-        assert embed.color is not None
-        assert embed.color.value == ERROR
-
-    @pytest.mark.asyncio
-    async def test_channel_saves_new_channel(
-        self,
-        cog: GreetingsCog,
-        mock_bot: MagicMock,
-    ) -> None:
-        """/goodbye channel saves the channel and invalidates cache."""
-        config = GreetingConfig(guild_id="123456789")
-        mock_bot.greeting_service.get_config = AsyncMock(return_value=config)
-
-        ctx = _make_context(admin=True)
-        channel = MagicMock(spec=discord.TextChannel)
-        channel.id = 888999000
-        channel.mention = "<#888999000>"
-
-        await cog.goodbye_channel.callback(cog, ctx, channel=channel)
-
-        mock_bot.greeting_service.save_config.assert_awaited_once()
-        saved = mock_bot.greeting_service.save_config.call_args[0][0]
-        assert saved.goodbye_channel_id == "888999000"
-        ctx.send.assert_awaited_once()
-        assert ctx.send.call_args[1]["ephemeral"] is True
-
-    @pytest.mark.asyncio
-    async def test_toggle_flips_enabled(
-        self,
-        cog: GreetingsCog,
-        mock_bot: MagicMock,
-    ) -> None:
-        """/goodbye toggle flips the enabled state and saves."""
-        config = GreetingConfig(guild_id="123456789", goodbye_enabled=True)
-        mock_bot.greeting_service.get_config = AsyncMock(return_value=config)
-
-        ctx = _make_context(admin=True)
-        await cog.goodbye_toggle.callback(cog, ctx)
-
-        mock_bot.greeting_service.save_config.assert_awaited_once()
-        saved = mock_bot.greeting_service.save_config.call_args[0][0]
-        assert saved.goodbye_enabled is False
-        ctx.send.assert_awaited_once()
-        assert ctx.send.call_args[1]["ephemeral"] is True
-
-    @pytest.mark.asyncio
-    async def test_message_saves_template(
-        self,
-        cog: GreetingsCog,
-        mock_bot: MagicMock,
-    ) -> None:
-        """/goodbye message saves the template and invalidates cache."""
-        config = GreetingConfig(guild_id="123456789")
-        mock_bot.greeting_service.get_config = AsyncMock(return_value=config)
-
-        ctx = _make_context(admin=True)
-        await cog.goodbye_message.callback(cog, ctx, template="Goodbye {user}!")
-
-        mock_bot.greeting_service.save_config.assert_awaited_once()
-        saved = mock_bot.greeting_service.save_config.call_args[0][0]
-        assert saved.goodbye_message == "Goodbye {user}!"
-        ctx.send.assert_awaited_once()
-        assert ctx.send.call_args[1]["ephemeral"] is True
+class TestLegacyWelcomeCommandsRemoved:
+    def test_welcome_group_removed(self) -> None:
+        from bot.cogs.greetings import GreetingsCog
+
+        assert not hasattr(GreetingsCog, "welcome"), "welcome must be deleted (S2b.8)"
+        assert not hasattr(GreetingsCog, "welcome_channel"), "welcome_channel must be deleted"
+        assert not hasattr(GreetingsCog, "welcome_toggle"), "welcome_toggle must be deleted"
+        assert not hasattr(GreetingsCog, "welcome_message"), "welcome_message must be deleted"
+        assert not hasattr(GreetingsCog, "welcome_test"), "welcome_test must be deleted"
+
+    def test_goodbye_group_removed(self) -> None:
+        from bot.cogs.greetings import GreetingsCog
+
+        assert not hasattr(GreetingsCog, "goodbye"), "goodbye must be deleted (S2b.8)"
+        assert not hasattr(GreetingsCog, "goodbye_channel"), "goodbye_channel must be deleted"
+        assert not hasattr(GreetingsCog, "goodbye_toggle"), "goodbye_toggle must be deleted"
+        assert not hasattr(GreetingsCog, "goodbye_message"), "goodbye_message must be deleted"
+        assert not hasattr(GreetingsCog, "goodbye_test"), "goodbye_test must be deleted"
+
+    def test_no_hybrid_greeting_in_source(self) -> None:
+        import pathlib as _pl
+
+        src = _pl.Path("bot/cogs/greetings.py").read_text(encoding="utf-8")
+        assert "hybrid_group" not in src, "greetings.py must not contain hybrid_group"
+        assert "hybrid_command" not in src, "greetings.py must not contain hybrid_command"
