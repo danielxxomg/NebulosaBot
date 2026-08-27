@@ -1,0 +1,21 @@
+# NebulosaBot example operational config — copy to config.toml and edit. Restart to apply.
+# Secrets and guild config are NOT here — see .env / database.
+
+[logging]
+level = "INFO"
+file = "logs/bot.log"
+
+[limits]
+rank_render_max_concurrent = 3
+backfill_concurrency = 50
+
+[timeouts]
+integrity_backoff_seconds = 1.0
+
+[retention]
+tickets = 30
+infractions = 180
+crash = 30
+
+[features]
+retention_enabled = true

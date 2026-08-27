@@ -1,0 +1,24 @@
+# NebulosaBot operational config — restart-only (S4).
+# Precedence: built-in defaults ← this file. env vars for secrets/guild (see .env) never feed these.
+# Secrets and guild config stay in .env / database — do NOT add them here.
+# Unknown keys/sections log WARNING and are ignored (forward-compat).
+# Delete or omit this file to fall back to env-only defaults.
+
+[logging]
+level = "INFO"
+file = "logs/bot.log"
+
+[limits]
+rank_render_max_concurrent = 3
+backfill_concurrency = 50
+
+[timeouts]
+integrity_backoff_seconds = 1.0
+
+[retention]
+tickets = 30
+infractions = 180
+crash = 30
+
+[features]
+retention_enabled = true
