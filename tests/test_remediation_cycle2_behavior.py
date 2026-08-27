@@ -364,7 +364,7 @@ class TestCooldownBehavioral:
         checks = getattr(eight_ball, "checks", [])
         assert len(checks) > 0, "eight_ball must carry app_commands cooldown check"
         # Verify via source + app payload (cooldown wiring)
-        src = Path("bot/cogs/ocio.py").read_text(encoding="utf-8")
+        src = Path("bot/cogs/ocio.py").read_text(encoding="utf-8")  # noqa: ASYNC240 -- test sync read in async, acceptable
         assert "cooldown" in src.lower() and "1, 5" in src, "cooldown MUST be 1 per 5s"
 
     @pytest.mark.asyncio
@@ -388,7 +388,11 @@ class TestCooldownBehavioral:
         err = app_commands.CommandOnCooldown(app_commands.Cooldown(1, 5.0), 3.5)
         await cog.cog_app_command_error(inter, err)
         assert inter.response.send_message.await_count or inter.followup.send.await_count
-        kwargs = (inter.response.send_message.call_args.kwargs if inter.response.send_message.await_count else inter.followup.send.call_args.kwargs)
+        kwargs = (
+            inter.response.send_message.call_args.kwargs
+            if inter.response.send_message.await_count
+            else inter.followup.send.call_args.kwargs
+        )
         assert kwargs.get("ephemeral") is True
         assert kwargs.get("embed") is not None  # localized cooldown embed carries retry_after
 

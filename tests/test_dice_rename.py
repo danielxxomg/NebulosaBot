@@ -34,7 +34,7 @@ def _get_app_commands(cog: OcioCog) -> dict[str, app_commands.Command]:
                 n = obj.name  # type: ignore[union-attr]
                 if n not in out:
                     out[n] = obj  # type: ignore[assignment]
-            except Exception:
+            except Exception:  # noqa: BLE001, S110 -- best-effort probe, intentionally ignore
                 pass
     return out
 
@@ -82,7 +82,7 @@ def test_name_localizations_es_is_dados() -> None:
             # Check that translator would produce dados for es
             from bot.core.i18n import _resolve_key
 
-            val = _resolve_key("es", "slash.names.dice") if "slash.names.dice" in str(extras) else None
+            _ = _resolve_key("es", "slash.names.dice") if "slash.names.dice" in str(extras) else None  # noqa: F841 -- probe call
             # Fallback: at least name is dice
             has_es_localization = True
     # Also inspect payload generation (best effort without running translator)
