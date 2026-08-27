@@ -392,7 +392,9 @@ class TestDefaultPermissions:
 
     @staticmethod
     def _get_default_perms(cmd) -> discord.Permissions | None:
-        """Extract default_permissions from a command's app_command."""
+        # Slash-only: Command has .default_permissions directly; hybrid had .app_command.default_permissions
+        if hasattr(cmd, "default_permissions"):
+            return cmd.default_permissions  # type: ignore[return-value]
         if hasattr(cmd, "app_command") and cmd.app_command is not None:
             return cmd.app_command.default_permissions
         return None

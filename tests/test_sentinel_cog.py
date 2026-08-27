@@ -1244,17 +1244,17 @@ class TestHandleModError:
 
 
 def test_warn_is_mod_dual_path_gated(sentinel_cog: SentinelCog) -> None:
-    """warn MUST register BOTH prefix (cmd.checks) and slash (app_command.checks) gates.
+    """warn MUST be gated by can_check(moderation.warn) via slash checks.
 
-    Since cycle-4-debt-zero S1, the gate is ``@can_check("moderation.warn")``
-    (matrix-gated) instead of ``@is_mod()`` — dual registration is intrinsic
-    to can_check, so both check lists must stay non-empty.
+    S6A: slash-only — hybrid dual-path (cmd.checks + app_command.checks) is
+    gone. Pure app_commands.Command exposes checks directly on cmd.checks.
     """
-    cmd: object = sentinel_cog.warn
+    cmd = sentinel_cog.warn
     assert cmd is not None
-    assert len(cmd.checks) > 0, "warn must have prefix checks from @can_check(moderation.warn)"
-    assert hasattr(cmd, "app_command") and cmd.app_command is not None
-    assert len(cmd.app_command.checks) > 0, "warn must have slash checks from @can_check(moderation.warn)"
+    # Slash-only: single checks list on the Command
+    assert hasattr(cmd, "checks") and len(cmd.checks) > 0, "warn must have slash checks from @can_check(moderation.warn)"
+    # Must NOT be hybrid anymore
+    assert not hasattr(cmd, "app_command"), "warn must be pure app command, not hybrid"
 
 
 # ---------------------------------------------------------------------------
@@ -1280,11 +1280,10 @@ def test_ban_is_gated_by_can_check_moderation_ban(sentinel_cog: SentinelCog) -> 
     assert "is_admin" not in window, "ban MUST NOT use @is_admin — must use @can_check"
     assert "can_check" in window
 
-    # Dual-path gate still holds for the new decorator
+    # Slash-only: single checks list
     cmd = sentinel_cog.ban
-    assert len(cmd.checks) > 0
-    assert hasattr(cmd, "app_command") and cmd.app_command is not None
-    assert len(cmd.app_command.checks) > 0
+    assert hasattr(cmd, "checks") and len(cmd.checks) > 0
+    assert not hasattr(cmd, "app_command"), "ban must be pure app command"
 
 
 def test_ban_keeps_confirm_view_and_default_permissions(sentinel_cog: SentinelCog) -> None:

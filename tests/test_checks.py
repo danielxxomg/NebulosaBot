@@ -854,13 +854,14 @@ def test_sentinel_command_gated_by_can_check(command_name: str, permission: str)
 async def test_sentinel_command_prefix_denial_names_permission(command_name: str, permission: str) -> None:
     """Prefix-path denial MUST raise commands.CheckFailure naming the permission.
 
-    Exercises the REAL check attached to the command (not a standalone
-    predicate) so the test fails while the command is still gated by
-    @is_mod(), which raises MissingRole / "No moderator role" instead.
+    S6A slash-only: command is pure app command — prefix predicate lives on
+    callback.__commands_checks__ (dual registration via can_check).
     """
     cmd = _sentinel_command(command_name)
-    assert len(cmd.checks) > 0, f"{command_name} must have prefix checks"
-    predicate = cmd.checks[-1]
+    # Slash-only: prefix predicate is on the callback
+    raw = getattr(cmd.callback, "__commands_checks__", None) or getattr(cmd, "checks", [])
+    assert len(raw) > 0, f"{command_name} must have prefix checks via can_check"
+    predicate = raw[-1]
 
     member = _make_member_with_roles(123456789, [])
     ctx = _make_ctx_with_member(MagicMock(spec=discord.Guild), member)
@@ -879,9 +880,8 @@ async def test_sentinel_command_prefix_denial_names_permission(command_name: str
 async def test_sentinel_command_slash_denial_names_permission(command_name: str, permission: str) -> None:
     """Slash-path denial MUST raise app_commands.CheckFailure naming the permission."""
     cmd = _sentinel_command(command_name)
-    assert cmd.app_command is not None, f"{command_name} must have a slash command"
-    assert len(cmd.app_command.checks) > 0, f"{command_name} must have slash checks"
-    predicate = cmd.app_command.checks[-1]
+    assert hasattr(cmd, "checks") and len(cmd.checks) > 0, f"{command_name} must have slash checks"
+    predicate = cmd.checks[-1]
 
     member = _make_member_with_roles(123456789, [])
     interaction = MagicMock(spec=discord.Interaction)
@@ -900,7 +900,7 @@ async def test_sentinel_command_slash_denial_names_permission(command_name: str,
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("command_name", "permission"), SENTINEL_MATRIX_GATES)
 async def test_sentinel_command_matrix_grant_passes_gate(command_name: str, permission: str) -> None:
-    """A user holding the matrix role for the key MUST pass the command's gate."""
+    """A user holding the matrix role for the key MUST pass the command's gate (slash path)."""
     cmd = _sentinel_command(command_name)
     predicate = cmd.checks[-1]
 

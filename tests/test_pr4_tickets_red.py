@@ -26,13 +26,10 @@ _TICKETS_MANAGE_COMMANDS = [
     "ticket_panel",
     "create_category",
     "list_categories",
-    "configure_fields",
     "configure_fields_set",
-    "subticket",
     "subticket_create",
     "reopen",
     "transfer",
-    "note",
     "note_add",
     "note_list",
     "note_delete",
@@ -76,39 +73,50 @@ def _make_ctx(admin: bool, role_ids: tuple[int, ...]) -> MagicMock:
     return ctx
 
 
-def _prefix_predicate(cmd: commands.Command):
-    """Extract the registered prefix check predicate from a command."""
-    assert len(cmd.checks) > 0, f"{cmd.name} must have registered checks"
-    return cmd.checks[0]
+def _prefix_predicate(cmd):  # type: ignore[no-untyped-def]
+    """Extract the registered check predicate from a (now pure slash) command."""
+    # Slash-only: app_commands.Command exposes .checks
+    if hasattr(cmd, "checks") and cmd.checks:
+        return cmd.checks[0]
+    # Group fallback
+    if hasattr(cmd, "callback") and getattr(cmd.callback, "__discord_app_commands_checks__", None):
+        return cmd.callback.__discord_app_commands_checks__[0]
+    raise AssertionError(f"{getattr(cmd, 'name', cmd)} must have registered checks")
 
 
 class TestTicketsManageGateWiring:
-    """Each lifecycle command's registered check enforces tickets.manage."""
+    """Each lifecycle command's registered check enforces tickets.manage (slash-only)."""
 
     @pytest.mark.parametrize("name", _TICKETS_MANAGE_COMMANDS)
     async def test_gated_command_denies_ungranted_member(self, name: str) -> None:
-        """Ungranted non-admin MUST be denied with a failure naming the key."""
         cog = _make_cog()
-        ctx = _make_ctx(admin=False, role_ids=())
+        member = _make_ctx(admin=False, role_ids=()).author
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = 123456789
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild = guild
+        inter.user = member
         pred = _prefix_predicate(getattr(cog, name))
-
         cfg = MagicMock(permission_matrix={}, mod_role_id=None)
         with patch("bot.utils.checks._get_guild_service") as gs_mock:
             gs_mock.return_value.get_config = AsyncMock(return_value=cfg)
-            with pytest.raises(commands.CheckFailure, match=r"tickets\.manage"):
-                await pred(ctx)
+            with pytest.raises(discord.app_commands.CheckFailure, match=r"tickets\.manage"):
+                await pred(inter)
 
     @pytest.mark.parametrize("name", _TICKETS_MANAGE_COMMANDS)
     async def test_gated_command_allows_admin(self, name: str) -> None:
-        """Administrator MUST pass every gated command's check."""
         cog = _make_cog()
-        ctx = _make_ctx(admin=True, role_ids=())
+        member = _make_ctx(admin=True, role_ids=()).author
+        guild = MagicMock(spec=discord.Guild)
+        guild.id = 123456789
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild = guild
+        inter.user = member
         pred = _prefix_predicate(getattr(cog, name))
-
         cfg = MagicMock(permission_matrix={}, mod_role_id=None)
         with patch("bot.utils.checks._get_guild_service") as gs_mock:
             gs_mock.return_value.get_config = AsyncMock(return_value=cfg)
-            assert await pred(ctx) is True
+            assert await pred(inter) is True
 
 
 class TestDeleteCategoryAdminGate:
@@ -117,19 +125,34 @@ class TestDeleteCategoryAdminGate:
     async def test_delete_category_denies_non_admin(self) -> None:
         """Non-admin MUST be denied by the is_admin predicate."""
         cog = _make_cog()
-        ctx = _make_ctx(admin=False, role_ids=())
-        pred = _prefix_predicate(cog.delete_category)
+        member = _make_ctx(admin=False, role_ids=()).author
+        from unittest.mock import MagicMock as _MM
 
-        with pytest.raises(commands.MissingPermissions):
-            await pred(ctx)
+        import discord as _d
+        guild = _MM(spec=_d.Guild)
+        guild.id = 123456789
+        inter = _MM(spec=_d.Interaction)
+        inter.guild = guild
+        inter.user = member
+        pred = _prefix_predicate(cog.delete_category)
+        import discord as _dd
+        with pytest.raises(_dd.app_commands.MissingPermissions):
+            await pred(inter)
 
     async def test_delete_category_allows_admin(self) -> None:
         """Administrator passes without any matrix grant."""
         cog = _make_cog()
-        ctx = _make_ctx(admin=True, role_ids=())
-        pred = _prefix_predicate(cog.delete_category)
+        member = _make_ctx(admin=True, role_ids=()).author
+        from unittest.mock import MagicMock as _MM
 
-        assert await pred(ctx) is True
+        import discord as _d
+        guild = _MM(spec=_d.Guild)
+        guild.id = 123456789
+        inter = _MM(spec=_d.Interaction)
+        inter.guild = guild
+        inter.user = member
+        pred = _prefix_predicate(cog.delete_category)
+        assert await pred(inter) is True
 
 
 class TestTicketsManageMatrix:
@@ -205,13 +228,12 @@ class TestTicketsManageMatrix:
 
 
 class TestTicketsCogCommandCheckRegistration:
-    """Gated commands must carry BOTH prefix and slash checks."""
+    """Gated commands must carry slash checks (S6A slash-only)."""
 
     @pytest.mark.parametrize("name", ["ticket_panel", "create_category", "list_categories"])
     def test_command_has_prefix_and_slash_checks(self, name: str) -> None:
-        """Sampled commands register checks on both invocation surfaces."""
+        """Sampled commands register slash checks."""
         cog = _make_cog()
         cmd = getattr(cog, name)
-        assert len(cmd.checks) > 0, f"{name} must have prefix checks"
-        assert hasattr(cmd, "app_command") and cmd.app_command is not None
-        assert len(cmd.app_command.checks) > 0, f"{name} must have slash checks"
+        assert hasattr(cmd, "checks") and len(cmd.checks) > 0, f"{name} must have slash checks"
+        assert not hasattr(cmd, "app_command"), f"{name} must be pure slash, not hybrid"

@@ -506,10 +506,15 @@ class TestTicketCloseI18n:
 
 
 class TestSubticketHelpI18n:
-    """/subticket help uses t()."""
+    """S6A slash-only: subticket group has no fallback help — covered by create subcommand."""
+
+    def test_subticket_is_group_without_callback(self, cog: TicketsCog) -> None:
+        from discord import app_commands as _a
+        assert isinstance(cog.subticket, _a.Group)
+        assert not hasattr(cog.subticket, "callback")
 
     @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
-    async def test_subticket_help_is_localized(
+    async def _test_subticket_help_is_localized_skipped(
         self,
         cog: TicketsCog,
         guild_id: str,
@@ -549,10 +554,15 @@ class TestReopenI18n:
 
 
 class TestNoteHelpI18n:
-    """/note help uses t()."""
+    """S6A slash-only: note group has no fallback help — covered by subcommands."""
+
+    def test_note_is_group_without_callback(self, cog: TicketsCog) -> None:
+        from discord import app_commands as _a
+        assert isinstance(cog.note, _a.Group)
+        assert not hasattr(cog.note, "callback")
 
     @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
-    async def test_note_help_is_localized(
+    async def _test_note_help_is_localized_skipped(
         self,
         cog: TicketsCog,
         guild_id: str,

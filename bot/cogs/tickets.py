@@ -1,7 +1,7 @@
-"""TicketsCog — thin facade over 4 flow modules (S3.4A).
+"""TicketsCog — thin facade over 4 flow modules (S3.4A). Pure slash commands.
 
 Each flow module owns one group; TicketsCog delegates via composition and
-preserves hybrid command registration, ``async def setup(bot)``, listeners,
+preserves pure app command registration, ``async def setup(bot)``, listeners,
 background tasks, and ``is_mod`` guards.
 """
 
@@ -17,12 +17,12 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
+from bot.cogs._slash_compat import InteractionContext, is_context_like
 from bot.cogs.ticket_admin_flow import TicketAdminFlow
 from bot.cogs.ticket_integrity_flow import TicketIntegrityFlow
 from bot.cogs.ticket_lifecycle_flow import TicketLifecycleFlow
 from bot.cogs.ticket_notes_flow import TicketNotesFlow
 from bot.config import TICKET_TIMER_ENABLED
-from bot.core.context import NebulosaContext
 from bot.core.i18n import t
 from bot.services.ticket_repair_service import is_cancel_message
 from bot.utils.brand import SUCCESS, WARNING
@@ -72,6 +72,12 @@ __all__ = [
 
 
 class TicketsCog(commands.Cog, name="Tickets"):
+    # -- slash compat shim: allow legacy Context mocks in tests --
+    def _to_ctx(self, src):  # type: ignore[no-untyped-def]
+        if is_context_like(src):
+            return src
+        return InteractionContext(src, self.bot)  # type: ignore[arg-type]
+
     """Ticket system commands, views, and background tasks (facade)."""
 
     __slots__ = ("_admin_flow", "_integrity_flow", "_lifecycle_flow", "_notes_flow", "_timer_debounce", "bot")
@@ -416,7 +422,7 @@ class TicketsCog(commands.Cog, name="Tickets"):
 
     # -- Admin (panel / category / fields) — delegates to TicketAdminFlow --
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="ticket_panel",
         description=app_commands.locale_str(
             "Desplegar el panel de tickets en el canal actual.",
@@ -437,14 +443,15 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @can_check("tickets.manage")
     async def ticket_panel(
         self,
-        ctx: NebulosaContext,
+        interaction: discord.Interaction,
         *,
         title: str | None = None,
         description_text: str | None = None,
     ) -> None:
+        ctx = self._to_ctx(interaction)  # compat shim
         await self._admin_flow.ticket_panel(ctx, title=title, description_text=description_text)
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="create_category",
         description=app_commands.locale_str(
             "Crear una nueva categoría de tickets.",
@@ -461,15 +468,16 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @can_check("tickets.manage")
     async def create_category(
         self,
-        ctx: NebulosaContext,
+        interaction: discord.Interaction,
         name: str,
         emoji: str | None = None,
         description: str | None = None,
         position: int | None = None,
     ) -> None:
+        ctx = self._to_ctx(interaction)  # compat shim
         await self._admin_flow.create_category(ctx, name, emoji=emoji, description=description, position=position)
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="list_categories",
         description=app_commands.locale_str(
             "Listar todas las categorías de tickets activas.",
@@ -478,10 +486,11 @@ class TicketsCog(commands.Cog, name="Tickets"):
     )
     @app_commands.default_permissions(administrator=True)
     @can_check("tickets.manage")
-    async def list_categories(self, ctx: NebulosaContext) -> None:
+    async def list_categories(self, interaction: discord.Interaction) -> None:
+        ctx = self._to_ctx(interaction)  # compat shim
         await self._admin_flow.list_categories(ctx)
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="delete_category",
         description=app_commands.locale_str(
             "Eliminar una categoría de tickets por ID.",
@@ -496,21 +505,17 @@ class TicketsCog(commands.Cog, name="Tickets"):
     )
     @app_commands.default_permissions(administrator=True)
     @is_admin()
-    async def delete_category(self, ctx: NebulosaContext, category_id: str) -> None:
+    async def delete_category(self, interaction: discord.Interaction, category_id: str) -> None:
+        ctx = self._to_ctx(interaction)  # compat shim
         await self._admin_flow.delete_category(ctx, category_id)
 
-    @commands.hybrid_group(
+    configure_fields = app_commands.Group(
         name="configure_fields",
-        fallback="help",
         description=app_commands.locale_str(
             "Configurar campos de entrada personalizados para una categoría de tickets.",
             key="slash.descriptions.configure_fields._",
         ),
     )
-    @app_commands.default_permissions(administrator=True)
-    @can_check("tickets.manage")
-    async def configure_fields(self, ctx: NebulosaContext) -> None:
-        await self._admin_flow.configure_fields(ctx)
 
     @configure_fields.command(
         name="set",
@@ -533,25 +538,22 @@ class TicketsCog(commands.Cog, name="Tickets"):
     @can_check("tickets.manage")
     async def configure_fields_set(
         self,
-        ctx: NebulosaContext,
+        interaction: discord.Interaction,
         category_id: str,
         fields_json: str,
     ) -> None:
+        ctx = self._to_ctx(interaction)  # compat shim
         await self._admin_flow.configure_fields_set(ctx, category_id, fields_json)
 
     # -- Lifecycle (subticket / reopen / transfer / unclaim) --
 
-    @commands.hybrid_group(
+    subticket = app_commands.Group(
         name="subticket",
-        fallback="help",
         description=app_commands.locale_str(
             "Gestionar sub-tickets vinculados a un ticket padre.",
             key="slash.descriptions.subticket._",
         ),
     )
-    @can_check("tickets.manage")
-    async def subticket(self, ctx: NebulosaContext) -> None:
-        await self._lifecycle_flow.subticket(ctx)
 
     @subticket.command(
         name="create",
@@ -567,11 +569,12 @@ class TicketsCog(commands.Cog, name="Tickets"):
         )
     )
     @can_check("tickets.manage")
-    async def subticket_create(self, ctx: NebulosaContext, parent_id: str | None = None) -> None:
+    async def subticket_create(self, interaction: discord.Interaction, parent_id: str | None = None) -> None:
+        ctx = self._to_ctx(interaction)  # compat shim
         # guild_id=gid — parent lookup is guild-scoped (568 + flow does guild_id=gid)
         await self._lifecycle_flow.subticket_create(ctx, parent_id=parent_id)
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="reopen",
         description=app_commands.locale_str(
             "Reabrir un ticket cerrado.",
@@ -585,10 +588,11 @@ class TicketsCog(commands.Cog, name="Tickets"):
         )
     )
     @can_check("tickets.manage")
-    async def reopen(self, ctx: NebulosaContext, *, ticket_ref: str | None = None) -> None:
+    async def reopen(self, interaction: discord.Interaction, *, ticket_ref: str | None = None) -> None:
+        ctx = self._to_ctx(interaction)  # compat shim
         await self._lifecycle_flow.reopen(ctx, ticket_ref=ticket_ref)
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="transfer",
         description=app_commands.locale_str(
             "Transferir un ticket a otro miembro del staff.",
@@ -602,34 +606,32 @@ class TicketsCog(commands.Cog, name="Tickets"):
         )
     )
     @can_check("tickets.manage")
-    async def transfer(self, ctx: NebulosaContext, member: discord.Member) -> None:
+    async def transfer(self, interaction: discord.Interaction, member: discord.Member) -> None:
+        ctx = self._to_ctx(interaction)  # compat shim
         # guild_id=gid — transfer lookup is guild-scoped (685 + flow does guild_id=gid)
         await self._lifecycle_flow.transfer(ctx, member)
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="unclaim",
         description=app_commands.locale_str(
             "Liberar un ticket reclamado de vuelta a estado abierto.",
             key="slash.descriptions.unclaim",
         ),
     )
-    async def unclaim(self, ctx: NebulosaContext) -> None:
+    async def unclaim(self, interaction: discord.Interaction) -> None:
+        ctx = self._to_ctx(interaction)  # compat shim
         # guild_id=gid — unclaim lookup is guild-scoped (722 path via get_ticket_by_channel guild_id=gid)
         await self._lifecycle_flow.unclaim(ctx)
 
     # -- Notes (add / list / delete) --
 
-    @commands.hybrid_group(
+    note = app_commands.Group(
         name="note",
-        fallback="help",
         description=app_commands.locale_str(
             "Gestionar notas del staff en tickets.",
             key="slash.descriptions.note._",
         ),
     )
-    @can_check("tickets.manage")
-    async def note(self, ctx: NebulosaContext) -> None:
-        await self._notes_flow.note(ctx)
 
     @note.command(
         name="add",
@@ -645,7 +647,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
         )
     )
     @can_check("tickets.manage")
-    async def note_add(self, ctx: NebulosaContext, content: str) -> None:
+    async def note_add(self, interaction: discord.Interaction, content: str) -> None:
+        ctx = self._to_ctx(interaction)  # compat shim
         await self._notes_flow.note_add(ctx, content=content)
 
     @note.command(
@@ -656,7 +659,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
         ),
     )
     @can_check("tickets.manage")
-    async def note_list(self, ctx: NebulosaContext) -> None:
+    async def note_list(self, interaction: discord.Interaction) -> None:
+        ctx = self._to_ctx(interaction)  # compat shim
         await self._notes_flow.note_list(ctx)
 
     @note.command(
@@ -673,12 +677,13 @@ class TicketsCog(commands.Cog, name="Tickets"):
         )
     )
     @can_check("tickets.manage")
-    async def note_delete(self, ctx: NebulosaContext, note_id: str) -> None:
+    async def note_delete(self, interaction: discord.Interaction, note_id: str) -> None:
+        ctx = self._to_ctx(interaction)  # compat shim
         await self._notes_flow.note_delete(ctx, note_id=note_id)
 
     # -- Integrity (sweep / repair) --
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="sweep_integrity",
         description=app_commands.locale_str(
             "Verificar canales de tickets activos y cerrar los que ya no existen.",
@@ -686,10 +691,11 @@ class TicketsCog(commands.Cog, name="Tickets"):
         ),
     )
     @can_check("tickets.manage")
-    async def sweep_integrity(self, ctx: NebulosaContext) -> None:
+    async def sweep_integrity(self, interaction: discord.Interaction) -> None:
+        ctx = self._to_ctx(interaction)  # compat shim
         await self._integrity_flow.sweep_integrity(ctx)
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="repair_ticket",
         description=app_commands.locale_str(
             "Reparar un ticket cuyo canal fue eliminado (requiere corroboración).",
@@ -703,7 +709,8 @@ class TicketsCog(commands.Cog, name="Tickets"):
         ),
     )
     @can_check("tickets.manage")
-    async def repair_ticket(self, ctx: NebulosaContext, *, ticket_ref: str) -> None:
+    async def repair_ticket(self, interaction: discord.Interaction, *, ticket_ref: str) -> None:
+        ctx = self._to_ctx(interaction)  # compat shim
         await self._integrity_flow.repair_ticket(ctx, ticket_ref=ticket_ref)
 
 

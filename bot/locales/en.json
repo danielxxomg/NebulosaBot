@@ -240,11 +240,6 @@
       "no_commands": "No commands are registered yet.",
       "no_description": "No description available yet.",
       "footer": "NebulosaBot • /help"
-    },
-    "sync": {
-      "title": "✅ Commands Synced",
-      "description": "{count} slash command(s) registered.",
-      "failed_title": "Sync Failed"
     }
   },
   "utility": {
@@ -259,7 +254,8 @@
       "channels_field": "Channels",
       "roles_field": "Roles",
       "boosts_field": "Boosts",
-      "created_field": "Created"
+      "created_field": "Created",
+      "unknown_owner": "Unknown"
     },
     "userinfo": {
       "id_field": "ID",
@@ -269,7 +265,8 @@
       "created_field": "Account Created",
       "bot_field": "Bot",
       "bot_yes": "Yes",
-      "roles_overflow": "... and {count} more"
+      "roles_overflow": "... and {count} more",
+      "unknown_date": "Unknown"
     }
   },
   "setup": {

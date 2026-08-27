@@ -71,9 +71,8 @@ class TestTempbanCommandRed:
         cog = SentinelCog(bot=bot)
         assert hasattr(cog, "tempban"), "SentinelCog.tempban must exist"
         cmd = cog.tempban
-        assert len(cmd.checks) > 0, "tempban must have prefix checks"
-        assert hasattr(cmd, "app_command") and cmd.app_command is not None
-        assert len(cmd.app_command.checks) > 0, "tempban must have slash checks"
+        assert hasattr(cmd, "checks") and len(cmd.checks) > 0, "tempban must have slash checks"
+        assert not hasattr(cmd, "app_command"), "slash-only"
         # Consolidation (S5b/c): the source-window grep was deleted — the gate key
         # and ban_members default are proven behaviorally by the predicate-denial
         # tests below and TestDefaultPermissions in test_ephemeral_standard.py.
@@ -148,9 +147,8 @@ class TestTempbanCommandRed:
         cog = SentinelCog(bot=bot)
         assert hasattr(cog, "unban"), "SentinelCog.unban must exist"
         cmd = cog.unban
-        assert len(cmd.checks) > 0
-        assert hasattr(cmd, "app_command") and cmd.app_command is not None
-        assert len(cmd.app_command.checks) > 0
+        assert hasattr(cmd, "checks") and len(cmd.checks) > 0
+        assert not hasattr(cmd, "app_command"), "slash-only: pure app command"
         # Consolidation (S5b/c): the source-window grep was deleted — the
         # behavioral unban tests below prove the gate end-to-end.
 

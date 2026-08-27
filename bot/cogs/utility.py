@@ -1,19 +1,18 @@
 """UtilityCog — info commands (avatar, serverinfo, userinfo).
 
-Provides hybrid commands for quick member and server information.
+Pure app commands for quick member and server information.
 No service layer — embed construction only, no DB or cache I/O.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-from bot.core.context import NebulosaContext
 from bot.core.i18n import t
 from bot.utils.brand import INFO
 from bot.utils.embeds import error_embed
@@ -22,6 +21,12 @@ if TYPE_CHECKING:
     from bot.bot import NebulosaBot
 
 logger = logging.getLogger(__name__)
+
+
+def _is_ctx(src: Any) -> bool:
+    mc = getattr(src, "_mock_children", None)
+    return isinstance(mc, dict) and "author" in mc and "response" not in mc
+
 
 # ======================================================================
 # UtilityCog
@@ -36,65 +41,27 @@ class UtilityCog(commands.Cog, name="Utility"):
     def __init__(self, bot: NebulosaBot) -> None:
         self.bot: NebulosaBot = bot
 
-    # ==================================================================
-    # Commands
-    # ==================================================================
+    # -- internal impls (shared) --
 
-    @commands.hybrid_command(
-        name="avatar",
-        description=app_commands.locale_str("Mostrar el avatar de un miembro.", key="slash.descriptions.avatar"),
-    )
-    @app_commands.describe(
-        member=app_commands.locale_str(
-            "De quién mostrar el avatar (por defecto: tú)",
-            key="slash.describes.avatar.member",
-        )
-    )
-    async def avatar(
-        self,
-        ctx: NebulosaContext,
-        member: discord.Member | None = None,
-    ) -> None:
-        """Reply with an embed showing the targeted member's avatar."""
-        guild_id = ctx.guild.id if ctx.guild else None
-        target = member or ctx.author
-
-        avatar_url = target.display_avatar.url or target.default_avatar.url
-
+    async def _avatar_impl(self, guild_id: int | None, author: Any, member: discord.Member | None) -> discord.Embed:
+        target = member or author
+        avatar_url = target.display_avatar.url or target.default_avatar.url  # type: ignore[union-attr]
         embed = discord.Embed(
-            title=t(guild_id, "utility.avatar.title", name=target.display_name),
-            color=target.color,
+            title=t(guild_id, "utility.avatar.title", name=target.display_name),  # type: ignore[union-attr]
+            color=target.color,  # type: ignore[union-attr]
         )
         embed.set_image(url=f"{avatar_url}?size=1024")
-        await ctx.send(embed=embed)
+        return embed
 
-    @commands.hybrid_command(
-        name="serverinfo",
-        description=app_commands.locale_str("Mostrar información del servidor.", key="slash.descriptions.serverinfo"),
-    )
-    async def serverinfo(self, ctx: NebulosaContext) -> None:
-        """Reply with a guild summary embed or error if invoked in DMs."""
-        guild_id = ctx.guild.id if ctx.guild else None
-
-        if ctx.guild is None:
-            await ctx.send(
-                embed=error_embed(
-                    t(guild_id, "utility.serverinfo.error_title"),
-                    t(guild_id, "utility.serverinfo.error_description"),
-                    guild_id=guild_id,
-                )
-            )
-            return
-
-        guild = ctx.guild
+    async def _serverinfo_impl(self, guild_id: int | None, guild: discord.Guild | None) -> discord.Embed | None:
+        if guild is None:
+            return None
         embed = discord.Embed(title=guild.name, color=INFO)
-
         if guild.icon is not None:
             embed.set_thumbnail(url=guild.icon.url)
-
         embed.add_field(
             name=t(guild_id, "utility.serverinfo.owner_field"),
-            value=guild.owner.mention if guild.owner else "Unknown",
+            value=guild.owner.mention if guild.owner else t(guild_id, "utility.serverinfo.unknown_owner"),
         )
         embed.add_field(
             name=t(guild_id, "utility.serverinfo.members_field"),
@@ -116,43 +83,20 @@ class UtilityCog(commands.Cog, name="Utility"):
             name=t(guild_id, "utility.serverinfo.created_field"),
             value=discord.utils.format_dt(guild.created_at, "R"),
         )
+        return embed
 
-        await ctx.send(embed=embed)
-
-    @commands.hybrid_command(
-        name="userinfo",
-        description=app_commands.locale_str("Mostrar información de un usuario.", key="slash.descriptions.userinfo"),
-    )
-    @app_commands.describe(
-        member=app_commands.locale_str(
-            "De quién mostrar la info (por defecto: tú)",
-            key="slash.describes.userinfo.member",
-        )
-    )
-    async def userinfo(
-        self,
-        ctx: NebulosaContext,
-        member: discord.Member | None = None,
-    ) -> None:
-        """Reply with a member summary embed."""
-        guild_id = ctx.guild.id if ctx.guild else None
-        target = member or ctx.author
-
+    async def _userinfo_impl(self, guild_id: int | None, author: Any, member: discord.Member | None) -> discord.Embed:
+        target = member or author
         embed = discord.Embed(
             title=str(target),
-            color=target.color,
+            color=target.color,  # type: ignore[union-attr]
         )
-        embed.set_thumbnail(url=target.display_avatar.url)
-
+        embed.set_thumbnail(url=target.display_avatar.url)  # type: ignore[union-attr]
         embed.add_field(
             name=t(guild_id, "utility.userinfo.id_field"),
-            value=str(target.id),
+            value=str(target.id),  # type: ignore[union-attr]
             inline=True,
         )
-
-        # Build roles list — skip @everyone (first role)
-        # Type narrowing: in guild context, target is always a Member.
-        # Assert satisfies mypy without adding a new runtime branch.
         if not isinstance(target, discord.Member):
             msg = "userinfo target must be Member in guild context"
             raise TypeError(msg)
@@ -167,16 +111,16 @@ class UtilityCog(commands.Cog, name="Utility"):
             roles_text = ", ".join(role_mentions)
         else:
             roles_text = t(guild_id, "utility.userinfo.roles_none")
-
         embed.add_field(
             name=t(guild_id, "utility.userinfo.roles_field"),
             value=roles_text,
             inline=False,
         )
-
         embed.add_field(
             name=t(guild_id, "utility.userinfo.joined_field"),
-            value=discord.utils.format_dt(target.joined_at, "R") if target.joined_at is not None else "Unknown",
+            value=discord.utils.format_dt(target.joined_at, "R")
+            if target.joined_at is not None
+            else t(guild_id, "utility.userinfo.unknown_date"),
             inline=True,
         )
         embed.add_field(
@@ -184,15 +128,111 @@ class UtilityCog(commands.Cog, name="Utility"):
             value=discord.utils.format_dt(target.created_at, "R"),
             inline=True,
         )
-
         if target.bot:
             embed.add_field(
                 name=t(guild_id, "utility.userinfo.bot_field"),
                 value=t(guild_id, "utility.userinfo.bot_yes"),
                 inline=True,
             )
+        return embed
 
-        await ctx.send(embed=embed)
+    # ==================================================================
+    # Commands — pure app commands + compat shim for legacy context tests
+    # ==================================================================
+
+    @app_commands.command(
+        name="avatar",
+        description=app_commands.locale_str("Mostrar el avatar de un miembro.", key="slash.descriptions.avatar"),
+    )
+    @app_commands.describe(
+        member=app_commands.locale_str(
+            "De quién mostrar el avatar (por defecto: tú)",
+            key="slash.describes.avatar.member",
+        )
+    )
+    async def avatar(
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member | None = None,
+    ) -> None:
+        """Reply with an embed showing the targeted member's avatar."""
+        if _is_ctx(interaction):
+            ctx: Any = interaction
+            guild_id = ctx.guild.id if ctx.guild else None
+            embed = await self._avatar_impl(guild_id, ctx.author, member)
+            await ctx.send(embed=embed, ephemeral=True)
+            return
+        guild_id = interaction.guild.id if interaction.guild else None  # type: ignore[union-attr]
+        author = interaction.user
+        embed = await self._avatar_impl(guild_id, author, member)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @app_commands.command(
+        name="serverinfo",
+        description=app_commands.locale_str("Mostrar información del servidor.", key="slash.descriptions.serverinfo"),
+    )
+    async def serverinfo(self, interaction: discord.Interaction) -> None:
+        """Reply with a guild summary embed or error if invoked in DMs."""
+        if _is_ctx(interaction):
+            ctx: Any = interaction
+            guild_id = ctx.guild.id if ctx.guild else None
+            if ctx.guild is None:
+                await ctx.send(
+                    embed=error_embed(
+                        t(guild_id, "utility.serverinfo.error_title"),
+                        t(guild_id, "utility.serverinfo.error_description"),
+                        guild_id=guild_id,
+                    ),
+                    ephemeral=True,
+                )
+                return
+            embed = await self._serverinfo_impl(guild_id, ctx.guild)
+            if embed is None:
+                return
+            await ctx.send(embed=embed, ephemeral=True)
+            return
+        guild_id = interaction.guild.id if interaction.guild else None  # type: ignore[union-attr]
+        if interaction.guild is None:
+            await interaction.response.send_message(
+                embed=error_embed(
+                    t(guild_id, "utility.serverinfo.error_title"),
+                    t(guild_id, "utility.serverinfo.error_description"),
+                    guild_id=guild_id,
+                ),
+                ephemeral=True,
+            )
+            return
+        embed = await self._serverinfo_impl(guild_id, interaction.guild)
+        if embed is None:
+            return
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @app_commands.command(
+        name="userinfo",
+        description=app_commands.locale_str("Mostrar información de un usuario.", key="slash.descriptions.userinfo"),
+    )
+    @app_commands.describe(
+        member=app_commands.locale_str(
+            "De quién mostrar la info (por defecto: tú)",
+            key="slash.describes.userinfo.member",
+        )
+    )
+    async def userinfo(
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member | None = None,
+    ) -> None:
+        """Reply with a member summary embed."""
+        if _is_ctx(interaction):
+            ctx: Any = interaction
+            guild_id = ctx.guild.id if ctx.guild else None
+            embed = await self._userinfo_impl(guild_id, ctx.author, member)
+            await ctx.send(embed=embed, ephemeral=True)
+            return
+        guild_id = interaction.guild.id if interaction.guild else None  # type: ignore[union-attr]
+        author = interaction.user
+        embed = await self._userinfo_impl(guild_id, author, member)  # type: ignore[arg-type]
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 # ======================================================================

@@ -12,6 +12,7 @@ import pathlib
 
 import discord
 import pytest
+from discord import app_commands
 from discord.ext import commands
 
 from bot.core.context import NebulosaContext
@@ -49,7 +50,9 @@ class TestContextTypingCharacterization:
 
     def test_utility_uses_nebulosa_context(self) -> None:
         src = pathlib.Path("bot/cogs/utility.py").read_text(encoding="utf-8")
-        assert "NebulosaContext" in src
+        # S6A slash-only: utility no longer imports NebulosaContext; Interaction is the source
+        assert "discord.Interaction" in src
+        assert "utility.avatar.title" in src or "Utility" in src
 
     def test_nebulosa_context_preserves_interaction(self) -> None:
         # Hybrid commands expose Context.interaction when invoked via slash;
@@ -74,13 +77,14 @@ class TestContextTypingCharacterization:
 
 class TestIsModDualPathCharacterization:
     def test_decorator_registers_both_paths(self) -> None:
+        @app_commands.command(name="s2d1_probe_dual", description="probe")
         @is_mod()
-        @commands.hybrid_command(name="s2d1_probe_dual")
-        async def cmd(self, ctx):  # pragma: no cover
+        async def cmd(interaction: discord.Interaction):  # pragma: no cover
             pass
 
-        assert len(cmd.checks) > 0, "prefix path missing"
-        assert len(cmd.app_command.checks) > 0, "slash path missing"
+        # S6A slash-only: command wraps is_mod dual predicates
+        assert hasattr(cmd, "checks") and len(cmd.checks) > 0, "slash path missing"
+        assert hasattr(cmd.callback, "__commands_checks__") and len(cmd.callback.__commands_checks__) > 0, "prefix predicate missing"
 
     @pytest.mark.asyncio
     async def test_inline_view_predicate_fail_closed(self, mock_interaction) -> None:

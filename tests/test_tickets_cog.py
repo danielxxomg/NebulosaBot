@@ -2704,44 +2704,36 @@ class TestConfigureFieldsCommand:
 
 
 class TestConfigureFieldsGroup:
-    """Tests for the /configure_fields hybrid group fallback (help)."""
+    """Tests for the /configure_fields group (S6A slash-only — fallback deleted)."""
 
-    async def test_configure_fields_fallback_shows_help(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-    ) -> None:
-        """/configure_fields (no subcommand) → help embed."""
-        await tickets_cog.configure_fields.callback(tickets_cog, slash_ctx)
+    def test_configure_fields_is_group_without_fallback(self, tickets_cog: TicketsCog) -> None:
+        """S6A: configure_fields is a pure Group — no hybrid fallback callback."""
+        from discord import app_commands as _app
 
-        slash_ctx.send.assert_awaited_once()
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
+        assert isinstance(tickets_cog.configure_fields, _app.Group)
+        assert not hasattr(tickets_cog.configure_fields, "callback")
 
 
 class TestConfigureFieldsPermissions:
-    """Verify /configure_fields is gated by @is_mod()."""
+    """Verify /configure_fields set is gated (group-level gate removed in slash-only)."""
 
     @staticmethod
     def _is_mod_gated(cmd) -> bool:
-        """Check if a command has is_mod() gating.
-
-        For HybridCommand: checks are on cmd.app_command.checks.
-        For HybridGroup: checks may be on callback.__discord_app_commands_checks__
-        (decorator order: @is_mod() applied before @hybrid_group wraps it).
-        """
         if getattr(cmd, "checks", None):
-            return True
+            return bool(cmd.checks)
         if hasattr(cmd, "app_command") and getattr(cmd.app_command, "checks", None):
             return True
         cb = getattr(cmd, "callback", None)
         return bool(cb and getattr(cb, "__discord_app_commands_checks__", None))
 
     def test_configure_fields_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
-        assert self._is_mod_gated(tickets_cog.configure_fields), "/configure_fields MUST be gated by @is_mod()"
+        """S6A: group itself has no checks — gate lives on subcommand."""
+        from discord import app_commands as _app
+
+        assert isinstance(tickets_cog.configure_fields, _app.Group)
 
     def test_configure_fields_set_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
-        assert self._is_mod_gated(tickets_cog.configure_fields_set), "/configure_fields set MUST be gated by @is_mod()"
+        assert self._is_mod_gated(tickets_cog.configure_fields_set), "/configure_fields set MUST be gated"
 
 
 # ===========================================================================

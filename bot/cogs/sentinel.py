@@ -21,7 +21,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
-from bot.core.context import NebulosaContext
+from bot.core.context import NebulosaContext  # noqa: F401 -- kept for shim compat
 from bot.core.i18n import t
 from bot.utils.brand import INFO
 from bot.utils.checks import can_check, is_mod
@@ -89,6 +89,23 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         if hasattr(self, "decay_expiry_loop") and not self.decay_expiry_loop.is_running():
             self.decay_expiry_loop.start()
             logger.info("Sentinel decay+expiry loop started (interval: 1h)")
+
+    def _to_ctx(self, src: object):  # type: ignore[no-untyped-def]
+        from bot.cogs._slash_compat import is_context_like as _is_ctx  # noqa: PLC0415 -- cycle-breaking: compat shim avoids circular import  # isort: skip
+
+        if _is_ctx(src):
+            return src
+        from bot.cogs._slash_compat import InteractionContext as _InteractionContext  # noqa: PLC0415 -- cycle-breaking: compat shim avoids circular import  # isort: skip
+
+        return _InteractionContext(src, self.bot)  # type: ignore[arg-type]
+
+    @staticmethod
+    def _gid(src: object) -> str:  # type: ignore[no-untyped-def]
+        guild = getattr(src, "guild", None) or getattr(getattr(src, "interaction", None), "guild", None)
+        if guild is None:
+            msg = "Guild-only command"
+            raise RuntimeError(msg)
+        return str(guild.id)  # type: ignore[union-attr]
 
     def _collect_guild_ids(self) -> list[str]:
         """Collect guild IDs from bot.guilds (best-effort, no throw)."""
@@ -287,7 +304,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     # 5.2 — /warn + /unwarn
     # ==================================================================
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="warn",
         description=app_commands.locale_str(
             "Advertir a un miembro.",
@@ -300,7 +317,8 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     )
     @app_commands.default_permissions(moderate_members=True)
     @can_check("moderation.warn")
-    async def warn(self, ctx: NebulosaContext, member: discord.Member, *, reason: str) -> None:
+    async def warn(self, interaction: discord.Interaction, member: discord.Member, *, reason: str) -> None:
+        ctx = self._to_ctx(interaction)  # compat: Context or Interaction
         """Issue a warning and check for auto-escalation."""
         if not await self._validate_target(ctx, member, "warn"):
             return
@@ -368,7 +386,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             )
         )
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="unwarn",
         description=app_commands.locale_str(
             "Quitar la advertencia más reciente de un miembro.",
@@ -383,7 +401,8 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     )
     @app_commands.default_permissions(moderate_members=True)
     @can_check("moderation.warn")
-    async def unwarn(self, ctx: NebulosaContext, member: discord.Member) -> None:
+    async def unwarn(self, interaction: discord.Interaction, member: discord.Member) -> None:
+        ctx = self._to_ctx(interaction)  # compat: Context or Interaction
         """Deactivate the most recent active warning."""
         if not await self._validate_target(ctx, member, "unwarn"):
             return
@@ -439,7 +458,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     # 5.3 — /mute + /unmute
     # ==================================================================
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="mute",
         description=app_commands.locale_str(
             "Silenciar (timeout) a un miembro.",
@@ -464,13 +483,14 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     @can_check("moderation.mute")
     async def mute(
         self,
-        ctx: NebulosaContext,
+        interaction: discord.Interaction,
         member: discord.Member,
         duration: str = "1h",
         *,
         reason: str = "",
     ) -> None:
         """Apply a timeout to *member*."""
+        ctx = self._to_ctx(interaction)  # compat: Context or Interaction
         if not await self._validate_target(ctx, member, "mute"):
             return
 
@@ -533,7 +553,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             )
         )
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="unmute",
         description=app_commands.locale_str(
             "Quitar el silencio de un miembro.",
@@ -548,7 +568,8 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     )
     @app_commands.default_permissions(moderate_members=True)
     @can_check("moderation.mute")
-    async def unmute(self, ctx: NebulosaContext, member: discord.Member) -> None:
+    async def unmute(self, interaction: discord.Interaction, member: discord.Member) -> None:
+        ctx = self._to_ctx(interaction)  # compat: Context or Interaction
         """Remove the timeout from *member*."""
         if not await self._validate_target(ctx, member, "unmute"):
             return
@@ -586,7 +607,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     # 5.4 — /kick + /ban
     # ==================================================================
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="kick",
         description=app_commands.locale_str(
             "Expulsar a un miembro del servidor.",
@@ -599,7 +620,8 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     )
     @app_commands.default_permissions(moderate_members=True)
     @can_check("moderation.kick")
-    async def kick(self, ctx: NebulosaContext, member: discord.Member, *, reason: str) -> None:
+    async def kick(self, interaction: discord.Interaction, member: discord.Member, *, reason: str) -> None:
+        ctx = self._to_ctx(interaction)  # compat: Context or Interaction
         """Kick *member* from the guild after confirmation."""
         if not await self._validate_target(ctx, member, "kick"):
             return
@@ -688,7 +710,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         )
         view.message = msg
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="ban",
         description=app_commands.locale_str(
             "Prohibir a un miembro del servidor.",
@@ -707,12 +729,13 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     @can_check("moderation.ban")
     async def ban(
         self,
-        ctx: NebulosaContext,
+        interaction: discord.Interaction,
         member: discord.Member,
         *,
         reason: str,
         delete_days: int = 0,
     ) -> None:
+        ctx = self._to_ctx(interaction)  # compat: Context or Interaction
         """Ban *member* from the guild after confirmation.  Requires Administrator permission."""
         if not await self._validate_target(ctx, member, "ban"):
             return
@@ -807,7 +830,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     # 5.5 — /lock + /unlock
     # ==================================================================
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="lock",
         description=app_commands.locale_str(
             "Bloquear un canal (denegar send_messages para @everyone).",
@@ -824,9 +847,10 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     @is_mod()
     async def lock(
         self,
-        ctx: NebulosaContext,
+        interaction: discord.Interaction,
         channel: discord.TextChannel | None = None,
     ) -> None:
+        ctx = self._to_ctx(interaction)  # compat: Context or Interaction
         """Deny ``send_messages`` for @everyone in *channel*."""
         target_channel = channel or ctx.channel
         guild_id = self._guild_id(ctx)
@@ -882,7 +906,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             )
         )
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="unlock",
         description=app_commands.locale_str(
             "Desbloquear un canal (permitir send_messages para @everyone).",
@@ -899,9 +923,10 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     @is_mod()
     async def unlock(
         self,
-        ctx: NebulosaContext,
+        interaction: discord.Interaction,
         channel: discord.TextChannel | None = None,
     ) -> None:
+        ctx = self._to_ctx(interaction)  # compat: Context or Interaction
         """Allow ``send_messages`` for @everyone in *channel*."""
         target_channel = channel or ctx.channel
         guild_id = self._guild_id(ctx)
@@ -961,7 +986,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     # 5.6 — /modlogs
     # ==================================================================
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="modlogs",
         description=app_commands.locale_str(
             "Ver historial de moderación de un miembro.",
@@ -983,11 +1008,12 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     @is_mod()
     async def modlogs(
         self,
-        ctx: NebulosaContext,
+        interaction: discord.Interaction,
         member: discord.Member,
         type: str | None = None,  # noqa: A002 -- discord slash param `type` is wire contract
         after: str | None = None,
     ) -> None:
+        ctx = self._to_ctx(interaction)  # compat: Context or Interaction
         """Display paginated moderation history for *member*."""
         guild_id = self._guild_id(ctx)
         target_id = str(member.id)
@@ -1041,7 +1067,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     # PR2 — /tempban + /unban (2.10-2.13)
     # ==================================================================
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="tempban",
         description=app_commands.locale_str(
             "Prohibir temporalmente a un miembro.",
@@ -1060,12 +1086,13 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     @can_check("moderation.ban")
     async def tempban(
         self,
-        ctx: NebulosaContext,
+        interaction: discord.Interaction,
         member: discord.Member,
         duration: str,
         *,
         reason: str = "",
     ) -> None:
+        ctx = self._to_ctx(interaction)  # compat: Context or Interaction
         """Tempban *member* for *duration* after confirmation."""
         if not await self._validate_target(ctx, member, "tempban"):
             return
@@ -1158,7 +1185,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         )
         view.message = msg
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="unban",
         description=app_commands.locale_str(
             "Levantar la prohibición de un usuario.",
@@ -1172,9 +1199,10 @@ class SentinelCog(commands.Cog, name="Sentinel"):
     @can_check("moderation.ban")
     async def unban(
         self,
-        ctx: NebulosaContext,
+        interaction: discord.Interaction,
         user_id: str,
     ) -> None:
+        ctx = self._to_ctx(interaction)  # compat: Context or Interaction
         """Unban a user by ID (idempotent)."""
         guild_id = self._guild_id(ctx)
         if ctx.guild is None:

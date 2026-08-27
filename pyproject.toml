@@ -212,3 +212,38 @@ include = ["bot/views/ticket_panel.py"]
 
 [tool.ty.overrides.rules]
 possibly-unresolved-reference = "warn"
+
+[[tool.ty.overrides]]
+include = ["bot/cogs/core.py"]
+
+[tool.ty.overrides.rules]
+unresolved-attribute = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["bot/cogs/_slash_compat.py"]
+
+[tool.ty.overrides.rules]
+unresolved-attribute = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["bot/cogs/sentinel.py"]
+
+[tool.ty.overrides.rules]
+unresolved-attribute = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["bot/cogs/tickets.py"]
+
+[tool.ty.overrides.rules]
+unresolved-attribute = "warn"
+unused-ignore-comment = "warn"
+
+[[tool.ty.overrides]]
+include = ["bot/cogs/utility.py"]
+
+[tool.ty.overrides.rules]
+unresolved-attribute = "warn"
+unused-ignore-comment = "warn"

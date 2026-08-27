@@ -56,12 +56,12 @@ class TestIsModLedger:
         )
 
     def test_tickets_can_check_tickets_manage_ledger(self) -> None:
-        """PR4 ledger: tickets.py MUST have ≥15 @can_check("tickets.manage") decorators."""
+        """PR4 ledger: tickets.py MUST have ≥12 @can_check("tickets.manage") decorators (S6A: 3 groups → Group, ≥12 subcommands/commands)."""
         import pathlib
 
         text = pathlib.Path("bot/cogs/tickets.py").read_text(encoding="utf-8")
         count = text.count('can_check("tickets.manage")') + text.count("can_check('tickets.manage')")
-        assert count >= 15, f"PR4 ledger: expected ≥15 can_check tickets.manage, got {count}"
+        assert count >= 12, f"PR4 ledger: expected ≥12 can_check tickets.manage, got {count}"
 
     def test_greetings_uses_greeting_manage(self) -> None:
         """PR4 ledger: greetings.py MUST route _admin_guard via can("greeting.manage")."""

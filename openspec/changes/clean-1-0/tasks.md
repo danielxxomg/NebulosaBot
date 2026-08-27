@@ -103,26 +103,26 @@ Chain strategy: stacked-to-main
 
 ## Phase S5: Hygiene & Debt (PR 7, ~400 lines)
 
-- [ ] S5.1 RED: `tests/test_cache_cdc_parity.py` — documented set == `frozenset(SUBSCRIBED_TABLES)` both directions; member/economy under explicit `Deferred:` marker; drift fails. Ref: cache-layer "Documentation matches CDC reality".
-- [ ] S5.2 Add machine-parseable claims block to `bot/core/cache.py` docstring; source of truth = `SUBSCRIBED_TABLES` (`bot/core/realtime.py:49`). (D7)
-- [ ] S5.3 RED: `tests/test_i18n_no_dead_keys.py` — literal `t()` key inventory + dynamic-prefix whitelist (runtime-built families); green only after purge; es/en symmetric; `test_i18n_key_coverage.py` stays green. (D7)
-- [ ] S5.4 Prune dead i18n keys in `bot/locales/{es,en}.json` symmetrically until S5.3 passes.
-- [ ] S5.5 Enable `PLC0415` in `pyproject.toml` ruff select; lift ~25 function-level imports to module top; survivors carry inline `# noqa: PLC0415 -- <cycle-break | optional-dependency probe | facade>` (3 AGENTS.md-allowed categories only). (D7)
-- [ ] S5.6 Extract `TicketLifecycleService._finalize_close(...)` (dual-branch dedup: guild-scoped fast path vs pre-read fallback); behavior-identical (denied/success audit, zombie-aware channel-discard skip, `_clear_scheduled_fields`); host D6 audit post-S5. Existing close suite stays green. (D7)
-- [ ] S5.7 Delete `governance_guard.py` + `tests/test_product_artifact_audit_governance.py`; verify no residual importer via full pytest run. (D7)
-- [ ] S5.8 Scope `.betterleaks.toml` env-family allowlists with explicit `rules=` constraints; drop test_live_catalog synthetic-URI entry if cleanup removes them. (D7)
-- [ ] S5.9 Pin `.github/workflows/code-quality.yml:57-66` osv-scanner v2.5.1 / betterleaks v1.8.1 by release-artifact SHA256 (`sha256sum -c -`); checksums committed next to workflow. (D7)
-- [ ] S5.10 Route `bot/services/rank_renderer.py` hardcoded card strings through `t()`; cleanup `tests/test_live_catalog.py` dead fixtures; i18n coverage suite green. (D7)
-- [ ] S5.11 MODIFIED delta archive-safety check: confirm all MODIFIED delta specs retain full requirement text (unchanged scenarios) for `sdd-archive` merge safety.
+- [x] S5.1 RED: `tests/test_cache_cdc_parity.py` — documented set == `frozenset(SUBSCRIBED_TABLES)` both directions; member/economy under explicit `Deferred:` marker; drift fails. Ref: cache-layer "Documentation matches CDC reality".
+- [x] S5.2 Add machine-parseable claims block to `bot/core/cache.py` docstring; source of truth = `SUBSCRIBED_TABLES` (`bot/core/realtime.py:49`). (D7)
+- [x] S5.3 RED: `tests/test_i18n_no_dead_keys.py` — literal `t()` key inventory + dynamic-prefix whitelist (runtime-built families); green only after purge; es/en symmetric; `test_i18n_key_coverage.py` stays green. (D7)
+- [x] S5.4 Prune dead i18n keys in `bot/locales/{es,en}.json` symmetrically until S5.3 passes.
+- [x] S5.5 Enable `PLC0415` in `pyproject.toml` ruff select; lift ~25 function-level imports to module top; survivors carry inline `# noqa: PLC0415 -- <cycle-break | optional-dependency probe | facade>` (3 AGENTS.md-allowed categories only). (D7)
+- [x] S5.6 Extract `TicketLifecycleService._finalize_close(...)` (dual-branch dedup: guild-scoped fast path vs pre-read fallback); behavior-identical (denied/success audit, zombie-aware channel-discard skip, `_clear_scheduled_fields`); host D6 audit post-S5. Existing close suite stays green. (D7)
+- [x] S5.7 Delete `governance_guard.py` + `tests/test_product_artifact_audit_governance.py`; verify no residual importer via full pytest run. (D7)
+- [x] S5.8 Scope `.betterleaks.toml` env-family allowlists with explicit `rules=` constraints; drop test_live_catalog synthetic-URI entry if cleanup removes them. (D7)
+- [x] S5.9 Pin `.github/workflows/code-quality.yml:57-66` osv-scanner v2.5.1 / betterleaks v1.8.1 by release-artifact SHA256 (`sha256sum -c -`); checksums committed next to workflow. (D7)
+- [x] S5.10 Route `bot/services/rank_renderer.py` hardcoded card strings through `t()`; cleanup `tests/test_live_catalog.py` dead fixtures; i18n coverage suite green. (D7)
+- [x] S5.11 MODIFIED delta archive-safety check: confirm all MODIFIED delta specs retain full requirement text (unchanged scenarios) for `sdd-archive` merge safety.
 
 ## Phase S6A: Hybrid→app_commands PR-A (PR 8, ~500-600 lines)
 
-- [ ] S6A.1 RED: `tests/test_zero_hybrid_guard.py` — grep asserts ZERO `hybrid_command`/`hybrid_group` declarations remain across `bot/cogs/**` after this PR (scoped to S6A-touched archetypes). Ref: bot-core "Zero hybrid declarations remain".
-- [ ] S6A.2 RED: `tests/test_help_slash_only.py` — help renders `/command` entries only, no prefix examples. Ref: bot-core "Help shows slash syntax only".
-- [ ] S6A.3 Delete `/sync` command in `bot/cogs/core.py` (delete-before-migrate: deletion precedes survivor migration). Ref: core-commands REMOVED.
-- [ ] S6A.4 Migrate sentinel/tickets/ticket_*_flow/utility/core hybrids → `@app_commands.command()` per D5 recipe (`@app_commands.describe` + `locale_str`, `interaction.response.send_message`/`followup`, `Literal`→`choices`, `@commands.cooldown`→`@app_commands.checks.cooldown`).
-- [ ] S6A.5 Migrate `/help` (`bot/cogs/core.py:190`) to pure app command enumerating app-command tree, `/command` syntax only. (D5)
-- [ ] S6A.6 `,` invariant grep guard + close-confirmation suite green (tickets-touching unit — tickets/ticket_*_flow cogs).
+- [x] S6A.1 RED: `tests/test_zero_hybrid_guard.py` — grep asserts ZERO `hybrid_command`/`hybrid_group` declarations remain across `bot/cogs/**` after this PR (scoped to S6A-touched archetypes). Ref: bot-core "Zero hybrid declarations remain".
+- [x] S6A.2 RED: `tests/test_help_slash_only.py` — help renders `/command` entries only, no prefix examples. Ref: bot-core "Help shows slash syntax only".
+- [x] S6A.3 Delete `/sync` command in `bot/cogs/core.py` (delete-before-migrate: deletion precedes survivor migration). Ref: core-commands REMOVED.
+- [x] S6A.4 Migrate sentinel/tickets/ticket_*_flow/utility/core hybrids → `@app_commands.command()` per D5 recipe (`@app_commands.describe` + `locale_str`, `interaction.response.send_message`/`followup`, `Literal`→`choices`, `@commands.cooldown`→`@app_commands.checks.cooldown`).
+- [x] S6A.5 Migrate `/help` (`bot/cogs/core.py:190`) to pure app command enumerating app-command tree, `/command` syntax only. (D5)
+- [x] S6A.6 `,` invariant grep guard + close-confirmation suite green (tickets-touching unit — tickets/ticket_*_flow cogs).
 
 ## Phase S6B: Hybrid→app_commands PR-B + Ocio Visibility Flip (PR 9, ~500-600 lines)
 

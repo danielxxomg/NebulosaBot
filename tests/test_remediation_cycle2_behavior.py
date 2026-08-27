@@ -551,7 +551,7 @@ class TestDeleteCategoryGuardBehavioral:
         from bot.cogs.tickets import TicketsCog
 
         cog = TicketsCog.__new__(TicketsCog)  # decorators only — no __init__ needed
-        predicate = cog.delete_category.checks[0]  # _prefix_predicate
+        predicate = cog.delete_category.callback.__commands_checks__[0]  # _prefix_predicate via can_check dual registration
         ctx = MagicMock(spec=commands.Context)
         ctx.guild = MagicMock(id=999)
         ctx.author = self._non_admin_member()
@@ -570,6 +570,6 @@ class TestDeleteCategoryGuardBehavioral:
         interaction = MagicMock(spec=discord.Interaction)
         interaction.guild = MagicMock(id=999)
         interaction.user = self._non_admin_member()
-        predicate = cog.delete_category.app_command.checks[0]  # _app_predicate
+        predicate = cog.delete_category.checks[0]  # slash-only: direct checks
         with pytest.raises(app_commands.MissingPermissions, match="Administrator"):
             await predicate(interaction)

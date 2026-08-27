@@ -247,23 +247,16 @@ class TestHelpI18n:
 
 
 class TestSyncI18n:
-    """Tests for /sync with i18n."""
+    """Tests for /sync — removed in S6A (core-commands REMOVED)."""
 
-    @pytest.mark.asyncio
-    async def test_sync_title_from_locale(self, cog: CoreCog, mock_bot: MagicMock) -> None:
-        """Sync success embed title MUST use t()."""
-        ctx = _make_ctx()
-        ctx.defer = AsyncMock()
-        mock_bot.tree = MagicMock()
-        mock_bot.tree.walk_commands = MagicMock(return_value=[])
-        mock_bot.tree.sync = AsyncMock(return_value=[MagicMock()])
-
-        # Mock is_admin check to pass
-        with patch("bot.cogs.core.is_admin", return_value=lambda f: f):
-            await cog.sync.callback(cog, ctx)
-
-        embed = ctx.send.call_args[1]["embed"]
-        assert "SYNC_OK" in embed.title
+    def test_sync_removed(self) -> None:
+        """S6A.3: /sync must not exist — command deletion precedes survivor migration."""
+        assert not hasattr(CoreCog, "sync"), "/sync must be deleted (S6A.3)"
+        src = Path(bot.cogs.core.__file__).read_text(encoding="utf-8")
+        assert "def sync(" not in src
+        assert "hybrid_command" not in src or "sync" not in src.split("hybrid_command")[1][:500]  # noqa: S101 -- allow assert
+        # slash tree sync stays in setup_hook
+        assert "tree.sync" not in src
 
 
 # ---------------------------------------------------------------------------
