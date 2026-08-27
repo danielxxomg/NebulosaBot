@@ -58,17 +58,17 @@ Chain strategy: stacked-to-main
 
 ## Phase S2a: /setup Panel Framework + Tickets Module (PR 3, ~800 lines)
 
-- [ ] S2a.1 RED: `tests/test_setup_panel.py` — one non-ephemeral message; nav edits same message (no duplicate); 🗑 deletes; restart routes via static custom_id; interaction_check denials ephemeral; admin implicit pass; non-admin blocked by default_perms. Ref: setup-panel "Persistent non-ephemeral panel" + "Authorization without new matrix key".
-- [ ] S2a.2 RED: `tests/test_setup_panel_nav.py` — breadcrumb reflects selection; refresh shows live state (post-mutation re-read). Ref: setup-panel "Module navigation with breadcrumb and refresh".
-- [ ] S2a.3 RED: `tests/test_permission_matrix_unchanged.py` — `PERMISSIONS` frozenset == exactly 7 keys, no setup key; `tickets.manage` gates Tickets-module mutation; `greeting.manage` denies Welcome save when absent. Ref: permission-model "Setup surface reuses existing matrix keys".
-- [ ] S2a.4 Create `bot/views/setup_panel.py`: `SetupPanelView(ui.View, timeout=None)`; static custom_ids `setup:nav`/`setup:refresh`/`setup:close`/`setup:{module}:{action}`; register via `bot.add_view()` in `NebulosaBot.setup_hook`; breadcrumb in embed footer token `nbpanel|module=<key>`; render recomputes from services cache-first. (D1)
-- [ ] S2a.5 Define `SetupModule` protocol (`key`, `permission_key`, `render`, `components`, `handle`); `MODULES` registry dict. (D1)
-- [ ] S2a.6 Implement `interaction_check`: admin OR `can_member()` matrix grant; denial → ephemeral error, no mutation.
-- [ ] S2a.7 RED: `tests/test_setup_module_tickets.py` — guided create-category (resolved IDs), delete-category confirmed, list-categories; custom-fields editor builds structure (no typed JSON/UUID). Ref: setup-panel "Guided editors only".
-- [ ] S2a.8 Create `bot/views/setup_modules/tickets.py` (Tickets module): create/delete/list categories + custom-fields editor via Selects/buttons/modals over concrete Discord objects; absorb category/field management from raw-UUID commands. (D1, setup-wizard MODIFIED)
-- [ ] S2a.9 Modify `bot/cogs/setup.py`: hybrid → pure `@app_commands.command()` `/setup`, zero params, `default_permissions(administrator=True)`, opens panel. Ref: setup-wizard "Setup command".
-- [ ] S2a.10 i18n: add keys under `setup.panel.*` and `setup.module.tickets.*` to `bot/locales/es.json` + `en.json` (symmetric). Ref: setup-panel "Internationalization".
-- [ ] S2a.11 `,` invariant grep guard (tickets-touching unit — Tickets module touches categories).
+- [x] S2a.1 RED: `tests/test_setup_panel.py` — one non-ephemeral message; nav edits same message (no duplicate); 🗑 deletes; restart routes via static custom_id; interaction_check denials ephemeral; admin implicit pass; non-admin blocked by default_perms. Ref: setup-panel "Persistent non-ephemeral panel" + "Authorization without new matrix key".
+- [x] S2a.2 RED: `tests/test_setup_panel_nav.py` — breadcrumb reflects selection; refresh shows live state (post-mutation re-read). Ref: setup-panel "Module navigation with breadcrumb and refresh".
+- [x] S2a.3 RED: `tests/test_permission_matrix_unchanged.py` — `PERMISSIONS` frozenset == exactly 7 keys, no setup key; `tickets.manage` gates Tickets-module mutation; `greeting.manage` denies Welcome save when absent. Ref: permission-model "Setup surface reuses existing matrix keys".
+- [x] S2a.4 Create `bot/views/setup_panel.py`: `SetupPanelView(ui.View, timeout=None)`; static custom_ids `setup:nav`/`setup:refresh`/`setup:close`/`setup:{module}:{action}`; register via `bot.add_view()` in `NebulosaBot.setup_hook`; breadcrumb in embed footer token `nbpanel|module=<key>`; render recomputes from services cache-first. (D1)
+- [x] S2a.5 Define `SetupModule` protocol (`key`, `permission_key`, `render`, `components`, `handle`); `MODULES` registry dict. (D1)
+- [x] S2a.6 Implement `interaction_check`: admin OR `can_member()` matrix grant; denial → ephemeral error, no mutation.
+- [x] S2a.7 RED: `tests/test_setup_module_tickets.py` — guided create-category (resolved IDs), delete-category confirmed, list-categories; custom-fields editor builds structure (no typed JSON/UUID). Ref: setup-panel "Guided editors only".
+- [x] S2a.8 Create `bot/views/setup_modules/tickets.py` (Tickets module): create/delete/list categories + custom-fields editor via Selects/buttons/modals over concrete Discord objects; absorb category/field management from raw-UUID commands. (D1, setup-wizard MODIFIED)
+- [x] S2a.9 Modify `bot/cogs/setup.py`: hybrid → pure `@app_commands.command()` `/setup`, zero params, `default_permissions(administrator=True)`, opens panel. Ref: setup-wizard "Setup command".
+- [x] S2a.10 i18n: add keys under `setup.panel.*` and `setup.module.tickets.*` to `bot/locales/es.json` + `en.json` (symmetric). Ref: setup-panel "Internationalization".
+- [x] S2a.11 `,` invariant grep guard (tickets-touching unit — Tickets module touches categories).
 
 ## Phase S2b: Welcome/Goodbye/Log/Language Modules + Legacy Group Deletion (PR 4, ~500 lines)
 
