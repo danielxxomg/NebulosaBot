@@ -243,6 +243,15 @@ class NebulosaBot(commands.Bot):
         # --- 3j. Register persistent views ---
         self.add_view(TicketPanelView())
         self.add_view(TicketActionsView())
+        # S2a: Setup panel persistent view (static custom_ids, breadcrumb token)
+        try:
+            from bot.views.setup_panel import SetupPanelView, set_setup_bot
+
+            self.add_view(SetupPanelView())
+            set_setup_bot(self)
+            logger.info("Persistent setup panel view registered")
+        except Exception:
+            logger.exception("Failed to register SetupPanelView")
         logger.info("Persistent ticket views registered")
 
         # --- 3k. Load i18n locales ---
