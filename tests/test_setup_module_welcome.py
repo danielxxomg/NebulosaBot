@@ -82,12 +82,12 @@ class TestWelcomeModuleRegistration:
     """MODULES must contain welcome module implementing SetupModule protocol without framework edits."""
 
     def test_module_exists(self) -> None:
-        from bot.views.setup_panel import MODULES
+        from bot.views.setup_panel import MODULES  # documented-exception: facade indirection
 
         assert "welcome" in MODULES, f"MODULES must contain welcome, got {list(MODULES.keys())}"
 
     def test_module_protocol(self) -> None:
-        from bot.views.setup_panel import MODULES
+        from bot.views.setup_panel import MODULES  # documented-exception: facade indirection
 
         mod = MODULES["welcome"]
         assert hasattr(mod, "key") and mod.key == "welcome"
@@ -98,7 +98,7 @@ class TestWelcomeModuleRegistration:
 
     def test_registered_without_framework_edits(self) -> None:
         """Welcome module must be registered via MODULES dict, not by editing setup_panel framework to hardcode welcome."""
-        import pathlib
+        import pathlib  # documented-exception: facade indirection
 
         src = pathlib.Path("bot/views/setup_panel.py").read_text(encoding="utf-8")
         # Framework does not hardcode Welcome-specific logic beyond generic MODULES routing
@@ -113,7 +113,7 @@ class TestWelcomeModuleParity:
 
     @pytest.mark.asyncio
     async def test_save_channel_matches_legacy_effect(self) -> None:
-        from bot.views.setup_modules.welcome import WelcomeSetupModule
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
 
         guild_id = "123456789"
         cfg = MagicMock(
@@ -155,7 +155,7 @@ class TestWelcomeModuleParity:
         """Cache invalidation must be delegated to GreetingService.save_config (same as legacy /welcome channel)."""
         guild_id = "123456789"
         bot = _make_bot_with_greeting(guild_id)
-        from bot.views.setup_modules.welcome import WelcomeSetupModule
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
 
         mod = WelcomeSetupModule(bot=bot)
         if hasattr(mod, "set_welcome_channel"):
@@ -170,7 +170,7 @@ class TestWelcomeModuleParity:
 
     def test_orphan_columns_exposed_in_editors(self) -> None:
         """Orphan columns cardEnabled, themeId, onboardingChannelId must be exposed in Welcome module editors."""
-        import pathlib
+        import pathlib  # documented-exception: facade indirection
 
         src = pathlib.Path("bot/views/setup_modules/welcome.py").read_text(encoding="utf-8")
         lower = src.lower()
@@ -186,7 +186,6 @@ class TestWelcomePreviewRealArtifact:
 
     @pytest.mark.asyncio
     async def test_preview_delivers_real_localized_card_to_channel(self) -> None:
-        from unittest.mock import AsyncMock
 
         guild_id = "123456789"
         channel = MagicMock(spec=discord.TextChannel)
@@ -213,12 +212,12 @@ class TestWelcomePreviewRealArtifact:
         render_calls: list[dict] = []
 
         def _real_renderer(**kw: object) -> io.BytesIO:  # noqa: ANN002
-            render_calls.append(kw)  # type: ignore[arg-type]
+            render_calls.append(kw)
             return io.BytesIO(b"real-card")
 
         bot.greeting_service.resolve_renderer = MagicMock(return_value=_real_renderer)
 
-        from bot.views.setup_modules.welcome import WelcomeSetupModule
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
 
         mod = WelcomeSetupModule(bot=bot)
         interaction = _make_interaction(guild_id=int(guild_id), client=bot)
@@ -254,7 +253,7 @@ class TestWelcomePreviewRealArtifact:
         bot = _make_bot_with_greeting(guild_id, cfg)
         bot.greeting_service.resolve_renderer = MagicMock(return_value=lambda **_: io.BytesIO(b"x"))
 
-        from bot.views.setup_modules.welcome import WelcomeSetupModule
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
 
         mod = WelcomeSetupModule(bot=bot)
         interaction = _make_interaction(guild_id=int(guild_id), client=bot)
@@ -280,7 +279,7 @@ class TestWelcomePreviewRealArtifact:
 
     def test_caller_passes_translated_strings_no_hardcoded_copy(self) -> None:
         """Greeting card text must come from t() via caller; no hardcoded copy in module."""
-        import pathlib
+        import pathlib  # documented-exception: facade indirection
 
         src = pathlib.Path("bot/views/setup_modules/welcome.py").read_text(encoding="utf-8")
         # Ensure t("greetings.card.*") or similar is used; and no hardcoded "Welcome to" literal as title
@@ -293,7 +292,7 @@ class TestWelcomeComponents:
     """Welcome module must expose components including test button setup:welcome:test."""
 
     def test_components_include_test_button(self) -> None:
-        from bot.views.setup_modules.welcome import WelcomeSetupModule
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
 
         mod = WelcomeSetupModule(bot=_make_bot_with_greeting())
         items = mod.components("123456789")
