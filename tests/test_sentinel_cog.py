@@ -1252,7 +1252,9 @@ def test_warn_is_mod_dual_path_gated(sentinel_cog: SentinelCog) -> None:
     cmd = sentinel_cog.warn
     assert cmd is not None
     # Slash-only: single checks list on the Command
-    assert hasattr(cmd, "checks") and len(cmd.checks) > 0, "warn must have slash checks from @can_check(moderation.warn)"
+    assert hasattr(cmd, "checks") and len(cmd.checks) > 0, (
+        "warn must have slash checks from @can_check(moderation.warn)"
+    )
     # Must NOT be hybrid anymore
     assert not hasattr(cmd, "app_command"), "warn must be pure app command, not hybrid"
 

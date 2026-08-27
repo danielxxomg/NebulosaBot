@@ -510,6 +510,7 @@ class TestSubticketHelpI18n:
 
     def test_subticket_is_group_without_callback(self, cog: TicketsCog) -> None:
         from discord import app_commands as _a
+
         assert isinstance(cog.subticket, _a.Group)
         assert not hasattr(cog.subticket, "callback")
 
@@ -558,6 +559,7 @@ class TestNoteHelpI18n:
 
     def test_note_is_group_without_callback(self, cog: TicketsCog) -> None:
         from discord import app_commands as _a
+
         assert isinstance(cog.note, _a.Group)
         assert not hasattr(cog.note, "callback")
 

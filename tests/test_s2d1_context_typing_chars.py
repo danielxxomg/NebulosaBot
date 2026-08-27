@@ -84,7 +84,9 @@ class TestIsModDualPathCharacterization:
 
         # S6A slash-only: command wraps is_mod dual predicates
         assert hasattr(cmd, "checks") and len(cmd.checks) > 0, "slash path missing"
-        assert hasattr(cmd.callback, "__commands_checks__") and len(cmd.callback.__commands_checks__) > 0, "prefix predicate missing"
+        assert hasattr(cmd.callback, "__commands_checks__") and len(cmd.callback.__commands_checks__) > 0, (
+            "prefix predicate missing"
+        )
 
     @pytest.mark.asyncio
     async def test_inline_view_predicate_fail_closed(self, mock_interaction) -> None:
