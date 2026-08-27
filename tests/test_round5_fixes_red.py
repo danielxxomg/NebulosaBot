@@ -154,41 +154,40 @@ class TestOcioCogCommandErrorRed:
 
     @pytest.mark.asyncio
     async def test_cog_command_error_handles_cooldown_ephemeral(self) -> None:
-        """Behavioral: cog_command_error turns CommandOnCooldown into ephemeral embed.
+        """Behavioral: cog_app_command_error turns CommandOnCooldown into ephemeral embed."""
+        import discord
+        from discord import app_commands
 
-        ``cog_command_error`` is a discord.py special method auto-scoped to
-        the cog's own commands — unlike ``@Cog.listener() on_command_error``
-        which fires for ANY command bot-wide. Preserves the same cooldown-embed
-        logic (ephemeral=True, localized retry_after).
-        """
         from bot.cogs.ocio import OcioCog
 
         cog = OcioCog(MagicMock())
-        ctx = MagicMock(spec=commands.Context)
-        ctx.guild = MagicMock()
-        ctx.guild.id = 999
-        ctx.send = AsyncMock()
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild = MagicMock(id=999)
+        inter.guild.id = 999
+        inter.response = MagicMock()
+        inter.response.is_done.return_value = False
+        inter.response.send_message = AsyncMock()
+        inter.followup = MagicMock()
+        inter.followup.send = AsyncMock()
 
-        err = commands.CommandOnCooldown(commands.Cooldown(1, 5.0), 3.5, commands.BucketType.user)
-        await cog.cog_command_error(ctx, err)
+        err = app_commands.CommandOnCooldown(app_commands.Cooldown(1, 5.0), 3.5)
+        await cog.cog_app_command_error(inter, err)
 
-        ctx.send.assert_awaited_once()
-        kwargs = ctx.send.call_args.kwargs
+        assert inter.response.send_message.await_count or inter.followup.send.await_count
+        kwargs = (inter.response.send_message.call_args.kwargs if inter.response.send_message.await_count else inter.followup.send.call_args.kwargs)
         assert kwargs.get("ephemeral") is True, "cooldown embed MUST be ephemeral"
         assert kwargs.get("embed") is not None, "cooldown embed MUST be present"
 
     def test_source_has_cog_command_error_no_listener(self) -> None:
-        """Structural: ocio.py uses cog_command_error, NOT @Cog.listener on_command_error.
+        """Structural: ocio.py uses cog_app_command_error, NOT @Cog.listener on_command_error.
 
-        The old ``@commands.Cog.listener() async def on_command_error`` was
-        unscoped — it reacted to CommandOnCooldown from ANY command bot-wide.
-        ``cog_command_error`` is auto-scoped by discord.py to this cog's commands.
+        S6B slash-only: prefix cog_command_error is inert (no hybrid commands);
+        app cooldown is handled via cog_app_command_error + global handler.
         """
         src = pathlib.Path("bot/cogs/ocio.py").read_text(encoding="utf-8")
-        assert "async def cog_command_error" in src, "OcioCog MUST define cog_command_error (auto-scoped by discord.py)"
+        assert "async def cog_app_command_error" in src, "OcioCog MUST define cog_app_command_error"
         assert "async def on_command_error" not in src, (
-            "OcioCog MUST NOT have on_command_error listener — it is unscoped and "
-            "fires for ANY command bot-wide, duplicating cooldown feedback"
+            "OcioCog MUST NOT have on_command_error listener — it is unscoped"
         )
 
 

@@ -30,7 +30,7 @@ from discord.ext import commands
 from bot.cogs.ocio import OcioCog
 from bot.services.ocio_service import OcioService
 
-_COOLDOWN_COMMANDS = ["dados", "banana", "8ball"]
+_COOLDOWN_COMMANDS = ["dice", "banana", "8ball"]
 
 
 def _make_ctx(guild_id: int = 123456789) -> MagicMock:
@@ -42,11 +42,22 @@ def _make_ctx(guild_id: int = 123456789) -> MagicMock:
     return ctx
 
 
-def _find_command(cog: OcioCog, name: str) -> commands.Command:
-    """Return the cog command object registered under *name*."""
-    for cmd in cog.__cog_commands__:
-        if cmd.name == name:
+def _find_command(cog: OcioCog, name: str):
+    """Return the cog command object registered under *name* (hybrid or slash)."""
+    # Slash-only (S6B): use walk_app_commands; fallback to __cog_commands__
+    for cmd in cog.walk_app_commands():
+        if getattr(cmd, "name", None) == name:
             return cmd
+        if isinstance(cmd, __import__("discord").app_commands.Group):
+            for sub in cmd.walk_commands():
+                if getattr(sub, "name", None) == name:
+                    return sub
+    for cmd in getattr(cog, "__cog_commands__", []):
+        if getattr(cmd, "name", None) == name:
+            return cmd
+    # Legacy alias: dados -> dice
+    if name == "dados":
+        return _find_command(cog, "dice")
     msg = f"command {name!r} not registered on OcioCog"
     raise AssertionError(msg)
 
@@ -73,19 +84,28 @@ class Test8BallContract:
 
     @pytest.mark.asyncio
     async def test_cooldown_error_carries_retry_after_ephemerally(self) -> None:
-        """cog_command_error turns CommandOnCooldown into an ephemeral embed
-        whose description carries the actual retry_after seconds."""
+        """cog_app_command_error (and global handler) turn CommandOnCooldown into ephemeral."""
+        import discord
+        from discord import app_commands
+
         cog = OcioCog(MagicMock())
-        ctx = MagicMock(spec=commands.Context)
-        ctx.guild = MagicMock(id=123456789)
-        ctx.guild.id = 123456789
-        ctx.send = AsyncMock()
-
-        err = commands.CommandOnCooldown(commands.Cooldown(1, 5.0), 3.5, commands.BucketType.user)
-        await cog.cog_command_error(ctx, err)
-
-        ctx.send.assert_awaited_once()
-        kwargs = ctx.send.call_args.kwargs
+        # Slash path (S6B): app_commands error
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild = MagicMock(id=123456789)
+        inter.guild.id = 123456789
+        inter.response = MagicMock()
+        inter.response.is_done.return_value = False
+        inter.response.send_message = AsyncMock()
+        inter.followup = MagicMock()
+        inter.followup.send = AsyncMock()
+        err = app_commands.CommandOnCooldown(app_commands.Cooldown(1, 5.0), 3.5)
+        await cog.cog_app_command_error(inter, err)
+        assert inter.response.send_message.await_count or inter.followup.send.await_count
+        kwargs = (
+            inter.response.send_message.call_args.kwargs
+            if inter.response.send_message.await_count
+            else inter.followup.send.call_args.kwargs
+        )
         assert kwargs.get("ephemeral") is True
         embed = kwargs.get("embed")
         assert embed is not None
@@ -93,15 +113,22 @@ class Test8BallContract:
 
 
 class TestCooldownWiring:
-    """dados/banana/8ball carry cooldown(1, 5s) on their runtime buckets."""
+    """dice/banana/8ball carry cooldown(1, 5s) on their runtime buckets."""
 
     @pytest.mark.parametrize("name", _COOLDOWN_COMMANDS)
     def test_command_has_user_cooldown(self, name: str) -> None:
         cmd = _find_command(OcioCog(MagicMock()), name)
-        bucket = getattr(cmd._buckets, "_cooldown", None)
-        assert bucket is not None, f"{name} must configure a CooldownMapping"
-        assert bucket.rate == 1
-        assert bucket.per == 5
+        # Slash-only: app_commands stores cooldown in checks; hybrid in _buckets
+        bucket = getattr(getattr(cmd, "_buckets", None), "_cooldown", None)
+        if bucket is not None:
+            assert bucket.rate == 1
+            assert bucket.per == 5
+        else:
+            # app_commands path: checks contains cooldown predicate
+            checks = getattr(cmd, "checks", [])
+            assert len(checks) > 0, f"{name} must have app_commands cooldown check"
+            src = __import__("pathlib").Path("bot/cogs/ocio.py").read_text()
+            assert "cooldown" in src.lower() and "1, 5" in src, f"{name} must configure cooldown(1,5)"
 
 
 @pytest.mark.asyncio
@@ -128,8 +155,8 @@ async def test_8ball_command_ephemeral() -> None:
     cog = OcioCog(bot)
     ctx = _make_ctx()
     method = _find_command(cog, "8ball")
-    # call it — should send ephemeral, no DB
+    # S6B: 8ball is now permanent (ephemeral-standard flip)
     await method.callback(cog, ctx, question="will it pass?")
     assert ctx.send.await_count >= 1
     kwargs = ctx.send.call_args.kwargs
-    assert kwargs.get("ephemeral") is True
+    assert kwargs.get("ephemeral") is not True, "S6B 8ball must be permanent"

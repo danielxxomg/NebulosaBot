@@ -117,7 +117,7 @@ class Test8BallLocalizedMembership:
 
         ctx.send.assert_awaited_once()
         kwargs = ctx.send.call_args.kwargs
-        assert kwargs.get("ephemeral") is True, "8ball reply MUST be ephemeral"
+        assert kwargs.get("ephemeral") is not True, "S6B 8ball must be permanent"
         # The embed description embeds Q/A; the answer MUST be an es-set member.
         embed = kwargs.get("embed")
         assert embed is not None
@@ -340,7 +340,7 @@ class TestGuardsEscapeBehavioral:
 
         ctx.send.assert_awaited_once()
         kwargs = ctx.send.call_args.kwargs
-        assert kwargs.get("ephemeral") is True
+        assert kwargs.get("ephemeral") is not True  # S6B permanent
         am = kwargs.get("allowed_mentions")
         assert am is not None, "8ball MUST set allowed_mentions"
         assert getattr(am, "everyone", True) is False, "8ball MUST suppress @everyone"

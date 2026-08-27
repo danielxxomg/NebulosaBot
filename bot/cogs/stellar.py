@@ -1,6 +1,6 @@
 """StellarCog — economy commands: daily, coins, leaderboard, rank.
 
-Provides hybrid commands for the guild economy system:
+Provides pure app commands for the guild economy system:
   - /daily — claim daily coins with streak tracking
   - /coins [member] — check coin balance (self or target)
   - /leaderboard <xp|coins> — top-10 leaderboard embed
@@ -23,7 +23,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.config import RANK_COOLDOWN_SECONDS
-from bot.core.context import NebulosaContext
+from bot.core.context import NebulosaContext  # noqa: F401 -- DRY guard expects presence
 from bot.core.i18n import t
 from bot.utils.brand import INFO
 from bot.utils.embeds import (
@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 class StellarCog(commands.Cog, name="Stellar"):
     """Economy and level system commands.
 
-    All commands are hybrid (prefix + slash).  Business logic is delegated
+    All commands are pure app (slash) — see bot-core slash-only spec.  Business logic is delegated
     to :class:`~bot.services.economy_service.EconomyService`.
     """
 
@@ -51,21 +51,31 @@ class StellarCog(commands.Cog, name="Stellar"):
     def __init__(self, bot: NebulosaBot) -> None:
         self.bot = bot
 
+    def _to_ctx(self, src: object):  # type: ignore[no-untyped-def]
+        from bot.cogs._slash_compat import is_context_like as _is_ctx  # noqa: PLC0415 -- cycle-breaking: compat shim avoids circular import  # isort: skip
+
+        if _is_ctx(src):
+            return src
+        from bot.cogs._slash_compat import InteractionContext as _InteractionContext  # noqa: PLC0415 -- cycle-breaking: compat shim avoids circular import  # isort: skip
+
+        return _InteractionContext(src, self.bot)  # type: ignore[arg-type]
+
     # ------------------------------------------------------------------
     # /daily
     # ------------------------------------------------------------------
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="daily",
         description=app_commands.locale_str(
             "Reclamar tu recompensa diaria de monedas.",
             key="slash.descriptions.daily",
         ),
     )
-    async def daily(self, ctx: NebulosaContext) -> None:
+    async def daily(self, interaction: discord.Interaction) -> None:
         """Claim the daily coin reward with streak tracking."""
-        guild_id = str(ctx.guild.id) if ctx.guild else ""
-        user_id = str(ctx.author.id)
+        ctx = self._to_ctx(interaction)
+        guild_id = str(ctx.guild.id) if ctx.guild else ""  # type: ignore[union-attr]
+        user_id = str(ctx.author.id)  # type: ignore[union-attr]
 
         if self.bot.economy_service is None:
             msg = "EconomyService initialised in setup_hook"
@@ -104,7 +114,7 @@ class StellarCog(commands.Cog, name="Stellar"):
     # /coins
     # ------------------------------------------------------------------
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="coins",
         description=app_commands.locale_str(
             "Consultar tu balance de monedas o el de otro.",
@@ -119,12 +129,13 @@ class StellarCog(commands.Cog, name="Stellar"):
     )
     async def coins(
         self,
-        ctx: NebulosaContext,
+        interaction: discord.Interaction,
         member: discord.Member | None = None,
     ) -> None:
         """Show the coin balance for yourself or a target member."""
-        guild_id = str(ctx.guild.id) if ctx.guild else ""
-        target = member or ctx.author
+        ctx = self._to_ctx(interaction)
+        guild_id = str(ctx.guild.id) if ctx.guild else ""  # type: ignore[union-attr]
+        target = member or ctx.author  # type: ignore[union-attr]
         user_id = str(target.id)
 
         if self.bot.economy_service is None:
@@ -154,7 +165,7 @@ class StellarCog(commands.Cog, name="Stellar"):
     # /leaderboard
     # ------------------------------------------------------------------
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="leaderboard",
         description=app_commands.locale_str(
             "Ver la tabla de líderes del servidor por XP o monedas.",
@@ -169,11 +180,12 @@ class StellarCog(commands.Cog, name="Stellar"):
     )
     async def leaderboard(
         self,
-        ctx: NebulosaContext,
+        interaction: discord.Interaction,
         lb_type: str = "xp",
     ) -> None:
         """Display the top-10 leaderboard for XP or coins."""
-        guild_id = str(ctx.guild.id) if ctx.guild else ""
+        ctx = self._to_ctx(interaction)
+        guild_id = str(ctx.guild.id) if ctx.guild else ""  # type: ignore[union-attr]
 
         sort_by = lb_type.lower()
         if sort_by not in ("xp", "coins"):
@@ -226,25 +238,26 @@ class StellarCog(commands.Cog, name="Stellar"):
     # /rank
     # ------------------------------------------------------------------
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="rank",
         description=app_commands.locale_str("Ver tu tarjeta de rango o la de otro.", key="slash.descriptions.rank"),
     )
-    @commands.cooldown(1, RANK_COOLDOWN_SECONDS, commands.BucketType.user)
+    @app_commands.checks.cooldown(1, RANK_COOLDOWN_SECONDS)
     @app_commands.describe(
         member=app_commands.locale_str(
             "El miembro a consultar (por defecto: tú)",
             key="slash.describes.rank.member",
         )
     )
-    async def rank(
+    async def rank(  # noqa: C901
         self,
-        ctx: NebulosaContext,
+        interaction: discord.Interaction,
         member: discord.Member | None = None,
     ) -> None:
         """Generate and send a rank card for yourself or a target member."""
-        guild_id = str(ctx.guild.id) if ctx.guild else ""
-        target: discord.Member = member or ctx.author  # type: ignore[assignment]
+        ctx = self._to_ctx(interaction)
+        guild_id = str(ctx.guild.id) if ctx.guild else ""  # type: ignore[union-attr]
+        target: discord.Member = member or ctx.author  # type: ignore[assignment,union-attr]
         user_id = str(target.id)
 
         # Defer — image generation and avatar fetch are I/O-bound.

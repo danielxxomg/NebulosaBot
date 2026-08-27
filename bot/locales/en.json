@@ -76,7 +76,8 @@
       },
       "sweep_integrity": "Run an integrity sweep over active ticket channels.",
       "repair_ticket": "Repair a ticket whose channel was deleted (requires corroboration).",
-      "8ball": "Ask the magic 8-ball."
+      "8ball": "Ask the magic 8-ball.",
+      "dice": "Roll a dice."
     },
     "describes": {
       "help": {
@@ -208,7 +209,13 @@
       },
       "8ball": {
         "question": "The question to ask the 8-ball"
+      },
+      "dice": {
+        "sides": "Number of sides (2-100)"
       }
+    },
+    "names": {
+      "dice": "dice"
     }
   },
   "core": {
@@ -796,6 +803,10 @@
     "cooldown": {
       "title": "Cooldown",
       "description": "Wait {retry_after:.1f}s before using this command again."
+    },
+    "dice": {
+      "title": "🎲 Dice Roll",
+      "description": "You rolled a **{result}** (d{sides})"
     }
   },
   "sentinel": {

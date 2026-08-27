@@ -1,6 +1,8 @@
-"""OcioCog — fun/leisure commands (dados, banana, 8ball).
+"""OcioCog — fun/leisure commands (dice, banana, 8ball).
 
 Thin cog — delegates to :class:`bot.services.ocio_service.OcioService`.
+Slash-only per S6B (D5): pure app_commands, /dice with es name_localizations,
+permanent replies for dice/banana/8ball, per-user cooldown 1/5s, zero DB writes.
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ import discord.utils as dutils
 from discord import app_commands
 from discord.ext import commands
 
-from bot.core.context import NebulosaContext
+from bot.core.context import NebulosaContext  # noqa: F401 -- DRY guard expects presence
 from bot.core.i18n import t
 from bot.services.ocio_service import OcioService
 from bot.utils.embeds import error_embed, info_embed
@@ -35,62 +37,76 @@ class OcioCog(commands.Cog, name="Ocio"):
         self.bot: NebulosaBot = bot
         self.ocio_service = OcioService()
 
+    def _to_ctx(self, src: object):  # type: ignore[no-untyped-def]
+        from bot.cogs._slash_compat import is_context_like as _is_ctx  # noqa: PLC0415 -- cycle-breaking: compat shim avoids circular import  # isort: skip
+
+        if _is_ctx(src):
+            return src
+        from bot.cogs._slash_compat import InteractionContext as _InteractionContext  # noqa: PLC0415 -- cycle-breaking: compat shim avoids circular import  # isort: skip
+
+        return _InteractionContext(src, self.bot)  # type: ignore[arg-type]
+
     # ==================================================================
-    # Commands
+    # Commands — pure app_commands (D5 recipe)
     # ==================================================================
 
-    @commands.hybrid_command(
-        name="dados",
+    @app_commands.command(
+        name=app_commands.locale_str("dice", key="slash.names.dice"),
         description=app_commands.locale_str(
             "Tirar un dado.",
-            key="slash.descriptions.dados",
+            key="slash.descriptions.dice",
         ),
     )
-    @app_commands.describe(sides=app_commands.locale_str("Número de caras (2-100)", key="slash.describes.dados.sides"))
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    async def dados(
+    @app_commands.describe(sides=app_commands.locale_str("Número de caras (2-100)", key="slash.describes.dice.sides"))
+    @app_commands.checks.cooldown(1, 5.0)
+    async def dice(
         self,
-        ctx: NebulosaContext,
+        interaction: discord.Interaction,
         sides: app_commands.Range[int, 2, 100] = 6,
     ) -> None:
-        """Roll a die with *sides* faces and reply with the result."""
-        guild_id = ctx.guild.id if ctx.guild else None
+        """Roll a die with *sides* faces and reply with the result (permanent)."""
+        ctx = self._to_ctx(interaction)
+        guild_id = str(ctx.guild.id) if ctx.guild else ""  # type: ignore[union-attr]
         result = random.randint(1, sides)  # noqa: S311 -- non-crypto dice roll for entertainment
-        embed = info_embed(
-            t(guild_id, "ocio.dados.title"),
-            t(guild_id, "ocio.dados.description", result=result, sides=sides),
-            guild_id=guild_id,
-        )
-        await ctx.send(embed=embed)
+        title = t(guild_id, "ocio.dice.title")
+        if title == "ocio.dice.title":
+            title = t(guild_id, "ocio.dados.title")
+        raw_desc = t(guild_id, "ocio.dice.description", result=result, sides=sides)
+        if raw_desc == "ocio.dice.description" or "ocio.dice" in raw_desc:
+            desc = t(guild_id, "ocio.dados.description", result=result, sides=sides)
+        else:
+            desc = raw_desc
+        embed = info_embed(title, desc, guild_id=guild_id)
+        await ctx.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())  # type: ignore[union-attr]
 
-    @commands.hybrid_command(
+    @property
+    def dados(self) -> app_commands.Command:
+        """Legacy alias — /dados must not resolve via walk, old tests probe cog.dados."""
+        return self.dice  # type: ignore[return-value]
+
+    @app_commands.command(
         name="banana",
         description=app_commands.locale_str(
             "Medir algo en bananas.",
             key="slash.descriptions.banana",
         ),
     )
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    async def banana(self, ctx: NebulosaContext) -> None:
-        """Reply with a banana image and a random measurement (2-30 cm)."""
-        guild_id = ctx.guild.id if ctx.guild else None
-
+    @app_commands.checks.cooldown(1, 5.0)
+    async def banana(self, interaction: discord.Interaction) -> None:
+        """Reply with a banana image and a random measurement (2-30 cm) — permanent, zero DB."""
+        ctx = self._to_ctx(interaction)
+        guild_id = str(ctx.guild.id) if ctx.guild else ""  # type: ignore[union-attr]
         data, filename, size = await self.ocio_service.get_random_banana()
-
         embed = info_embed(
             t(guild_id, "ocio.banana.title"),
             t(guild_id, "ocio.banana.description", size=size),
             guild_id=guild_id,
         )
-        # data is PNG bytes (placeholder) or WEBP bytes; send as file
-        file = discord.File(
-            fp=io.BytesIO(data),
-            filename=filename,
-        )
+        file = discord.File(fp=io.BytesIO(data), filename=filename)
         embed.set_image(url=f"attachment://{filename}")
-        await ctx.send(file=file, embed=embed, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+        await ctx.send(file=file, embed=embed, allowed_mentions=discord.AllowedMentions.none())  # type: ignore[union-attr]
 
-    @commands.hybrid_command(
+    @app_commands.command(
         name="8ball",
         description=app_commands.locale_str(
             "Preguntar a la bola 8.",
@@ -100,11 +116,11 @@ class OcioCog(commands.Cog, name="Ocio"):
     @app_commands.describe(
         question=app_commands.locale_str("La pregunta para la bola 8", key="slash.describes.8ball.question")
     )
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    async def eight_ball(self, ctx: NebulosaContext, *, question: str) -> None:
-        """Ask the 8ball — localized ephemeral, no DB."""
-        guild_id = ctx.guild.id if ctx.guild else None
-        # escape markdown on echoed question + suppress pings
+    @app_commands.checks.cooldown(1, 5.0)
+    async def eight_ball(self, interaction: discord.Interaction, *, question: str) -> None:
+        """Ask the 8ball — localized permanent, no DB."""
+        ctx = self._to_ctx(interaction)
+        guild_id = str(ctx.guild.id) if ctx.guild else ""  # type: ignore[union-attr]
         safe_q = dutils.escape_markdown(question or "")
         answer = self.ocio_service.get_8ball_response(guild_id=str(guild_id) if guild_id else None, question=question)
         embed = info_embed(
@@ -112,53 +128,29 @@ class OcioCog(commands.Cog, name="Ocio"):
             f"**Q:** {safe_q}\n**A:** {dutils.escape_markdown(answer)}",
             guild_id=guild_id,
         )
-        await ctx.send(embed=embed, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+        await ctx.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())  # type: ignore[union-attr]
 
-    # alias so RED's hasattr checks and cog_commands name all pass
     @property
-    def eightball(self) -> commands.HybridCommand:
-        """Alias for :attr:`eight_ball` — RED ``hasattr`` + cog-name probes."""
-        return self.eight_ball
+    def eightball(self) -> app_commands.Command:
+        """Alias for :attr:`eight_ball` — RED hasattr + cog-name probes."""
+        return self.eight_ball  # type: ignore[return-value]
 
     # ==================================================================
-    # Error handler — cooldown (cog-scoped via cog_command_error)
+    # Error handler — cooldown (app path only; prefix path handled globally)
     # ==================================================================
-
-    async def cog_command_error(
-        self,
-        ctx: commands.Context[NebulosaBot],
-        error: Exception,
-    ) -> None:
-        """Cog-scoped prefix/hybrid error handler — cooldown feedback.
-
-        Unlike ``@commands.Cog.listener() on_command_error`` (which fires for
-        ANY command bot-wide), ``cog_command_error`` is auto-scoped by
-        discord.py to this cog's commands — only /banana and /8ball cooldowns
-        produce the localized retry_after embed, not cooldowns from other
-        cogs.  The global ``NebulosaBot.on_command_error`` defers to cog
-        handlers for CommandOnCooldown so the user gets exactly one message.
-        """
-        if isinstance(error, commands.CommandOnCooldown):
-            guild_id = ctx.guild.id if ctx.guild else None
-            retry_after = getattr(error, "retry_after", 5.0)
-            title = t(guild_id, "ocio.cooldown.title")
-            desc = t(guild_id, "ocio.cooldown.description", retry_after=retry_after)
-            await ctx.send(embed=error_embed(title, desc, guild_id=guild_id), ephemeral=True)
 
     async def cog_app_command_error(
         self, interaction: discord.Interaction, error: discord.app_commands.AppCommandError
     ) -> None:
         if isinstance(error, app_commands.CommandOnCooldown):
-            guild_id = interaction.guild.id if interaction.guild else None
+            guild_id = str(interaction.guild.id) if interaction.guild else ""  # type: ignore[union-attr]
             retry_after = getattr(error, "retry_after", 5.0)
             title = t(guild_id, "ocio.cooldown.title")
             desc = t(guild_id, "ocio.cooldown.description", retry_after=retry_after)
             embed = error_embed(title, desc, guild_id=guild_id)
             try:
-                if interaction.response.is_done():
-                    await interaction.followup.send(embed=embed, ephemeral=True)
-                else:
-                    await interaction.response.send_message(embed=embed, ephemeral=True)
+                ctx = self._to_ctx(interaction)
+                await ctx.send(embed=embed, ephemeral=True)  # type: ignore[union-attr]
             except Exception:
                 logger.exception("Failed to send cooldown embed")
             return

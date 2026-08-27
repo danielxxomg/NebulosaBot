@@ -77,7 +77,7 @@ El bot usa **dos capas de permisos**:
 
 | Nivel | Check | Comandos |
 |-------|-------|----------|
-| Usuario | Ninguno | `/ping`, `/help`, `/avatar`, `/serverinfo`, `/userinfo`, `/dados`, `/banana`, `/8ball`, `/daily`, `/coins`, `/leaderboard`, `/rank` |
+| Usuario | Ninguno | `/ping`, `/help`, `/avatar`, `/serverinfo`, `/userinfo`, `/dice`, `/banana`, `/8ball`, `/daily`, `/coins`, `/leaderboard`, `/rank` |
 | Moderador | `@is_mod()` | `/status`, `/warn`, `/unwarn`, `/mute`, `/unmute`, `/kick`, `/lock`, `/unlock`, `/modlogs`, todos los comandos de tickets |
 | Administrador | `@is_admin()` | `/sync`, `/ban`, `/setup`, `/ticket_panel`, `/create_category`, `/list_categories`, `/delete_category`, `/configure_fields`, `/welcome`, `/goodbye`, `/welcome_test`, `/goodbye_test` |
 
@@ -157,8 +157,8 @@ Las claves de caché incluyen `guild_id` para aislar datos entre servidores.
 
 | Tarea | Comando | Resultado |
 |-------|---------|-----------|
-| Tirar un dado de 6 caras | `/dados` | Resultado aleatorio 1-6 |
-| Tirar un dado personalizado | `/dados 20` | Resultado aleatorio 1-20 (2-100 caras) |
+| Tirar un dado de 6 caras | `/dice` | Resultado aleatorio 1-6 |
+| Tirar un dado personalizado | `/dice 20` | Resultado aleatorio 1-20 (2-100 caras) |
 | Medir en bananas | `/banana` | Imagen de banana con medición aleatoria (2-30 cm) |
 | Preguntar a la bola 8 | `/8ball <pregunta>` | Respuesta aleatoria (20 variantes, efímero) |
 
@@ -298,7 +298,7 @@ El bot registra transiciones de voz (join, leave, move, mute/deafen) en el canal
 | `/coins` | `[@usuario]` | Balance de monedas |
 | `/leaderboard` | `[xp\|coins]` | Top 10 por XP o monedas |
 | `/rank` | `[@usuario]` | Tarjeta de rango como imagen |
-| `/dados` | `[caras]` | Tira un dado (2-100 caras, por defecto 6) |
+| `/dice` | `[caras]` | Tira un dado (2-100 caras, por defecto 6) |
 | `/banana` | — | Medición aleatoria en bananas |
 | `/8ball` | `[pregunta]` | Bola 8: responde a una pregunta de sí/no (efímero, 20 respuestas) |
 

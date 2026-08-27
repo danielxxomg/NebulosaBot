@@ -381,7 +381,8 @@ SLASH_DESCRIPTIONS: dict[str, str] = {
     "goodbye toggle": "slash.descriptions.goodbye.toggle",
     "goodbye message": "slash.descriptions.goodbye.message",
     # Ocío
-    "dados": "slash.descriptions.dados",
+    "dice": "slash.descriptions.dice",
+    "dados": "slash.descriptions.dice",
     "banana": "slash.descriptions.banana",
     "8ball": "slash.descriptions.8ball",
 }
@@ -459,6 +460,7 @@ SLASH_DESCRIBES: dict[str, dict[str, str]] = {
     "goodbye channel": {"channel": "slash.describes.goodbye.channel.channel"},
     "goodbye message": {"template": "slash.describes.goodbye.message.template"},
     # Ocío
-    "dados": {"sides": "slash.describes.dados.sides"},
+    "dice": {"sides": "slash.describes.dice.sides"},
+    "dados": {"sides": "slash.describes.dice.sides"},
     "8ball": {"question": "slash.describes.8ball.question"},
 }

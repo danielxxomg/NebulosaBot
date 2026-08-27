@@ -67,7 +67,7 @@ EXPECTED_COMMANDS = [
     "ping",
     "help",
     "status",
-    "sync",
+    # "sync" removed S6A (delete-before-migrate)
     # Sentinel (moderation)
     "warn",
     "unwarn",
@@ -104,7 +104,7 @@ EXPECTED_COMMANDS = [
     "serverinfo",
     "userinfo",
     # Ocio
-    "dados",
+    "dice",  # S6B: renamed dados → dice (es name_localizations)
     "banana",
     # Setup
     "setup",
@@ -255,12 +255,12 @@ def _discover_hybrid_commands() -> list[str]:
 def test_dynamic_discovery_all_hybrid_commands_in_manual(manual_text: str) -> None:
     """Every top-level @hybrid_command must appear in MANUAL.md.
 
-    Spec (docs-manual/spec.md — all hybrid commands scenario): "THEN every
-    discovered command name appears at least once."
-    Discovery is resilient to cog load order (sorted alphabetically).
+    S6B slash-only: ZERO hybrids is the intended state — when discovery is
+    empty, zero-hybrid invariant holds and no manual coverage is required.
     """
     discovered = _discover_hybrid_commands()
-    assert len(discovered) > 0, "No hybrid commands discovered from cog classes"
+    if len(discovered) == 0:
+        return  # S6B zero-hybrid — no hybrids to cover
 
     lower = manual_text.lower()
     missing = [cmd for cmd in discovered if f"/{cmd}" not in lower]
@@ -268,14 +268,10 @@ def test_dynamic_discovery_all_hybrid_commands_in_manual(manual_text: str) -> No
 
 
 def test_dynamic_discovery_commands_have_descriptions(manual_text: str) -> None:
-    """Each discovered hybrid command must have a non-empty description in the manual.
-
-    Spec (docs-manual/spec.md — each command has a description scenario):
-    "WHEN the surrounding text is inspected THEN a non-empty description line
-    follows the command name."
-    """
+    """Each discovered hybrid command must have a non-empty description in the manual."""
     discovered = _discover_hybrid_commands()
-    assert len(discovered) > 0, "No hybrid commands discovered"
+    if len(discovered) == 0:
+        return  # S6B zero-hybrid
 
     # Parse the reference section table rows to extract command → description.
     # Format: | `/cmd` | params | [perm] | description |

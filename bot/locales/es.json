@@ -76,7 +76,8 @@
       },
       "sweep_integrity": "Verificar los canales de tickets activos y cerrar los que ya no existen.",
       "repair_ticket": "Reparar un ticket cuyo canal fue eliminado (requiere corroboración).",
-      "8ball": "Preguntar a la bola 8."
+      "8ball": "Preguntar a la bola 8.",
+      "dice": "Tirar un dado."
     },
     "describes": {
       "help": {
@@ -208,7 +209,13 @@
       },
       "8ball": {
         "question": "La pregunta para la bola 8"
+      },
+      "dice": {
+        "sides": "Número de lados (2-100)"
       }
+    },
+    "names": {
+      "dice": "dados"
     }
   },
   "core": {
@@ -796,6 +803,10 @@
     "cooldown": {
       "title": "Enfriamiento",
       "description": "Espera {retry_after:.1f}s antes de usar este comando de nuevo."
+    },
+    "dice": {
+      "title": "🎲 Tirada de Dados",
+      "description": "Tiraste un **{result}** (d{sides})"
     }
   },
   "sentinel": {

@@ -233,7 +233,7 @@ class TestBananaNoDbCommandPath:
         await cog.banana.callback(cog, ctx)
 
         kwargs = ctx.send.call_args.kwargs
-        assert kwargs.get("ephemeral") is True, "/banana reply MUST be ephemeral"
+        assert kwargs.get("ephemeral") is not True, "S6B /banana must be permanent"
 
 
 # ===========================================================================

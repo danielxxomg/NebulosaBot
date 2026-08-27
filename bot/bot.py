@@ -492,6 +492,23 @@ class NebulosaBot(commands.Bot):
 
         guild_id = interaction.guild.id if interaction.guild else None
 
+        # S6B: CommandOnCooldown → ephemeral localized retry_after (ocio + stellar)
+        if isinstance(error, app_commands.CommandOnCooldown):
+            retry_after = getattr(error, "retry_after", 5.0)
+            embed = error_embed(
+                t(guild_id, "ocio.cooldown.title"),
+                t(guild_id, "ocio.cooldown.description", retry_after=retry_after),
+                guild_id=guild_id,
+            )
+            try:
+                if interaction.response.is_done():
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                else:
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
+            except discord.HTTPException:
+                logger.exception("Failed to send app-cooldown embed")
+            return
+
         # Permission denials get dedicated ephemeral replies (bot-core delta):
         # localized, naming the missing permissions when applicable, and with
         # NO full traceback shown to the user. MissingPermissions is a
