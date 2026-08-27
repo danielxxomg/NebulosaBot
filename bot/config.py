@@ -52,7 +52,7 @@ def _verify_jwt_signature(key: str) -> str | None:
     if not secret:
         return None
     try:
-        import jwt as pyjwt
+        import jwt as pyjwt  # noqa: PLC0415 -- optional-dependency probe; PyJWT may be absent, lazy verification
     except ImportError:  # noqa: BLE001 -- optional PyJWT dependency; absence means unverifiable
         return None
     try:
@@ -85,7 +85,7 @@ def _verify_jwt_jwks(key: str) -> str | None:
         return None
     # Reject algs not in allowlist to block alg confusion (no HS256 fallback).
     try:
-        import jwt as pyjwt
+        import jwt as pyjwt  # noqa: PLC0415 -- optional-dependency probe; PyJWT may be absent, lazy verification
 
         header = pyjwt.get_unverified_header(key)
     except Exception:  # noqa: BLE001 -- JWT header probe; any parse failure means unverifiable
@@ -180,7 +180,7 @@ def validate_supabase_key(key: str) -> None:
     if key.count(".") == 2:
         # Try JWKS (RS256+ES256) first when header says RS256/ES256 and JWKS configured.
         try:
-            import jwt as _pyjwt
+            import jwt as _pyjwt  # noqa: PLC0415 -- optional-dependency probe; PyJWT may be absent, lazy verification
 
             hdr = _pyjwt.get_unverified_header(key)
             if hdr.get("alg") in _JWKS_ALGS:

@@ -306,6 +306,7 @@ class StellarCog(commands.Cog, name="Stellar"):
                 rank=rank_info["rank"],
                 xp_for_current=rank_info["xp_current"],
                 xp_for_next=rank_info["xp_needed"],
+                guild_id=guild_id,
             )
 
         file = discord.File(buffer, filename="rank.png")

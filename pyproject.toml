@@ -132,7 +132,8 @@ select = [
     "G",    # flake8-logging
     "A",    # flake8-builtins
     "PT011",  # flake8-pytest-style single rule (PT rest deferred)
-    # PLC0415 requested import not top-level — advisory only, NEVER in select (PLR/PTH/SLF deferred)
+    "PLC0415",  # requested import not at top-level (S5.5 hygiene — survivors carry documented noqa)
+
 ]
 
 [tool.ruff.lint.mccabe]
@@ -148,13 +149,13 @@ max-complexity = 15
 "tests/test_pr6_tach_boundaries.py" = ["S101", "S105", "S106", "ARG", "T20", "TRY003", "EM101", "FURB110", "RET504", "RET505", "PERF401", "SIM108", "S603", "S607", "FURB101", "E501"]
 "tests/test_welcome_foundation_pr1_*.py" = ["S101", "S105", "S106", "ARG", "T20", "TRY003", "EM101", "FURB110", "RET504", "RET505", "PERF401", "SIM108", "S603", "S607", "N802", "E741"]
 "tests/test_pr3_prek_replaces_precommit.py" = ["S101", "S105", "S106", "ARG", "T20", "TRY003", "EM101", "FURB110", "RET504", "RET505", "PERF401", "SIM108", "S603"]
-"tests/**/*.py" = ["S101", "S105", "S106", "ARG", "T20", "TRY003", "EM101", "FURB110", "RET504", "RET505", "PERF401", "SIM108", "ANN", "PYI", "PGH", "RUF052", "RUF029", "RUF069", "RUF050", "RUF100", "S404", "FURB101", "FURB113", "FURB142", "S603", "E501", "PYI034"]
+"tests/**/*.py" = ["S101", "S105", "S106", "ARG", "T20", "TRY003", "EM101", "FURB110", "RET504", "RET505", "PERF401", "SIM108", "ANN", "PYI", "PGH", "RUF052", "RUF029", "RUF069", "RUF050", "RUF100", "S404", "FURB101", "FURB113", "FURB142", "S603", "E501", "PYI034", "PLC0415"]
 "tests/test_bot_probe.py" = ["ASYNC240"]
 "tests/test_pr3_ocio_service_red.py" = ["ASYNC240"]
 "tests/test_remediation_final_partials.py" = ["ASYNC240"]
 "tests/test_s2d1_context_typing_chars.py" = ["ASYNC240"]
 "tests/test_schema_inventory_verifier.py" = ["ASYNC240"]
-"scripts/**/*.py" = ["S404", "RUF052", "FURB101"]  # out of scope for PR4c (preview collateral)
+"scripts/**/*.py" = ["S404", "RUF052", "FURB101", "PLC0415"]  # out of scope for PR4c (preview collateral); PLC0415 scripts are CLI probes, not bot hygiene
 # PR4c: full quality suppression removal — bot/** now lint-clean (40 findings fixed via real code changes + narrow noqa with reasons).
 # Per-file broad suppression for bot/** removed; remaining narrow noqa per-site retained.
 "bot/services/ocio_service.py" = ["TRY301"]

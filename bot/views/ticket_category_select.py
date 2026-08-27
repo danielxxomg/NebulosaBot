@@ -22,9 +22,11 @@ logger = logging.getLogger(__name__)
 
 def _get_t() -> Any:
     try:
-        import bot.views.tickets as _facade
+        import bot.views.tickets as _facade  # noqa: PLC0415 -- facade indirection — category select cycle with tickets facade
     except ImportError:
-        from bot.core.i18n import t as _direct
+        from bot.core.i18n import (  # noqa: PLC0415 -- facade indirection — category select cycle with tickets facade
+            t as _direct,
+        )
 
         return _direct
     else:
@@ -33,9 +35,11 @@ def _get_t() -> Any:
 
 def _get_is_mod_check() -> Any:
     try:
-        import bot.views.tickets as _facade
+        import bot.views.tickets as _facade  # noqa: PLC0415 -- facade indirection — category select cycle with tickets facade
     except ImportError:
-        from bot.utils.checks import is_mod_check as _direct
+        from bot.utils.checks import (  # noqa: PLC0415 -- facade indirection — category select cycle with tickets facade
+            is_mod_check as _direct,
+        )
 
         return _direct
     else:
@@ -94,11 +98,13 @@ class _CategorySelect(discord.ui.Select[discord.ui.View]):
 
         # Lazy modal import to avoid circular.
         try:
-            import bot.views.tickets as _facade
+            import bot.views.tickets as _facade  # noqa: PLC0415 -- facade indirection — category select cycle with tickets facade
 
             _modal_cls = _facade.TicketIntakeModal
         except ImportError:
-            from bot.views.ticket_panel import TicketIntakeModal as _modal_cls2  # noqa: N813
+            from bot.views.ticket_panel import (  # noqa: PLC0415 -- facade indirection — category select cycle with tickets facade
+                TicketIntakeModal as _modal_cls2,  # noqa: N813
+            )
 
         _mcls = _modal_cls if "_modal_cls" in dir() else _modal_cls2  # ty: ignore[possibly-unresolved-reference]
         await interaction.response.send_modal(
@@ -149,7 +155,9 @@ class _EditCategorySelect(discord.ui.Select[discord.ui.View]):
     async def callback(self, interaction: discord.Interaction) -> None:
         _t = _get_t()
         _is_mod_check = _get_is_mod_check()
-        from bot.bot import NebulosaBot
+        from bot.bot import (  # noqa: PLC0415 -- facade indirection — category select cycle with tickets facade
+            NebulosaBot,
+        )
 
         new_category_id = self.values[0]
         guild = self._guild

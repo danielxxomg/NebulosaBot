@@ -7,9 +7,11 @@ from __future__ import annotations
 
 import io
 import logging
+import random
 from typing import TYPE_CHECKING
 
 import discord
+import discord.utils as dutils
 from discord import app_commands
 from discord.ext import commands
 
@@ -52,8 +54,6 @@ class OcioCog(commands.Cog, name="Ocio"):
         sides: app_commands.Range[int, 2, 100] = 6,
     ) -> None:
         """Roll a die with *sides* faces and reply with the result."""
-        import random
-
         guild_id = ctx.guild.id if ctx.guild else None
         result = random.randint(1, sides)  # noqa: S311 -- non-crypto dice roll for entertainment
         embed = info_embed(
@@ -103,8 +103,6 @@ class OcioCog(commands.Cog, name="Ocio"):
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def eight_ball(self, ctx: NebulosaContext, *, question: str) -> None:
         """Ask the 8ball — localized ephemeral, no DB."""
-        import discord.utils as dutils
-
         guild_id = ctx.guild.id if ctx.guild else None
         # escape markdown on echoed question + suppress pings
         safe_q = dutils.escape_markdown(question or "")

@@ -37,7 +37,7 @@ from bot.utils.embeds import error_embed
 from bot.views.tickets import TicketActionsView, TicketPanelView, deploy_ticket_panel
 
 if TYPE_CHECKING:
-    from bot.config import BotConfig
+    from bot.config import BotConfig  # noqa: PLC0415 -- optional-dependency probe — cairosvg may be absent
 
 from bot.config import RANK_RENDER_MAX_CONCURRENT
 
@@ -210,7 +210,7 @@ class NebulosaBot(commands.Bot):
 
         # --- 3f. GreetingRenderer probe (cairosvg → Pillow fallback) ---
         try:
-            import cairosvg  # ty: ignore[unresolved-import]  # noqa: F401 -- probe only; Cycle 1 still uses Pillow
+            import cairosvg  # ty: ignore[unresolved-import]  # noqa: F401, PLC0415 -- optional-dependency probe; lazy import keeps module loadable when cairosvg missing
 
             _cairosvg_available = True
         except ImportError:

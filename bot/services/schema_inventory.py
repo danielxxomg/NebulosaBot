@@ -412,7 +412,7 @@ class SchemaInventory:
         # Migrations: 27 exact version/name pairs (not count-only).
         # Cycle-break import: live_catalog imports LiveEvidenceReport from this
         # module at top level, so the reverse import must stay local.
-        from bot.services.live_catalog import (
+        from bot.services.live_catalog import (  # noqa: PLC0415 -- cycle-breaking import; live_catalog -> schema_inventory cycle
             get_local_migration_names as _local_names,  # noqa: PLC0415 -- cycle-breaking import (live_catalog -> schema_inventory)
         )
 

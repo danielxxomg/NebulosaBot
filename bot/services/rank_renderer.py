@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import io
 
+from bot.core.i18n import t
 from bot.services import shared_assets
 from bot.utils.brand import LEGACY_BLURPLE_RGBA, MUTED_TEXT
 
@@ -79,8 +80,13 @@ class RankRenderer:
         rank: int,
         xp_for_current: float,
         xp_for_next: float,
+        guild_id: str | int | None = None,
     ) -> io.BytesIO:
-        """Generate a rank card PNG image."""
+        """Generate a rank card PNG image.
+
+        Card labels (level / XP / rank) resolve via :func:`bot.core.i18n.t`
+        so the image reflects guild language instead of hardcoded English.
+        """
         # -- Base image with gradient background --------------------------
         img, draw = shared_assets._card_base()
 
@@ -116,9 +122,12 @@ class RankRenderer:
         )
 
         # -- Level label --------------------------------------------------
+        level_text = t(guild_id, "stellar.rank.card.level", level=level)
+        if level_text == "stellar.rank.card.level":
+            level_text = f"Level {level}"
         draw.text(
             (LEVEL_X, LEVEL_Y),
-            f"Level {level}",
+            level_text,
             fill=LEVEL_COLOR,
             font=font_level,
         )
@@ -146,7 +155,11 @@ class RankRenderer:
             )
 
         # -- XP text -------------------------------------------------------
-        xp_text = f"{int(xp_for_current):,} / {int(xp_for_next):,} XP"
+        xp_current_s = f"{int(xp_for_current):,}"
+        xp_next_s = f"{int(xp_for_next):,}"
+        xp_text = t(guild_id, "stellar.rank.card.xp", current=xp_current_s, next=xp_next_s)
+        if xp_text == "stellar.rank.card.xp":
+            xp_text = f"{xp_current_s} / {xp_next_s} XP"
         draw.text(
             (XP_TEXT_X, XP_TEXT_Y),
             xp_text,
@@ -155,7 +168,9 @@ class RankRenderer:
         )
 
         # -- Rank number (right-aligned) -----------------------------------
-        rank_text = f"#{rank}"
+        rank_text = t(guild_id, "stellar.rank.card.rank", rank=rank)
+        if rank_text == "stellar.rank.card.rank":
+            rank_text = f"#{rank}"
         rank_bbox = draw.textbbox((0, 0), rank_text, font=font_rank)
         rank_width = rank_bbox[2] - rank_bbox[0]
         draw.text(

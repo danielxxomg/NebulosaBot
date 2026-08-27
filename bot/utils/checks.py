@@ -11,6 +11,7 @@ from typing import Any
 
 import discord
 from discord import app_commands
+from discord.ext import commands
 
 logger = logging.getLogger(__name__)
 
@@ -180,10 +181,8 @@ def can_check(permission: str) -> Any:
 
     Registers checks on BOTH prefix (commands.check) and slash (app_commands.check).
     """
-    import discord as _discord
-    from discord.ext import commands as _commands
 
-    async def _app_predicate(interaction: _discord.Interaction) -> bool:
+    async def _app_predicate(interaction: discord.Interaction) -> bool:
         if not interaction.guild:
             msg = "This command can only be used in a server."
             raise app_commands.NoPrivateMessage(msg)
@@ -193,13 +192,13 @@ def can_check(permission: str) -> Any:
         msg = f"Missing permission: {permission}"
         raise app_commands.CheckFailure(msg)
 
-    async def _prefix_predicate(ctx: _commands.Context) -> bool:
+    async def _prefix_predicate(ctx: commands.Context) -> bool:
         if not ctx.guild:
             msg = "This command can only be used in a server."
-            raise _commands.NoPrivateMessage(msg)
-        if not isinstance(ctx.author, _discord.Member):
+            raise commands.NoPrivateMessage(msg)
+        if not isinstance(ctx.author, discord.Member):
             msg = "This command can only be used by guild members."
-            raise _commands.CheckFailure(msg)
+            raise commands.CheckFailure(msg)
         if await can(permission, ctx):
             return True
         # For prefix, distinguish mod-role configured? Generic failure keeps spec simple.
@@ -209,10 +208,10 @@ def can_check(permission: str) -> Any:
         # on_command_error and the user gets a message — app_commands.CheckFailure
         # derives from AppCommandError/DiscordException, not commands.CommandError.
         msg = f"Missing permission: {permission}"
-        raise _commands.CheckFailure(msg)
+        raise commands.CheckFailure(msg)
 
     def decorator(func: Any) -> Any:
-        return _commands.check(_prefix_predicate)(app_commands.check(_app_predicate)(func))
+        return commands.check(_prefix_predicate)(app_commands.check(_app_predicate)(func))
 
     decorator.predicate = _app_predicate  # type: ignore[attr-defined]
     decorator.prefix_predicate = _prefix_predicate  # type: ignore[attr-defined]
@@ -231,10 +230,8 @@ def is_admin() -> Any:
         @is_admin()
         async def sync(self, ctx): ...
     """
-    import discord as _discord
-    from discord.ext import commands as _commands
 
-    async def _app_predicate(interaction: _discord.Interaction) -> bool:
+    async def _app_predicate(interaction: discord.Interaction) -> bool:
         if not interaction.guild:
             msg = "This command can only be used in a server."
             raise app_commands.NoPrivateMessage(msg)
@@ -244,18 +241,18 @@ def is_admin() -> Any:
 
         return True
 
-    async def _prefix_predicate(ctx: _commands.Context) -> bool:
+    async def _prefix_predicate(ctx: commands.Context) -> bool:
         if not ctx.guild:
             msg = "This command can only be used in a server."
-            raise _commands.NoPrivateMessage(msg)
+            raise commands.NoPrivateMessage(msg)
 
-        if not isinstance(ctx.author, _discord.Member) or not ctx.author.guild_permissions.administrator:
-            raise _commands.MissingPermissions(["administrator"])
+        if not isinstance(ctx.author, discord.Member) or not ctx.author.guild_permissions.administrator:
+            raise commands.MissingPermissions(["administrator"])
 
         return True
 
     def decorator(func: Any) -> Any:
-        return _commands.check(_prefix_predicate)(app_commands.check(_app_predicate)(func))
+        return commands.check(_prefix_predicate)(app_commands.check(_app_predicate)(func))
 
     # Expose predicates for testing.
     decorator.predicate = _app_predicate  # type: ignore[attr-defined]
@@ -365,10 +362,8 @@ def is_mod() -> Any:
         @is_mod()
         async def warn(self, ctx, member: discord.Member): ...
     """
-    import discord as _discord
-    from discord.ext import commands as _commands
 
-    async def predicate(interaction: _discord.Interaction) -> bool:
+    async def predicate(interaction: discord.Interaction) -> bool:
         # DM guard surfaces the specific NoPrivateMessage exception —
         # is_mod_check only returns False for DMs (never raises).
         if not interaction.guild:
@@ -392,14 +387,14 @@ def is_mod() -> Any:
 
         raise app_commands.MissingRole(mod_role_id)
 
-    async def _prefix_predicate(ctx: _commands.Context) -> bool:
+    async def _prefix_predicate(ctx: commands.Context) -> bool:
         if not ctx.guild:
             msg = "This command can only be used in a server."
-            raise _commands.NoPrivateMessage(msg)
+            raise commands.NoPrivateMessage(msg)
 
-        if not isinstance(ctx.author, _discord.Member):
+        if not isinstance(ctx.author, discord.Member):
             msg = "This command can only be used by guild members."
-            raise _commands.CheckFailure(msg)
+            raise commands.CheckFailure(msg)
 
         # Admin always passes.
         if ctx.author.guild_permissions.administrator:
@@ -412,15 +407,15 @@ def is_mod() -> Any:
 
         if mod_role_id is None:
             msg = "No moderator role is configured for this server. Only administrators can use this command."
-            raise _commands.CheckFailure(msg)
+            raise commands.CheckFailure(msg)
 
         if _user_has_role(ctx.author, mod_role_id):
             return True
 
-        raise _commands.MissingRole(mod_role_id)
+        raise commands.MissingRole(mod_role_id)
 
     def decorator(func: Any) -> Any:
-        return _commands.check(_prefix_predicate)(app_commands.check(predicate)(func))
+        return commands.check(_prefix_predicate)(app_commands.check(predicate)(func))
 
     # Expose predicates for testing, matching is_admin().
     decorator.predicate = predicate  # type: ignore[attr-defined]

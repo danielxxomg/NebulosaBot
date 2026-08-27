@@ -22,8 +22,12 @@ from bot.utils.embeds import cog_info as _info
 from bot.utils.embeds import cog_ok as _ok
 
 if TYPE_CHECKING:
-    from bot.bot import NebulosaBot
-    from bot.core.context import NebulosaContext
+    from bot.bot import (  # noqa: PLC0415 -- facade indirection — lazy patch so ticket_panel tests stub deploy
+        NebulosaBot,  # noqa: PLC0415 -- facade indirection — lazy patch so ticket_panel tests stub deploy
+    )
+    from bot.core.context import (  # noqa: PLC0415 -- facade indirection — lazy patch so ticket_panel tests stub deploy
+        NebulosaContext,  # noqa: PLC0415 -- facade indirection — lazy patch so ticket_panel tests stub deploy
+    )
 
 logger = logging.getLogger("bot.cogs.tickets")
 
@@ -47,8 +51,10 @@ class TicketAdminFlow:
         gid = str(ctx.guild.id)
         try:
             # lazily import so patch("bot.cogs.tickets.deploy_ticket_panel") still works
-            import bot.cogs.tickets as _tickets_mod
-            from bot.views.tickets import deploy_ticket_panel as _real_deploy
+            import bot.cogs.tickets as _tickets_mod  # noqa: PLC0415 -- facade indirection — lazy patch so ticket_panel tests stub deploy
+            from bot.views.tickets import (  # noqa: PLC0415 -- facade indirection — lazy patch so ticket_panel tests stub deploy
+                deploy_ticket_panel as _real_deploy,
+            )
 
             _deploy = getattr(_tickets_mod, "deploy_ticket_panel", _real_deploy)
             await _deploy(

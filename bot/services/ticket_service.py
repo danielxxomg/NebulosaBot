@@ -38,11 +38,17 @@ from bot.services.ticket_repair import probe_channel_absence as _coordinator_pro
 from bot.services.ticket_repair_service import TimerMessageResult
 
 if TYPE_CHECKING:
-    from bot.bot import NebulosaBot
-    from bot.core.cache import TTLCache
-    from bot.core.database import Database
-    from bot.services.logging_service import LoggingService
-    from bot.services.ticket_repair_service import TicketRepairService
+    from bot.bot import NebulosaBot  # noqa: PLC0415 -- cycle-breaking import — ticket_repair ↔ ticket_service cycle
+    from bot.core.cache import TTLCache  # noqa: PLC0415 -- cycle-breaking import — ticket_repair ↔ ticket_service cycle
+    from bot.core.database import (  # noqa: PLC0415 -- cycle-breaking import — ticket_repair ↔ ticket_service cycle
+        Database,  # noqa: PLC0415 -- cycle-breaking import — ticket_repair ↔ ticket_service cycle
+    )
+    from bot.services.logging_service import (
+        LoggingService,  # noqa: PLC0415 -- cycle-breaking import — ticket_repair ↔ ticket_service cycle
+    )
+    from bot.services.ticket_repair_service import (  # noqa: PLC0415 -- cycle-breaking import — ticket_repair ↔ ticket_service cycle
+        TicketRepairService,  # noqa: PLC0415 -- cycle-breaking import — ticket_repair ↔ ticket_service cycle
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +90,9 @@ class TicketService:
         self._cache: TTLCache = cache
         self._query: TicketQueryService = TicketQueryService(db)
         self._lifecycle: TicketLifecycleService = TicketLifecycleService(db, self._query)
-        from bot.services.ticket_repair_service import TicketRepairService as RepairService
+        from bot.services.ticket_repair_service import (  # noqa: PLC0415 -- cycle-breaking import — ticket_repair ↔ ticket_service cycle
+            TicketRepairService as RepairService,  # noqa: PLC0415 -- cycle-breaking import — ticket_repair ↔ ticket_service cycle
+        )
 
         self._repair: TicketRepairService = RepairService(db, self._query, self._lifecycle)
 

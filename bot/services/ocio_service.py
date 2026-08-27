@@ -8,7 +8,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+from io import BytesIO
 from pathlib import Path
+
+from PIL import Image, ImageDraw
 
 from bot.core.i18n import t
 
@@ -21,10 +24,6 @@ _EMPTY_FILE_MSG = "empty file"
 
 def _pillow_banana_placeholder() -> bytes:
     """Render a Pillow placeholder banana image → PNG bytes."""
-    from io import BytesIO
-
-    from PIL import Image, ImageDraw
-
     img = Image.new("RGB", _BANANA_PLACEHOLDER_SIZE, color=(255, 225, 100))
     draw = ImageDraw.Draw(img)
     draw.ellipse((40, 80, 216, 176), fill=(255, 215, 0), outline=(200, 150, 0), width=3)

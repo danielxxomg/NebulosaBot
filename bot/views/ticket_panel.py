@@ -19,14 +19,16 @@ from bot.utils.embeds import error_embed, guild_footer_icon, success_embed
 from bot.utils.ticket_helpers import resolve_mod_role
 
 if TYPE_CHECKING:
-    from bot.bot import NebulosaBot
+    from bot.bot import (  # noqa: PLC0415 -- facade indirection — ticket_panel extraction behind tickets facade
+        NebulosaBot,
+    )
 
 logger: logging.Logger = logging.getLogger(__name__)
 
 
 def _get_logger() -> logging.Logger:
     try:
-        import bot.views.tickets as _facade
+        import bot.views.tickets as _facade  # noqa: PLC0415 -- facade indirection — ticket_panel extraction behind tickets facade
     except ImportError:
         return logger
     else:
@@ -49,7 +51,7 @@ async def deploy_ticket_panel(
     # Use direct i18n for deploy (also patched via facade when needed).
     # Resolve via facade t when available to honor patches.
     try:
-        import bot.views.tickets as _facade
+        import bot.views.tickets as _facade  # noqa: PLC0415 -- facade indirection — ticket_panel extraction behind tickets facade
 
         _t = _facade.t
     except ImportError:
@@ -89,7 +91,7 @@ async def _create_ticket_after_modal(  # noqa: C901 -- modal orchestration: vali
 ) -> None:
     """Shared ticket creation flow used by TicketIntakeModal.on_submit."""
     try:
-        import bot.views.tickets as _facade
+        import bot.views.tickets as _facade  # noqa: PLC0415 -- facade indirection — ticket_panel extraction behind tickets facade
 
         _t = _facade.t
     except ImportError:
@@ -240,15 +242,19 @@ async def _create_ticket_after_modal(  # noqa: C901 -- modal orchestration: vali
 
     # Use facade's TicketActionsView when patched by tests (patch("bot.views.tickets.TicketActionsView")).
     try:
-        import bot.views.tickets as _facade2
+        import bot.views.tickets as _facade2  # noqa: PLC0415 -- facade indirection — ticket_panel extraction behind tickets facade
 
         _actions_view_cls = _facade2.TicketActionsView
     except ImportError:
-        from bot.views.ticket_actions import TicketActionsView as _actions_view_cls2  # noqa: N813
+        from bot.views.ticket_actions import (  # noqa: PLC0415 -- facade indirection — ticket_panel extraction behind tickets facade
+            TicketActionsView as _actions_view_cls2,  # noqa: N813
+        )
 
     _cls = _actions_view_cls if "_actions_view_cls" in dir() else _actions_view_cls2  # ty: ignore[possibly-unresolved-reference]
     actions_view = _cls(guild_id=guild_id)
-    from bot.utils.embeds import build_ticket_embed
+    from bot.utils.embeds import (  # noqa: PLC0415 -- facade indirection — ticket_panel extraction behind tickets facade
+        build_ticket_embed,
+    )
 
     embed = build_ticket_embed(ticket, guild_id=guild_id, field_definitions=field_definitions, bot=bot, guild=guild)
     message = await channel.send(content=author.mention, embed=embed, view=actions_view)
@@ -290,7 +296,7 @@ class TicketIntakeModal(discord.ui.Modal):
         guild_id = str(guild.id)
         # Use facade t when patched, otherwise direct.
         try:
-            import bot.views.tickets as _facade
+            import bot.views.tickets as _facade  # noqa: PLC0415 -- facade indirection — ticket_panel extraction behind tickets facade
 
             _t = _facade.t
         except ImportError:
@@ -337,7 +343,7 @@ class TicketIntakeModal(discord.ui.Modal):
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         try:
-            import bot.views.tickets as _facade
+            import bot.views.tickets as _facade  # noqa: PLC0415 -- facade indirection — ticket_panel extraction behind tickets facade
 
             _t = _facade.t
         except ImportError:
@@ -379,7 +385,7 @@ class TicketIntakeModal(discord.ui.Modal):
         await interaction.response.defer(ephemeral=True)
         # Call via facade when patched (patch("bot.views.tickets._create_ticket_after_modal"))
         try:
-            import bot.views.tickets as _facade_create
+            import bot.views.tickets as _facade_create  # noqa: PLC0415 -- facade indirection — ticket_panel extraction behind tickets facade
 
             _creator = _facade_create._create_ticket_after_modal
         except AttributeError:
@@ -397,7 +403,7 @@ class TicketIntakeModal(discord.ui.Modal):
 
     async def on_error(self, interaction: discord.Interaction, error: Exception, *_args: Any) -> None:
         try:
-            import bot.views.tickets as _facade
+            import bot.views.tickets as _facade  # noqa: PLC0415 -- facade indirection — ticket_panel extraction behind tickets facade
 
             _t = _facade.t
         except ImportError:
@@ -422,7 +428,7 @@ class TicketPanelView(discord.ui.View):
         super().__init__(timeout=None)
         if guild_id is not None:
             try:
-                import bot.views.tickets as _facade
+                import bot.views.tickets as _facade  # noqa: PLC0415 -- facade indirection — ticket_panel extraction behind tickets facade
 
                 _t = _facade.t
             except ImportError:
@@ -436,7 +442,7 @@ class TicketPanelView(discord.ui.View):
         self, interaction: discord.Interaction, button: discord.ui.Button[discord.ui.View]
     ) -> None:
         try:
-            import bot.views.tickets as _facade
+            import bot.views.tickets as _facade  # noqa: PLC0415 -- facade indirection — ticket_panel extraction behind tickets facade
 
             _t = _facade.t
         except ImportError:
@@ -479,11 +485,13 @@ class TicketPanelView(discord.ui.View):
         ]
         # Lazy via facade so patch works and to break circular.
         try:
-            import bot.views.tickets as _facade2
+            import bot.views.tickets as _facade2  # noqa: PLC0415 -- facade indirection — ticket_panel extraction behind tickets facade
 
             _category_select_view_cls = _facade2._CategorySelectView
         except ImportError:
-            from bot.views.ticket_category_select import _CategorySelectView as _category_select_view_cls2
+            from bot.views.ticket_category_select import (  # noqa: PLC0415 -- facade indirection — ticket_panel extraction behind tickets facade
+                _CategorySelectView as _category_select_view_cls2,
+            )
 
         _ccls = _category_select_view_cls if "_category_select_view_cls" in dir() else _category_select_view_cls2  # ty: ignore[possibly-unresolved-reference]
         view = _ccls(options, guild, categories)

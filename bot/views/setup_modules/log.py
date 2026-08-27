@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import typing
 
@@ -103,8 +104,6 @@ class LogSetupModule:
             return
 
         if action == "test":
-            import contextlib
-
             with contextlib.suppress(Exception):  # noqa: BLE001
                 await interaction.response.defer(ephemeral=True)
             try:
