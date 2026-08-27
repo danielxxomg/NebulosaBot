@@ -70,9 +70,9 @@ class CrashReportService:
                 # Echo suppression hook if present.
                 on_write = getattr(self._db, "_on_write", None)
                 if callable(on_write):
-                    try:
-                        await on_write("crash_report", row.get("id", ""))  # type: ignore[arg-type]
-                    except Exception:  # noqa: BLE001 -- best-effort echo suppression
+                    try:  # noqa: SIM105 -- best-effort echo suppression
+                        await on_write("crash_report", row.get("id", ""))
+                    except Exception:  # noqa: BLE001, S110 -- best-effort echo suppression, intentional pass
                         pass
                 return
             logger.warning("CrashReportService: no insert path available (db has no _client)")

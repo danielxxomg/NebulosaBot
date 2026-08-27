@@ -69,10 +69,10 @@ class TestCrashReportServiceRecord:
     async def test_unhandled_records_one_row(self) -> None:
         # Must import service (S3.6)
         try:
-            mod = importlib.import_module("bot.services.crash_report_service")
+            mod = importlib.import_module("bot.services.crash_report_service")  # noqa: F841 -- imported for existence check
         except ModuleNotFoundError:
             pytest.fail("bot/services/crash_report_service.py missing — S3.6 not landed")
-        CrashReportService = getattr(mod, "CrashReportService", None)
+        CrashReportService = getattr(mod, "CrashReportService", None)  # noqa: N806 -- test mirrors class name
         assert CrashReportService is not None, "CrashReportService missing"
         mock_db = MagicMock()
         mock_db.insert_crash_report = AsyncMock(return_value={})

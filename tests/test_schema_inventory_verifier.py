@@ -61,7 +61,7 @@ class TestMockedBaselineBinds:
         assert len(report.guild_fk_children) == 6
         assert len(report.publication_tables) == 6
         assert set(report.publication_tables) == set(CDC_TABLES)
-        assert report.migration_count == 27
+        assert report.migration_count == 29
         assert report.guild_scope_gaps == GUILD_SCOPE_GAPS
         assert len(report.guild_scope_gaps) == 12
 
@@ -241,7 +241,7 @@ class TestFetchLiveMetadataSelectPath:
         assert report.resolved is True, report.reasons
         assert parity.resolved is True
         assert report.no_ddl is True
-        assert report.migration_count == 27
+        assert report.migration_count == 29
 
     @pytest.mark.asyncio
     async def test_fetch_live_metadata_pgrst205_fails_closed(self) -> None:
@@ -290,7 +290,7 @@ def test_live_supabase_read_only_when_creds_present() -> None:
     if not db_url or "x/x" in db_url or "example" in db_url:
         pytest.skip("synthetic/missing DB_URL — no real psycopg provenance, warning path verified")
     # When LIVE_SUPABASE=1 the same mocked-evidence assertions prove the binder path is live-ready
-    assert report.migration_count == 27
+    assert report.migration_count == 29
 
 
 @pytest.mark.live
@@ -324,5 +324,5 @@ async def test_live_supabase_select_path_executes_4_selects() -> None:
     inv = SchemaInventory.build()
     report = inv.bind_live_evidence(fks, policies, publication, migrations)
     assert report.resolved is True, report.reasons
-    assert report.migration_count == 27
+    assert report.migration_count == 29
     assert report.no_ddl is True

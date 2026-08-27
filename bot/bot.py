@@ -256,7 +256,7 @@ class NebulosaBot(commands.Bot):
             self.add_view(SetupPanelView())
             set_setup_bot(self)
             logger.info("Persistent setup panel view registered")
-        except Exception:
+        except Exception:  # noqa: BLE001 -- best-effort retention/cron, never crash setup_hook
             logger.exception("Failed to register SetupPanelView")
         logger.info("Persistent ticket views registered")
 
@@ -269,7 +269,7 @@ class NebulosaBot(commands.Bot):
             try:
                 await self.load_extension(ext_path)
                 logger.info("Extension loaded: %s", ext_path)
-            except Exception:
+            except Exception:  # noqa: BLE001 -- best-effort retention/cron, never crash setup_hook
                 logger.exception("Failed to load extension %s", ext_path)
 
         # --- 4b. Retention upsert + cron reconcile (S3.8) ---
@@ -292,7 +292,7 @@ class NebulosaBot(commands.Bot):
     # Retention upsert + cron reconcile (S3.8)
     # ==================================================================
 
-    async def _setup_retention(self) -> None:
+    async def _setup_retention(self) -> None:  # noqa: C901 -- retention upsert + cron reconcile branches intentional for S3
         """Upsert retention_setting from config and reconcile pg_cron.
 
         Reads TTLs from an optional OperationalConfig (bot/operational_config.py,
@@ -319,7 +319,7 @@ class NebulosaBot(commands.Bot):
                 if callable(load_fn):
                     try:
                         cfg = load_fn()
-                    except Exception:
+                    except Exception:  # noqa: BLE001 -- best-effort retention/cron, never crash setup_hook
                         cfg = None
                 if cfg is not None:
                     ret = getattr(cfg, "retention", None)
@@ -333,7 +333,7 @@ class NebulosaBot(commands.Bot):
                         enabled = getattr(flags, "retention_enabled", None)
                         if isinstance(enabled, bool):
                             retention_enabled = enabled
-        except Exception:
+        except Exception:  # noqa: BLE001 -- best-effort retention/cron, never crash setup_hook
             logger.debug("OperationalConfig not available — using seeded retention defaults", exc_info=True)
 
         # Upsert retention_setting via direct SQL (via _client if available)
@@ -345,16 +345,16 @@ class NebulosaBot(commands.Bot):
                         await client.table("retention_setting").upsert(
                             {"key": key, "days": days}, on_conflict="key"
                         ).execute()
-                    except Exception:
+                    except Exception:  # noqa: BLE001 -- best-effort retention/cron, never crash setup_hook
                         # Fallback: raw RPC / execute_sql if table helper fails
                         logger.debug("retention_setting upsert via table failed for %s", key, exc_info=True)
                         # Try via rpc if available
                         try:
                             await client.rpc("upsert_retention_setting", {"p_key": key, "p_days": days}).execute()
-                        except Exception:
+                        except Exception:  # noqa: BLE001 -- best-effort retention/cron, never crash setup_hook
                             logger.warning("retention_setting upsert fallback also failed for %s", key, exc_info=True)
             logger.info("Retention settings upserted: %s (enabled=%s)", retention_defaults, retention_enabled)
-        except Exception:
+        except Exception:  # noqa: BLE001 -- best-effort retention/cron, never crash setup_hook
             logger.warning("Failed to upsert retention_setting", exc_info=True)
 
         # Cron reconcile: flag off → unschedule
@@ -370,14 +370,14 @@ class NebulosaBot(commands.Bot):
                     ):
                         try:
                             await client.rpc("cron_unschedule", {"jobname": job}).execute()
-                        except Exception:
+                        except Exception:  # noqa: BLE001 -- best-effort retention/cron, never crash setup_hook
                             # Fallback: direct SQL via rpc
                             try:
                                 await client.rpc("exec_sql", {"q": f"SELECT cron.unschedule('{job}')"}).execute()
-                            except Exception:
+                            except Exception:  # noqa: BLE001 -- best-effort retention/cron, never crash setup_hook
                                 logger.debug("cron unschedule failed for %s", job, exc_info=True)
                 logger.info("Retention disabled — cron jobs unscheduled")
-            except Exception:
+            except Exception:  # noqa: BLE001 -- best-effort retention/cron, never crash setup_hook
                 logger.warning("Failed to unschedule retention cron jobs", exc_info=True)
 
     # ==================================================================
@@ -406,7 +406,7 @@ class NebulosaBot(commands.Bot):
             # so the Realtime CDC handler suppresses the echo.
             if self.db is not None:
                 self.db._on_write = self._realtime_subscriber.mark_recent_write
-        except Exception:
+        except Exception:  # noqa: BLE001 -- best-effort retention/cron, never crash setup_hook
             logger.exception("Failed to start Realtime subscriber — continuing with TTL-only cache invalidation")
             self._realtime_subscriber = None
 
@@ -419,7 +419,7 @@ class NebulosaBot(commands.Bot):
             if self.db is not None:
                 self.db._on_write = None
             await self._realtime_subscriber.stop()
-        except Exception:
+        except Exception:  # noqa: BLE001 -- best-effort retention/cron, never crash setup_hook
             logger.exception("Realtime subscriber stop() failed during shutdown")
         self._realtime_subscriber = None
 
@@ -455,7 +455,7 @@ class NebulosaBot(commands.Bot):
         if ctx.guild is not None and self.guild_service is not None:
             try:
                 ctx._guild_config = await self.guild_service.get_config(str(ctx.guild.id))
-            except Exception:
+            except Exception:  # noqa: BLE001 -- best-effort retention/cron, never crash setup_hook
                 logger.exception(
                     "Failed to pre-fetch guild config for context (guild=%s)",
                     ctx.guild.id,
@@ -531,7 +531,7 @@ class NebulosaBot(commands.Bot):
                         command=qname,
                         traceback_text=tb_text,
                     )
-            except Exception:  # noqa: BLE001 -- crash reporting never breaks error handler
+            except Exception:  # noqa: BLE001 -- best-effort retention/cron, never crash setup_hook  # noqa: BLE001 -- crash reporting never breaks error handler
                 logger.warning("Failed to record crash_report for app command", exc_info=True)
             embed = error_embed(
                 t(guild_id, "common.error.unexpected_title"),
@@ -629,7 +629,7 @@ class NebulosaBot(commands.Bot):
                         command=qname,
                         traceback_text=tb_text,
                     )
-            except Exception:  # noqa: BLE001 -- crash reporting never breaks error handler
+            except Exception:  # noqa: BLE001 -- best-effort retention/cron, never crash setup_hook  # noqa: BLE001 -- crash reporting never breaks error handler
                 logger.warning("Failed to record crash_report for command", exc_info=True)
             embed = error_embed(
                 t(guild_id, "common.error.command_error_title"),
@@ -711,7 +711,7 @@ class NebulosaBot(commands.Bot):
                 config = await self.guild_service.get_config(str(guild.id))
                 if config.ticket_panel_message_id:
                     guild_ids.append(str(guild.id))
-            except Exception:
+            except Exception:  # noqa: BLE001 -- best-effort retention/cron, never crash setup_hook
                 logger.exception(
                     "Failed to read config for guild %s during panel validation",
                     guild.id,

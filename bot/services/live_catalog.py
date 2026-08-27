@@ -61,11 +61,13 @@ LOCAL_MIGRATION_STEMS: tuple[str, ...] = (
     "025_drop_ticket_backup_categoryid_text_20260818",
     "026_realtime_member_economy_config",
     "027_private_transcript_bucket",
+    "028_retention",
+    "029_crash_report_indexes",
 )
 
 
 def get_local_migration_names(*, migrations_dir: str = "migrations") -> list[str]:
-    """Return exact 27 local migration stems (no extension) — sorted.
+    """Return exact 29 local migration stems (no extension) — sorted.
 
     The returned names must match ``supabase_migrations.schema_migrations``
     remote entries exactly (version/name pair), not just count equality.

@@ -67,6 +67,8 @@ EXPECTED_LOCAL_MIGRATIONS = sorted([
     "025_drop_ticket_backup_categoryid_text_20260818",
     "026_realtime_member_economy_config",
     "027_private_transcript_bucket",
+    "028_retention",
+    "029_crash_report_indexes",
 ])
 
 
@@ -82,7 +84,7 @@ def _mocked_fks() -> list[dict[str, str]]:
 
 
 class TestRedLiveCatalogModuleExists:
-    """RED: live_catalog module exists and pins exact 27-stem migration identity."""
+    """RED: live_catalog module exists and pins exact 29-stem migration identity."""
 
     def test_live_catalog_module_importable(self) -> None:
 

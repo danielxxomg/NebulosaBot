@@ -426,7 +426,7 @@ class SchemaInventory:
             if "/" in s:
                 s = s.rsplit("/", 1)[-1]
             normalized_live.add(s)
-        if len(live_migrations) != 27 or not any("015" in str(m) for m in live_migrations):
+        if len(live_migrations) != 29 or not any("015" in str(m) for m in live_migrations):
             reasons.append("migration_count_mismatch")
         if normalized_live != local_stems:
             reasons.append("migration_identity_mismatch")
