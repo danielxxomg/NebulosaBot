@@ -132,7 +132,7 @@ class TestOperationalConfigLoader:
             ):
                 assert secret_key not in seen, f"{p} must not contain secret key {secret_key!r} as a TOML key"
 
-    def test_unknown_keys_warning_and_ignored(self, tmp_path: Path, caplog: pytest.Caplog) -> None:
+    def test_unknown_keys_warning_and_ignored(self, tmp_path: Path, caplog: pytest.Caplog) -> None:  # type: ignore[unresolved-attribute]
         _ = pytest  # noqa: F401 -- keep import alive for type checker
 
         try:
