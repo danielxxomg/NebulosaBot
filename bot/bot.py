@@ -7,7 +7,9 @@ Wires together the database, cache, services, and cogs during
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import logging
+import traceback
 from collections.abc import Coroutine
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -21,6 +23,7 @@ from bot.core.context import NebulosaContext
 from bot.core.database import Database, create_realtime_client
 from bot.core.i18n import LocaleTranslator, load_locales, t, validate_slash_localizations
 from bot.core.realtime import RealtimeCacheSubscriber
+from bot.services.crash_report_service import CrashReportService
 from bot.services.economy_service import EconomyService
 from bot.services.greeting_renderer import PillowGreetingRenderer
 from bot.services.greeting_service import GreetingService
@@ -245,7 +248,10 @@ class NebulosaBot(commands.Bot):
         self.add_view(TicketActionsView())
         # S2a: Setup panel persistent view (static custom_ids, breadcrumb token)
         try:
-            from bot.views.setup_panel import SetupPanelView, set_setup_bot
+            from bot.views.setup_panel import (  # noqa: PLC0415 -- optional-dependency probe: panel may not be landed in S0
+                SetupPanelView,
+                set_setup_bot,
+            )
 
             self.add_view(SetupPanelView())
             set_setup_bot(self)
@@ -266,6 +272,9 @@ class NebulosaBot(commands.Bot):
             except Exception:
                 logger.exception("Failed to load extension %s", ext_path)
 
+        # --- 4b. Retention upsert + cron reconcile (S3.8) ---
+        await self._setup_retention()
+
         # --- 5. Validate slash localizations + set translator + tree sync ---
         logger.info("Validating slash localizations ...")
         validate_slash_localizations(self.tree)
@@ -278,6 +287,98 @@ class NebulosaBot(commands.Bot):
         logger.info("Command tree synced")
 
         logger.info("NebulosaBot.setup_hook() complete")
+
+    # ==================================================================
+    # Retention upsert + cron reconcile (S3.8)
+    # ==================================================================
+
+    async def _setup_retention(self) -> None:
+        """Upsert retention_setting from config and reconcile pg_cron.
+
+        Reads TTLs from an optional OperationalConfig (bot/operational_config.py,
+        S4) if present, else falls back to seeded defaults (30/180/30). The
+        cron schedule itself lives in SQL (028/029 DO $guard$ blocks); this
+        hook reconciles the flag: when retention is disabled, unschedule the
+        jobs. All paths are best-effort — failure never crashes setup_hook.
+        """
+        if self.db is None:
+            return
+        # Try to load OperationalConfig if S4 has landed; otherwise use defaults.
+        retention_enabled = True
+        retention_defaults: dict[str, int] = {"tickets": 30, "infractions": 180, "crash": 30}
+        try:
+            # Import lazily so S3 works before S4 lands (config file may not exist yet).
+            spec = importlib.util.find_spec("bot.operational_config")
+            if spec is not None:
+                import bot.operational_config as op_mod  # noqa: PLC0415 -- optional-dependency probe: S4 not yet landed  # type: ignore[import-untyped]
+
+                # OperationalConfig may expose retention via .retention or .flags
+                cfg = None
+                # Try factory/load if available
+                load_fn = getattr(op_mod, "load_operational_config", None)
+                if callable(load_fn):
+                    try:
+                        cfg = load_fn()
+                    except Exception:
+                        cfg = None
+                if cfg is not None:
+                    ret = getattr(cfg, "retention", None)
+                    if ret is not None:
+                        for k in ("tickets", "infractions", "crash"):
+                            v = getattr(ret, k, None)
+                            if isinstance(v, int) and v > 0:
+                                retention_defaults[k] = v
+                    flags = getattr(cfg, "flags", None)
+                    if flags is not None:
+                        enabled = getattr(flags, "retention_enabled", None)
+                        if isinstance(enabled, bool):
+                            retention_enabled = enabled
+        except Exception:
+            logger.debug("OperationalConfig not available — using seeded retention defaults", exc_info=True)
+
+        # Upsert retention_setting via direct SQL (via _client if available)
+        try:
+            client = getattr(self.db, "_client", None)
+            if client is not None:
+                for key, days in retention_defaults.items():
+                    try:
+                        await client.table("retention_setting").upsert(
+                            {"key": key, "days": days}, on_conflict="key"
+                        ).execute()
+                    except Exception:
+                        # Fallback: raw RPC / execute_sql if table helper fails
+                        logger.debug("retention_setting upsert via table failed for %s", key, exc_info=True)
+                        # Try via rpc if available
+                        try:
+                            await client.rpc("upsert_retention_setting", {"p_key": key, "p_days": days}).execute()
+                        except Exception:
+                            logger.warning("retention_setting upsert fallback also failed for %s", key, exc_info=True)
+            logger.info("Retention settings upserted: %s (enabled=%s)", retention_defaults, retention_enabled)
+        except Exception:
+            logger.warning("Failed to upsert retention_setting", exc_info=True)
+
+        # Cron reconcile: flag off → unschedule
+        if not retention_enabled:
+            try:
+                client = getattr(self.db, "_client", None)
+                if client is not None:
+                    for job in (
+                        "retention_purge_tickets",
+                        "retention_purge_storage",
+                        "retention_purge_infractions",
+                        "retention_purge_crash_reports",
+                    ):
+                        try:
+                            await client.rpc("cron_unschedule", {"jobname": job}).execute()
+                        except Exception:
+                            # Fallback: direct SQL via rpc
+                            try:
+                                await client.rpc("exec_sql", {"q": f"SELECT cron.unschedule('{job}')"}).execute()
+                            except Exception:
+                                logger.debug("cron unschedule failed for %s", job, exc_info=True)
+                logger.info("Retention disabled — cron jobs unscheduled")
+            except Exception:
+                logger.warning("Failed to unschedule retention cron jobs", exc_info=True)
 
     # ==================================================================
     # Realtime cache-sync subscriber lifecycle
@@ -419,6 +520,19 @@ class NebulosaBot(commands.Bot):
                 getattr(interaction.command, "qualified_name", None),
                 exc_info=error,
             )
+            # S3.6: record crash_report ONLY for unhandled exceptions (F4 scope)
+            try:
+                if self.db is not None:
+                    svc = CrashReportService(self.db)
+                    tb_text = "".join(traceback.format_exception(type(error), error, error.__traceback__))
+                    qname = getattr(interaction.command, "qualified_name", None)
+                    await svc.record(
+                        guild_id=str(guild_id) if guild_id is not None else None,
+                        command=qname,
+                        traceback_text=tb_text,
+                    )
+            except Exception:  # noqa: BLE001 -- crash reporting never breaks error handler
+                logger.warning("Failed to record crash_report for app command", exc_info=True)
             embed = error_embed(
                 t(guild_id, "common.error.unexpected_title"),
                 t(guild_id, "common.error.unexpected_message"),
@@ -504,6 +618,19 @@ class NebulosaBot(commands.Bot):
                 getattr(ctx.command, "qualified_name", None),
                 exc_info=error,
             )
+            # S3.6: record crash_report ONLY for unhandled exceptions (F4 scope)
+            try:
+                if self.db is not None:
+                    svc = CrashReportService(self.db)
+                    tb_text = "".join(traceback.format_exception(type(error), error, error.__traceback__))
+                    qname = getattr(ctx.command, "qualified_name", None)
+                    await svc.record(
+                        guild_id=str(guild_id) if guild_id is not None else None,
+                        command=qname,
+                        traceback_text=tb_text,
+                    )
+            except Exception:  # noqa: BLE001 -- crash reporting never breaks error handler
+                logger.warning("Failed to record crash_report for command", exc_info=True)
             embed = error_embed(
                 t(guild_id, "common.error.command_error_title"),
                 str(error),

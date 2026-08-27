@@ -60,7 +60,7 @@ class TestStoragePurgeMechanismPinned:
                 candidates.append(p.read_text(encoding="utf-8"))
         combined = "\n".join(candidates)
         low = combined.lower()
-        assert "sql delete on storage.objects" in low or "sql delete" in low and "storage.objects" in low, (
+        assert "sql delete on storage.objects" in low or ("sql delete" in low and "storage.objects" in low), (
             "decision doc must state SQL DELETE on storage.objects"
         )
         assert "orphan" in low, "decision doc must mention orphan handling"
