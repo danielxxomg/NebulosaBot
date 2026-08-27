@@ -126,12 +126,12 @@ Chain strategy: stacked-to-main
 
 ## Phase S6B: Hybrid→app_commands PR-B + Ocio Visibility Flip (PR 9, ~500-600 lines)
 
-- [ ] S6B.1 RED: `tests/test_dice_rename.py` — `/dice` resolves in default locale; `/dados` does NOT; es `name_localizations` "dados", en "dice"; range [1,sides], reject <2/>100. Ref: ocio-commands "Dice command".
-- [ ] S6B.2 RED: `tests/test_ocio_permanence.py` — `/8ball`+`/banana`+`/dice` replies PERMANENT; zero DB writes (no insert/update/delete); 20 localized `ocio.8ball.*` responses; title from `ocio.8ball.embed_title` (no raw key); banana pool 5-8 webp + dorada 1%@30cm + Pillow fallback. Ref: ocio-commands banana/8ball + ephemeral-standard "Fun commands permanent standard".
-- [ ] S6B.3 RED: `tests/test_ocio_cooldown.py` — `CommandOnCooldown` handler replies ephemerally with localized `retry_after`; releases after 5s. Ref: ocio-commands "Ocio commands cooldown and handler".
-- [ ] S6B.4 Migrate ocio/economy/stellar/greetings survivors → pure app_commands per D5 recipe (deletions of /welcome+/goodbye groups already done in S2b).
-- [ ] S6B.5 Rename `/dados`→`/dice` with `name_localizations={es:"dados"}`; migrate to `@app_commands.command`.
-- [ ] S6B.6 Flip `/8ball`, `/banana`, `/dice` to permanent visibility; keep `@commands.cooldown(1,5,BucketType.user)`; ensure zero DB writes (ocio path). Add ephemeral `CommandOnCooldown` branch in `on_app_command_error` (localized retry_after). (D5)
-- [ ] S6B.7 Update `AGENTS.md` ocio-exception paragraph (remove the `/banana`/`/8ball` ephemeral exception) IN THE SAME WORK UNIT/COMMIT as the S6B.6 visibility flip. (D5 doc coupling)
-- [ ] S6B.8 Delete remaining legacy greeting command declarations (survivors not deleted in S2b). (delete-before-migrate honored)
-- [ ] S6B.9 Full zero-hybrid grep guard across entire `bot/cogs/**` green; close-confirmation suite green; `,` listener untouched (explicit rule: no diff touches `TicketsCog.on_message`).
+- [x] S6B.1 RED: `tests/test_dice_rename.py` — `/dice` resolves in default locale; `/dados` does NOT; es `name_localizations` "dados", en "dice"; range [1,sides], reject <2/>100. Ref: ocio-commands "Dice command".
+- [x] S6B.2 RED: `tests/test_ocio_permanence.py` — `/8ball`+`/banana`+`/dice` replies PERMANENT; zero DB writes (no insert/update/delete); 20 localized `ocio.8ball.*` responses; title from `ocio.8ball.embed_title` (no raw key); banana pool 5-8 webp + dorada 1%@30cm + Pillow fallback. Ref: ocio-commands banana/8ball + ephemeral-standard "Fun commands permanent standard".
+- [x] S6B.3 RED: `tests/test_ocio_cooldown.py` — `CommandOnCooldown` handler replies ephemerally with localized `retry_after`; releases after 5s. Ref: ocio-commands "Ocio commands cooldown and handler".
+- [x] S6B.4 Migrate ocio/economy/stellar/greetings survivors → pure app_commands per D5 recipe (deletions of /welcome+/goodbye groups already done in S2b).
+- [x] S6B.5 Rename `/dados`→`/dice` with `name_localizations={es:"dados"}`; migrate to `@app_commands.command`.
+- [x] S6B.6 Flip `/8ball`, `/banana`, `/dice` to permanent visibility; keep `@commands.cooldown(1,5,BucketType.user)`; ensure zero DB writes (ocio path). Add ephemeral `CommandOnCooldown` branch in `on_app_command_error` (localized retry_after). (D5)
+- [x] S6B.7 Update `AGENTS.md` ocio-exception paragraph (remove the `/banana`/`/8ball` ephemeral exception) IN THE SAME WORK UNIT/COMMIT as the S6B.6 visibility flip. (D5 doc coupling)
+- [x] S6B.8 Delete remaining legacy greeting command declarations (survivors not deleted in S2b). (delete-before-migrate honored)
+- [x] S6B.9 Full zero-hybrid grep guard across entire `bot/cogs/**` green; close-confirmation suite green; `,` listener untouched (explicit rule: no diff touches `TicketsCog.on_message`).
