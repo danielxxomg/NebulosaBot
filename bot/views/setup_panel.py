@@ -423,12 +423,19 @@ class SetupPanelView(discord.ui.View):
         return False
 
 
-# Register tickets module on import (avoid circular: import after MODULES definition)
-try:
-    from bot.views.setup_modules.tickets import TicketSetupModule  # noqa: PLC0415 -- cycle-break
+# Register setup modules on import (avoid circular: import after MODULES definition)
+def _register_module(import_path: str, class_name: str, key: str) -> None:
+    try:
+        mod = __import__(import_path, fromlist=[class_name])
+        cls = getattr(mod, class_name)
+        if key not in MODULES:
+            MODULES[key] = cls()  # noqa: PGH003
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("%s module not yet available for auto-registration: %s", key, exc)
 
-    if "tickets" not in MODULES:
-        # Use set_setup_bot to supply bot later; initial instance without bot
-        MODULES["tickets"] = TicketSetupModule()  # noqa: PGH003
-except Exception as exc:  # noqa: BLE001 -- import guard for fresh envs
-    logger.debug("Tickets module not yet available for auto-registration: %s", exc)
+
+_register_module("bot.views.setup_modules.tickets", "TicketSetupModule", "tickets")
+_register_module("bot.views.setup_modules.welcome", "WelcomeSetupModule", "welcome")
+_register_module("bot.views.setup_modules.goodbye", "GoodbyeSetupModule", "goodbye")
+_register_module("bot.views.setup_modules.log", "LogSetupModule", "log")
+_register_module("bot.views.setup_modules.language", "LanguageSetupModule", "language")
