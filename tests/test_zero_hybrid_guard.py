@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pathlib
 
-
 S6A_FILES = [
     "bot/cogs/core.py",
     "bot/cogs/sentinel.py",

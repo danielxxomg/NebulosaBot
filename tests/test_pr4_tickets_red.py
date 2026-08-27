@@ -81,7 +81,8 @@ def _prefix_predicate(cmd):  # type: ignore[no-untyped-def]
     # Group fallback
     if hasattr(cmd, "callback") and getattr(cmd.callback, "__discord_app_commands_checks__", None):
         return cmd.callback.__discord_app_commands_checks__[0]
-    raise AssertionError(f"{getattr(cmd, 'name', cmd)} must have registered checks")
+    msg = f"{getattr(cmd, 'name', cmd)} must have registered checks"  # noqa: EM102 -- assign before raise
+    raise AssertionError(msg)
 
 
 class TestTicketsManageGateWiring:
@@ -126,29 +127,22 @@ class TestDeleteCategoryAdminGate:
         """Non-admin MUST be denied by the is_admin predicate."""
         cog = _make_cog()
         member = _make_ctx(admin=False, role_ids=()).author
-        from unittest.mock import MagicMock as _MM
-
-        import discord as _d
-        guild = _MM(spec=_d.Guild)
+        guild = MagicMock(spec=discord.Guild)
         guild.id = 123456789
-        inter = _MM(spec=_d.Interaction)
+        inter = MagicMock(spec=discord.Interaction)
         inter.guild = guild
         inter.user = member
         pred = _prefix_predicate(cog.delete_category)
-        import discord as _dd
-        with pytest.raises(_dd.app_commands.MissingPermissions):
+        with pytest.raises(discord.app_commands.MissingPermissions):
             await pred(inter)
 
     async def test_delete_category_allows_admin(self) -> None:
         """Administrator passes without any matrix grant."""
         cog = _make_cog()
         member = _make_ctx(admin=True, role_ids=()).author
-        from unittest.mock import MagicMock as _MM
-
-        import discord as _d
-        guild = _MM(spec=_d.Guild)
+        guild = MagicMock(spec=discord.Guild)
         guild.id = 123456789
-        inter = _MM(spec=_d.Interaction)
+        inter = MagicMock(spec=discord.Interaction)
         inter.guild = guild
         inter.user = member
         pred = _prefix_predicate(cog.delete_category)
