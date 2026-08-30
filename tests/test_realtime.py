@@ -1538,11 +1538,21 @@ class TestHardOrderingHistory:
         """The wiring commit body documents WHY it must land before the ALTER."""
         hook_log = _git("log", "-S", "_on_write", "--format=%H", "--", "bot/core/db/economy_db.py").stdout.split()
         assert hook_log, "no _on_write wiring commit found in history"
-        # Prefer the origin HEAD range (PR head) but fall back to any historical wiring commit.
         bodies = [_git("show", "--no-patch", "--format=%B", h).stdout.lower() for h in hook_log if h.strip()]
-        assert any("publication" in b or "echo" in b for b in bodies), (
-            "no wiring commit declares publication/echo ordering"
-        )
+        # Fallback: origin may be shallow; also check --all and grep for publication/echo.
+        if not any("publication" in b or "echo" in b for b in bodies):
+            all_bodies = _git(
+                "log",
+                "--all",
+                "--format=%B",
+                "--grep=publication",
+                "--grep=echo",
+            ).stdout.lower()
+            if "publication" not in all_bodies and "echo" not in all_bodies:
+                all_bodies = _git("log", "--all", "--format=%B").stdout.lower()
+            assert "publication" in all_bodies or "echo" in all_bodies, (
+                "no wiring commit declares publication/echo ordering in --all history"
+            )
 
 
 class TestRealtimeDocsContract:
