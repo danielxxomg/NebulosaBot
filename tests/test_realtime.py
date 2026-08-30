@@ -1536,23 +1536,24 @@ class TestHardOrderingHistory:
 
     def test_wiring_commit_message_declares_hard_ordering(self) -> None:
         """The wiring commit body documents WHY it must land before the ALTER."""
+        # Check the specific wiring commit(s) first; fallback to grep on --all.
         hook_log = _git("log", "-S", "_on_write", "--format=%H", "--", "bot/core/db/economy_db.py").stdout.split()
         assert hook_log, "no _on_write wiring commit found in history"
         bodies = [_git("show", "--no-patch", "--format=%B", h).stdout.lower() for h in hook_log if h.strip()]
-        # Fallback: origin may be shallow; also check --all and grep for publication/echo.
-        if not any("publication" in b or "echo" in b for b in bodies):
-            all_bodies = _git(
-                "log",
-                "--all",
-                "--format=%B",
-                "--grep=publication",
-                "--grep=echo",
-            ).stdout.lower()
-            if "publication" not in all_bodies and "echo" not in all_bodies:
-                all_bodies = _git("log", "--all", "--format=%B").stdout.lower()
-            assert "publication" in all_bodies or "echo" in all_bodies, (
-                "no wiring commit declares publication/echo ordering in --all history"
-            )
+        if any("publication" in b or "echo" in b for b in bodies):
+            return
+        # In detached/shallow PR checks the above log may be empty; search --all by grep.
+        grep_log = _git("log", "--all", "--format=%H", "--grep=publication").stdout.split()
+        if grep_log:
+            for h in grep_log:
+                b = _git("show", "--no-patch", "--format=%B", h).stdout.lower()
+                if "publication" in b or "echo" in b:
+                    return
+        # Final fallback: any commit mentioning publication/echo in full history.
+        all_bodies = _git("log", "--all", "--format=%B").stdout.lower()
+        assert "publication" in all_bodies or "echo" in all_bodies, (
+            "no wiring commit declares publication/echo ordering in --all history"
+        )
 
 
 class TestRealtimeDocsContract:
