@@ -30,15 +30,13 @@ def test_manual_exists_and_non_empty(manual_text: str) -> None:
 # ---------------------------------------------------------------------------
 
 REQUIRED_SECTION_HEADINGS = [
-    "Vista general",  # Overview / Quick Start context
-    "Inicio rápido",  # Quick Start
+    "Inicio Rápido",  # Quick Start (delta first required section)
+    "Comandos de Usuario",  # User commands (slash-only)
+    "Comandos de Moderación",  # Moderation
+    "Comandos de Administración",  # Admin
     "Configuración",  # Configuration
-    "Moderación",  # Commands — Moderation (audience: moderators)
-    "Sistema de tickets",  # Ticket System
-    "Economía",  # Economy (referenced by /daily, /coins, etc.)
-    "Bienvenida y despedida",  # Welcome/Goodbye
-    "Deuda conocida",  # Known Debt
-    "Referencia de comandos",  # Commands by audience (reference section)
+    "Sistema de Tickets",  # Ticket System
+    "Comandos Slash",  # Slash (previously Híbridos, last)
 ]
 
 

@@ -66,59 +66,61 @@ def _make_ctx(guild_id: int | None = 123456789) -> MagicMock:
 
 
 class TestDadosCommand:
-    """Tests for /dados hybrid command."""
+    """Tests for /dice (alias dados probes compat)."""
 
     @pytest.mark.asyncio
     async def test_dados_default_six_sided(
         self,
         cog: OcioCog,
     ) -> None:
-        """Default roll (sides=6) produces result in [1, 6]."""
+        """Default roll (sides=6) via dice produces result in [1, 6]; dados alias mirrors dice."""
         ctx = _make_ctx()
 
-        await cog.dados.callback(cog, ctx, sides=6)
+        await cog.dice.callback(cog, ctx, sides=6)
 
         ctx.send.assert_called_once()
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
-
-        # result should be mentioned in the description
         desc = embed.description
         assert desc is not None
-        # Extract the result number from "You rolled a **{result}** (d{sides})"
         assert "d6" in desc
+        # alias must resolve to same command object (name stays dice)
+        assert cog.dados is cog.dice
+        assert cog.dados.name == "dice"
 
     @pytest.mark.asyncio
     async def test_dados_custom_sides(
         self,
         cog: OcioCog,
     ) -> None:
-        """Custom sides (e.g., 20) produces result in [1, 20]."""
+        """Custom sides (e.g., 20) via dice."""
         ctx = _make_ctx()
 
-        await cog.dados.callback(cog, ctx, sides=20)
+        await cog.dice.callback(cog, ctx, sides=20)
 
         ctx.send.assert_called_once()
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
         assert "d20" in embed.description
+        assert cog.dados is cog.dice
 
     @pytest.mark.asyncio
     async def test_dados_max_sides_100(
         self,
         cog: OcioCog,
     ) -> None:
-        """Max sides (100) produces result in [1, 100]."""
+        """Max sides (100) via dice."""
         ctx = _make_ctx()
 
-        await cog.dados.callback(cog, ctx, sides=100)
+        await cog.dice.callback(cog, ctx, sides=100)
 
         ctx.send.assert_called_once()
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         assert "d100" in embed.description
+        assert cog.dados is cog.dice
 
     @pytest.mark.asyncio
     async def test_dados_result_in_range(
@@ -129,13 +131,11 @@ class TestDadosCommand:
         ctx = _make_ctx()
 
         for sides in [6, 20, 100]:
-            await cog.dados.callback(cog, ctx, sides=sides)
+            await cog.dice.callback(cog, ctx, sides=sides)
 
             call_args = ctx.send.call_args
             embed = call_args[1]["embed"]
             desc = embed.description
-
-            # Parse the result: "You rolled a **{result}** (d{sides})"
             parts = desc.split("**")
             if len(parts) >= 3:
                 result = int(parts[1])
@@ -149,7 +149,7 @@ class TestDadosCommand:
         """Dice roll should work in DM context."""
         ctx = _make_ctx(guild_id=None)
 
-        await cog.dados.callback(cog, ctx, sides=6)
+        await cog.dice.callback(cog, ctx, sides=6)
 
         ctx.send.assert_called_once()
         call_args = ctx.send.call_args

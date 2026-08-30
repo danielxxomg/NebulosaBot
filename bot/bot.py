@@ -88,7 +88,7 @@ async def _noop_prefix(bot_ref: NebulosaBot, message: discord.Message) -> list[s
 
 
 class NebulosaBot(commands.Bot):
-    """Discord bot with cache-first guild config and hybrid commands.
+    """Discord bot with cache-first guild config and slash-only commands.
 
     Instantiate with a validated :class:`~bot.config.BotConfig` and the
     desired Discord intents.  Cogs are loaded in ``setup_hook()`` before
@@ -162,7 +162,7 @@ class NebulosaBot(commands.Bot):
             command_prefix=_noop_prefix,
             intents=intents,
             # discord.py 2.x requires explicit help_command disable when
-            # we provide our own /help hybrid command.
+            # we provide our own /help slash command.
             help_command=None,
         )
 

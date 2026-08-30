@@ -244,30 +244,25 @@ class TestTempbanUnbanDeniedRed:
 
     @pytest.mark.asyncio
     async def test_can_check_decorator_denies_unauthorized_via_command_checks(self) -> None:
-        """2.12/2.13 behavioral: can_check("moderation.ban") prefix predicate raises CheckFailure for unauthorized.
-
-        Exercises the real decorator's prefix_predicate (exposed on the factory),
-        which is what gates /tempban and /unban on the prefix path.
-        """
-        from discord.ext import commands as _commands
-
+        """2.12/2.13 behavioral: can_check("moderation.ban") slash-only predicate denies unauthorized."""
         from bot.utils.checks import can_check
 
+        # Slash-only: no prefix_predicate exists
+        dec = can_check("moderation.ban")
+        assert not hasattr(dec, "prefix_predicate"), "can_check must be slash-only"
         bot = _make_bot()
-        guild = _make_guild(guild_id=123456789)
-        author = MagicMock(spec=discord.Member)
-        author.id = 222
-        author.guild_permissions.administrator = False
-        author.roles = []
-        ctx = _make_ctx(guild, author)
-        ctx.bot = bot
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.guild = _make_guild(guild_id=123456789)
+        interaction.user = MagicMock(spec=discord.Member)
+        interaction.user.guild_permissions.administrator = False
+        interaction.user.roles = []
+        interaction.client = bot
         bot.guild_service = None
-        prefix_pred = can_check("moderation.ban").prefix_predicate
         with (
             patch("bot.utils.checks._get_guild_service", return_value=None),
-            pytest.raises((_commands.CheckFailure, app_commands.CheckFailure)),
+            pytest.raises(app_commands.CheckFailure),
         ):
-            await prefix_pred(ctx)
+            await dec.predicate(interaction)
 
     @pytest.mark.asyncio
     async def test_can_check_decorator_app_predicate_denies_unauthorized(self) -> None:

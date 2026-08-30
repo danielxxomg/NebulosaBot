@@ -7,7 +7,7 @@ No service layer — embed construction only, no DB or cache I/O.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import discord
 from discord import app_commands
@@ -45,10 +45,10 @@ class UtilityCog(commands.Cog, name="Utility"):
 
     async def _avatar_impl(self, guild_id: int | None, author: Any, member: discord.Member | None) -> discord.Embed:
         target = member or author
-        avatar_url = target.display_avatar.url or target.default_avatar.url  # type: ignore[union-attr]
+        avatar_url = target.display_avatar.url or target.default_avatar.url
         embed = discord.Embed(
-            title=t(guild_id, "utility.avatar.title", name=target.display_name),  # type: ignore[union-attr]
-            color=target.color,  # type: ignore[union-attr]
+            title=t(guild_id, "utility.avatar.title", name=target.display_name),
+            color=target.color,
         )
         embed.set_image(url=f"{avatar_url}?size=1024")
         return embed
@@ -89,12 +89,12 @@ class UtilityCog(commands.Cog, name="Utility"):
         target = member or author
         embed = discord.Embed(
             title=str(target),
-            color=target.color,  # type: ignore[union-attr]
+            color=target.color,
         )
-        embed.set_thumbnail(url=target.display_avatar.url)  # type: ignore[union-attr]
+        embed.set_thumbnail(url=target.display_avatar.url)
         embed.add_field(
             name=t(guild_id, "utility.userinfo.id_field"),
-            value=str(target.id),  # type: ignore[union-attr]
+            value=str(target.id),
             inline=True,
         )
         if not isinstance(target, discord.Member):
@@ -158,11 +158,12 @@ class UtilityCog(commands.Cog, name="Utility"):
         """Reply with an embed showing the targeted member's avatar."""
         if _is_ctx(interaction):
             ctx: Any = interaction
-            guild_id = ctx.guild.id if ctx.guild else None
-            embed = await self._avatar_impl(guild_id, ctx.author, member)
-            await ctx.send(embed=embed, ephemeral=True)
+            _g = getattr(ctx, "guild", None)
+            guild_id = _g.id if _g is not None and hasattr(_g, "id") else None
+            embed = await self._avatar_impl(guild_id, getattr(ctx, "author", None), member)
+            await cast(Any, ctx).send(embed=embed, ephemeral=True)
             return
-        guild_id = interaction.guild.id if interaction.guild else None  # type: ignore[union-attr]
+        guild_id = interaction.guild.id if interaction.guild else None
         author = interaction.user
         embed = await self._avatar_impl(guild_id, author, member)
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -175,9 +176,10 @@ class UtilityCog(commands.Cog, name="Utility"):
         """Reply with a guild summary embed or error if invoked in DMs."""
         if _is_ctx(interaction):
             ctx: Any = interaction
-            guild_id = ctx.guild.id if ctx.guild else None
-            if ctx.guild is None:
-                await ctx.send(
+            _g2 = getattr(ctx, "guild", None)
+            guild_id = _g2.id if _g2 is not None and hasattr(_g2, "id") else None
+            if _g2 is None:
+                await cast(Any, ctx).send(
                     embed=error_embed(
                         t(guild_id, "utility.serverinfo.error_title"),
                         t(guild_id, "utility.serverinfo.error_description"),
@@ -189,9 +191,9 @@ class UtilityCog(commands.Cog, name="Utility"):
             embed = await self._serverinfo_impl(guild_id, ctx.guild)
             if embed is None:
                 return
-            await ctx.send(embed=embed, ephemeral=True)
+            await cast(Any, ctx).send(embed=embed, ephemeral=True)
             return
-        guild_id = interaction.guild.id if interaction.guild else None  # type: ignore[union-attr]
+        guild_id = interaction.guild.id if interaction.guild else None
         if interaction.guild is None:
             await interaction.response.send_message(
                 embed=error_embed(
@@ -225,13 +227,14 @@ class UtilityCog(commands.Cog, name="Utility"):
         """Reply with a member summary embed."""
         if _is_ctx(interaction):
             ctx: Any = interaction
-            guild_id = ctx.guild.id if ctx.guild else None
-            embed = await self._userinfo_impl(guild_id, ctx.author, member)
-            await ctx.send(embed=embed, ephemeral=True)
+            _g3 = getattr(ctx, "guild", None)
+            guild_id = _g3.id if _g3 is not None and hasattr(_g3, "id") else None
+            embed = await self._userinfo_impl(guild_id, getattr(ctx, "author", None), member)
+            await cast(Any, ctx).send(embed=embed, ephemeral=True)
             return
-        guild_id = interaction.guild.id if interaction.guild else None  # type: ignore[union-attr]
+        guild_id = interaction.guild.id if interaction.guild else None
         author = interaction.user
-        embed = await self._userinfo_impl(guild_id, author, member)  # type: ignore[arg-type]
+        embed = await self._userinfo_impl(guild_id, author, member)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 

@@ -14,6 +14,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.core.i18n import t
+from bot.utils.checks import is_admin
 from bot.utils.embeds import error_embed
 
 if TYPE_CHECKING:
@@ -38,6 +39,7 @@ class SetupCog(commands.Cog, name="Setup"):
         ),
     )
     @app_commands.default_permissions(administrator=True)
+    @is_admin()
     async def setup_command(self, interaction: discord.Interaction) -> None:
         """Open the persistent setup panel (one non-ephemeral message)."""
         if interaction.guild is None:
