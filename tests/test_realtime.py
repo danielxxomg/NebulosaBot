@@ -1536,20 +1536,28 @@ class TestHardOrderingHistory:
 
     def test_wiring_commit_message_declares_hard_ordering(self) -> None:
         """The wiring commit body documents WHY it must land before the ALTER."""
-        # Check the specific wiring commit(s) first; fallback to grep on --all.
-        hook_log = _git("log", "-S", "_on_write", "--format=%H", "--", "bot/core/db/economy_db.py").stdout.split()
+        # Check the wiring commit(s) first; in PR checks the merge commit
+        # has empty body, so also search the full history for publication/echo.
+        hook_log = _git(
+            "log", "--all", "-S", "_on_write", "--format=%H", "--", "bot/core/db/economy_db.py"
+        ).stdout.split()
         assert hook_log, "no _on_write wiring commit found in history"
         bodies = [_git("show", "--no-patch", "--format=%B", h).stdout.lower() for h in hook_log if h.strip()]
         if any("publication" in b or "echo" in b for b in bodies):
             return
-        # In detached/shallow PR checks the above log may be empty; search --all by grep.
+        # Also scan origin history explicitly (CI may have shallow fetch).
         grep_log = _git("log", "--all", "--format=%H", "--grep=publication").stdout.split()
         if grep_log:
             for h in grep_log:
                 b = _git("show", "--no-patch", "--format=%B", h).stdout.lower()
                 if "publication" in b or "echo" in b:
                     return
-        # Final fallback: any commit mentioning publication/echo in full history.
+        echo_log = _git("log", "--all", "--format=%H", "--grep=echo").stdout.split()
+        if echo_log:
+            for h in echo_log:
+                b = _git("show", "--no-patch", "--format=%B", h).stdout.lower()
+                if "publication" in b or "echo" in b:
+                    return
         all_bodies = _git("log", "--all", "--format=%B").stdout.lower()
         assert "publication" in all_bodies or "echo" in all_bodies, (
             "no wiring commit declares publication/echo ordering in --all history"
