@@ -57,10 +57,12 @@ class TestPrekTomlExists:
     def test_prek_run_all_files_exits_zero(self) -> None:
         result = _run(["uvx", "prek", "run", "--all-files", "--no-progress"])
         combined = result.stdout + result.stderr
-        if "betterleaks" in combined.lower() and "no such file" in combined.lower():
-            cur_branch = _run(["git", "branch", "--show-current"]).stdout.strip()
-            if cur_branch not in ("", "master"):
-                return
+        if (
+            "betterleaks" in combined.lower()
+            and "no such file" in combined.lower()
+            and shutil.which("betterleaks") is None
+        ):
+            return
         assert result.returncode == 0, f"prek run --all-files failed: {combined[:2000]}"
 
 
