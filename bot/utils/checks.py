@@ -1,7 +1,7 @@
 """Permission check decorators for bot commands.
 
 Provides `is_admin()`, `is_mod()`, and the granular `can()` matrix resolver
-compatible with discord.py hybrid commands.
+for slash commands (prefix inert per bot-core).
 """
 
 from __future__ import annotations
@@ -11,7 +11,6 @@ from typing import Any
 
 import discord
 from discord import app_commands
-from discord.ext import commands
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +178,8 @@ async def can_member(permission: str, member: Any, guild_id: str | None) -> bool
 def can_check(permission: str) -> Any:
     """Decorator factory mirroring is_mod()/is_admin() shape.
 
-    Registers checks on BOTH prefix (commands.check) and slash (app_commands.check).
+    Registers checks on the slash path only (``app_commands.check``); prefix
+    is inert per bot-core slash-only truth (``get_prefix -> []``).
     """
 
     async def _app_predicate(interaction: discord.Interaction) -> bool:
@@ -188,47 +188,26 @@ def can_check(permission: str) -> Any:
             raise app_commands.NoPrivateMessage(msg)
         if await can(permission, interaction):
             return True
-        # Translate deny into CheckFailure for slash path
         msg = f"Missing permission: {permission}"
         raise app_commands.CheckFailure(msg)
 
-    async def _prefix_predicate(ctx: commands.Context) -> bool:
-        if not ctx.guild:
-            msg = "This command can only be used in a server."
-            raise commands.NoPrivateMessage(msg)
-        if not isinstance(ctx.author, discord.Member):
-            msg = "This command can only be used by guild members."
-            raise commands.CheckFailure(msg)
-        if await can(permission, ctx):
-            return True
-        # For prefix, distinguish mod-role configured? Generic failure keeps spec simple.
-        # Tests expect CheckFailure for non-admin/non-granted; MissingRole is for is_mod only.
-        # can_check raises commands.CheckFailure (NOT app_commands.CheckFailure) on the
-        # prefix path so discord.py's Bot.invoke routes the denial to
-        # on_command_error and the user gets a message — app_commands.CheckFailure
-        # derives from AppCommandError/DiscordException, not commands.CommandError.
-        msg = f"Missing permission: {permission}"
-        raise commands.CheckFailure(msg)
-
     def decorator(func: Any) -> Any:
-        return commands.check(_prefix_predicate)(app_commands.check(_app_predicate)(func))
+        return app_commands.check(_app_predicate)(func)
 
     decorator.predicate = _app_predicate  # type: ignore[attr-defined]
-    decorator.prefix_predicate = _prefix_predicate  # type: ignore[attr-defined]
     return decorator
 
 
 def is_admin() -> Any:
     """Require the Administrator permission.
 
-    Registers checks on BOTH the slash path (``app_commands.check``) and the
-    prefix path (``commands.check``) so hybrid commands are fully gated without
-    needing a separate ``@commands.has_permissions(administrator=True)``.
+    Registers checks on the slash path only (``app_commands.check``); prefix
+    is inert per bot-core slash-only truth (``get_prefix -> []``).
 
     Usage:
-        @commands.hybrid_command(name="sync")
+        @app_commands.command(name="sync")
         @is_admin()
-        async def sync(self, ctx): ...
+        async def sync(self, interaction: discord.Interaction): ...
     """
 
     async def _app_predicate(interaction: discord.Interaction) -> bool:
@@ -241,22 +220,10 @@ def is_admin() -> Any:
 
         return True
 
-    async def _prefix_predicate(ctx: commands.Context) -> bool:
-        if not ctx.guild:
-            msg = "This command can only be used in a server."
-            raise commands.NoPrivateMessage(msg)
-
-        if not isinstance(ctx.author, discord.Member) or not ctx.author.guild_permissions.administrator:
-            raise commands.MissingPermissions(["administrator"])
-
-        return True
-
     def decorator(func: Any) -> Any:
-        return commands.check(_prefix_predicate)(app_commands.check(_app_predicate)(func))
+        return app_commands.check(_app_predicate)(func)
 
-    # Expose predicates for testing.
     decorator.predicate = _app_predicate  # type: ignore[attr-defined]
-    decorator.prefix_predicate = _prefix_predicate  # type: ignore[attr-defined]
     return decorator
 
 
@@ -340,15 +307,14 @@ def is_mod() -> Any:
     """Require the configured Moderator role or Administrator permission.
 
     Decorator form of :func:`is_mod_check` for ``@app_commands.check()`` on
-    hybrid commands. The admin-OR-mod-role DECISION is delegated to
+    slash commands. The admin-OR-mod-role DECISION is delegated to
     :func:`is_mod_check` (DRY — single source of truth for the permission
     logic shared with the inline button-callback predicate). The decorator
     translates ``is_mod_check``'s ``False`` into the appropriate discord.py
     exception (``NoPrivateMessage`` / ``CheckFailure`` / ``MissingRole``).
 
-    Registers checks on BOTH the slash path (``app_commands.check``) and the
-    prefix path (``commands.check``) so hybrid commands are fully gated without
-    needing a separate ``@commands.has_roles(...)``.
+    Registers checks on the slash path (``app_commands.check``) so slash
+    commands are gated without needing a separate ``@commands.has_roles(...)``.
 
     Check order (mirrors :func:`is_mod_check`):
         1. DM → ``NoPrivateMessage``
@@ -358,9 +324,9 @@ def is_mod() -> Any:
         5. Mod role configured but user lacks it → ``MissingRole``
 
     Usage:
-        @commands.hybrid_command(name="warn")
+        @app_commands.command(name="warn")
         @is_mod()
-        async def warn(self, ctx, member: discord.Member): ...
+        async def warn(self, interaction: discord.Interaction, member: discord.Member): ...
     """
 
     async def predicate(interaction: discord.Interaction) -> bool:
@@ -387,39 +353,10 @@ def is_mod() -> Any:
 
         raise app_commands.MissingRole(mod_role_id)
 
-    async def _prefix_predicate(ctx: commands.Context) -> bool:
-        if not ctx.guild:
-            msg = "This command can only be used in a server."
-            raise commands.NoPrivateMessage(msg)
-
-        if not isinstance(ctx.author, discord.Member):
-            msg = "This command can only be used by guild members."
-            raise commands.CheckFailure(msg)
-
-        # Admin always passes.
-        if ctx.author.guild_permissions.administrator:
-            return True
-
-        if await _is_mod_via_matrix(ctx):
-            return True
-
-        mod_role_id = _resolve_mod_role_id_from_bot(ctx.bot, ctx.guild.id)
-
-        if mod_role_id is None:
-            msg = "No moderator role is configured for this server. Only administrators can use this command."
-            raise commands.CheckFailure(msg)
-
-        if _user_has_role(ctx.author, mod_role_id):
-            return True
-
-        raise commands.MissingRole(mod_role_id)
-
     def decorator(func: Any) -> Any:
-        return commands.check(_prefix_predicate)(app_commands.check(predicate)(func))
+        return app_commands.check(predicate)(func)
 
-    # Expose predicates for testing, matching is_admin().
     decorator.predicate = predicate  # type: ignore[attr-defined]
-    decorator.prefix_predicate = _prefix_predicate  # type: ignore[attr-defined]
     return decorator
 
 

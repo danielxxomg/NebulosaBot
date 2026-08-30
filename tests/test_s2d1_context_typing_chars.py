@@ -76,17 +76,23 @@ class TestContextTypingCharacterization:
 
 
 class TestIsModDualPathCharacterization:
-    def test_decorator_registers_both_paths(self) -> None:
+    def test_decorator_registers_slash_only(self) -> None:
         @app_commands.command(name="s2d1_probe_dual", description="probe")
         @is_mod()
         async def cmd(interaction: discord.Interaction):  # pragma: no cover
             pass
 
-        # S6A slash-only: command wraps is_mod dual predicates
-        assert hasattr(cmd, "checks") and len(cmd.checks) > 0, "slash path missing"
-        assert hasattr(cmd.callback, "__commands_checks__") and len(cmd.callback.__commands_checks__) > 0, (
-            "prefix predicate missing"
-        )
+        # Slash-only: only app_commands checks; no prefix predicate registered
+        assert hasattr(cmd, "checks")
+        checks = getattr(cmd, "checks", [])
+        assert isinstance(checks, list | tuple | set) and len(checks) > 0, "slash path missing"
+        # Prefix dual registration is retired — __commands_checks__ must be absent/empty
+        cb = getattr(cmd, "callback", None)
+        cmd_checks = getattr(cb, "__commands_checks__", []) if cb is not None else []
+        assert len(cmd_checks) == 0, f"prefix predicate must not be registered (slash-only), got {cmd_checks}"
+        # Decorator is slash-only: no prefix_predicate attribute
+        dec = is_mod()
+        assert not hasattr(dec, "prefix_predicate"), "is_mod() must be slash-only (no prefix_predicate)"
 
     @pytest.mark.asyncio
     async def test_inline_view_predicate_fail_closed(self, mock_interaction) -> None:

@@ -73,10 +73,10 @@ __all__ = [
 
 class TicketsCog(commands.Cog, name="Tickets"):
     # -- slash compat shim: allow legacy Context mocks in tests --
-    def _to_ctx(self, src):  # type: ignore[no-untyped-def]
+    def _to_ctx(self, src):
         if is_context_like(src):
             return src
-        return InteractionContext(src, self.bot)  # type: ignore[arg-type]
+        return InteractionContext(src, self.bot)
 
     """Ticket system commands, views, and background tasks (facade)."""
 

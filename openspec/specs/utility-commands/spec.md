@@ -2,66 +2,69 @@
 
 ## Purpose
 
-Provide guild members with quick, read-only information about users and the current server via hybrid commands.
+Provide guild members with quick, read-only information about users and the current server via slash-only commands. Bot core is slash-only (`get_prefix -> []`).
 
 ## Requirements
 
 ### Requirement: Avatar command
 
-The `/avatar` command MUST display the target user's avatar as a full-size embed image using `set_image`, not a thumbnail. The avatar URL SHOULD include `?size=1024` for guaranteed high resolution.
+The system MUST provide a slash-only `/avatar [member]` command via `@app_commands.command()` (MUST NOT use `hybrid_command`; prefix inert via `get_prefix -> []`) that displays the target user's avatar as a full-size embed image using `set_image` with `?size=1024`. Errors MUST use `t()`.
 
-(Previously: used `set_thumbnail` which rendered at ~80px)
+(Previously: purpose described hybrid commands; command was implicitly hybrid)
 
 #### Scenario: Self avatar
 
-- GIVEN a member invokes `/avatar` without a target
+- GIVEN a member invokes `/avatar` without target via slash
 - WHEN the command executes
-- THEN the bot SHALL reply with an embed whose image is the invoking member's avatar URL
+- THEN the embed image is the invoker's avatar URL with `?size=1024` via `set_image`
 
 #### Scenario: Mentioned member avatar
 
-- GIVEN a member invokes `/avatar @member`
+- GIVEN a member invokes `/avatar @member` via slash
 - WHEN the command executes
-- THEN the bot SHALL reply with an embed whose image is the mentioned member's avatar URL
+- THEN the embed image is the mentioned member's avatar URL
 
-#### Scenario: Large display size
+#### Scenario: Prefix inert
 
-- GIVEN the avatar URL is constructed
-- WHEN the embed is built
-- THEN the URL SHALL include `?size=1024` and `set_image` SHALL be used (not `set_thumbnail`)
+- GIVEN a user sends `nb!avatar` as text
+- WHEN the message is processed
+- THEN no command is invoked
 
 ### Requirement: Server info command
 
-The `/serverinfo` command MUST return a guild summary embed containing name, owner, member count, channel count, role count, and creation date.
+The system MUST provide a slash-only `/serverinfo` command via `@app_commands.command()` that returns a guild summary embed (name, owner, member count, channel count, role count, creation date). DM errors MUST use `t()`.
+
+(Previously: implicitly hybrid via purpose)
 
 #### Scenario: Guild context
 
-- GIVEN the command is invoked inside a guild
+- GIVEN the command is invoked inside a guild via slash
 - WHEN the command executes
-- THEN the bot SHALL reply with an embed showing the guild's name, owner mention, total members, channel count, role count, and creation timestamp
+- THEN an embed shows name, owner mention, members, channels, roles, creation timestamp
 
 #### Scenario: DM context
 
-- GIVEN the command is invoked in a DM channel
+- GIVEN the command is invoked in a DM via slash
 - WHEN the command executes
-- THEN the bot SHALL reply with an error embed stating the command only works in servers
+- THEN an error embed via `t()` states it only works in servers
 
 ### Requirement: User info command
 
-The `/userinfo` command MUST return a member summary embed with name, ID, roles, join date, and account creation date.
+The system MUST provide a slash-only `/userinfo [member]` command via `@app_commands.command()` that returns a member summary embed with name, ID, roles, join date, and account creation date. Prefix inert.
+
+(Previously: implicitly hybrid)
 
 #### Scenario: Member with few roles
 
-- GIVEN a member invokes `/userinfo` on a member with 20 or fewer roles
+- GIVEN a member invokes `/userinfo` via slash on a member with ≤20 roles
 - WHEN the command executes
-- THEN the bot SHALL reply with an embed listing all roles, plus join date and account creation date
+- THEN an embed lists all roles plus join and creation dates
 
 #### Scenario: Member with many roles
 
-- GIVEN a member invokes `/userinfo` on a member with more than 20 roles
+- GIVEN a member invokes `/userinfo` via slash on a member with >20 roles
 - WHEN the command executes
-- THEN the bot SHALL reply with an embed listing the first 20 roles followed by "and N more"
-
+- THEN an embed lists the first 20 roles followed by "and N more"
 ### Requirement: Shared EmbedPaginator utility
 
 `_HelpPaginator` (core.py) and `_ModlogsPaginator` (sentinel.py) MUST be replaced with a unified custom `EmbedPaginator` in `bot/utils/paginator.py`. The `EmbedPaginator` MUST be a `discord.ui.View` subclass with previous/next/stop buttons and timeout handling. It MUST maintain existing UX: page navigation buttons and timeout behavior. The constructor MUST accept a `guild_id` parameter. Button labels MUST be resolved via `t(guild_id, key)` using the guild's language. (Note: `discord.ext.pages.Paginator` is from Pycord, not discord.py v2.7.1 — a custom paginator is required.)

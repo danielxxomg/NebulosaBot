@@ -367,15 +367,18 @@ class TestSlashResponsesAreEphemeral:
 
     @staticmethod
     def _has_ephemeral_calls(mock_send: AsyncMock) -> bool:
-        """Check if any call to mock_send included ephemeral=True."""
+        """Strict ephemeral guard — empty or no-ephemeral is NOT ephemeral."""
+        if not mock_send.call_args_list:
+            return False
         return any(call.kwargs.get("ephemeral") is True for call in mock_send.call_args_list)
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("cmd_name", list(_EPHEMERAL_SLASH_SENDERS))
     async def test_slash_response_is_ephemeral(self, cmd_name: str) -> None:
-        """Command via slash MUST respond ephemerally (at least one send)."""
+        """Command via slash MUST respond ephemerally (at least one send with ephemeral=True)."""
         send = await _EPHEMERAL_SLASH_SENDERS[cmd_name]()
 
+        assert send.call_args_list, f"{cmd_name}: no channel send recorded — harness broken"
         assert self._has_ephemeral_calls(send), f"{cmd_name} MUST respond with ephemeral=True"
 
 
@@ -392,11 +395,13 @@ class TestDefaultPermissions:
 
     @staticmethod
     def _get_default_perms(cmd) -> discord.Permissions | None:
-        # Slash-only: Command has .default_permissions directly; hybrid had .app_command.default_permissions
+        # Slash-only: Command has .default_permissions directly — require explicit mapping
         if hasattr(cmd, "default_permissions"):
-            return cmd.default_permissions  # type: ignore[return-value]
-        if hasattr(cmd, "app_command") and cmd.app_command is not None:
-            return cmd.app_command.default_permissions
+            val = getattr(cmd, "default_permissions", None)
+            if isinstance(val, discord.Permissions):
+                return val
+            # None or non-Permissions is not a default-perms guard — fail lookup
+            return None
         return None
 
     # -- 4.8: ticket admin commands → administrator=True --
@@ -511,7 +516,9 @@ class TestEconomyCommandsPermanent:
 
     @staticmethod
     def _has_ephemeral_calls(mock_send: AsyncMock) -> bool:
-        """Check if any call to mock_send included ephemeral=True."""
+        """Strict ephemeral guard — empty or no-ephemeral is NOT ephemeral."""
+        if not mock_send.call_args_list:
+            return False
         return any(call.kwargs.get("ephemeral") is True for call in mock_send.call_args_list)
 
     @pytest.mark.asyncio
@@ -520,4 +527,5 @@ class TestEconomyCommandsPermanent:
         """Command MUST respond permanently — zero ephemeral sends."""
         send = await _PERMANENT_SLASH_SENDERS[cmd_name]()
 
+        assert send.call_args_list, f"{cmd_name}: no channel send recorded — harness broken"
         assert not self._has_ephemeral_calls(send), f"{cmd_name} MUST respond permanently (NOT ephemeral)"

@@ -2,156 +2,117 @@
 
 ## Purpose
 
-Expose moderation actions as hybrid Discord commands with permission guards.
+Expose moderation actions as slash-only Discord commands with permission guards. Bot core is slash-only (`get_prefix -> []`); no prefix/hybrid path.
 
 ## Requirements
 
 ### Requirement: Warn command
 
-The `/warn` command MUST be gated by `@can_check("moderation.warn")` (matrix-gated, dual path prefix + slash) and MUST create a WARN infraction with a reason. A user without the `moderation.warn` matrix grant, the mod-role fallback, or administrator MUST be denied on both paths, with the error naming the missing permission.
+`/warn` MUST be slash-only `@app_commands.command()` gated by `@can_check("moderation.warn")`; prefix inert; creates WARN; denial via `t()`.
 
-(Previously: the command was gated by `@is_mod()`.)
+(Previously: hybrid via `@is_mod()`)
 
-#### Scenario: Moderator warns user
+#### Scenario: Moderator warns
 
-- GIVEN a moderator invokes `/warn` on a guild member with reason "spam"
-- THEN a WARN infraction is created and the target is notified
+- GIVEN moderator invokes `/warn` via slash with "spam"
+- WHEN it executes
+- THEN WARN created
 
-#### Scenario: Warn denied without matrix grant
+#### Scenario: Warn denied
 
-- GIVEN a user without `moderation.warn`, mod role, or administrator
-- WHEN they invoke `/warn` on either path
-- THEN access is denied with an error referencing `moderation.warn`
+- GIVEN user without `moderation.warn`/mod/admin
+- WHEN they invoke `/warn` via slash
+- THEN denied via `t()`
 
 ### Requirement: Unwarn command
 
-The `/unwarn` command MUST be gated by `@can_check("moderation.warn")` and MUST allow a moderator to remove the most recent active warning. Denial semantics match the matrix gate above.
+`/unwarn` MUST be slash-only gated by `@can_check("moderation.warn")`; removes most recent WARN.
 
-(Previously: the command was gated by `@is_mod()`.)
+(Previously: hybrid `@is_mod()`)
 
-#### Scenario: Moderator unwarns user
+#### Scenario: Moderator unwarns
 
-- GIVEN a member has an active WARN infraction
-- WHEN a moderator invokes `/unwarn`
-- THEN the warning is removed and `Member.warnings` is decremented
+- GIVEN member has active WARN
+- WHEN moderator invokes `/unwarn` via slash
+- THEN warning removed
 
-#### Scenario: Unwarn denied without matrix grant
+#### Scenario: Unwarn denied
 
-- GIVEN a user without `moderation.warn`, mod role, or administrator
-- WHEN they invoke `/unwarn` on either path
-- THEN access is denied with an error referencing `moderation.warn`
+- GIVEN user without `moderation.warn`/mod/admin
+- WHEN they invoke `/unwarn` via slash
+- THEN denied via `t()`
 
 ### Requirement: Mute command
 
-The `/mute` command MUST be gated by `@can_check("moderation.mute")` and MUST timeout a member for an optional duration, defaulting to 1 hour.
+`/mute` MUST be slash-only gated by `@can_check("moderation.mute")`; timeouts member (default 1h).
 
-(Previously: the command was gated by `@is_mod()`.)
+(Previously: hybrid `@is_mod()`)
 
-#### Scenario: Mute with default duration
+#### Scenario: Mute default
 
-- GIVEN a moderator invokes `/mute` without a duration
-- THEN the member is timed out for 1 hour
+- GIVEN moderator invokes `/mute` via slash without duration
+- WHEN it executes
+- THEN timed out 1h
 
-#### Scenario: Mute with custom duration
+#### Scenario: Mute denied
 
-- GIVEN a moderator invokes `/mute` with duration "30m"
-- THEN the member is timed out for 30 minutes
-
-#### Scenario: Mute denied without matrix grant
-
-- GIVEN a user without `moderation.mute`, mod role, or administrator
-- WHEN they invoke `/mute` on either path
-- THEN access is denied with an error referencing `moderation.mute`
+- GIVEN user without `moderation.mute`/mod/admin
+- WHEN they invoke `/mute` via slash
+- THEN denied via `t()`
 
 ### Requirement: Unmute command
 
-The `/unmute` command MUST be gated by `@can_check("moderation.mute")` and MUST remove an active timeout.
+`/unmute` MUST be slash-only gated by `@can_check("moderation.mute")`; removes timeout.
 
-(Previously: the command was gated by `@is_mod()`.)
+(Previously: hybrid `@is_mod()`)
 
-#### Scenario: Moderator unmutes user
+#### Scenario: Moderator unmutes
 
-- GIVEN a member is currently muted
-- WHEN a moderator invokes `/unmute`
-- THEN the timeout is removed
+- GIVEN member is muted
+- WHEN moderator invokes `/unmute` via slash
+- THEN timeout removed
 
-#### Scenario: Unmute denied without matrix grant
+#### Scenario: Unmute denied
 
-- GIVEN a user without `moderation.mute`, mod role, or administrator
-- WHEN they invoke `/unmute` on either path
-- THEN access is denied with an error referencing `moderation.mute`
+- GIVEN user without `moderation.mute`/mod/admin
+- WHEN they invoke `/unmute` via slash
+- THEN denied via `t()`
 
 ### Requirement: Kick command
 
-The `/kick` command MUST be gated by `@can_check("moderation.kick")` and MUST remove a member from the guild and create a KICK infraction. Before executing, the command MUST show an ephemeral confirmation dialog (via `ConfirmCancelView`) displaying the target user, reason, and Confirm/Cancel buttons; the kick proceeds only on explicit Confirm. The FINAL action result MUST be delivered as a permanent channel message; it MUST NOT live only as an edit of the ephemeral dialog.
+`/kick` MUST be slash-only gated by `@can_check("moderation.kick")`; removes member via `ConfirmCancelView`; final permanent via `t()`.
 
-(Previously: gated by `@is_mod()`, and the final result only edited the ephemeral confirmation message.)
+(Previously: hybrid `@is_mod()`; final only edited ephemeral)
 
-#### Scenario: Moderator kicks user
+#### Scenario: Kick succeeds
 
-- GIVEN a moderator invokes `/kick` with reason "trolling"
-- WHEN the moderator clicks Confirm on the ephemeral confirmation dialog
-- THEN the member is removed, a KICK infraction is persisted, and a permanent result embed is sent to the channel
+- GIVEN moderator invokes `/kick` via slash and Confirm
+- WHEN it executes
+- THEN member removed and permanent embed via `t()`
 
-#### Scenario: Kick confirmation shown before execution
+#### Scenario: Kick denied
 
-- GIVEN a moderator invokes `/kick` on a user
-- WHEN the command is invoked
-- THEN an ephemeral embed shows target, reason, and Confirm/Cancel buttons before any action
-
-#### Scenario: Kick cancelled by moderator
-
-- GIVEN a moderator sees the kick confirmation dialog
-- WHEN the moderator clicks Cancel
-- THEN the kick is not executed and a cancellation message is shown ephemerally
-
-#### Scenario: Kick final result is permanent
-
-- GIVEN a kick executed successfully
-- WHEN the result message is posted
-- THEN it is permanent in the channel, visible to all members
-
-#### Scenario: Kick denied without matrix grant
-
-- GIVEN a user without `moderation.kick`, mod role, or administrator
-- WHEN they invoke `/kick` on either path
-- THEN access is denied with an error referencing `moderation.kick`
+- GIVEN user without `moderation.kick`/mod/admin
+- WHEN they invoke `/kick` via slash
+- THEN denied via `t()`
 
 ### Requirement: Ban command
 
-The `/ban` command MUST be gated by `@can_check("moderation.ban")`, ban a user, and accept optional `delete_days` (0–7, default 0). Before executing, the command MUST show an ephemeral confirmation dialog (via `ConfirmCancelView`) displaying the target user, reason, delete_days, and Confirm/Cancel buttons; the ban proceeds only on explicit Confirm. The FINAL action result MUST be delivered as a permanent channel message; it MUST NOT live only as an edit of the ephemeral dialog.
+`/ban` MUST be slash-only gated by `@can_check("moderation.ban")`; `delete_days` 0-7 (default 0); shows `ConfirmCancelView`; final permanent via `t()`.
 
-(Previously: described as administrator-restricted, and the final result only edited the ephemeral confirmation message.)
+(Previously: hybrid dual path; final only edited ephemeral)
 
-#### Scenario: Admin bans user
+#### Scenario: Ban succeeds
 
-- GIVEN an administrator invokes `/ban` with reason "harassment"
-- WHEN the administrator clicks Confirm on the ephemeral confirmation dialog
-- THEN the user is banned, a BAN infraction is created, and a permanent result embed is sent to the channel
+- GIVEN admin invokes `/ban` via slash and Confirm
+- WHEN it executes
+- THEN user banned and permanent embed via `t()`
 
-#### Scenario: Ban with message deletion
+#### Scenario: Ban cancelled
 
-- GIVEN an administrator invokes `/ban` with `delete_days` set to 3
-- WHEN the administrator clicks Confirm
-- THEN the user is banned and up to 3 days of messages are deleted
-
-#### Scenario: Ban confirmation shown before execution
-
-- GIVEN an administrator invokes `/ban` on a user
-- WHEN the command is invoked
-- THEN an ephemeral embed shows target, reason, delete_days, and Confirm/Cancel buttons before any action
-
-#### Scenario: Ban cancelled by administrator
-
-- GIVEN an administrator sees the ban confirmation dialog
-- WHEN the administrator clicks Cancel
-- THEN the ban is not executed and a cancellation message is shown ephemerally
-
-#### Scenario: Ban final result is permanent
-
-- GIVEN a ban executed successfully
-- WHEN the result message is posted
-- THEN it is permanent in the channel, visible to all members
+- GIVEN admin sees ban dialog
+- WHEN they click Cancel
+- THEN not executed and cancellation via `t()`
 
 ### Requirement: Lock command
 
@@ -256,64 +217,51 @@ behaviors MUST remain unchanged.
 
 ### Requirement: Tempban command
 
-The `/tempban` hybrid command MUST be gated by `@can_check("moderation.ban")` (dual-path prefix + slash) and `@app_commands.default_permissions(ban_members=True)`. The command MUST accept a target user, a duration string, and a reason. The duration MUST be parsed via `parse_duration_optional()` (None on invalid input). When the duration is invalid, the command MUST send an ephemeral error embed and MUST NOT ban. Before executing, the command MUST show an ephemeral `ConfirmCancelView` (target, duration, reason, Confirm/Cancel). On Confirm, the command MUST call `InfractionService.tempban()` (insert BAN with `expiresAt = NOW + duration`), ban the member via `member.ban()`, and send a permanent action embed to the channel. A user without `moderation.ban` (no matrix grant, no modRoleId fallback, no administrator) MUST be denied on both prefix and slash paths. The `expires_at` value MUST be computed exactly once at execution time — after the moderator confirms — and that single value MUST be used for the DB insert and all logging, so `expiresAt` reflects the real ban start regardless of how long the dialog stayed open.
+`/tempban` MUST be slash-only gated by `@can_check("moderation.ban")` + `ban_members=True`; accept target/duration/reason; parse via `parse_duration_optional()` (None→ error via `t()`); show `ConfirmCancelView`; on Confirm call `InfractionService.tempban()` with `expiresAt=NOW+duration` computed once after Confirm, then `member.ban()`.
 
-(Previously: `expires_at` was computed before the confirmation dialog appeared, drifting from the actual ban start by the dialog latency.)
+(Previously: hybrid; `expires_at` before dialog)
 
-#### Scenario: Tempban command
+#### Scenario: Tempban succeeds
 
-- GIVEN a moderator with `moderation.ban`
-- WHEN they invoke `/tempban @user 24h spam` and click Confirm
-- THEN a `BAN` infraction is inserted with `expiresAt = (execution time + 24h)`, the member is banned, and a permanent confirm embed is sent to the channel
+- GIVEN moderator with `moderation.ban` invokes `/tempban @user 24h` via slash and Confirm
+- WHEN it executes
+- THEN BAN `expiresAt=execution+24h` inserted and member banned
 
-#### Scenario: Invalid duration rejected
+#### Scenario: Invalid duration
 
-- GIVEN a moderator invokes `/tempban @user notaduration spam`
-- WHEN `parse_duration_optional("notaduration")` returns `None`
-- THEN an ephemeral error embed is sent and no ban occurs
+- GIVEN moderator invokes `/tempban` with invalid duration
+- WHEN `parse_duration_optional` returns `None`
+- THEN error via `t()` and no ban
 
-#### Scenario: Tempban denied without permission
+#### Scenario: No drift
 
-- GIVEN a user without `moderation.ban` (no matrix grant, no modRoleId, no administrator)
-- WHEN they invoke `/tempban`
-- THEN access is denied on both prefix and slash paths
-
-#### Scenario: Expiry has no confirmation drift
-
-- GIVEN the moderator waits the full 30s dialog timeout before clicking Confirm on `/tempban @user 24h`
-- WHEN the ban executes
-- THEN `expiresAt` equals execution-time + 24h (not invocation-time + 24h), computed once and shared by DB insert and logs
+- GIVEN moderator waits 30s before Confirm on `/tempban`
+- WHEN it executes
+- THEN `expiresAt` equals execution-time+24h (once)
 
 ### Requirement: Unban command
 
-The `/unban` hybrid command MUST be gated by `@can_check("moderation.ban")` and `@app_commands.default_permissions(ban_members=True)`. The command MUST accept a user ID and MUST resolve it into a typed `UnbanTarget` value object (a dataclass carrying the user id plus display metadata such as mention/name). The implementation MUST NOT fabricate attributes on `discord.Object` nor silence attribute errors with `type: ignore`. When an active `BAN` exists, the command MUST deactivate it (via `InfractionService.unban()`), lift the Discord ban (`guild.unban`), and send a permanent confirm embed. When no active `BAN` exists, the command MUST send an ephemeral info embed (idempotent — no error, no mutation). A user without `moderation.ban` MUST be denied on both paths.
+`/unban` MUST be slash-only gated by `@can_check("moderation.ban")` + `ban_members=True`; accept user ID; resolve into `UnbanTarget` dataclass (no `discord.Object` patch, no `type: ignore`); deactivate `BAN` via `InfractionService.unban()` + `guild.unban`; when no `BAN`, ephemeral info.
 
-(Previously: the target was a `discord.Object` with monkey-patched `.mention`/`.name` under `type: ignore`.)
+(Previously: hybrid; target `discord.Object` patched under `type: ignore`)
 
-#### Scenario: Unban command
+#### Scenario: Unban succeeds
 
-- GIVEN a guild has an active `BAN` for a user and a moderator invokes `/unban <user_id>`
-- WHEN the command executes
-- THEN the BAN is deactivated, the Discord ban is lifted, and a permanent confirm embed is sent
+- GIVEN guild has active `BAN` and moderator invokes `/unban <id>` via slash
+- WHEN it executes
+- THEN BAN deactivated, Discord ban lifted, permanent via `t()`
 
 #### Scenario: Unban idempotent
 
-- GIVEN a guild has no active `BAN` for the user and a moderator invokes `/unban <user_id>`
-- WHEN the command executes
-- THEN an ephemeral info embed is sent (no error, no mutation)
+- GIVEN no active `BAN` and moderator invokes `/unban <id>` via slash
+- WHEN it executes
+- THEN ephemeral info via `t()` (no mutation)
 
-#### Scenario: Unban denied without permission
+#### Scenario: Typed target
 
-- GIVEN a user without `moderation.ban`
-- WHEN they invoke `/unban`
-- THEN access is denied on both prefix and slash paths
-
-#### Scenario: Target resolved via typed value object
-
-- GIVEN `/unban` resolves its target
-- WHEN the target object is inspected
-- THEN it is an `UnbanTarget` dataclass instance and no framework object has had attributes attached post-construction
-
+- GIVEN `/unban` resolves target via slash
+- WHEN inspected
+- THEN `UnbanTarget` dataclass and no framework object mutated
 ### Requirement: Loop runs decay then expiry hourly
 
 The `SentinelCog` MUST register a `@tasks.loop(hours=1)` that, on each iteration, runs `decay_warnings()` for each guild and then runs the tempban-expiry scan (`get_expired_tempbans` → `unban` + deactivate) for each guild, in one body. Each phase MUST log via `LoggingService`. The loop MUST `await bot.wait_until_ready()` before the first iteration (`@before_loop`). `cog_unload()` MUST cancel the loop (`is_running()` False, no further iteration). Loop logs MUST use brand tokens (no hex literals).

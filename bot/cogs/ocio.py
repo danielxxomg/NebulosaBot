@@ -37,7 +37,7 @@ class OcioCog(commands.Cog, name="Ocio"):
         self.bot: NebulosaBot = bot
         self.ocio_service = OcioService()
 
-    def _to_ctx(self, src: object):  # type: ignore[no-untyped-def]
+    def _to_ctx(self, src: object):
         from bot.cogs._slash_compat import is_context_like as _is_ctx  # noqa: PLC0415 -- cycle-breaking: compat shim avoids circular import  # isort: skip
 
         if _is_ctx(src):
@@ -51,7 +51,7 @@ class OcioCog(commands.Cog, name="Ocio"):
     # ==================================================================
 
     @app_commands.command(
-        name=app_commands.locale_str("dice", key="slash.names.dice"),
+        name="dice",
         description=app_commands.locale_str(
             "Tirar un dado.",
             key="slash.descriptions.dice",
@@ -66,7 +66,7 @@ class OcioCog(commands.Cog, name="Ocio"):
     ) -> None:
         """Roll a die with *sides* faces and reply with the result (permanent)."""
         ctx = self._to_ctx(interaction)
-        guild_id = str(ctx.guild.id) if ctx.guild else ""  # type: ignore[union-attr]
+        guild_id = str(ctx.guild.id) if ctx.guild else ""
         result = random.randint(1, sides)  # noqa: S311 -- non-crypto dice roll for entertainment
         title = t(guild_id, "ocio.dice.title")
         if title == "ocio.dice.title":
@@ -77,12 +77,14 @@ class OcioCog(commands.Cog, name="Ocio"):
         else:
             desc = raw_desc
         embed = info_embed(title, desc, guild_id=guild_id)
-        await ctx.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())  # type: ignore[union-attr]
+        await ctx.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
 
     @property
     def dados(self) -> app_commands.Command:
-        """Legacy alias — /dados must not resolve via walk, old tests probe cog.dados."""
-        return self.dice  # type: ignore[return-value]
+        """Compat alias — tests probe cog.dados; returns the dice command (name still 'dice')."""
+        return self.dice
+
+    # Name stays 'dice' for all locales per slash-locale spec; description localizes via Translator.
 
     @app_commands.command(
         name="banana",
@@ -95,7 +97,7 @@ class OcioCog(commands.Cog, name="Ocio"):
     async def banana(self, interaction: discord.Interaction) -> None:
         """Reply with a banana image and a random measurement (2-30 cm) — permanent, zero DB."""
         ctx = self._to_ctx(interaction)
-        guild_id = str(ctx.guild.id) if ctx.guild else ""  # type: ignore[union-attr]
+        guild_id = str(ctx.guild.id) if ctx.guild else ""
         data, filename, size = await self.ocio_service.get_random_banana()
         embed = info_embed(
             t(guild_id, "ocio.banana.title"),
@@ -104,7 +106,7 @@ class OcioCog(commands.Cog, name="Ocio"):
         )
         file = discord.File(fp=io.BytesIO(data), filename=filename)
         embed.set_image(url=f"attachment://{filename}")
-        await ctx.send(file=file, embed=embed, allowed_mentions=discord.AllowedMentions.none())  # type: ignore[union-attr]
+        await ctx.send(file=file, embed=embed, allowed_mentions=discord.AllowedMentions.none())
 
     @app_commands.command(
         name="8ball",
@@ -120,7 +122,7 @@ class OcioCog(commands.Cog, name="Ocio"):
     async def eight_ball(self, interaction: discord.Interaction, *, question: str) -> None:
         """Ask the 8ball — localized permanent, no DB."""
         ctx = self._to_ctx(interaction)
-        guild_id = str(ctx.guild.id) if ctx.guild else ""  # type: ignore[union-attr]
+        guild_id = str(ctx.guild.id) if ctx.guild else ""
         safe_q = dutils.escape_markdown(question or "")
         answer = self.ocio_service.get_8ball_response(guild_id=str(guild_id) if guild_id else None, question=question)
         embed = info_embed(
@@ -128,12 +130,12 @@ class OcioCog(commands.Cog, name="Ocio"):
             f"**Q:** {safe_q}\n**A:** {dutils.escape_markdown(answer)}",
             guild_id=guild_id,
         )
-        await ctx.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())  # type: ignore[union-attr]
+        await ctx.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
 
     @property
     def eightball(self) -> app_commands.Command:
         """Alias for :attr:`eight_ball` — RED hasattr + cog-name probes."""
-        return self.eight_ball  # type: ignore[return-value]
+        return self.eight_ball
 
     # ==================================================================
     # Error handler — cooldown (app path only; prefix path handled globally)
@@ -143,14 +145,14 @@ class OcioCog(commands.Cog, name="Ocio"):
         self, interaction: discord.Interaction, error: discord.app_commands.AppCommandError
     ) -> None:
         if isinstance(error, app_commands.CommandOnCooldown):
-            guild_id = str(interaction.guild.id) if interaction.guild else ""  # type: ignore[union-attr]
+            guild_id = str(interaction.guild.id) if interaction.guild else ""
             retry_after = getattr(error, "retry_after", 5.0)
             title = t(guild_id, "ocio.cooldown.title")
             desc = t(guild_id, "ocio.cooldown.description", retry_after=retry_after)
             embed = error_embed(title, desc, guild_id=guild_id)
             try:
                 ctx = self._to_ctx(interaction)
-                await ctx.send(embed=embed, ephemeral=True)  # type: ignore[union-attr]
+                await ctx.send(embed=embed, ephemeral=True)
             except Exception:
                 logger.exception("Failed to send cooldown embed")
             return

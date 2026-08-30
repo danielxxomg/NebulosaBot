@@ -51,7 +51,7 @@ class StellarCog(commands.Cog, name="Stellar"):
     def __init__(self, bot: NebulosaBot) -> None:
         self.bot = bot
 
-    def _to_ctx(self, src: object):  # type: ignore[no-untyped-def]
+    def _to_ctx(self, src: object):
         from bot.cogs._slash_compat import is_context_like as _is_ctx  # noqa: PLC0415 -- cycle-breaking: compat shim avoids circular import  # isort: skip
 
         if _is_ctx(src):
@@ -74,8 +74,8 @@ class StellarCog(commands.Cog, name="Stellar"):
     async def daily(self, interaction: discord.Interaction) -> None:
         """Claim the daily coin reward with streak tracking."""
         ctx = self._to_ctx(interaction)
-        guild_id = str(ctx.guild.id) if ctx.guild else ""  # type: ignore[union-attr]
-        user_id = str(ctx.author.id)  # type: ignore[union-attr]
+        guild_id = str(ctx.guild.id) if ctx.guild else ""
+        user_id = str(ctx.author.id)
 
         if self.bot.economy_service is None:
             msg = "EconomyService initialised in setup_hook"
@@ -134,8 +134,8 @@ class StellarCog(commands.Cog, name="Stellar"):
     ) -> None:
         """Show the coin balance for yourself or a target member."""
         ctx = self._to_ctx(interaction)
-        guild_id = str(ctx.guild.id) if ctx.guild else ""  # type: ignore[union-attr]
-        target = member or ctx.author  # type: ignore[union-attr]
+        guild_id = str(ctx.guild.id) if ctx.guild else ""
+        target = member or ctx.author
         user_id = str(target.id)
 
         if self.bot.economy_service is None:
@@ -185,7 +185,7 @@ class StellarCog(commands.Cog, name="Stellar"):
     ) -> None:
         """Display the top-10 leaderboard for XP or coins."""
         ctx = self._to_ctx(interaction)
-        guild_id = str(ctx.guild.id) if ctx.guild else ""  # type: ignore[union-attr]
+        guild_id = str(ctx.guild.id) if ctx.guild else ""
 
         sort_by = lb_type.lower()
         if sort_by not in ("xp", "coins"):
@@ -256,8 +256,8 @@ class StellarCog(commands.Cog, name="Stellar"):
     ) -> None:
         """Generate and send a rank card for yourself or a target member."""
         ctx = self._to_ctx(interaction)
-        guild_id = str(ctx.guild.id) if ctx.guild else ""  # type: ignore[union-attr]
-        target: discord.Member = member or ctx.author  # type: ignore[assignment,union-attr]
+        guild_id = str(ctx.guild.id) if ctx.guild else ""
+        target: discord.Member = member or ctx.author
         user_id = str(target.id)
 
         # Defer — image generation and avatar fetch are I/O-bound.

@@ -94,12 +94,14 @@ def _make_ctx(guild_id: int | None = _GUILD_ID) -> MagicMock:
 class TestDadosI18n:
     @pytest.mark.asyncio
     async def test_dados_embed_from_locale(self, cog: OcioCog) -> None:
-        """Dados embed MUST use t() for title and interpolated description."""
+        """Dice embed MUST use t() for title and interpolated description (dados alias compat)."""
         ctx = _make_ctx()
-        await cog.dados.callback(cog, ctx, sides=6)
+        await cog.dice.callback(cog, ctx, sides=6)
         embed = ctx.send.call_args[1]["embed"]
         assert "TEST_DICE" in embed.title
         assert "d6" in embed.description
+        # alias stays compat
+        assert cog.dados is cog.dice
 
 
 # ---------------------------------------------------------------------------

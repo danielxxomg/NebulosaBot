@@ -1,6 +1,6 @@
 """SentinelCog — moderation commands for NebulosaBot.
 
-Provides 9 hybrid moderation commands: warn, unwarn, mute, unmute, kick,
+Provides 9 slash moderation commands: warn, unwarn, mute, unmute, kick,
 ban, lock, unlock, and modlogs.  Moderation commands are gated by the
 permission matrix via ``@can_check("moderation.<key>")``; lock/unlock/
 modlogs keep ``@is_mod()`` and sync stays ``@is_admin()``.  Actions log
@@ -90,7 +90,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             self.decay_expiry_loop.start()
             logger.info("Sentinel decay+expiry loop started (interval: 1h)")
 
-    def _to_ctx(self, src: object):  # type: ignore[no-untyped-def]
+    def _to_ctx(self, src: object):
         from bot.cogs._slash_compat import is_context_like as _is_ctx  # noqa: PLC0415 -- cycle-breaking: compat shim avoids circular import  # isort: skip
 
         if _is_ctx(src):
@@ -100,12 +100,12 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         return _InteractionContext(src, self.bot)  # type: ignore[arg-type]
 
     @staticmethod
-    def _gid(src: object) -> str:  # type: ignore[no-untyped-def]
+    def _gid(src: object) -> str:
         guild = getattr(src, "guild", None) or getattr(getattr(src, "interaction", None), "guild", None)
         if guild is None:
             msg = "Guild-only command"
             raise RuntimeError(msg)
-        return str(guild.id)  # type: ignore[union-attr]
+        return str(guild.id)
 
     def _collect_guild_ids(self) -> list[str]:
         """Collect guild IDs from bot.guilds (best-effort, no throw)."""
@@ -858,11 +858,11 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         if ctx.guild is None:
             return
 
-        overwrite = target_channel.overwrites_for(ctx.guild.default_role)  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
+        overwrite = target_channel.overwrites_for(ctx.guild.default_role)  # noqa: E501  # guild-only: ctx.channel is TextChannel in guild context
         overwrite.send_messages = False
 
         try:
-            await target_channel.set_permissions(  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
+            await target_channel.set_permissions(  # noqa: E501  # guild-only: ctx.channel is TextChannel in guild context
                 ctx.guild.default_role,
                 overwrite=overwrite,
                 reason=f"Channel locked by {ctx.author}",
@@ -871,7 +871,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             await ctx.send(
                 embed=error_embed(
                     t(guild_id, "sentinel.lock.permission_denied_title"),
-                    t(guild_id, "sentinel.lock.permission_denied_description", channel=target_channel.mention),  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
+                    t(guild_id, "sentinel.lock.permission_denied_description", channel=target_channel.mention),  # noqa: E501  # guild-only: ctx.channel is TextChannel in guild context
                 )
             )
             return
@@ -880,7 +880,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             await ctx.send(
                 embed=error_embed(
                     t(guild_id, "sentinel.lock.failed_title"),
-                    t(guild_id, "sentinel.lock.failed_description", channel=target_channel.mention),  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
+                    t(guild_id, "sentinel.lock.failed_description", channel=target_channel.mention),  # noqa: E501  # guild-only: ctx.channel is TextChannel in guild context
                 )
             )
             return
@@ -896,13 +896,13 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             "Lock",
             ctx.author,
             ctx.author,
-            t(guild_id, "sentinel.lock.audit_reason", channel=target_channel.mention),  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
+            t(guild_id, "sentinel.lock.audit_reason", channel=target_channel.mention),  # noqa: E501  # guild-only: ctx.channel is TextChannel in guild context
         )
 
         await ctx.send(
             embed=success_embed(
                 t(guild_id, "sentinel.lock.success_title"),
-                t(guild_id, "sentinel.lock.success_description", channel=target_channel.mention),  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
+                t(guild_id, "sentinel.lock.success_description", channel=target_channel.mention),  # noqa: E501  # guild-only: ctx.channel is TextChannel in guild context
             )
         )
 
@@ -934,11 +934,11 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         if ctx.guild is None:
             return
 
-        overwrite = target_channel.overwrites_for(ctx.guild.default_role)  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
+        overwrite = target_channel.overwrites_for(ctx.guild.default_role)  # noqa: E501  # guild-only: ctx.channel is TextChannel in guild context
         overwrite.send_messages = None
 
         try:
-            await target_channel.set_permissions(  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
+            await target_channel.set_permissions(  # noqa: E501  # guild-only: ctx.channel is TextChannel in guild context
                 ctx.guild.default_role,
                 overwrite=overwrite,
                 reason=f"Channel unlocked by {ctx.author}",
@@ -947,7 +947,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             await ctx.send(
                 embed=error_embed(
                     t(guild_id, "sentinel.unlock.permission_denied_title"),
-                    t(guild_id, "sentinel.unlock.permission_denied_description", channel=target_channel.mention),  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
+                    t(guild_id, "sentinel.unlock.permission_denied_description", channel=target_channel.mention),  # noqa: E501  # guild-only: ctx.channel is TextChannel in guild context
                 )
             )
             return
@@ -956,7 +956,7 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             await ctx.send(
                 embed=error_embed(
                     t(guild_id, "sentinel.unlock.failed_title"),
-                    t(guild_id, "sentinel.unlock.failed_description", channel=target_channel.mention),  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
+                    t(guild_id, "sentinel.unlock.failed_description", channel=target_channel.mention),  # noqa: E501  # guild-only: ctx.channel is TextChannel in guild context
                 )
             )
             return
@@ -972,13 +972,13 @@ class SentinelCog(commands.Cog, name="Sentinel"):
             "Unlock",
             ctx.author,
             ctx.author,
-            t(guild_id, "sentinel.unlock.audit_reason", channel=target_channel.mention),  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
+            t(guild_id, "sentinel.unlock.audit_reason", channel=target_channel.mention),  # noqa: E501  # guild-only: ctx.channel is TextChannel in guild context
         )
 
         await ctx.send(
             embed=success_embed(
                 t(guild_id, "sentinel.unlock.success_title"),
-                t(guild_id, "sentinel.unlock.success_description", channel=target_channel.mention),  # type: ignore[union-attr]  # guild-only: ctx.channel is TextChannel in guild context
+                t(guild_id, "sentinel.unlock.success_description", channel=target_channel.mention),  # noqa: E501  # guild-only: ctx.channel is TextChannel in guild context
             )
         )
 

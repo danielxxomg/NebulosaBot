@@ -12,6 +12,7 @@ case, so drift is still caught, now against runtime behavior.
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -73,7 +74,7 @@ def _make_ctx(admin: bool, role_ids: tuple[int, ...]) -> MagicMock:
     return ctx
 
 
-def _prefix_predicate(cmd):  # type: ignore[no-untyped-def]
+def _prefix_predicate(cmd) -> Any:
     """Extract the registered check predicate from a (now pure slash) command."""
     # Slash-only: app_commands.Command exposes .checks
     if hasattr(cmd, "checks") and cmd.checks:
@@ -97,7 +98,7 @@ class TestTicketsManageGateWiring:
         inter = MagicMock(spec=discord.Interaction)
         inter.guild = guild
         inter.user = member
-        pred = _prefix_predicate(getattr(cog, name))
+        pred = _prefix_predicate(getattr(cog, name))  # test harness helper — intentional Any
         cfg = MagicMock(permission_matrix={}, mod_role_id=None)
         with patch("bot.utils.checks._get_guild_service") as gs_mock:
             gs_mock.return_value.get_config = AsyncMock(return_value=cfg)
@@ -113,7 +114,7 @@ class TestTicketsManageGateWiring:
         inter = MagicMock(spec=discord.Interaction)
         inter.guild = guild
         inter.user = member
-        pred = _prefix_predicate(getattr(cog, name))
+        pred = _prefix_predicate(getattr(cog, name))  # test harness helper — intentional Any
         cfg = MagicMock(permission_matrix={}, mod_role_id=None)
         with patch("bot.utils.checks._get_guild_service") as gs_mock:
             gs_mock.return_value.get_config = AsyncMock(return_value=cfg)

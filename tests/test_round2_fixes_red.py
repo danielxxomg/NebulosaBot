@@ -77,32 +77,23 @@ def _make_ctx(guild: MagicMock | None, member: MagicMock) -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_can_check_prefix_deny_raises_commands_check_failure() -> None:
-    """Fix 1 RED: can_check prefix deny MUST raise commands.CheckFailure.
-
-    app_commands.CheckFailure does NOT derive from commands.CommandError, so
-    discord.py's Bot.invoke never routes it to on_command_error — the denied
-    prefix user gets no message plus a raw traceback. The prefix path MUST
-    raise commands.CheckFailure (sibling is_mod() uses _commands.* exceptions).
-    """
+    """Fix 1 updated: prefix is inert (slash-only), so can_check has no prefix_predicate."""
+    # Slash-only: can_check must NOT expose a prefix_predicate
+    decorator = can_check("moderation.ban")
+    assert not hasattr(decorator, "prefix_predicate"), "can_check must be slash-only (no prefix_predicate)"
+    # Slash path still denies via app_commands.CheckFailure
     guild = MagicMock(spec=discord.Guild)
     guild.id = 123456789
-    member = _make_member_with_roles(guild.id, [123])  # no grant
-    ctx = _make_ctx(guild, member)
-
+    interaction = MagicMock(spec=discord.Interaction)
+    interaction.guild = guild
+    interaction.user = _make_member_with_roles(guild.id, [123])
+    interaction.client = MagicMock()
+    interaction.client._guild_mod_role_cache = {}
     cfg = MagicMock(permission_matrix={"moderation.ban": ["9999"]}, mod_role_id="777")
     with patch("bot.utils.checks._get_guild_service") as gs_mock:
         gs_mock.return_value.get_config = AsyncMock(return_value=cfg)
-        prefix_predicate = can_check("moderation.ban").prefix_predicate
-        with pytest.raises(commands.CheckFailure) as exc:
-            await prefix_predicate(ctx)
-
-    # CRITICAL — the raised exception MUST be commands.CheckFailure, NOT
-    # app_commands.CheckFailure. commands.CheckFailure is NOT a subclass of
-    # app_commands.CheckFailure, so this assertion documents the fix.
-    assert isinstance(exc.value, commands.CheckFailure)
-    assert not isinstance(exc.value, app_commands.CheckFailure), (
-        "prefix deny MUST raise commands.CheckFailure, not app_commands.CheckFailure"
-    )
+        with pytest.raises(app_commands.CheckFailure) as exc:
+            await decorator.predicate(interaction)
     assert "Missing permission: moderation.ban" in str(exc.value)
 
 

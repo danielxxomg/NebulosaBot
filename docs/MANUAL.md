@@ -4,467 +4,611 @@
 
 ---
 
-## 1. Vista general
+## Inicio Rápido
 
-NebulosaBot es un bot de Discord con **8 módulos** y **47 comandos** (slash + prefijo). Cubre moderación, sistema de tickets con campos personalizados, economía con niveles, tarjetas de bien/despedida, y utilidades varias.
-
-| Módulo | Propósito | Audiencia |
-|--------|-----------|-----------|
-| Core | Infraestructura: latencia, estado, ayuda, sincronización | Todos / Admin |
-| Sentinel | Moderación: advertencias, mute, kick, ban, bloqueo de canales | Mod / Admin |
-| Tickets | Sistema de tickets con paneles, categorías, notas y sub-tickets | Mod / Admin |
-| Stellar | Economía: monedas diarias, ranking, tabla de líderes | Todos |
-| Greetings | Tarjetas de bienvenida y despedida configurables | Admin |
-| Utility | Información de usuarios y servidores | Todos |
-| Ocio | Comandos casuales: dados, banana, 8ball | Todos |
-| Setup | Configuración del servidor (categoría de tickets, rol de mod, canal de logs, idioma) | Admin |
-
-**Formato de comandos**: todos son híbridos — funcionan como slash (`/comando`) y como prefijo (configurable por servidor). El bot soporta español e inglés para las respuestas en tiempo real; los nombres de comandos permanecen en inglés, pero sus descripciones se localizan automáticamente según el idioma del cliente de Discord de cada usuario (español por defecto, inglés para clientes en inglés).
-
-**Identidad visual**: los embeds del bot usan una paleta púrpura/violeta como color principal. El avatar del bot aparece como ícono en el pie de los embeds cuando está disponible; si el servidor tiene ícono propio, los embeds de contexto (logs, tickets) usan el ícono del servidor con fallback al del bot.
-
-**Ayuda en vivo**: usa `/help` para listar todos los módulos disponibles, o `/help <módulo>` para ver los comandos de un módulo específico. Este manual es una guía de referencia; `/help` es siempre la fuente de verdad sobre comandos registrados.
-
----
-
-## 2. Inicio rápido
+Propósito: punto de entrada para invitar el bot, configurar el servidor y desplegar el panel de tickets en minutos. NebulosaBot expone 8 módulos y 47 comandos exclusivamente slash; los embeds usan paleta violeta/púrpura vía `bot/utils/brand.py` (`brand.ACCENT`). Idioma por defecto `es`.
 
 ### Primeros pasos
 
-1. **Invita el bot** al servidor con los permisos necesarios (gestión de canales, expulsar/miembros, moderar miembros).
-2. **Ejecuta `/setup`** para configurar el servidor:
-
-   | Parámetro | Requerido | Descripción |
-   |-----------|-----------|-------------|
-   | `ticket_category` | Sí | Categoría de Discord donde se crearán los canales de ticket |
-   | `mod_role` | No | Rol de moderador (para comandos de moderación) |
-   | `log_channel` | No | Canal donde se registran las acciones de moderación |
-   | `language` | No | Idioma del bot: `es` o `en` (por defecto: `es`) |
-
-3. **Sincroniza comandos** con `/sync` (solo admin) para que Discord registre los comandos slash actualizados.
+1. **Invita el bot** al servidor con los permisos necesarios (gestión de canales, expulsar miembros, moderar miembros, gestionar roles).
+2. **Ejecuta `/setup`** — comando exclusivamente slash, sin parámetros, solo administradores (`@is_admin()` + `default_permissions administrator`). Abre el panel persistente donde se edita categoría de tickets, rol de moderador, canal de logs e idioma. No toma objetos de Discord como argumentos.
+3. **Espera la sincronización automática** — `setup_hook` ejecuta `tree.sync()` al iniciar; no existe comando `/sync` vigente. Los comandos aparecen tras el reinicio sin acción manual.
 4. **Despliega el panel de tickets** con `/ticket_panel` en el canal donde quieras que los usuarios abran tickets.
-
-### Verificar que todo funciona
+5. **Verifica**
 
 | Comando | Qué revisar |
 |---------|-------------|
 | `/ping` | Latencia WebSocket en ms |
 | `/status` | Base de datos conectada, caché activo, configuración cargada |
 
+Idioma por defecto: **`es`** (español). Si no se configura otro, todas las respuestas usan `es`; `en` solo cuando `language: en` está guardado o el cliente Discord está en inglés para descripciones localizadas. Las descripciones se localizan por cliente; los nombres permanecen en inglés.
+
 ---
 
-## 3. Configuración
+## Comandos de Usuario
 
-### Configuración del servidor (`/setup`)
+Propósito: comandos disponibles para todos los usuarios sin rol especial, con respuestas permanentes o efímeras según el estándar.
 
-El comando `/setup` guarda la configuración por servidor en la base de datos. Solo administradores pueden ejecutarlo.
+### `/ping` — latencia
+
+- **Descripción**: Muestra la latencia WebSocket del bot.
+- **Sintaxis**: `/ping`
+- **Permiso**: todos (`everyone`)
+- **Parámetros**: — (ninguno)
+- **Ejemplo**: `/ping` → embed `Latencia WebSocket: 42 ms` (efímero)
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| — | — | — | — |
+
+### `/help` — ayuda
+
+- **Descripción**: Muestra los comandos agrupados por módulo, paginado.
+- **Sintaxis**: `/help` · `/help module:Core`
+- **Permiso**: todos
+- **Parámetros**:
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `module` | `string` | No | Nombre del módulo a detallar |
+
+- **Ejemplo**: `/help` → lista paginada; `/help module:Sentinel` → embed con `/warn`, `/mute`, etc. Solo sintaxis `/comando`.
+
+### `/avatar` — avatar
+
+- **Descripción**: Muestra el avatar del usuario a 1024 px vía `set_image`.
+- **Sintaxis**: `/avatar` · `/avatar member:@usuario`
+- **Permiso**: todos
+- **Parámetros**:
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `member` | `User` | No | Usuario objetivo (por defecto tú) |
+
+- **Ejemplo**: `/avatar member:@Ana` → embed con `https://cdn.discordapp.com/...?size=1024`
+
+### `/serverinfo` — info del servidor
+
+- **Descripción**: Resumen del servidor (nombre, dueño, miembros, canales, roles, fecha de creación).
+- **Sintaxis**: `/serverinfo`
+- **Permiso**: todos
+- **Parámetros**: —
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| — | — | — | Solo en servidor; en DM error vía `t()` |
+
+- **Ejemplo**: `/serverinfo` → embed con dueño y contadores.
+
+### `/userinfo` — info de usuario
+
+- **Descripción**: Ficha del miembro (ID, roles, fecha de ingreso y creación).
+- **Sintaxis**: `/userinfo` · `/userinfo member:@usuario`
+- **Permiso**: todos
+- **Parámetros**:
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `member` | `User` | No | Miembro a consultar |
+
+- **Ejemplo**: `/userinfo member:@Luis` → roles listados (máx. 20 + “y N más”).
+
+### `/dice` — dado
+
+- **Descripción**: Tira un dado con número configurable de caras.
+- **Sintaxis**: `/dice` · `/dice sides:20`
+- **Permiso**: todos (permanente, 1/5 s cooldown, sin escritura a DB)
+- **Parámetros**:
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `sides` | `integer 2-100` | No | Caras del dado (por defecto 6) |
+
+- **Ejemplo**: `/dice sides:20` → `Tiraste un 14 (d20)`. El nombre permanece `dice` en todos los locales; la descripción se localiza vía `Translator` (`es` por defecto).
+
+### `/banana` — banana
+
+- **Descripción**: Imagen aleatoria de banana con medición 2-30 cm.
+- **Sintaxis**: `/banana`
+- **Permiso**: todos (permanente, sin DB)
+- **Parámetros**: —
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| — | — | — | — |
+
+- **Ejemplo**: `/banana` → embed + `attachment://banana_03.webp` con `12 cm`.
+
+### `/8ball` — bola 8
+
+- **Descripción**: Responde a una pregunta con 20 variantes localizadas.
+- **Sintaxis**: `/8ball question:¿voy a aprobar?`
+- **Permiso**: todos (permanente, sin DB)
+- **Parámetros**:
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `question` | `string` | Sí | Pregunta a la bola 8 |
+
+- **Ejemplo**: `/8ball question:¿hoy es mi día?` → `**Q:** ¿hoy es mi día? **A:** Sí, definitivamente.` Título vía `ocio.8ball.embed_title`.
+
+### `/daily` — recompensa diaria
+
+- **Descripción**: Reclama monedas diarias con racha.
+- **Sintaxis**: `/daily`
+- **Permiso**: todos (permanente)
+- **Parámetros**: —
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| — | — | — | Cooldown 24 h; `stellar.daily.cooldown_description` con `{remaining}` formateado `Xh Ym` |
+
+- **Ejemplo**: `/daily` → `Recibiste 100 monedas. Racha 3 días` o `puedes reclamar de nuevo en 22h 0m` (efímero si en cooldown).
+
+### `/coins` — saldo
+
+- **Descripción**: Consulta saldo de monedas.
+- **Sintaxis**: `/coins` · `/coins member:@usuario`
+- **Permiso**: todos (permanente)
+- **Parámetros**:
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `member` | `User` | No | Usuario a consultar |
+
+- **Ejemplo**: `/coins` → `Tienes 250 monedas` vía `t()`.
+
+### `/leaderboard` — clasificación
+
+- **Descripción**: Top 10 por XP o monedas.
+- **Sintaxis**: `/leaderboard lb_type:xp` · `/leaderboard lb_type:coins`
+- **Permiso**: todos (permanente)
+- **Parámetros**:
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `lb_type` | `enum xp\|coins` | No | Métrica (por defecto `xp`) |
+
+- **Ejemplo**: `/leaderboard lb_type:coins` → embed top 10 por monedas.
+
+### `/rank` — tarjeta de rango
+
+- **Descripción**: Imagen de nivel, XP y posición.
+- **Sintaxis**: `/rank` · `/rank member:@usuario`
+- **Permiso**: todos (permanente)
+- **Parámetros**:
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `member` | `User` | No | Usuario objetivo |
+
+- **Ejemplo**: `/rank member:@Ana` → imagen con `Nivel 7 — 420/600 XP — #3`.
+
+---
+
+## Comandos de Moderación
+
+Propósito: acciones de moderación invocables exclusivamente vía slash y protegidas por `can_check` y la matriz de permisos.
+
+### `/warn` — advertir
+
+- **Descripción**: Registra una advertencia (`WARN`) y puede escalar a mute/kick según umbrales.
+- **Sintaxis**: `/warn member:@usuario reason:spam`
+- **Permiso**: `moderation.warn` vía `@can_check("moderation.warn")`; `default_permissions moderate_members`
+- **Parámetros**:
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `member` | `User` | Sí | Miembro a advertir |
+| `reason` | `string` | Sí | Motivo |
+
+- **Ejemplo**: `/warn member:@Troll reason:spam` → embed `Miembro advertido` vía `t()`. Sin permiso → `CheckFailure` efímero.
+
+### `/unwarn` — revocar advertencia
+
+- **Descripción**: Elimina la advertencia activa más reciente.
+- **Sintaxis**: `/unwarn member:@usuario`
+- **Permiso**: `moderation.warn`
+- **Parámetros**:
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `member` | `User` | Sí | Miembro |
+
+- **Ejemplo**: `/unwarn member:@Troll` → `Advertencia revocada`.
+
+### `/mute` — silenciar
+
+- **Descripción**: Aplica timeout (por defecto 1 h) con duración parseada.
+- **Sintaxis**: `/mute member:@usuario duration:2h reason:ruido` · `/mute member:@usuario`
+- **Permiso**: `moderation.mute`
+- **Parámetros**:
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `member` | `User` | Sí | Miembro |
+| `duration` | `string` | No | Duración (`1h`, `30m`, por defecto 1h) |
+| `reason` | `string` | No | Motivo |
+
+- **Ejemplo**: `/mute member:@Troll duration:30m` → timeout 30 m.
+
+### `/unmute` — quitar silencio
+
+- **Descripción**: Remueve timeout.
+- **Sintaxis**: `/unmute member:@usuario`
+- **Permiso**: `moderation.mute`
+- **Parámetros**:
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `member` | `User` | Sí | Miembro |
+
+- **Ejemplo**: `/unmute member:@Troll`.
+
+### `/kick` — expulsar
+
+- **Descripción**: Expulsa con `ConfirmCancelView`; resultado permanente vía `t()`.
+- **Sintaxis**: `/kick member:@usuario reason:abuso`
+- **Permiso**: `moderation.kick`
+- **Parámetros**:
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `member` | `User` | Sí | Miembro |
+| `reason` | `string` | Sí | Motivo |
+
+- **Ejemplo**: `/kick member:@Troll reason:abuso` → diálogo Confirm/Cancel efímero, luego embed permanente.
+
+### `/lock` / `/unlock` — canal
+
+- **Descripción**: Deniega/restaura `send_messages` para `@everyone`.
+- **Sintaxis**: `/lock` · `/lock channel:#general` · `/unlock` · `/unlock channel:#general`
+- **Permiso**: `moderation` (moderadores, `default_permissions moderate_members`)
+- **Parámetros**:
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `channel` | `Channel` | No | Canal objetivo (por defecto actual) |
+
+- **Ejemplo**: `/lock channel:#anuncios` → `@everyone` sin enviar mensajes.
+
+### `/modlogs` — historial
+
+- **Descripción**: Lista infracciones paginadas (5 por página) con filtros.
+- **Sintaxis**: `/modlogs member:@usuario` · `/modlogs member:@usuario type:WARN after:2026-01-01`
+- **Permiso**: `moderate_members` (ephemeral)
+- **Parámetros**:
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `member` | `User` | Sí | Usuario |
+| `type` | `enum` | No | Tipo (WARN, MUTE, KICK, BAN) |
+| `after` | `date ISO` | No | Desde fecha |
+
+- **Ejemplo**: `/modlogs member:@Troll type:MUTE` → paginador `EmbedPaginator`.
+
+### `/tempban` — baneo temporal
+
+- **Descripción**: Banea temporalmente; `expiresAt` se calcula tras Confirm (sin drift).
+- **Sintaxis**: `/tempban member:@usuario duration:24h reason:abuso`
+- **Permiso**: `moderation.ban` + `ban_members`
+- **Parámetros**:
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `member` | `User` | Sí | Usuario |
+| `duration` | `string` | Sí | Duración (`24h`, `7d`) vía `parse_duration_optional` |
+| `reason` | `string` | Sí | Motivo |
+
+- **Ejemplo**: `/tempban member:@Troll duration:24h` → `ConfirmCancelView`, luego `BAN expiresAt=ahora+24h` + `member.ban()`.
+
+### `/unban` — desbanear
+
+- **Descripción**: Levanta baneo activo (idempotente) usando `UnbanTarget` tipado.
+- **Sintaxis**: `/unban user_id:123456789`
+- **Permiso**: `moderation.ban` + `ban_members`
+- **Parámetros**:
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `user_id` | `string` | Sí | ID del usuario |
+
+- **Ejemplo**: `/unban user_id:123` → desbaneo + `guild.unban` o info efímera si no había baneo.
+
+Jerarquía: `_validate_target` deniega si `author.top_role <= target.top_role` salvo dueño del servidor; sumado al check de jerarquía del bot.
+
+---
+
+## Comandos de Administración
+
+Propósito: acciones destructivas o de configuración global, solo administradores o matriz equivalente, exclusivamente slash.
+
+### `/ban` — banear
+
+- **Descripción**: Banea con `delete_days` 0-7 y confirmación.
+- **Sintaxis**: `/ban member:@usuario reason:abuso delete_days:1`
+- **Permiso**: `moderation.ban` vía `@can_check("moderation.ban")`; `default_permissions ban_members`; administradores pasan implícitamente, matriz `moderation.ban` o fallback `modRoleId`
+- **Parámetros**:
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `member` | `User` | Sí | Usuario |
+| `reason` | `string` | Sí | Motivo |
+| `delete_days` | `integer 0-7` | No | Días de mensajes a borrar (0 por defecto) |
+
+- **Ejemplo**: `/ban member:@Troll reason:abuso delete_days:1` → `ConfirmCancelView` y luego baneo permanente.
+
+### `/setup` — panel de configuración
+
+- **Descripción**: Abre el panel persistente no efímero de configuración (tickets, bienvenida, despedida, registro, idioma). Cero parámetros.
+- **Sintaxis**: `/setup`
+- **Permiso**: `administrator` vía `@is_admin()` + `default_permissions administrator`
+- **Parámetros**:
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| — | — | — | Sin parámetros; todo en el panel |
+
+- **Ejemplo**: `/setup` → embed del panel con `SetupPanelView` y breadcrumb `Panel • tickets`. Solo administradores; sin permiso → error efímero vía `t()`.
+
+### `/ticket_panel` — desplegar panel
+
+- **Descripción**: Despliega el mensaje con botón `Abrir Ticket` en el canal actual.
+- **Sintaxis**: `/ticket_panel` · `/ticket_panel title:Soporte description_text:Ayuda`
+- **Permiso**: `administrator`
+- **Parámetros**:
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `title` | `string` | No | Título del embed |
+| `description_text` | `string` | No | Descripción del embed |
+
+- **Ejemplo**: `/ticket_panel title:Soporte` → panel desplegado y `ticketPanelMessageId` persistido.
+
+### `/create_category` — crear categoría
+
+- **Descripción**: Crea categoría de tickets con orden por servidor.
+- **Sintaxis**: `/create_category name:Soporte emoji:🎫 description:General position:1`
+- **Permiso**: `administrator`
+- **Parámetros**:
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `name` | `string` | Sí | Nombre único por guild |
+| `emoji` | `string` | No | Emoji |
+| `description` | `string` | No | Descripción |
+| `position` | `integer` | No | Orden |
+
+- **Ejemplo**: `/create_category name:Soporte` → `Categoría creada ID abc`.
+
+### `/list_categories` — listar
+
+- **Descripción**: Lista categorías activas ordenadas.
+- **Sintaxis**: `/list_categories`
+- **Permiso**: `administrator`
+- **Parámetros**: —
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| — | — | — | — |
+
+- **Ejemplo**: `/list_categories` → embed `📋 Categorías de Tickets`.
+
+### `/delete_category` — eliminar
+
+- **Descripción**: Elimina categoría sin tickets abiertos; guard `@is_admin()`.
+- **Sintaxis**: `/delete_category category_id:uuid`
+- **Permiso**: `administrator` (`@is_admin()` + `default_permissions administrator`)
+- **Parámetros**:
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `category_id` | `string UUID` | Sí | ID de la categoría |
+
+- **Ejemplo**: `/delete_category category_id:abc` → `Categoría eliminada` o `Categoría en uso` si hay tickets abiertos.
+
+### `/configure_fields` — campos personalizados
+
+- **Descripción**: Define `field_definitions` JSON (máx. 3 campos) por categoría.
+- **Sintaxis**: `/configure_fields help` · `/configure_fields set category_id:abc fields_json:[{"key":"nick","label":"Apodo"}]`
+- **Permiso**: `administrator`
+- **Parámetros**:
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `category_id` | `string` | Sí (para `set`) | ID categoría |
+| `fields_json` | `string JSON` | Sí (para `set`) | Array JSON de definiciones |
+
+- **Ejemplo**: `/configure_fields set category_id:abc fields_json:[]` → campos borrados.
+
+### `/welcome` / `/goodbye` — saludos (grupo)
+
+- **Descripción**: Configura canal, estado, mensaje y tarjeta de bienvenida/despedida.
+- **Sintaxis**: `/welcome` · `/welcome channel channel:#bienvenida` · `/welcome toggle` · `/welcome message template:Hola {user}` (análogo `goodbye`)
+- **Permiso**: `administrator`
+- **Parámetros**:
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| `channel` | `Channel` | No | Canal objetivo |
+| `template` | `string` | No | Plantilla con `{user}`, `{server}`, `{mention}` |
+
+- **Ejemplo**: `/welcome channel channel:#bienvenida` → canal configurado.
+
+### `/welcome_test` / `/goodbye_test` — prueba de tarjeta
+
+- **Descripción**: Envía tarjeta de ejemplo (efímero).
+- **Sintaxis**: `/welcome_test` · `/goodbye_test`
+- **Permiso**: `administrator`
+- **Parámetros**: —
+
+| Parámetro | Tipo | Requerido | Descripción |
+|-----------|------|-----------|-------------|
+| — | — | — | — |
+
+- **Ejemplo**: `/welcome_test` → imagen de bienvenida de prueba.
+
+---
+
+## Configuración
+
+Propósito: persistencia por servidor, caché y permisos que sostienen todos los comandos slash.
+
+### Servidor (`/setup`)
+
+`/setup` guarda configuración por `guild_id` en la base de datos y en `GuildService`. Todos los campos son editables desde el panel; no hay parámetros en el comando. Ejecutar `/setup` no cambia campos por sí mismo.
 
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
-| `ticket_category` | Categoría de Discord | **Obligatorio**. Donde se crean los canales de ticket |
-| `mod_role` | Rol | Rol que tiene permisos de moderación (warn, mute, kick, lock) |
-| `log_channel` | Canal de texto | Canal para el registro de acciones de moderación |
-| `language` | `es` / `en` | Idioma de las respuestas del bot |
+| `ticket_category` | Categoría Discord | Dónde se crean los canales de ticket (obligatorio para tickets) |
+| `mod_role` | Rol | Rol moderador (`modRoleId`) |
+| `log_channel` | Canal de texto | Canal de logs (`logChannelId`) |
+| `language` | `es` / `en` | Idioma del bot; por defecto `es` |
 
-Ejecutar `/setup` de nuevo sobrescribe los campos proporcionados; los campos omitidos conservan su valor anterior.
+`prefix` persiste como dato (`nb!` por defecto, luego `FALLBACK_PREFIX`) pero es **solo dato**: `get_prefix` resuelve a `[]` siempre y ningún comando es invocable por prefijo. Cambiar `prefix` no habilita dispatch.
 
 ### Roles y permisos
 
-El bot usa **dos capas de permisos**:
+Dos capas:
 
-1. **Permisos de Discord** (`@app_commands.default_permissions`): controlan quién ve el comando en el menú de slash commands.
-2. **Checks en runtime** (`@is_mod()`, `@is_admin()`): validación adicional al ejecutar el comando.
+1. **Discord** (`@app_commands.default_permissions`): visibilidad en el picker.
+2. **Runtime** (`@can_check`, `@is_mod()`, `@is_admin()`): validación vía `app_commands.check` exclusivamente (prefijo inerte).
 
 | Nivel | Check | Comandos |
 |-------|-------|----------|
-| Usuario | Ninguno | `/ping`, `/help`, `/avatar`, `/serverinfo`, `/userinfo`, `/dice`, `/banana`, `/8ball`, `/daily`, `/coins`, `/leaderboard`, `/rank` |
-| Moderador | `@is_mod()` | `/status`, `/warn`, `/unwarn`, `/mute`, `/unmute`, `/kick`, `/lock`, `/unlock`, `/modlogs`, todos los comandos de tickets |
-| Administrador | `@is_admin()` | `/sync`, `/ban`, `/setup`, `/ticket_panel`, `/create_category`, `/list_categories`, `/delete_category`, `/configure_fields`, `/welcome`, `/goodbye`, `/welcome_test`, `/goodbye_test` |
+| Usuario | ninguno | `/ping`, `/help`, `/avatar`, `/serverinfo`, `/userinfo`, `/dice`, `/banana`, `/8ball`, `/daily`, `/coins`, `/leaderboard`, `/rank` |
+| Moderador | `@is_mod()` o `@can_check("moderation.*")` | `/status`, `/warn`, `/unwarn`, `/mute`, `/unmute`, `/kick`, `/lock`, `/unlock`, `/modlogs`, `/tempban`, `/unban`, tickets (`/ticket_panel` requiere admin, resto tickets según matriz) |
+| Administrador | `@is_admin()` | `/ban`, `/setup`, `/delete_category`, `/welcome`, `/goodbye`, etc. |
+
+Matriz `permissionMatrix` (7 claves): `moderation.warn`, `moderation.mute`, `moderation.kick`, `moderation.ban`, `tickets.manage`, `economy.manage`, `greeting.manage`. Orden de `can()`: DM→deny, admin→pass, matriz presente→intersección de roles, `moderation.*` sin clave→fallback `modRoleId`, resto sin clave→deny. Claves desconocidas → deny.
 
 ### Idioma
 
-- `language: es` — respuestas en español neutro (por defecto si no se configura).
-- `language: en` — respuestas en inglés.
-- Las descripciones de comandos slash se localizan automáticamente según el idioma del cliente de Discord de cada usuario (no del servidor). Los nombres de comandos permanecen en inglés.
+- `language: es` — español neutro, por defecto: `es` (default: `es`).
+- `language: en` — inglés.
+- Descripciones slash se localizan por cliente Discord vía `LocaleTranslator` y `locale_str` (`slash.descriptions.*`), no por servidor. Idioma del cliente (client locale) determina descripciones; los nombres permanecen en inglés. Las descripciones slash son client-localized.
+
+### Caché y base de datos
+
+- **Caché**: `TTLCache` con claves `{guild_id}:config` vía `cache_key(guild_id, entity)` (aislamiento por guild).
+- **Lecturas**: `cache → DB → poblar caché`.
+- **DB**: Supabase Postgres async (`create_client` con `AsyncClientOptions`); `IF NOT EXISTS` en migraciones para re-ejecución idempotente; sin FK en runtime (validación a nivel app).
 
 ---
 
-## 4. Estado del bot
+## Sistema de Tickets
 
-### Cómo verificar la salud del bot
+Propósito: ciclo completo de tickets con panel, categorías, campos, sub-tickets, notas e integridad, operado íntegramente por slash.
 
-| Comando | Qué muestra |
-|---------|-------------|
-| `/ping` | Latencia del gateway WebSocket en milisegundos |
-| `/status` | Estado de la base de datos, caché en memoria, configuración del servidor y latencia |
-
-### Indicadores de `/status`
-
-| Campo | Saludable | Problema |
-|-------|-----------|----------|
-| Base de datos | ✅ Conectado | ❌ Inalcanzable — revisar conexión a Supabase |
-| Caché | ✅ N claves en memoria | ❌ No inicializado — reiniciar el bot |
-| Configuración del servidor | ✅ Cargado (muestra prefijo e idioma) | ⚠️ No cargado — ejecutar `/setup` |
-| Latencia | < 200 ms | > 500 ms — posible problema de red |
-
-### Arquitectura de caché
-
-El bot usa un modelo **caché → base de datos** para lecturas:
-
-1. Busca en caché RAM primero.
-2. Si no encuentra, consulta la base de datos (Supabase).
-3. Popula la caché para la próxima lectura.
-
-Las claves de caché incluyen `guild_id` para aislar datos entre servidores.
-
-### Base de datos
-
-- **Proveedor**: Supabase (PostgreSQL).
-- **Operaciones**: async, sin bloqueo del event loop.
-- **Sin FK en runtime**: Supabase Transaction Mode no aplica foreign keys; la validación de integridad es a nivel de aplicación.
-
----
-
-## 5. Casos de uso — Usuarios
-
-### Ver tu avatar o el de otro
-
-| Tarea | Comando | Resultado |
-|-------|---------|-----------|
-| Ver tu propio avatar | `/avatar` | Embed con tu avatar a 1024px |
-| Ver avatar de otro | `/avatar @usuario` | Embed con el avatar del usuario mencionado |
-
-### Información del servidor y usuarios
-
-| Tarea | Comando | Resultado |
-|-------|---------|-----------|
-| Info del servidor | `/serverinfo` | Embed con dueño, miembros, canales, roles, boosts, fecha de creación |
-| Info de un usuario | `/userinfo @usuario` | Embed con ID, roles, fecha de ingreso y creación |
-
-### Economía
-
-| Tarea | Comando | Resultado |
-|-------|---------|-----------|
-| Reclamar monedas diarias | `/daily` | Recompensa de monedas con seguimiento de racha |
-| Ver tu balance | `/coins` | Tus monedas actuales |
-| Ver balance de otro | `/coins @usuario` | Monedas del usuario mencionado |
-| Tabla de líderes XP | `/leaderboard` o `/leaderboard xp` | Top 10 por experiencia |
-| Tabla de líderes monedas | `/leaderboard coins` | Top 10 por monedas |
-| Ver tu tarjeta de rango | `/rank` | Imagen con tu nivel, XP y posición |
-| Ver rango de otro | `/rank @usuario` | Tarjeta de rango del usuario mencionado |
-
-### Diversión
-
-| Tarea | Comando | Resultado |
-|-------|---------|-----------|
-| Tirar un dado de 6 caras | `/dice` | Resultado aleatorio 1-6 |
-| Tirar un dado personalizado | `/dice 20` | Resultado aleatorio 1-20 (2-100 caras) |
-| Medir en bananas | `/banana` | Imagen de banana con medición aleatoria (2-30 cm) |
-| Preguntar a la bola 8 | `/8ball <pregunta>` | Respuesta aleatoria (20 variantes, efímero) |
-
----
-
-## 6. Casos de uso — Moderación y administración
-
-### Moderación básica
-
-| Tarea | Comando | Resultado |
-|-------|---------|-----------|
-| Advertir a un miembro | `/warn @usuario razón` | Registra advertencia; posible escalada automática |
-| Quitar advertencia | `/unwarn @usuario` | Desactiva la advertencia más reciente |
-| Silenciar (timeout) | `/mute @usuario 2h razón` | Timeout por la duración indicada (por defecto: 1h) |
-| Quitar silencio | `/unmute @usuario` | Remueve el timeout |
-| Expulsar | `/kick @usuario razón` | Expulsa al miembro (con confirmación) |
-| Banear | `/ban @usuario razón` | Banea al miembro (solo admin, con confirmación) |
-| Bloquear canal | `/lock` o `/lock #canal` | Deniega `send_messages` para @everyone |
-| Ban temporal | `/tempban @usuario 24h razón` | Banea temporalmente (requiere `moderation.ban`) |
-| Desbanear | `/unban <user_id>` | Levanta un baneo activo (idempotente) |
-| Desbloquear canal | `/unlock` o `/unlock #canal` | Restaura `send_messages` para @everyone |
-| Ver historial | `/modlogs @usuario` | Historial de infracciones paginado |
-| Filtrar historial | `/modlogs @usuario WARN 2026-01-01` | Filtra por tipo y/o fecha |
-
-### Escalada automática
-
-Al advertir a un miembro, el bot puede escalar automáticamente:
-
-- **N advertencias → mute**: silencia al miembro automáticamente.
-- **N advertencias → kick**: expulsa al miembro automáticamente.
-
-Los umbrales de escalada se configuran en la base de datos.
-
-### Sistema de tickets
-
-#### Despliegue del panel
-
-| Tarea | Comando | Resultado |
-|-------|---------|-----------|
-| Crear panel de tickets | `/ticket_panel` | Mensaje con botón "Abrir ticket" en el canal actual |
-| Panel con título personalizado | `/ticket_panel title:"Soporte Técnico"` | Panel con título y descripción custom |
-
-#### Categorías de tickets
-
-| Tarea | Comando | Resultado |
-|-------|---------|-----------|
-| Crear categoría | `/create_category "Soporte" emoji:🎫` | Nueva categoría para organizar tickets |
-| Listar categorías | `/list_categories` | Lista de todas las categorías activas con IDs |
-| Eliminar categoría | `/delete_category <uuid>` | Elimina la categoría (solo si no tiene tickets abiertos) |
-
-#### Campos personalizados por categoría
-
-Cada categoría de ticket puede tener campos de entrada personalizados que el usuario completa al abrir el ticket (vía modal).
-
-| Tarea | Comando | Resultado |
-|-------|---------|-----------|
-| Ver ayuda | `/configure_fields help` | Información sobre el sistema de campos |
-| Definir campos | `/configure_fields set <cat_id> '[{"key":"nick","label":"Nickname"}]'` | Campos personalizados para la categoría |
-| Limpiar campos | `/configure_fields set <cat_id> '[]'` | Elimina todos los campos de la categoría |
-
-**Formato JSON de campos**: array de objetos con `key` (identificador interno) y `label` (texto visible en el modal). Máximo **3 campos personalizados** por categoría (el modal de Discord permite 5 inputs en total: título + descripción + hasta 3 extras).
-
-#### Sub-tickets
-
-Los sub-tickets permiten derivar un ticket secundario vinculado a uno principal.
-
-| Tarea | Comando | Resultado |
-|-------|---------|-----------|
-| Crear sub-ticket (canal actual) | `/subticket create` | Nuevo ticket vinculado al ticket del canal actual |
-| Crear sub-ticket (por ID) | `/subticket create <parent_uuid>` | Nuevo ticket vinculado al ticket especificado |
-
-#### Reabrir, transferir, unclaim y notas
-
-| Tarea | Comando | Resultado |
-|-------|---------|-----------|
-| Reabrir ticket (canal actual) | `/reopen` | Reabre el ticket cerrado de este canal |
-| Reabrir ticket (por referencia) | `/reopen #0003` | Reabre por número, UUID o referencia |
-| Transferir ticket | `/transfer @staff` | Transfiere la propiedad del ticket a otro staff |
-| Liberar ticket | `/unclaim` | Devuelve el ticket a estado abierto (solo el claimer o moderadores) |
-| Agregar nota | `/note add "texto de la nota"` | Nota privada visible solo para mods |
-| Listar notas | `/note list` | Lista todas las notas del ticket (por DM o ephemeral) |
-| Eliminar nota | `/note delete <uuid>` | Elimina una nota específica |
-| Verificar integridad | `/sweep_integrity` | Cierra tickets cuyo canal ya no existe (requiere corroboración de Discord) |
-| Reparar ticket | `/repair_ticket <referencia>` | Repara manualmente un ticket con canal eliminado (solo mod/admin) |
-
-#### Cierre automático
-
-Los tickets sin actividad por **48 horas** se cierran automáticamente. El bot revisa cada hora.
-
-### Bienvenida y despedida
-
-#### Configuración
-
-| Tarea | Comando | Resultado |
-|-------|---------|-----------|
-| Ver config de bienvenida | `/welcome` | Muestra canal, estado y mensaje actual |
-| Definir canal de bienvenida | `/welcome channel #canal` | Canal donde se envían las tarjetas |
-| Activar/desactivar | `/welcome toggle` | Alterna el estado de bienvenida |
-| Definir mensaje | `/welcome message "¡Hola {user}!"` | Template con placeholders: `{user}`, `{server}`, `{mention}` |
-| Ver config de despedida | `/goodbye` | Muestra canal, estado y mensaje actual |
-| Definir canal de despedida | `/goodbye channel #canal` | Canal donde se envían las tarjetas |
-| Activar/desactivar despedida | `/goodbye toggle` | Alterna el estado de despedida |
-| Definir mensaje de despedida | `/goodbye message "Chau {user}"` | Template con los mismos placeholders |
-
-#### Prueba
-
-| Tarea | Comando | Resultado |
-|-------|---------|-----------|
-| Probar tarjeta de bienvenida | `/welcome_test` | Genera y envía una tarjeta de ejemplo (ephemeral) |
-| Probar tarjeta de despedida | `/goodbye_test` | Genera y envía una tarjeta de ejemplo (ephemeral) |
-
-### Voice observatory (solo lectura)
-
-El bot registra transiciones de voz (join, leave, move, mute/deafen) en el canal de logs configurado cuando `logEnabled` y `logChannelId` están activos. Requiere el intent **Voice States** — you MUST enable the Voice States intent in the Discord Developer Portal (Bot → Privileged Gateway Intents → Voice States) o `on_voice_state_update` nunca se disparará (silencioso, no es un bug). Ver `bot/__main__.py` para el flag `intents.voice_states = True`.
-
-### Administración
-
-| Tarea | Comando | Resultado |
-|-------|---------|-----------|
-| Sincronizar comandos slash | `/sync` | Registra/actualiza los comandos en Discord |
-| Configurar servidor | `/setup` | Ver sección [3. Configuración](#3-configuración) |
-
----
-
-## 7. Referencia de comandos
-
-### Para todos los usuarios
-
-| Comando | Parámetros | Resultado |
-|---------|------------|-----------|
-| `/ping` | — | Latencia WebSocket en ms |
-| `/help` | `[módulo]` | Lista de módulos o comandos de un módulo |
-| `/avatar` | `[@usuario]` | Avatar del usuario a 1024px |
-| `/serverinfo` | — | Información del servidor |
-| `/userinfo` | `[@usuario]` | Información del usuario |
-| `/daily` | — | Reclamar recompensa diaria de monedas |
-| `/coins` | `[@usuario]` | Balance de monedas |
-| `/leaderboard` | `[xp\|coins]` | Top 10 por XP o monedas |
-| `/rank` | `[@usuario]` | Tarjeta de rango como imagen |
-| `/dice` | `[caras]` | Tira un dado (2-100 caras, por defecto 6) |
-| `/banana` | — | Medición aleatoria en bananas |
-| `/8ball` | `[pregunta]` | Bola 8: responde a una pregunta de sí/no (efímero, 20 respuestas) |
-
-### Moderación
-
-| Comando | Parámetros | Permiso | Resultado |
-|---------|------------|---------|-----------|
-| `/status` | — | Mod | Estado de DB, caché y configuración |
-| `/warn` | `<@usuario> <razón>` | Mod | Registra advertencia |
-| `/unwarn` | `<@usuario>` | Mod | Quita la advertencia más reciente |
-| `/mute` | `<@usuario> [duración] [razón]` | Mod | Timeout (por defecto 1h) |
-| `/unmute` | `<@usuario>` | Mod | Remueve timeout |
-| `/kick` | `<@usuario> <razón>` | Mod | Expulsa con confirmación |
-| `/lock` | `[#canal]` | Mod | Bloquea canal para @everyone |
-| `/unlock` | `[#canal]` | Mod | Desbloquea canal |
-| `/modlogs` | `<@usuario> [tipo] [después]` | Mod | Historial de infracciones |
-
-### Administración
-
-| Comando | Parámetros | Permiso | Resultado |
-|---------|------------|---------|-----------|
-| `/ban` | `<@usuario> <razón> [días_borrar]` | Admin | Banea con confirmación (0-7 días de mensajes) |
-| `/tempban` | `<@usuario> <duración> <razón>` | Mod (`moderation.ban`) | Banea temporalmente con confirmación |
-| `/unban` | `<user_id>` | Mod (`moderation.ban`) | Desbanea (idempotente) |
-| `/sync` | — | Admin | Sincroniza árbol de comandos |
-| `/setup` | `<categoría_tickets> [rol_mod] [canal_logs] [idioma]` | Admin | Configura el servidor |
-
-### Tickets
-
-| Comando | Parámetros | Permiso | Resultado |
-|---------|------------|---------|-----------|
-| `/ticket_panel` | `[título] [descripción]` | Mod | Despliega panel con botón de apertura |
-| `/create_category` | `<nombre> [emoji] [descripción] [posición]` | Mod | Crea categoría de tickets |
-| `/list_categories` | — | Mod | Lista categorías activas |
-| `/delete_category` | `<uuid>` | Mod | Elimina categoría (sin tickets abiertos) |
-| `/configure_fields help` | — | Mod | Ayuda del sistema de campos |
-| `/configure_fields set` | `<uuid_cat> <json_campos>` | Mod | Define campos personalizados |
-| `/subticket create` | `[uuid_padre]` | Mod | Crea sub-ticket vinculado |
-| `/reopen` | `[referencia]` | Mod | Reabre ticket cerrado |
-| `/unclaim` | — | Mod | Libera el ticket (claimer o mods) |
-| `/transfer` | `<@staff>` | Mod | Transfiere ticket |
-| `/note add` | `<contenido>` | Mod | Agrega nota privada |
-| `/note list` | — | Mod | Lista notas del ticket |
-| `/note delete` | `<uuid_nota>` | Mod | Elimina nota |
-| `/sweep_integrity` | — | Mod | Verifica canales activos y cierra zombies |
-| `/repair_ticket` | `<referencia>` | Mod | Repara manualmente un ticket zombie |
-
-### Bienvenida y despedida
-
-| Comando | Parámetros | Permiso | Resultado |
-|---------|------------|---------|-----------|
-| `/welcome` | — | Admin | Muestra config actual |
-| `/welcome channel` | `<#canal>` | Admin | Define canal de bienvenida |
-| `/welcome toggle` | — | Admin | Activa/desactiva |
-| `/welcome message` | `<template>` | Admin | Define mensaje (placeholders: `{user}`, `{server}`, `{mention}`) |
-| `/goodbye` | — | Admin | Muestra config actual |
-| `/goodbye channel` | `<#canal>` | Admin | Define canal de despedida |
-| `/goodbye toggle` | — | Admin | Activa/desactiva |
-| `/goodbye message` | `<template>` | Admin | Define mensaje |
-| `/welcome_test` | — | Admin | Prueba tarjeta de bienvenida |
-| `/goodbye_test` | — | Admin | Prueba tarjeta de despedida |
-
----
-
-## 8. Tickets en detalle
-
-### Flujo de vida de un ticket
+### Flujo
 
 ```
-Panel → Usuario clickea → Modal (título + campos custom) → Canal creado → Conversación → Cierre
-                                                    ↑                                       │
-                                                    └── Reopen ←────────────────────────────┘
+Panel → Clic Abrir → Selector de categoría → Modal (título + descripción + hasta 3 campos custom) → Canal en categoría Discord → Embed fijado + botones → Claim/Transfer/Unclaim/Cierre/Reopen
 ```
 
-### Panel de tickets
+### Panel
 
-El administrador ejecuta `/ticket_panel` en el canal deseado. El bot envía un embed con un botón. Al hacer clic:
+`/ticket_panel` en el canal deseado envía embed con botón `ticket:open`. Al hacer clic: selector de categorías si hay varias → modal → canal ` {category}-{username}-{number}` en la categoría configurada → embed de bienvenida fijado.
 
-1. Se abre un **menú de categorías** (si hay varias).
-2. Al elegir categoría se abre un **modal** con título (obligatorio), descripción (opcional) y hasta 3 campos personalizados de esa categoría.
-3. Se crea un canal de texto en la categoría de Discord configurada con `/setup`.
-4. El canal recibe un embed de bienvenida (fijado) con los datos del ticket y botones de acción.
+### Categorías y campos
 
-### Campos personalizados
-
-Cada categoría puede definir campos que aparecen en el modal de apertura:
-
-```json
-[
-  {"key": "player_nick", "label": "Nickname del jugador"},
-  {"key": "server", "label": "Servidor"},
-  {"key": "issue_type", "label": "Tipo de problema"}
-]
-```
-
-- `key`: identificador interno, sin espacios.
-- `label`: texto que ve el usuario en el modal.
-- Se almacenan en la base de datos como parte de la categoría.
-- Se muestran en el embed del ticket una vez creado.
+Cada categoría puede definir hasta 3 campos custom mostrados en el modal (`key`/`label`/`style`/`required`/`max_length`/`placeholder`). Vía `/configure_fields set`. Ejemplo JSON: `[{"key":"player_nick","label":"Apodo","style":"short","required":true}]`. Almacenados en `field_definitions` de la categoría y renderizados en el embed.
 
 ### Acciones de staff
 
-| Acción | Comando | Descripción |
-|--------|---------|-------------|
-| **Claim** | Interacción con botón | El staff toma propiedad del ticket |
-| **Transferir** | `/transfer @otro_staff` | Cambia el responsable del ticket |
-| **Unclaim** | `/unclaim` | Libera el ticket reclamado (el claimer o cualquier mod) |
-| **Cerrar** | Interacción con botón | Cierra el ticket con confirmación ephemeral |
-| **Reabrir** | `/reopen` o `/reopen #0003` | Restaura un ticket cerrado |
-| **Nota** | `/note add "texto"` | Nota privada solo visible para mods |
-| **Sub-ticket** | `/subticket create` | Deriva un ticket secundario vinculado |
+| Acción | Comando / Interacción | Descripción |
+|--------|------------------------|-------------|
+| **Claim** | Botón `Reclamar` | Toma propiedad del ticket |
+| **Transferir** | `/transfer member:@staff` | Cambia responsable |
+| **Unclaim** | `/unclaim` | Libera a `open`/`claimedBy:null` (solo claimer o moderador vía `TicketService.check_can_unclaim`, sin clave de matriz nueva) |
+| **Cerrar** | Botón `Cerrar` | Diálogo Confirm/Cancel efímero |
+| **Reabrir** | `/reopen` o `/reopen ticket_ref:#0003` | Restaura ticket cerrado |
+| **Nota** | `/note add content:texto` · `/note list` · `/note delete note_id:uuid` | Notas privadas de staff |
+| **Sub-ticket** | `/subticket create parent_id:uuid` | Ticket secundario vinculado al padre |
+| **Integridad** | `/sweep_integrity` · `/repair_ticket ticket_ref:#0003` | Cierra zombies con corroboración de Discord |
 
-### Cierre de tickets — confirmación y cuenta regresiva
+### Cierre — confirmación y temporizador `close-confirmation`
 
-Al hacer clic en el botón **Cerrar**, el bot muestra un **diálogo de confirmación ephemeral** (solo visible para quien hizo clic) con opciones de Confirmar y Cancelar:
+Al hacer clic en **Cerrar**, el bot muestra diálogo efímero Confirm/Cancel (30 s):
 
-- **Confirmar**: el bot genera el transcript, cierra el ticket en la base de datos, envía un único mensaje con el número **5** y lo edita secuenciando 5 → 4 → 3 → 2 → 1 (un segundo entre cada edición). Al llegar a 1, espera un segundo más y elimina el canal.
-- **Cancelar** o **cerrar el diálogo**: el ticket permanece abierto, sin cambios.
-- **Ignorar** (dejar que el diálogo expire a los 30 segundos): equivale a cancelar — el ticket no se cierra.
+- **Confirmar**: genera transcript, marca ticket cerrado en DB, envía mensaje único con `5` y lo edita `5→4→3→2→1` (1 s entre ediciones), espera 1 s y elimina el canal.
+- **Cancelar** o **cerrar el diálogo**: sin cambios.
+- **Ignorar** (expira): equivale a cancelar.
 
-El cierre automático (48 horas sin actividad) elimina el canal silenciosamente, sin cuenta regresiva.
+El cierre automático (48 h sin actividad, revisión cada hora) elimina sin cuenta regresiva.
 
-### Claim sobre ticket ya reclamado — transferencia
+**Temporizador con coma (`,`)**: no es un prefijo de comando. La única conducta con `,` vive en `TicketsCog.on_message` y está especificada por `close-confirmation`, fuera del framework de comandos (slash-only). Escribir `,` en un canal de ticket dispara el temporizador de confirmación de cierre según `close-confirmation`, no una invocación de comando. Ningún `get_prefix` lo habilita.
 
-Si un moderador hace clic en **Claim** en un ticket que ya tiene un responsable, el bot muestra un diálogo de confirmación ephemeral indicando quién es el claimer actual. Al confirmar, el ticket se transfiere al nuevo moderador. Al cancelar, no se realizan cambios.
+### Claim sobre ticket ya reclamado
 
-### Formato de nombres de canal
+Si un moderador hace clic en **Claim** con responsable existente, se muestra diálogo efímero con claimer actual; al confirmar se transfiere.
 
-Los canales de ticket siguen el formato `{category}-{username}-{number}` (categoría-usuario-número):
+### Nombres de canal
 
-- `soporte-danielxx-0042` — categoría "Soporte", usuario "DanielXX", ticket #42.
-- `técnico-alice-0007` — categoría "Técnico", usuario "Alice", ticket #7.
+Formato `{category}-{username}-{number}`: `soporte-danielxx-0042`. Sanitiza tildes, espacios→guiones, no alfanuméricos eliminados; trunca a 100 preservando `-{número}`. Fallback `ticket`/`user` si no resoluble.
 
-El formato se aplica a: creación inicial, reapertura, sub-tickets y renombrado post-creación. Los caracteres especiales se sanitizan (tildes se eliminan, espacios se convierten en guiones, caracteres no alfanuméricos se eliminan). Si el nombre excede 100 caracteres, se trunca preservando el sufijo `-{número}`.
+### Sub-tickets e integridad
 
-Cuando el usuario o la categoría no pueden resolverse (por ejemplo, al reabrir un ticket cuyo autor ya no está en el servidor), se usan los valores por defecto `ticket` (categoría) y `user` (usuario).
-
-### Sub-tickets
-
-Útiles cuando un problema requiere seguimiento separado pero vinculado al ticket original:
-
-- Se crean en la misma categoría de Discord que el padre.
-- Heredan la configuración de campos personalizados del padre.
-- El canal recibe el embed del ticket con referencia al padre.
-
-### Cierre automático
-
-- **Umbral**: 48 horas sin actividad.
-- **Frecuencia de revisión**: cada 1 hora.
-- **Efecto**: el ticket se marca como cerrado y el canal se archiva.
-- La actividad se actualiza con cada mensaje en el canal del ticket.
+Sub-tickets heredan categoría Discord del padre y referencia al padre. `sweep_integrity` y `repair_ticket` verifican existencia en Discord antes de mutar.
 
 ---
 
-## 9. Deuda conocida y limitaciones
+## Comandos Slash
 
-| Tema | Descripción |
-|------|-------------|
-| **Manual potencialmente desactualizado** | Este manual refleja el código al momento de su creación. Los comandos registrados pueden cambiar con actualizaciones. Usar `/help` como fuente de verdad. |
-| **Descripciones slash localizadas** | Las descripciones de comandos slash se localizan automáticamente según el idioma del cliente Discord del usuario (español por defecto, inglés para clientes en inglés). Los nombres de comandos permanecen en inglés. |
-| **Sin README ni PRODUCT.md** | El repositorio no tiene documentación de alto nivel para desarrolladores fuera de `AGENTS.md` (reglas de code review). |
-| **Supabase sin FK en runtime** | Transaction Mode de Supabase no aplica foreign keys. La integridad referencial se valida en la aplicación. |
-| **Escalada automática con umbrales fijos** | Los umbrales de escalada (warn → mute → kick) requieren configuración en base de datos; no hay comando de Discord para ajustarlos. |
-| **Configuración de greetings solo por comandos** | No hay panel visual para configurar bienvenida/despedida; todo se hace por comandos slash. |
-| **Imágenes generadas en hilo** | Las tarjetas de rango y bienvenida se generan en un hilo separado (`asyncio.to_thread`) para no bloquear el event loop, pero el rendimiento depende del servidor. |
+Propósito: inventario canónico de todos los comandos disponibles exclusivamente vía slash y su comportamiento unificado.
+
+Todos los comandos se invocan exclusivamente como slash (`/comando`) — **no existe ruta por prefijo**; `get_prefix` resuelve a `[]` y `bot-core` es slash-only. No quedan comandos slash híbridos registrados (AST verifica 0 en `bot/cogs`). Errores de permisos o validación se muestran como respuestas **efímeras** (solo visibles para el invocador) localizadas vía `t()`; los comandos de ocio/economía listados como permanentes responden sin `ephemeral`. Los nombres de comandos permanecen en inglés; las descripciones se localizan por cliente Discord (`es` por defecto). El temporizador `,` no es un comando y vive únicamente en `TicketsCog.on_message` bajo `close-confirmation`, fuera del framework.
+
+### Lista completa (sintaxis slash únicamente, sin prefijo)
+
+| Comando | Sintaxis slash | Permiso | Respuesta |
+|---------|----------------|---------|-----------|
+| `/ping` | `/ping` | todos | efímera |
+| `/help` | `/help [module]` | todos | efímera |
+| `/status` | `/status` | moderador | efímera |
+| `/avatar` | `/avatar [member]` | todos | permanente |
+| `/serverinfo` | `/serverinfo` | todos | permanente |
+| `/userinfo` | `/userinfo [member]` | todos | permanente |
+| `/dice` | `/dice [sides:2-100]` | todos | permanente |
+| `/banana` | `/banana` | todos | permanente |
+| `/8ball` | `/8ball question` | todos | permanente |
+| `/daily` | `/daily` | todos | efímera si en cooldown, permanente si éxito |
+| `/coins` | `/coins [member]` | todos | permanente |
+| `/leaderboard` | `/leaderboard [lb_type]` | todos | permanente |
+| `/rank` | `/rank [member]` | todos | permanente (imagen) |
+| `/warn` | `/warn member reason` | `moderation.warn` | efímera/permanente vía `t()` |
+| `/unwarn` | `/unwarn member` | `moderation.warn` | efímera |
+| `/mute` | `/mute member [duration] [reason]` | `moderation.mute` | efímera/permanente |
+| `/unmute` | `/unmute member` | `moderation.mute` | efímera |
+| `/kick` | `/kick member reason` | `moderation.kick` | `ConfirmCancelView` + permanente |
+| `/ban` | `/ban member reason [delete_days]` | `moderation.ban` | `ConfirmCancelView` + permanente |
+| `/tempban` | `/tempban member duration reason` | `moderation.ban` | `ConfirmCancelView` + permanente |
+| `/unban` | `/unban user_id` | `moderation.ban` | efímera/permanente |
+| `/lock` | `/lock [channel]` | moderador | efímera/permanente |
+| `/unlock` | `/unlock [channel]` | moderador | efímera/permanente |
+| `/modlogs` | `/modlogs member [type] [after]` | `moderate_members` | efímera paginada |
+| `/ticket_panel` | `/ticket_panel [title] [description_text]` | administrador | efímera |
+| `/create_category` | `/create_category name [emoji]` | administrador | efímera |
+| `/list_categories` | `/list_categories` | administrador | efímera |
+| `/delete_category` | `/delete_category category_id` | administrador (`@is_admin`) | efímera |
+| `/configure_fields` | `/configure_fields help` · `/configure_fields set category_id fields_json` | administrador | efímera |
+| `/subticket` | `/subticket create [parent_id]` | `tickets.manage` | efímera |
+| `/reopen` | `/reopen [ticket_ref]` | `tickets.manage` | efímera |
+| `/transfer` | `/transfer member` | `tickets.manage` | efímera |
+| `/unclaim` | `/unclaim` | claimer o moderador (servicio) | efímera vía `t()` |
+| `/note` | `/note add content` · `/note list` · `/note delete note_id` | `tickets.manage` | efímera |
+| `/sweep_integrity` | `/sweep_integrity` | `tickets.manage` | efímera |
+| `/repair_ticket` | `/repair_ticket ticket_ref` | moderador/administrador | efímera |
+| `/setup` | `/setup` | administrador | no efímera (panel) |
+| `/welcome` | `/welcome` · `/welcome channel` · `/welcome toggle` · `/welcome message` | administrador | efímera/permanente según subcomando |
+| `/goodbye` | `/goodbye` · `/goodbye channel` · `/goodbye toggle` · `/goodbye message` | administrador | efímera |
+| `/welcome_test` | `/welcome_test` | administrador | efímera (prueba) |
+| `/goodbye_test` | `/goodbye_test` | administrador | efímera (prueba) |
+
+Los errores se responden como embeds efímeros localizados (`common.error.check_failure_*`, `missing_permissions_*` vía `t()`), nunca como prefijo. La sincronización del árbol es automática (`tree.sync` en `setup_hook`); no hay `/sync` manual.
 
 ---
 
-*Última actualización: julio 2026. Basado en el código fuente de NebulosaBot.*
+---
+
+*Última actualización: agosto 2026. Basado en el código fuente de NebulosaBot (slash-only). Paleta violeta y brand.ACCENT según brand tokens.*

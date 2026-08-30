@@ -524,7 +524,9 @@ class TestSubticketHelpI18n:
         """/subticket help → localized embed."""
         ctx = _make_ctx(int(guild_id))
 
-        await cog.subticket.callback(cog, ctx)
+        cb_sub = getattr(cog.subticket, "callback", None)
+        assert callable(cb_sub)
+        await cb_sub(cog, ctx)
 
         embed = ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
@@ -573,7 +575,9 @@ class TestNoteHelpI18n:
         """/note help → localized embed."""
         ctx = _make_ctx(int(guild_id))
 
-        await cog.note.callback(cog, ctx)
+        cb_note = getattr(cog.note, "callback", None)
+        assert callable(cb_note)
+        await cb_note(cog, ctx)
 
         embed = ctx.send.call_args.kwargs.get("embed")
         assert embed is not None

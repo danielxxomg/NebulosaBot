@@ -24,81 +24,51 @@ The system MUST provide an `is_admin` check that returns true for guild administ
 
 ### Requirement: Moderator check
 
-The system MUST provide an `is_mod` check that gates BOTH the prefix (`commands.check`) and slash (`app_commands.check`) invocation paths. The check MUST register both predicates so that every hybrid command decorated with `@is_mod()` inherits dual-path enforcement without per-command changes.
+`is_mod` MUST gate via `app_commands.check` only for slash commands (no `commands.check`; prefix inert `get_prefix=[]` per `bot-core`). It MUST register its predicate for every slash command decorated with `@is_mod()`. Prefix predicate if retained is inert. The only surviving `hybrid_command` substrings after S1 are docstring examples at `bot/utils/checks.py:229,361` — AST scan for `hybrid_command`/`hybrid_group` decorators MUST be 0. `,` timer is `close-confirmation`, not a prefix.
 
-The prefix path MUST return true for users with the configured moderator role OR the Administrator permission. The prefix path MUST raise `NoPrivateMessage` when invoked in DMs. The prefix path MUST raise `MissingRole` when the mod role is configured but the user lacks it. The prefix path MUST raise `CheckFailure` when no mod role is configured and the user is not an administrator.
-
-The slash path behavior MUST remain equivalent to the current `is_mod_check` decision logic — no regression.
+(Previously: BOTH prefix+suffix dual path for hybrid; prefix raised `NoPrivateMessage`/`MissingRole`)
 
 #### Scenario: Mod role via slash
 
-- GIVEN a guild has configured a moderator role
-- WHEN a user with that role invokes a guarded command via slash
+- GIVEN guild has mod role and user has that role
+- WHEN they invoke guarded command via slash
 - THEN `is_mod` returns true
 
 #### Scenario: Admin fallback via slash
 
-- GIVEN a guild has no moderator role configured
-- WHEN an administrator invokes a guarded command via slash
+- GIVEN no mod role configured
+- WHEN administrator invokes via slash
 - THEN `is_mod` returns true
 
-#### Scenario: Regular user via slash
+#### Scenario: Regular user denied
 
-- GIVEN a user without the moderator role or Administrator permission
-- WHEN `is_mod` is evaluated via slash
-- THEN it returns false
+- GIVEN user without mod role or admin
+- WHEN they invoke via slash
+- THEN `is_mod` returns false
 
-#### Scenario: Mod role via prefix
+#### Scenario: Slash-only registration
 
-- GIVEN a guild has configured a moderator role
-- WHEN a user with that role invokes a guarded command via prefix
-- THEN the command executes successfully
-
-#### Scenario: Admin via prefix
-
-- GIVEN a guild has a moderator role configured
-- WHEN an administrator invokes a guarded command via prefix
-- THEN the command executes successfully (admin always passes)
-
-#### Scenario: Regular user via prefix denied
-
-- GIVEN a user without the moderator role or Administrator permission
-- WHEN they invoke a guarded command via prefix
-- THEN `MissingRole` is raised (configured role exists but user lacks it)
-
-#### Scenario: DM invocation denied
-
-- GIVEN a user invokes a guarded command via DM (no guild context)
-- WHEN `is_mod` prefix predicate evaluates
-- THEN `NoPrivateMessage` is raised
-
-#### Scenario: Dual registration proof
-
-- GIVEN any hybrid command decorated with `@is_mod()`
-- WHEN inspecting the command's checks
-- THEN `cmd.checks` (prefix) is non-empty AND `app_command.checks` (slash) is non-empty
+- GIVEN slash command decorated with `@is_mod()`
+- WHEN checks inspected
+- THEN `app_command.checks` non-empty and no hybrid decorator
 
 ### Requirement: Unconfigured moderator role
 
-The system SHOULD fall back to administrator-only access when no moderator role is configured. This applies to BOTH prefix and slash invocation paths — deny-by-default for non-administrators.
+System SHOULD fall back to administrator-only when no mod role configured. Applies to slash path; prefix inert (`get_prefix=[]`).
+
+(Previously: BOTH prefix and slash)
 
 #### Scenario: Missing mod role via slash
 
-- GIVEN no moderator role is set
-- WHEN a non-administrator user invokes a moderator-guarded command via slash
-- THEN access is denied
+- GIVEN no mod role set
+- WHEN non-admin invokes via slash
+- THEN denied via `t()`
 
-#### Scenario: Missing mod role via prefix
+#### Scenario: Admin passes when unconfigured
 
-- GIVEN no moderator role is set
-- WHEN a non-administrator user invokes a moderator-guarded command via prefix
-- THEN `CheckFailure` is raised with a message indicating no moderator role is configured
-
-#### Scenario: Admin passes when unconfigured via prefix
-
-- GIVEN no moderator role is set
-- WHEN an administrator invokes a moderator-guarded command via prefix
-- THEN the command executes successfully
+- GIVEN no mod role set
+- WHEN administrator invokes via slash
+- THEN command executes
 
 ### Requirement: Ban command requires administrator
 
@@ -135,15 +105,15 @@ Sentinel and Utility hybrid command callbacks and helpers MUST use `NebulosaCont
 - WHEN its callback needs slash interaction data
 - THEN `context.interaction` remains available with the expected optional typing
 
-### Requirement: `is_mod` dual-path characterization
+### Requirement: `is_mod` slash-only characterization
 
-The system MUST preserve the existing `is_mod` decorator path and `is_mod_check` inline path without changing permission decisions. Characterization coverage MUST account for the 23 decorator callers and 21 inline callers, including persistent and ephemeral ticket view callbacks.
+The system MUST preserve the existing `is_mod` decorator path (slash-only `app_commands.check`, no `commands.check`; prefix inert) and `is_mod_check` inline path without changing permission decisions. Characterization coverage MUST account for the 23 decorator callers and 21 inline callers, including persistent and ephemeral ticket view callbacks.
 
-#### Scenario: Both hybrid paths remain registered
+#### Scenario: Slash-only registration
 
 - GIVEN a command is decorated with `@is_mod()`
 - WHEN its checks are inspected
-- THEN both prefix and slash predicates are registered
+- THEN the slash predicate is registered (``app_commands.check``) and no prefix predicate is registered
 
 #### Scenario: Inline view checks remain fail-closed
 
@@ -161,16 +131,16 @@ The system MUST preserve the existing `is_mod` decorator path and `is_mod_check`
 
 <!-- BEGIN DELTA: ticket-physical-split S3 -->
 
-### Requirement: `is_mod` dual-path characterization
+### Requirement: `is_mod` slash-only characterization
 
-The system MUST preserve the existing `is_mod` decorator path and `is_mod_check` inline path without changing permission decisions. Characterization coverage MUST account for 24 `@is_mod()` decorator applications (16 in `tickets.py` and 8 in `sentinel.py`) and every inline `is_mod_check` call, including persistent and ephemeral ticket view callbacks. The `unclaim` command intentionally has no `@is_mod()` decorator and is gated by an inline `is_mod_check` (claimer-or-mod) — it is not counted as a decorator. The `/delete_category` command's guard is changed to `@is_admin()` in Cycle 2, reducing the `@is_mod()` decorator count by one (24 → 23); the characterization MUST be updated to reflect this and the `is_admin()` guard MUST be characterized separately. The behavior MUST remain a single decision point in `bot/utils/checks.py`.
+The system MUST preserve the existing `is_mod` decorator path (slash-only `app_commands.check`) and `is_mod_check` inline path without changing permission decisions. Characterization coverage MUST account for 24 `@is_mod()` decorator applications (16 in `tickets.py` and 8 in `sentinel.py`) and every inline `is_mod_check` call, including persistent and ephemeral ticket view callbacks. The `unclaim` command intentionally has no `@is_mod()` decorator and is gated by an inline `is_mod_check` (claimer-or-mod) — it is not counted as a decorator. The `/delete_category` command's guard is changed to `@is_admin()` in Cycle 2, reducing the `@is_mod()` decorator count by one (24 → 23); the characterization MUST be updated to reflect this and the `is_admin()` guard MUST be characterized separately. The behavior MUST remain a single decision point in `bot/utils/checks.py` with slash-only registration (no `commands.check`).
 (Previously: characterization counted 24 `@is_mod()` decorator applications; Cycle 2 moves `delete_category` to `@is_admin()`, so the `@is_mod()` count drops to 23.)
 
-#### Scenario: Both hybrid paths remain registered
+#### Scenario: Slash-only registration
 
 - GIVEN a command is decorated with `@is_mod()`
 - WHEN its checks are inspected
-- THEN both prefix and slash predicates are registered
+- THEN the slash predicate is registered and no prefix predicate is registered
 
 #### Scenario: Inline view checks remain fail-closed
 
@@ -323,19 +293,27 @@ The system MUST provide an `async def can(permission, ctx) -> bool` resolver in 
 
 ### Requirement: Permission check decorator dual registration
 
-The system MUST provide a `can_check(permission)` decorator in `bot/utils/checks.py` that mirrors the `is_admin()` dual-path shape: `commands.check(_prefix_predicate)(app_commands.check(_app_predicate)(func))`. Every hybrid command decorated with `@can_check(permission)` MUST have non-empty `cmd.checks` (prefix path) AND non-empty `app_command.checks` (slash path). The decorator MUST expose `.predicate` and `.prefix_predicate` for testability. The system MUST also provide an `async def can_member(permission, member, guild_id) -> bool` listener form mirroring `can()` (admin pass, matrix grant, moderation fallback, deny) for callers without a `Context` (e.g. ticket view callbacks).
+`can_check(permission)` in `bot/utils/checks.py` MUST gate slash commands via `app_commands.check` only (no `commands.check`; prefix inert). Every slash command with `@can_check` MUST have non-empty `app_command.checks` and zero hybrid decorators. It MUST expose `.predicate` for testability. `can_member` listener form MUST mirror `can()` (admin pass, matrix grant, moderation fallback, deny). `PERMISSIONS` MUST be exactly seven: `moderation.warn`, `moderation.mute`, `moderation.kick`, `moderation.ban`, `tickets.manage`, `economy.manage`, `greeting.manage` — no new key.
 
-#### Scenario: Dual registration proof
+(Previously: `commands.check`+`app_commands.check` dual path for hybrid; both `cmd.checks` and `app_command.checks`)
 
-- GIVEN a hybrid command decorated with `@can_check("moderation.ban")`
-- WHEN inspecting the command's checks
-- THEN `cmd.checks` (prefix) is non-empty AND `app_command.checks` (slash) is non-empty
+#### Scenario: Slash-only registration proof
 
-#### Scenario: Listener form mirrors resolver
+- GIVEN slash command with `@can_check("moderation.ban")`
+- WHEN checks inspected
+- THEN `app_command.checks` non-empty and no hybrid
 
-- GIVEN `can_member("moderation.ban", member, guild_id)` is called
-- WHEN the member is an administrator, holds a matrix-granted role, holds the modRoleId (moderation fallback), or lacks all
-- THEN it returns the same value `can()` would for the equivalent `ctx`
+#### Scenario: Listener mirrors resolver
+
+- GIVEN `can_member("moderation.ban", member, guild_id)` called
+- WHEN member is admin/matrix/fallback/none
+- THEN returns same as `can()` for equivalent `ctx`
+
+#### Scenario: Seven permissions only
+
+- GIVEN guild grants each of seven permissions
+- WHEN user with that role evaluated
+- THEN `can()` true for all seven and no eighth key exists
 
 ## MODIFIED Requirements
 
@@ -377,35 +355,33 @@ The `/ban` command MUST be restricted via `@can_check("moderation.ban")` (replac
 
 ### Requirement: Moderator check
 
-The system MUST preserve the `is_mod` decorator's dual-path enforcement and external outcomes (admin pass, modRoleId pass, deny-default). The `is_mod` shim MUST honor `moderation.*` matrix keys when present: a matrix key for the relevant `moderation.*` permission MUST grant via role intersect, falling back to `modRoleId` only when the key is absent. The prefix path MUST continue to raise `NoPrivateMessage` in DMs, `MissingRole` when configured but lacking, and `CheckFailure` when unconfigured and non-admin. The slash path behavior MUST remain equivalent to the current `is_mod_check` decision logic — no regression.
+`is_mod` shim MUST preserve slash-only outcomes (admin pass, modRoleId pass, deny-default via `t()`) and honor `moderation.*` matrix keys: key present → grant via role intersect else deny (no fallback); key absent → fallback to `modRoleId`. Prefix path inert; no `NoPrivateMessage` for slash. Behavior equivalent to `is_mod_check` — no regression. `,` timer remains `close-confirmation`.
 
-(Previously: `is_mod` described role/admin evaluation; did not consult the permission matrix. Cycle 2 added dual-path enforcement. This delta adds matrix-key awareness via the `_is_mod_via_matrix` helper.)
+(Previously: dual-path with prefix raises; did not consult matrix initially)
 
-#### Scenario: Matrix key grants via is_mod
+#### Scenario: Matrix grants via is_mod
 
-- GIVEN a guild's matrix maps `moderation.warn` to roleA and the user holds roleA
-- WHEN `is_mod` evaluates a command guarded with `@is_mod()`
-- THEN it returns True (matrix path)
+- GIVEN matrix maps `moderation.warn` to roleA and user holds roleA
+- WHEN `is_mod` evaluates via slash
+- THEN returns True
 
-#### Scenario: is_mod falls back to modRoleId when matrix key absent
+#### Scenario: Fallback to modRoleId
 
-- GIVEN a guild has `modRoleId` configured and no `moderation.*` matrix keys
-- WHEN a mod-role user invokes an `@is_mod()` guarded command
-- THEN it returns True (fallback path, unchanged)
+- GIVEN `modRoleId` configured and no `moderation.*` keys
+- WHEN mod-role user invokes via slash
+- THEN returns True
 
-#### Scenario: is_mod denies when matrix key present and role absent
+#### Scenario: Deny when key present and role absent
 
-- GIVEN a guild's matrix maps `moderation.warn` to roleA and the user lacks roleA
-- WHEN `is_mod` evaluates
-- THEN it returns False (deny-default when key present)
+- GIVEN matrix maps `moderation.warn` to roleA and user lacks roleA
+- WHEN `is_mod` evaluates via slash
+- THEN returns False
 
-#### Scenario: is_mod external outcomes unchanged
+#### Scenario: External outcomes unchanged
 
-- GIVEN the 23 `@is_mod()` decorator applications and all inline `is_mod_check` call sites
-- WHEN the permission test suite runs
-- THEN all existing admin, moderator, regular-user, and DM outcomes remain unchanged
-<!-- END DELTA: voice-moderation-permissions (permission-model) -->
-
+- GIVEN 23 `@is_mod()` decorators and all inline `is_mod_check` sites
+- WHEN permission suite runs via slash
+- THEN outcomes unchanged
 ### Requirement: Setup surface reuses existing matrix keys — no new key
 
 The `/setup` panel and its modules MUST NOT introduce any new permission-matrix key. The `PERMISSIONS` frozenset MUST remain exactly the seven existing permissions (`moderation.warn`, `moderation.mute`, `moderation.kick`, `moderation.ban`, `tickets.manage`, `economy.manage`, `greeting.manage`). Panel invocation visibility uses `default_permissions(administrator=True)` (relaxable by server admins via Integrations) and administrators pass implicitly; module-level mutations authorize through the EXISTING keys via the standard `can()`/`can_check()` path: `tickets.manage` gates Tickets-module actions, `greeting.manage` gates Welcome/Goodbye-module actions.

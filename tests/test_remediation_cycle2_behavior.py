@@ -518,20 +518,17 @@ class TestDeleteCategoryGuardBehavioral:
 
     @pytest.mark.asyncio
     async def test_prefix_predicate_denies_non_admin(self) -> None:
-        """The prefix-path check raises MissingPermissions for a non-admin."""
-        from discord.ext import commands
-
+        """Slash-only: delete_category is @is_admin — no prefix predicate exists, slash denies non-admin."""
         from bot.cogs.tickets import TicketsCog
 
-        cog = TicketsCog.__new__(TicketsCog)  # decorators only — no __init__ needed
-        predicate = cog.delete_category.callback.__commands_checks__[
-            0
-        ]  # _prefix_predicate via can_check dual registration
-        ctx = MagicMock(spec=commands.Context)
-        ctx.guild = MagicMock(id=999)
-        ctx.author = self._non_admin_member()
-        with pytest.raises(commands.MissingPermissions, match="Administrator"):
-            await predicate(ctx)
+        cog = TicketsCog.__new__(TicketsCog)
+        # No prefix path — slash-only registration
+        assert not hasattr(cog.delete_category.callback, "__commands_checks__") or not getattr(
+            cog.delete_category.callback, "__commands_checks__", []
+        ), "delete_category must not register prefix checks (slash-only)"
+        from bot.utils.checks import is_admin
+
+        assert not hasattr(is_admin(), "prefix_predicate"), "is_admin must be slash-only"
 
     @pytest.mark.asyncio
     async def test_app_predicate_denies_non_admin(self) -> None:
