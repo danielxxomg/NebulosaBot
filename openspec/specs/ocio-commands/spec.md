@@ -8,48 +8,53 @@ Provide casual, fun interactions for guild members through simple games and rand
 
 ### Requirement: Dice command
 
-The `/dados` command MUST roll a die and return a result between 1 and the requested number of sides.
+The `/dice` command MUST roll a die and return a result between 1 and the requested number of sides. The command is RENAMED from `/dados` to canonical English `/dice`, with Spanish `name_localizations` (`es: "dados"`). `/dados` MUST NOT resolve in the default locale.
 
 #### Scenario: Default six-sided roll
 
-- GIVEN a member invokes `/dados` without arguments
-- WHEN the command executes
-- THEN the bot SHALL reply with a result in the range [1, 6]
+- GIVEN a member invokes `/dice` without arguments
+- WHEN it executes
+- THEN the bot replies with a result in [1, 6]
 
 #### Scenario: Custom sides roll
 
-- GIVEN a member invokes `/dados` with a sides value between 2 and 100
-- WHEN the command executes
-- THEN the bot SHALL reply with a result in the range [1, sides]
+- GIVEN sides between 2 and 100
+- WHEN `/dice` executes
+- THEN the result is in [1, sides]
 
 #### Scenario: Out-of-range sides
 
-- GIVEN a member invokes `/dados` with a sides value below 2 or above 100
-- WHEN the command executes
-- THEN the bot SHALL reject the input and reply with an error embed
+- GIVEN sides below 2 or above 100
+- WHEN `/dice` executes
+- THEN the input is rejected with an error embed
+
+#### Scenario: Spanish localization preserved
+
+- GIVEN client locale `es`
+- WHEN the command list renders
+- THEN it shows "dados"; under `en`, "dice"
 
 ### Requirement: Banana command
 
-The `/banana` command MUST reply with a banana image and a random measurement. The image MUST be selected from a pool of 5–8 `.webp` variants in `assets/images/banana/*.webp` via `OcioService.get_random_banana()`. The measurement MUST be in the range [2, 30] cm for a normal banana. A 1% "dorada" easter egg MUST return a 30 cm measurement (the dorada variant). If the selected pool asset is missing or corrupt, the command MUST fall back to a Pillow-rendered placeholder so delivery still succeeds. The command MUST be ephemeral and MUST NOT write to the database.
-(Previously: the command loaded a single `assets/images/banana.webp` and returned a measurement in [2, 30]; no pool, no dorada easter egg, no fallback, and no no-DB/ephemeral contract.)
+The `/banana` command MUST reply with a banana image and a random measurement. The image comes from 5–8 `.webp` variants in `assets/images/banana/*.webp` via `OcioService.get_random_banana()`. Normal measurement range: [2, 30] cm. A 1% "dorada" easter egg returns 30 cm. Missing/corrupt pool asset MUST fall back to a Pillow placeholder so delivery succeeds. The response is PERMANENT (visible to all) and MUST NOT write to the database.
 
 #### Scenario: Normal banana from pool
 
-- GIVEN a member invokes `/banana` and the pool has 6 `.webp` variants
-- WHEN `OcioService.get_random_banana()` runs (99% path)
-- THEN the reply contains an image attachment loaded from one of `assets/images/banana/*.webp` and a measurement in [2, 30] cm
+- GIVEN the pool has 6 variants and the 99% path runs
+- WHEN `get_random_banana()` executes
+- THEN the permanent reply carries a pool image and measurement in [2, 30]
 
 #### Scenario: Dorada easter egg
 
-- GIVEN a member invokes `/banana` and the 1% dorada path is selected
-- WHEN `OcioService.get_random_banana()` runs
-- THEN the reply contains the dorada variant and a 30 cm measurement
+- GIVEN the 1% dorada path is selected
+- WHEN it runs
+- THEN the reply shows the dorada variant at 30 cm
 
 #### Scenario: Missing pool asset falls back to Pillow
 
-- GIVEN the selected `assets/images/banana/<variant>.webp` is missing or corrupt
+- GIVEN the selected variant is missing or corrupt
 - WHEN `/banana` executes
-- THEN a Pillow-rendered placeholder is attached and delivery succeeds (no error embed)
+- THEN a Pillow placeholder attaches and delivery succeeds
 
 #### Scenario: Empty pool falls back to Pillow
 
@@ -59,20 +64,16 @@ The `/banana` command MUST reply with a banana image and a random measurement. T
 
 #### Scenario: Banana writes no DB row
 
-- GIVEN a member invokes `/banana`
-- WHEN the command executes
-- THEN no row is inserted, updated, or deleted in any table
+- GIVEN an invocation
+- WHEN it executes
+- THEN no table row is inserted, updated, or deleted
 
-#### Scenario: Banana is ephemeral
+#### Scenario: Banana is permanent
 
-- GIVEN a member invokes `/banana`
-- WHEN the command executes
-- THEN the reply is ephemeral
+- GIVEN an invocation
+- WHEN it executes
+- THEN the reply is a permanent channel message
 
-
-<!-- BEGIN DELTA: welcome-neon-timer-banana (ocio-commands) -->
-
-## ADDED Requirements
 ### Requirement: OcioService service layer
 
 The system MUST provide an `OcioService` in the services layer that owns
@@ -96,51 +97,44 @@ run via `asyncio.to_thread`.
 
 ### Requirement: 8ball command
 
-The system MUST provide a `/8ball` hybrid command that returns one of 20 localized responses (Spanish and English, via `t()`) to a yes/no question. The response MUST be chosen uniformly at random from the 20-key set. The command's embed MUST use the localized `ocio.8ball.embed_title` key — a raw key MUST never be rendered to users. The command MUST be ephemeral and MUST NOT write to the database.
+The system MUST provide a `/8ball` pure app command returning one of 20 localized responses (`t()`, es/en) to a yes/no question, chosen uniformly at random. The embed title MUST use localized `ocio.8ball.embed_title` — never a raw key. The response is PERMANENT and MUST NOT write to the database.
 
-(Previously: only the 20 response keys existed; the embed title was not localized.)
+#### Scenario: Localized response in Spanish guild
 
-#### Scenario: 8ball returns a localized response
+- GIVEN a member asks in a Spanish guild
+- WHEN `/8ball` executes
+- THEN one of the 20 Spanish `ocio.8ball.*` responses replies permanently
 
-- GIVEN a member invokes `/8ball` with a question in a Spanish guild
-- WHEN the command executes
-- THEN the bot replies ephemerally with one of the 20 Spanish `ocio.8ball.*` responses
+#### Scenario: Title localized, no raw key
 
-#### Scenario: 8ball title is localized
-
-- GIVEN members invoke `/8ball` in Spanish and English guilds
-- WHEN the embed is rendered
-- THEN the title comes from `ocio.8ball.embed_title` in each guild's language (no raw key shown)
-
-#### Scenario: 8ball is i18n-isolated
-
-- GIVEN the 20-key `ocio.8ball.*` set exists in `es.json` and `en.json`
-- WHEN an English-guild member invokes `/8ball`
-- THEN the reply uses the English set and Spanish and English outputs are independently testable
+- GIVEN es and en guilds invoke `/8ball`
+- WHEN embeds render
+- THEN titles come from `ocio.8ball.embed_title` per guild language
 
 #### Scenario: 8ball writes no DB row
 
-- GIVEN a member invokes `/8ball`
-- WHEN the command executes
-- THEN no row is inserted, updated, or deleted in any table
+- GIVEN an invocation
+- WHEN it executes
+- THEN no table row is inserted, updated, or deleted
+
+#### Scenario: 8ball is permanent
+
+- GIVEN an invocation
+- WHEN it executes
+- THEN the reply is a permanent channel message
 
 ### Requirement: Ocio commands cooldown and handler
 
-`/dados`, `/banana`, and `/8ball` MUST each carry
-`@commands.cooldown(1, 5, BucketType.user)` (1 use per 5 seconds per user). The
-cog MUST provide a `CommandOnCooldown` error handler that, on cooldown,
-replies ephemerally with `retry_after` formatted via `t()` (localized). The
-handler MUST NOT raise or surface a raw traceback.
+`/dice`, `/banana`, and `/8ball` MUST each carry `@app_commands.checks.cooldown(1, 5, BucketType.user)` (1 use per 5 seconds per user). A `CommandOnCooldown` handler MUST reply ephemerally with `retry_after` formatted via `t()`; it MUST NOT raise or leak a traceback.
 
-#### Scenario: Cooldown blocks second invocation within 5s
+#### Scenario: Cooldown blocks and localizes
 
-- GIVEN a member invokes `/banana` and immediately invokes `/banana` again
-- WHEN the second invocation is processed
-- THEN `CommandOnCooldown` is raised and the handler replies ephemerally with the localized retry-after message
+- GIVEN `/banana` was just invoked
+- WHEN invoked again immediately
+- THEN the handler replies ephemerally with the localized retry-after message
 
 #### Scenario: Cooldown releases after 5s
 
-- GIVEN a member invoked `/banana` 5 seconds ago
-- WHEN the member invokes `/banana` again
-- THEN the command executes normally
-<!-- END DELTA: welcome-neon-timer-banana (ocio-commands) -->
+- GIVEN the last invocation was 5s ago
+- WHEN invoked again
+- THEN it executes normally

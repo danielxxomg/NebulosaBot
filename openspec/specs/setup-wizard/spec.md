@@ -8,57 +8,25 @@ Define the `/setup` hybrid command that allows guild administrators to configure
 
 ### Requirement: Setup command
 
-The system MUST provide a `/setup` hybrid command gated by `@is_admin()` that configures guild settings.
+The system MUST provide a `/setup` pure app command (no parameters) gated to administrators that opens the persistent setup panel defined by the `setup-panel` capability. The command takes NO Discord-object parameters; all configuration flows through guided panel editors.
 
-#### Scenario: Admin runs setup with required param only
+#### Scenario: Admin opens the panel
 
-- GIVEN an administrator in a guild where `ticket_category_id` is null
-- WHEN `/setup` is invoked with `ticket_category` (CategoryChannel) only
-- THEN the guild's `ticket_category_id` is saved and other fields retain their current values
-
-#### Scenario: Admin runs setup with all params
-
-- GIVEN an administrator
-- WHEN `/setup` is invoked with `ticket_category`, `mod_role`, `log_channel`, and `language`
-- THEN all four fields are saved to the guild configuration
+- GIVEN an administrator in any guild
+- WHEN `/setup` is invoked with no arguments
+- THEN the persistent non-ephemeral panel message is posted and no guild field is changed by invocation alone
 
 #### Scenario: Non-admin rejected
 
 - GIVEN a regular user
 - WHEN `/setup` is invoked
-- THEN the command is rejected with a permission error
+- THEN the command is blocked/rejected as a permission error
 
-### Requirement: Required parameter — ticket_category
+#### Scenario: No parameter surface remains
 
-The `ticket_category` parameter SHALL be required and MUST be a valid `discord.CategoryChannel`.
-
-#### Scenario: Valid category channel
-
-- GIVEN a guild with an existing Discord category channel "Tickets"
-- WHEN `/setup ticket_category:#Tickets` is invoked
-- THEN the channel's Discord ID is saved as `ticket_category_id`
-
-#### Scenario: Missing ticket_category
-
-- GIVEN an administrator
-- WHEN `/setup` is invoked without `ticket_category`
-- THEN the command is rejected by Discord's parameter validation
-
-### Requirement: Optional parameters
-
-The parameters `mod_role` (Role), `log_channel` (TextChannel), and `language` (choice: `es|en`) SHALL be optional. When omitted, the system MUST preserve existing values.
-
-#### Scenario: Partial update preserves existing
-
-- GIVEN a guild with `mod_role_id=111` and `log_channel_id=222`
-- WHEN `/setup ticket_category:#Tickets language:en` is invoked
-- THEN `mod_role_id` remains `111` and `log_channel_id` remains `222`
-
-#### Scenario: Language validation
-
-- GIVEN an administrator
-- WHEN `/setup ticket_category:#Tickets language:xx` is invoked
-- THEN the command is rejected (invalid choice)
+- GIVEN the deployed slash tree
+- WHEN the `/setup` command signature is inspected
+- THEN it declares zero parameters
 
 ### Requirement: Internationalization
 

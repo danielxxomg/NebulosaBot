@@ -28,12 +28,6 @@ The system MUST render greeting card title and member-count text in the guild's 
 - WHEN `generate_greeting_card()` is invoked
 - THEN the rendered card uses the `greeting_title` and `member_count_text` arguments supplied by the caller, not hardcoded English
 
-#### Scenario: Test commands render localized cards
-
-- GIVEN an admin invokes `/welcome test` or `/goodbye test` in a Spanish guild
-- WHEN the test card is generated
-- THEN the card renders with the same localized strings as a live join/leave event
-
 ### Requirement: GreetingRenderer interface
 
 The system MUST define a `GreetingRenderer` protocol/interface that accepts
@@ -228,73 +222,27 @@ The system MUST skip sending a greeting card when the configured channel is null
 - WHEN a member joins the guild
 - THEN no card is sent and no error is surfaced
 
-### Requirement: Welcome config command group
+### Requirement: Setup-module configuration parity and preview
 
-The system MUST provide a `/welcome` hybrid command group with subcommands: `config` (show current settings), `channel` (set welcome channel), `toggle` (enable/disable welcome), and `message` (set template). All subcommands MUST be admin-gated via `@app_commands.default_permissions(administrator=True)`.
+Welcome and goodbye configuration MUST be fully manageable through the `/setup` panel modules, producing the SAME persisted state and cache invalidation as the deleted command groups. Each module MUST provide a test button that renders and delivers a REAL preview (localized card + message content) to the configured channel. Preview delivery failures (missing/inaccessible channel) MUST surface an ephemeral panel error without mutating config.
 
-#### Scenario: Show welcome config
+#### Scenario: Module save matches legacy command effect
 
-- GIVEN an admin invokes `/welcome config`
-- WHEN the command executes
-- THEN an ephemeral embed displays current welcome channel, toggle state, and message template
+- GIVEN the Welcome module sets channel #general and enables welcome
+- WHEN the admin saves
+- THEN `welcome_channel_id` is updated AND the cache entry is invalidated exactly as the old `/welcome channel` command did
 
-#### Scenario: Set welcome channel
+#### Scenario: Test button sends real preview
 
-- GIVEN an admin invokes `/welcome channel #general`
-- WHEN the command executes
-- THEN the welcome channel is updated to #general and the cache is invalidated
+- GIVEN a guild with language `es` and a welcome channel configured
+- WHEN the admin presses the Welcome test button
+- THEN a real Spanish welcome card is delivered to the configured channel
 
-#### Scenario: Toggle welcome off
+#### Scenario: Preview failure is ephemeral and safe
 
-- GIVEN welcome is currently enabled
-- WHEN an admin invokes `/welcome toggle`
-- THEN welcome is disabled and a confirmation is shown
-
-#### Scenario: Set welcome message template
-
-- GIVEN an admin invokes `/welcome message Welcome {user} to {server}!`
-- WHEN the command executes
-- THEN the welcome message template is saved and cache invalidated
-
-#### Scenario: Non-admin blocked
-
-- GIVEN a non-admin user
-- WHEN they invoke `/welcome config`
-- THEN Discord blocks the command (permission hint)
-
-### Requirement: Goodbye config command group
-
-The system MUST provide a `/goodbye` hybrid command group with subcommands: `config` (show current settings), `channel` (set goodbye channel), `toggle` (enable/disable goodbye), and `message` (set template). All subcommands MUST be admin-gated via `@app_commands.default_permissions(administrator=True)`.
-
-#### Scenario: Show goodbye config
-
-- GIVEN an admin invokes `/goodbye config`
-- WHEN the command executes
-- THEN an ephemeral embed displays current goodbye channel, toggle state, and message template
-
-#### Scenario: Set goodbye channel
-
-- GIVEN an admin invokes `/goodbye channel #goodbye`
-- WHEN the command executes
-- THEN the goodbye channel is updated and cache invalidated
-
-#### Scenario: Toggle goodbye off
-
-- GIVEN goodbye is currently enabled
-- WHEN an admin invokes `/goodbye toggle`
-- THEN goodbye is disabled and a confirmation is shown
-
-#### Scenario: Set goodbye message template
-
-- GIVEN an admin invokes `/goodbye message Goodbye {user}!`
-- WHEN the command executes
-- THEN the goodbye message template is saved and cache invalidated
-
-#### Scenario: Non-admin blocked
-
-- GIVEN a non-admin user
-- WHEN they invoke `/goodbye config`
-- THEN Discord blocks the command (permission hint)
+- GIVEN no welcome channel is configured
+- WHEN the test button is pressed
+- THEN an ephemeral error explains the missing channel and no message is sent anywhere
 
 
 <!-- BEGIN DELTA: welcome-neon-timer-banana (welcome-goodbye) -->
