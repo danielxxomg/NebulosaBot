@@ -13,6 +13,7 @@ read-only verifier behind ``--run-live`` / ``LIVE_SUPABASE=1``.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import selectors
@@ -341,20 +342,83 @@ def make_member(
     admin: bool = False,
     member_id: int = 111222333,
     display_name: str = "TestUser",
+    # Shim aliases for divergent call shapes (tests-slim S2 — D1):
+    # ``guild_id`` sites attach a greeting-scoped guild; ``name`` aliases display_name.
+    guild_id: int | None = None,
+    name: str | None = None,
+    # Greeting-scoped scaffolding — kept minimal; callers may override.
+    # Channel scaffolding stays opt-in (with_channel) but defaults ON when
+    # guild_id is supplied so legacy greeting sites remain one-liners.
+    guild_name: str | None = None,
+    member_count: int | None = None,
+    avatar_url: str | None = None,
+    guild_icon_url: str | None = None,
+    with_channel: bool | None = None,
 ) -> MagicMock:
     """Return a mock discord.Member.
 
     No ``spec`` — avoids auto-created async children whose coroutines leak
     on GC (same rationale as the ``mock_member`` fixture). ``__class__`` is
     overridden so ``isinstance(member, discord.Member)`` still works.
+
+    Shim: ``name`` aliases ``display_name`` (ticket/native-kwargs sites);
+    ``guild_id`` attaches ``member.guild`` with minimal greeting scaffolding
+    (guild.name/member_count/get_channel/icon + display_avatar) so guild_id
+    call sites can use the canonical factory without a bespoke local def.
+    Channel scaffolding is created when ``guild_id`` is given unless
+    ``with_channel is False``.     ``guild_icon_url=None`` leaves ``guild.icon``
+    as ``None``; a string installs a MagicMock icon with that url (native-kwargs).
     """
+    if name is not None and display_name == "TestUser":
+        # ``name`` provided without explicit display_name — use it.
+        display_name = name
     member = MagicMock()
     member.__class__ = discord.Member
     member.id = member_id
     member.display_name = display_name
+    if name is not None:
+        member.name = name
+    else:
+        with contextlib.suppress(Exception):
+            member.name = display_name
     member.mention = f"<@{member_id}>"
     member.guild_permissions.administrator = admin
     member.roles = list(roles)
+    if guild_id is not None:
+        guild = MagicMock()
+        guild.id = guild_id
+        guild.name = guild_name if guild_name is not None else "TestServer"
+        guild.member_count = member_count if member_count is not None else 150
+        if guild_icon_url is not None:
+            icon = MagicMock()
+            icon.url = guild_icon_url
+            guild.icon = icon
+        else:
+            guild.icon = None
+        do_channel = with_channel if with_channel is not None else True
+        if do_channel:
+            mock_channel = MagicMock(spec=discord.TextChannel)
+            mock_channel.send = AsyncMock(return_value=None)
+            guild.get_channel.return_value = mock_channel
+        else:
+            guild.get_channel.return_value = None
+        member.guild = guild
+        av = MagicMock()
+        av.url = avatar_url if avatar_url is not None else f"https://cdn/{member_id}.png"
+        member.display_avatar = av
+        member.avatar = av
+        with contextlib.suppress(Exception):
+            if not hasattr(member, "bot") or isinstance(member.bot, MagicMock):
+                member.bot = False
+    else:
+        if not hasattr(member, "display_avatar"):
+            av = MagicMock()
+            av.url = avatar_url if avatar_url is not None else f"https://cdn/{member_id}.png"
+            member.display_avatar = av
+            member.avatar = av
+        if not hasattr(member, "bot"):
+            with contextlib.suppress(Exception):
+                member.bot = False
     return member
 
 

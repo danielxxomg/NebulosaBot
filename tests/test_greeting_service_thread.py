@@ -11,28 +11,17 @@ import pytest
 from bot.core.cache import TTLCache
 from bot.services.greeting_renderer import PillowGreetingRenderer
 from bot.services.greeting_service import GreetingService
+from tests.conftest import make_member
 
 
 def _make_member() -> MagicMock:
-    """Build a mock discord.Member whose guild exposes a sendable channel."""
-    mock_channel = MagicMock(spec=discord.TextChannel)
-    mock_channel.send = AsyncMock(return_value=None)
-    guild = MagicMock()
-    guild.id = 123456789
-    guild.name = "TestServer"
-    guild.member_count = 150
-    guild.get_channel.return_value = mock_channel
-    guild.icon = None
-    avatar = MagicMock()
-    avatar.url = "https://cdn.discordapp.com/avatars/333/abc.png"
-    member = MagicMock(spec=discord.Member)
-    member.id = 333
-    member.name = "ThreadUser"
-    member.display_name = "ThreadUser"
-    member.display_avatar = avatar
-    member.guild = guild
-    member.mention = "<@333>"
-    return member
+    """Zero-arg shim — delegates to conftest with fixed greeting defaults."""
+    return make_member(
+        guild_id=123456789,
+        member_id=333,
+        display_name="ThreadUser",
+        name="ThreadUser",
+    )
 
 
 @pytest.mark.asyncio

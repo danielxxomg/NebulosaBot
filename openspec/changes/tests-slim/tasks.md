@@ -32,10 +32,10 @@ Chain strategy: stacked-to-main
 
 ## Phase 2: S2 Factory Hoist
 
-- [ ] 2.1 Audit 6 sigs vs `conftest:260` `make_member(*,roles,admin,member_id,display_name)`: `avatar_cache:23`, `native_kwargs:22`, `thread:16`, `greetings_cog:94`, `raid:45`, `ticket_helpers:244` [Isolation and drop documented]
-- [ ] 2.2 Extend `conftest:260` shim for `guild_id` sites, direct else D1 [Suite green with cov floor]
-- [ ] 2.3 Replace `_make_member` in 6+1 files with `from tests.conftest import make_member` [Suite green with cov floor]
-- [ ] 2.4 Gate: suite green cov≥80.50% ty/ruff/vulture 0 random-order ledger [Ledger present]
+- [x] 2.1 Audit 6 sigs vs `conftest:260` `make_member(*,roles,admin,member_id,display_name)`: `avatar_cache:23`, `native_kwargs:22`, `thread:16`, `greetings_cog:94`, `raid:45`, `ticket_helpers:244` [Isolation and drop documented]
+- [x] 2.2 Extend `conftest:260` shim for `guild_id` sites, direct else D1 [Suite green with cov floor]
+- [x] 2.3 Replace `_make_member` in 6+1 files with `from tests.conftest import make_member` [Suite green with cov floor]
+- [x] 2.4 Gate: suite green cov≥80.50% ty/ruff/vulture 0 random-order ledger [Ledger present]
 
 ## Phase 3: S3 Cluster Parametrize
 
