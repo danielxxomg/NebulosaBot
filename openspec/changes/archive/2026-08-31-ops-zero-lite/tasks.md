@@ -39,10 +39,10 @@ Chain strategy: stacked-to-main
 
 ## Phase S1: header fix + PRESERVED
 
-- [ ] S1.1 Fix `bot/core/cache.py:9-10` remove `Deferred: member, economy_config — not wired; TTL-only` keep `Realtime-invalidated: ...,member,economy_config` per `cache-sync-realtime` [NET-NEW]
-- [ ] S1.2 PRESERVED CDC: `uv run pytest tests/test_database.py::TestMemberEconomyOnWriteHooks tests/test_realtime.py -k cdc --cov-fail-under=80` green (`SUBSCRIBED_TABLES`, `RecentWriteSet` 5s) [`test_database.py:1968,2065`]
-- [ ] S1.3 PRESERVED greet: `uv run pytest tests/test_greeting_service_raid.py tests/test_greeting_service_thread.py tests/test_transcript_service.py --cov-fail-under=80` green (sem2 drop, `to_thread`, `t()`, `cache_key`) [`raid`, `transcript:293`]
-- [ ] S1.4 Final gates+ledger: `uv run pytest --cov=bot --cov-fail-under=80` ≥2973 cov≥80.23%, `ty 0 ruff 0 vulture 0`, record SHA+`daemon.json 10m×5`+SHA pins+`send_default_pii=False`
+- [x] S1.1 Fix `bot/core/cache.py:9-10` remove `Deferred: member, economy_config — not wired; TTL-only` keep `Realtime-invalidated: ...,member,economy_config` per `cache-sync-realtime` [NET-NEW]
+- [x] S1.2 PRESERVED CDC: `uv run pytest tests/test_database.py::TestMemberEconomyOnWriteHooks tests/test_realtime.py -k cdc --cov-fail-under=80` green (`SUBSCRIBED_TABLES`, `RecentWriteSet` 5s) [`test_database.py:1968,2065`]
+- [x] S1.3 PRESERVED greet: `uv run pytest tests/test_greeting_service_raid.py tests/test_greeting_service_thread.py tests/test_transcript_service.py --cov-fail-under=80` green (sem2 drop, `to_thread`, `t()`, `cache_key`) [`raid`, `transcript:293`]
+- [x] S1.4 Final gates+ledger: `uv run pytest --cov=bot --cov-fail-under=80` ≥2973 cov≥80.23%, `ty 0 ruff 0 vulture 0`, record SHA+`daemon.json 10m×5`+SHA pins+`send_default_pii=False`
 
 ## Notes
 

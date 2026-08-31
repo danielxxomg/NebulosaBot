@@ -59,3 +59,6 @@ AUDITORIA-GGA-C1-C3.md
 # GGA review config — tracked (project policy). Local provider override: .gga.local
 .gga.local
 .pi/
+
+# Runtime logs (D4 daemon.json 10m×5 — logs/bot.log is not tracked)
+logs/

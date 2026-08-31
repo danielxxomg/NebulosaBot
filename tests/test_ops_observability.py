@@ -11,14 +11,20 @@ zero discord mutations, isolation, cog_unload cancel.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import importlib
 import inspect
 import logging
 import os
+import pathlib
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from discord.ext import tasks
+
+from bot.cogs.watchdog import WatchdogCog
 
 
 class TestSentryGate:
@@ -82,7 +88,7 @@ class TestSentryGate:
         # scrub must drop/replace secrets and raw message; never return PII-bearing payload
         assert result is not None
         payload = str(result)
-        assert "tok" not in payload or "DISCORD_TOKEN" not in payload
+        assert "tok" not in payload
         assert "hello world" not in payload
         assert "raw user message" not in payload
 
@@ -91,9 +97,9 @@ class TestSentryGate:
         scrub = getattr(mod, "_scrub", None)
         assert callable(scrub)
         event: dict = {"extra": {"safe": "ok"}, "message": "filtered?"}
-        # Even a plain message should be scrubbed or dropped; ensure not leaking.
         result = scrub(event, {})
-        assert result is None or "filtered?" not in str(result)
+        assert result is not None
+        assert "filtered?" not in str(result)
 
 
 class TestWatchdogCog:
@@ -103,8 +109,6 @@ class TestWatchdogCog:
     async def test_stall_logs_warning_at_2x_interval(
         self, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from bot.cogs.watchdog import WatchdogCog
-
         bot = MagicMock()
         bot.wait_until_ready = AsyncMock()
         cog = WatchdogCog(bot)
@@ -127,8 +131,6 @@ class TestWatchdogCog:
 
     @pytest.mark.asyncio
     async def test_no_discord_mutations_on_check(self) -> None:
-        from bot.cogs.watchdog import WatchdogCog
-
         bot = MagicMock()
         bot.wait_until_ready = AsyncMock()
         cog = WatchdogCog(bot)
@@ -144,8 +146,6 @@ class TestWatchdogCog:
                 assert not mock_attr.called, f"Watchdog mutated via {name}"
 
     def test_source_has_no_discord_mutations(self) -> None:
-        import pathlib
-
         src = pathlib.Path("bot/cogs/watchdog.py").read_text(encoding="utf-8")
         for token in ("discord.Member", "discord.Channel", ".kick(", ".ban(", ".move(", "add_roles", "remove_roles"):
             assert token not in src, f"watchdog must not contain {token}"
@@ -156,8 +156,6 @@ class TestWatchdogCog:
 
     @pytest.mark.asyncio
     async def test_cog_unload_cancels_loop(self) -> None:
-        from bot.cogs.watchdog import WatchdogCog
-
         bot = MagicMock()
         bot.wait_until_ready = AsyncMock()
         cog = WatchdogCog(bot)
@@ -176,8 +174,6 @@ class TestWatchdogCog:
             cancel_mock2.assert_not_called()
 
     def test_register_and_heartbeat_monotonic(self) -> None:
-        from bot.cogs.watchdog import WatchdogCog
-
         cog = WatchdogCog(MagicMock())
         before = time.monotonic()
         cog.register("a", 5)
@@ -189,3 +185,61 @@ class TestWatchdogCog:
         mod = importlib.import_module("bot.cogs.watchdog")
         assert hasattr(mod, "setup"), "WatchdogCog must expose async def setup(bot)"
         assert inspect.iscoroutinefunction(mod.setup)
+
+
+class TestLoopErrorRouting:
+    """OO-R3 PRESERVED — tasks.loop body RuntimeError routes via logging, never stderr/print.
+
+    Scenario: Raised loop body is logged (spec: ops-observability, spec.md:51-55).
+    This is a regression guard — framework already logs via ``Loop._error``
+    (``tasks/__init__.py:415`` ``_log.error(..., exc_info=exception)``) so the
+    test is expected GREEN on first honest run. If it goes RED, the behavior
+    regressed.
+    """
+
+    @pytest.mark.asyncio
+    async def test_raised_loop_body_is_logged(
+        self, caplog: pytest.LogCaptureFixture, capsys: pytest.CaptureFixture[str]
+    ) -> None:  # noqa: ARG002
+        """Real tasks.loop whose body raises RuntimeError is logged via logging at ERROR with exc_info.
+
+        Also asserts no stderr/print leakage. Non-flaky: short 0.02s interval,
+        poll until Loop.failed()/caplog, always cancel in finally.
+        """
+
+        @tasks.loop(seconds=0.02)
+        async def boom_once() -> None:
+            raise RuntimeError("boom under test")
+
+        # Capture stderr explicitly to prove no print/stderr branch exists
+        caplog.set_level(logging.ERROR, logger="discord.ext.tasks")
+        boom_once.start()
+        try:
+            # Poll until the loop records an ERROR or transitions to failed()
+            for _ in range(50):
+                await asyncio.sleep(0.02)
+                if boom_once.failed() or any(
+                    r.levelno >= logging.ERROR for r in caplog.records if r.name == "discord.ext.tasks"
+                ):
+                    break
+
+            error_records = [r for r in caplog.records if r.name == "discord.ext.tasks" and r.levelno >= logging.ERROR]
+            assert len(error_records) >= 1, "Loop._error must log at ERROR via discord.ext.tasks logger"
+            rec = error_records[0]
+            assert rec.exc_info is not None and rec.exc_info[0] is not None, "Logged record must carry exc_info"
+            assert issubclass(rec.exc_info[0], RuntimeError)
+            assert "boom under test" in str(rec.exc_info[1])
+            assert boom_once.failed() is True
+
+            # No stderr/print path — the event is via logging, not raw stderr
+            captured = capsys.readouterr()
+            assert captured.err == ""
+            assert captured.out == ""
+        finally:
+            boom_once.cancel()
+            t = boom_once.get_task()
+            if t is not None:
+                with contextlib.suppress(asyncio.CancelledError, RuntimeError):
+                    await asyncio.wait_for(t, timeout=0.5)
+            # Drain any pending loop scheduling so following tests are isolated
+            await asyncio.sleep(0.05)
