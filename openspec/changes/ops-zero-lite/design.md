@@ -106,7 +106,10 @@ class WatchdogCog(commands.Cog):
     @tasks.loop(seconds=30)
     async def _check(self) -> None: ...  # 2× → warning
     async def cog_unload(self) -> None: ...  # cancel
-if dsn:=os.getenv("SENTRY_DSN","").strip(): sentry_sdk.init(dsn, send_default_pii=False, before_send=_scrub)
+
+
+if dsn := os.getenv("SENTRY_DSN", "").strip():
+    sentry_sdk.init(dsn, send_default_pii=False, before_send=_scrub)
 ```
 
 ## Testing Strategy

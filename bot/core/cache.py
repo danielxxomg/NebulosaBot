@@ -7,7 +7,6 @@ Default TTL is 300 seconds (5 minutes), matching the cache desync window
 defined in the architecture decisions.
 
 Realtime-invalidated entities: guild, greeting_config, ticket, ticket_note, member, economy_config
-Deferred: member, economy_config — Realtime invalidation currently not wired; TTL-only
 """
 
 from __future__ import annotations
