@@ -39,9 +39,9 @@ Chain strategy: stacked-to-main
 
 ## Phase 3: S3 Cluster Parametrize
 
-- [ ] 3.1 Collapse 12 `TestDispatchWelcome` `test_greeting_service:621-870` to `id=welcome-disabled` D2 incl `552/575` [Isolation and drop documented]
-- [ ] 3.2 Collapse economy twins `economy_service↔stellar_cog`/`stellar_i18n` D6 keep `stellar_i18n:261` [Suite green with cov floor]
-- [ ] 3.3 Document `N→M` same assertions ids `es`/`en`/`welcome-disabled` + gate suite green cov≥80.50% ty/ruff/vulture 0 ledger [Isolation and drop documented; Ledger present]
+- [x] 3.1 Collapse 11 `TestDispatchWelcome` `test_greeting_service:641-870` to `id=welcome-disabled` D2 (621 left standalone, `552/575` assertion-different) [Isolation and drop documented]
+- [x] 3.2 Collapse economy twins `economy_service↔stellar_cog`/`stellar_i18n` D6 keep `stellar_i18n:261` — verified-preserved (no identical-assertion twin, see apply-progress) [Suite green with cov floor]
+- [x] 3.3 Document `N→M` same assertions ids `es`/`en`/`welcome-disabled` + gate suite green cov≥80.50% ty/ruff/vulture 0 ledger [Isolation and drop documented; Ledger present]
 
 ## Phase 4: S4 Deletions LAST
 
