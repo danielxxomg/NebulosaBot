@@ -59,6 +59,7 @@ EXTENSIONS: tuple[str, ...] = (
     "bot.cogs.utility",
     "bot.cogs.ocio",
     "bot.cogs.setup",
+    "bot.cogs.watchdog",
     "bot.listeners.xp_listener",
     "bot.listeners.audit_listener",
     "bot.listeners.voice_listener",

@@ -20,14 +20,9 @@ from bot.services.ticket_invariants import (
     RepairAuthority,
 )
 from bot.services.ticket_lifecycle_service import (
-    NOTE_CAP as _LC_NOTE_CAP,  # noqa: F401 — re-export for backward compat
+    TicketCategoryNotConfiguredError as _LC_TicketCategoryNotConfiguredError,  # noqa: F401 -- re-export for backward compat
 )
-from bot.services.ticket_lifecycle_service import (
-    TicketCategoryNotConfiguredError as _LC_TicketCategoryNotConfiguredError,
-)
-from bot.services.ticket_lifecycle_service import (
-    TicketLifecycleService,
-)
+from bot.services.ticket_lifecycle_service import TicketLifecycleService
 from bot.services.ticket_query_service import TicketQueryService
 from bot.services.ticket_repair import (
     backoff_delay as _coordinator_backoff_delay,

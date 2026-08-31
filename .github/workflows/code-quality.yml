@@ -38,7 +38,6 @@ jobs:
           python-version: "3.12"
 
       - name: vulture — dead code report
-        continue-on-error: true
         run: |
           pip install vulture==2.14
           vulture bot/ --min-confidence 80

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 
 # ------------------------------------------------------------------
 # Logging — sensible defaults so we see what's happening.
@@ -16,6 +17,7 @@ import logging
 # ------------------------------------------------------------------
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from typing import Any
 
 import discord
 
@@ -48,6 +50,90 @@ except Exception:  # noqa: BLE001 -- logging bootstrap never crashes boot
 
 logger = logging.getLogger(__name__)
 
+_SENSITIVE_SUBSTRINGS = ("token", "SECRET", "SUPABASE", "DISCORD")
+
+
+def _scrub(event: dict[str, Any], _hint: dict[str, Any]) -> dict[str, Any] | None:  # noqa: C901
+    """Scrub PII/secrets from a Sentry event before sending.
+
+    Drops any string value containing token/SECRET/SUPABASE/DISCORD
+    (case-sensitive substring match per tasks S0.3) and removes raw
+    ``message`` / breadcrumb message content so user content never leaves
+    the host. Returns None to drop the event only when it would still
+    carry PII after scrubbing — otherwise returns the scrubbed event.
+    """
+    import copy  # noqa: PLC0415 -- stdlib import inside function for lazy reuse boundary
+
+    scrubbed = copy.deepcopy(event)
+    # Drop raw message content — never send raw user content.
+    scrubbed.pop("message", None)
+    # Scrub breadcrumbs messages
+    bcs = scrubbed.get("breadcrumbs")
+    if isinstance(bcs, dict):
+        vals = bcs.get("values")
+        if isinstance(vals, list):
+            for bc in vals:
+                if isinstance(bc, dict):
+                    bc.pop("message", None)
+    # Generic scrub: drop any string leaf containing sensitive substrings
+    # and also redact env-value matches if present in the payload.
+
+    def _contains_sensitive(s: str) -> bool:
+        if any(sub in s for sub in _SENSITIVE_SUBSTRINGS):
+            return True
+        # Also redact exact env values if they appear
+        for k in ("DISCORD_TOKEN", "SUPABASE_DB_URL", "SUPABASE_URL", "SUPABASE_KEY", "SENTRY_DSN"):
+            v = os.getenv(k, "")
+            if v and v in s:
+                return True
+        return False
+
+    def _scrub_obj(obj: Any) -> Any:
+        if isinstance(obj, dict):
+            out: dict[str, Any] = {}
+            for kk, vv in obj.items():
+                # Drop keys that look sensitive
+                if any(sub in str(kk) for sub in _SENSITIVE_SUBSTRINGS):
+                    continue
+                # Scrub value
+                if isinstance(vv, str) and _contains_sensitive(vv):
+                    continue
+                out[kk] = _scrub_obj(vv)
+            return out
+        if isinstance(obj, list):
+            return [_scrub_obj(x) for x in obj]
+        if isinstance(obj, str) and _contains_sensitive(obj):
+            return "[Filtered]"
+        return obj
+
+    # Scrub extra/exception/message remnants (message already popped above)
+    for key in ("extra", "exception", "contexts", "user", "tags"):
+        if key in scrubbed:
+            scrubbed[key] = _scrub_obj(scrubbed[key])
+    # Also scrub any remaining top-level string values that may contain secrets
+    for k in list(scrubbed.keys()):
+        v = scrubbed[k]
+        if isinstance(v, str) and _contains_sensitive(v):
+            scrubbed[k] = "[Filtered]"
+    return scrubbed
+
+
+def _init_sentry() -> None:
+    """Env-gated Sentry init. No-op when SENTRY_DSN is absent/empty."""
+    dsn = os.getenv("SENTRY_DSN", "").strip()
+    if not dsn:
+        return
+    try:
+        import sentry_sdk  # noqa: PLC0415 -- optional dep, env-gated
+    except ImportError:
+        logger.warning("sentry-sdk not installed — Sentry disabled")
+        return
+    sentry_sdk.init(dsn=dsn, send_default_pii=False, before_send=_scrub)
+
+
+# Back-compat alias for tests that import init_sentry
+init_sentry = _init_sentry
+
 
 async def main() -> None:
     """Bootstrap the bot.
@@ -79,4 +165,5 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    _init_sentry()
     asyncio.run(main())
