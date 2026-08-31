@@ -25,17 +25,17 @@ Chain strategy: stacked-to-main
 
 ## Phase S0: obs-zero (NET-NEW, RED→GREEN)
 
-- [ ] S0.1 Secrets: `grep -rn SUPABASE .github/workflows/*.yml`=0 hits → use `SUPABASE_DB_URL` (matches `live_catalog.py:101` fallback); pin `sentry-sdk==2.22.0` in `pyproject.toml`
-- [ ] S0.2 RED Sentry: `tests/test_ops_observability.py::TestSentryGate` failing for `ops-observability` DSN present/absent+No PII (patch `sentry_sdk.init`, assert `_scrub` drops token/SUPABASE/DISCORD)
-- [ ] S0.3 GREEN Sentry: `bot/__main__.py` add pre-`asyncio.run` guard `sentry_sdk.init(dsn, send_default_pii=False, before_send=_scrub)` else no-op; implement `_scrub` per D1
-- [ ] S0.4 Dep+ty: `uv sync --locked`+`uv run ty check` must stay 0; if breaks add narrow `tool.ty.overrides` for `bot/__main__.py` only
-- [ ] S0.5 RED Watchdog: failing `TestWatchdogCog` for `ops-observability` stall WARNING 2× interval (`monotonic`+`caplog`) + no mutation (zero `discord.*`)+`cog_unload` cancel
-- [ ] S0.6 GREEN Watchdog: create `bot/cogs/watchdog.py` `WatchdogCog` `register`/`heartbeat` monotonic, `@tasks.loop(30)`+`before_loop`+`cog_unload`, `2×→logger.warning`, isolated, zero Discord; add to `bot/bot.py:EXTENSIONS` per D2
-- [ ] S0.7 Backup: create `.github/workflows/backup.yml` `cron "0 2 * * *"`+`workflow_dispatch`, SHA-pinned, `pg_dump "$SUPABASE_DB_URL" -Fc`, `upload-artifact retention-days:7`, `continue-on-error:false`, doc secret in `docs/ops/rotation.md`
-- [ ] S0.8 Rotation: create `docs/ops/rotation.md` `daemon.json {"max-size":"10m","max-file":"5"}` ~60 MB, `docker inspect` verify, Pterodactyl unbounded #4711, rollback `remove keys+reload`
-- [ ] S0.9 Vulture: edit `.github/workflows/code-quality.yml:41` remove `continue-on-error: true` for `vulture bot/ --min-confidence 80` (#4700 clean)
-- [ ] S0.10 PRESERVED verify: `uv run pytest tests/test_database.py::TestMemberEconomyOnWriteHooks tests/test_transcript_service.py -k to_thread tests/test_greeting_service_raid.py -q --cov-fail-under=80` green (no dup tests)
-- [ ] S0.11 S0 gates: `uv run pytest --cov-fail-under=80` ≥2973 cov≥80, `ty 0 ruff 0 vulture 0 prek 9`, `bot/bot.py:_noop_prefix==[]` and `","` in `tickets.py:241` intact
+- [x] S0.1 Secrets: `grep -rn SUPABASE .github/workflows/*.yml`=0 hits → use `SUPABASE_DB_URL` (matches `live_catalog.py:101` fallback); pin `sentry-sdk==2.22.0` in `pyproject.toml`
+- [x] S0.2 RED Sentry: `tests/test_ops_observability.py::TestSentryGate` failing for `ops-observability` DSN present/absent+No PII (patch `sentry_sdk.init`, assert `_scrub` drops token/SUPABASE/DISCORD)
+- [x] S0.3 GREEN Sentry: `bot/__main__.py` add pre-`asyncio.run` guard `sentry_sdk.init(dsn, send_default_pii=False, before_send=_scrub)` else no-op; implement `_scrub` per D1
+- [x] S0.4 Dep+ty: `uv sync --locked`+`uv run ty check` must stay 0; if breaks add narrow `tool.ty.overrides` for `bot/__main__.py` only
+- [x] S0.5 RED Watchdog: failing `TestWatchdogCog` for `ops-observability` stall WARNING 2× interval (`monotonic`+`caplog`) + no mutation (zero `discord.*`)+`cog_unload` cancel
+- [x] S0.6 GREEN Watchdog: create `bot/cogs/watchdog.py` `WatchdogCog` `register`/`heartbeat` monotonic, `@tasks.loop(30)`+`before_loop`+`cog_unload`, `2×→logger.warning`, isolated, zero Discord; add to `bot/bot.py:EXTENSIONS` per D2
+- [x] S0.7 Backup: create `.github/workflows/backup.yml` `cron "0 2 * * *"`+`workflow_dispatch`, SHA-pinned, `pg_dump "$SUPABASE_DB_URL" -Fc`, `upload-artifact retention-days:7`, `continue-on-error:false`, doc secret in `docs/ops/rotation.md`
+- [x] S0.8 Rotation: create `docs/ops/rotation.md` `daemon.json {"max-size":"10m","max-file":"5"}` ~60 MB, `docker inspect` verify, Pterodactyl unbounded #4711, rollback `remove keys+reload`
+- [x] S0.9 Vulture: edit `.github/workflows/code-quality.yml:41` remove `continue-on-error: true` for `vulture bot/ --min-confidence 80` (#4700 clean)
+- [x] S0.10 PRESERVED verify: `uv run pytest tests/test_database.py::TestMemberEconomyOnWriteHooks tests/test_transcript_service.py -k to_thread tests/test_greeting_service_raid.py -q --cov-fail-under=80` green (no dup tests)
+- [x] S0.11 S0 gates: `uv run pytest --cov-fail-under=80` ≥2973 cov≥80, `ty 0 ruff 0 vulture 0 prek 9`, `bot/bot.py:_noop_prefix==[]` and `","` in `tickets.py:241` intact
 
 ## Phase S1: header fix + PRESERVED
 

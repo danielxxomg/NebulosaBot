@@ -37,12 +37,12 @@ def test_betterleaks_job_is_blocking(code_quality_config: dict) -> None:
 
 
 def test_other_advisory_jobs_keep_their_escape_hatch(code_quality_config: dict) -> None:
-    """Guard: only the security job flips; dashboard/vulture advisories stay advisory."""
+    """Guard: dashboard stays advisory; vulture flips blocking in ops-zero-lite (S0.9)."""
     jobs = code_quality_config["jobs"]
     assert jobs.get("dashboard-lint-advisory", {}).get("continue-on-error") is True
     quality_steps = jobs.get("quality-reports", {}).get("steps", [])
     vulture = [s for s in quality_steps if "vulture" in s.get("run", "")]
-    assert vulture and vulture[0].get("continue-on-error") is True
+    assert vulture and vulture[0].get("continue-on-error") is not True
 
 
 def test_pyproject_coverage_floor_is_80() -> None:

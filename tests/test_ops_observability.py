@@ -161,15 +161,17 @@ class TestWatchdogCog:
         bot = MagicMock()
         bot.wait_until_ready = AsyncMock()
         cog = WatchdogCog(bot)
-        with patch.object(cog._check, "is_running", return_value=True), patch.object(
-            cog._check, "cancel"
-        ) as cancel_mock:
+        with (
+            patch.object(cog._check, "is_running", return_value=True),
+            patch.object(cog._check, "cancel") as cancel_mock,
+        ):
             await cog.cog_unload()
             cancel_mock.assert_called_once()
         # Also verify non-running path does not cancel
-        with patch.object(cog._check, "is_running", return_value=False), patch.object(
-            cog._check, "cancel"
-        ) as cancel_mock2:
+        with (
+            patch.object(cog._check, "is_running", return_value=False),
+            patch.object(cog._check, "cancel") as cancel_mock2,
+        ):
             await cog.cog_unload()
             cancel_mock2.assert_not_called()
 

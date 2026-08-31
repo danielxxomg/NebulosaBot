@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 _SENSITIVE_SUBSTRINGS = ("token", "SECRET", "SUPABASE", "DISCORD")
 
 
-def _scrub(event: dict[str, Any], hint: dict[str, Any]) -> dict[str, Any] | None:  # noqa: ARG001, C901
+def _scrub(event: dict[str, Any], _hint: dict[str, Any]) -> dict[str, Any] | None:  # noqa: C901
     """Scrub PII/secrets from a Sentry event before sending.
 
     Drops any string value containing token/SECRET/SUPABASE/DISCORD

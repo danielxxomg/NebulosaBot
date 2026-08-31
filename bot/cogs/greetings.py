@@ -12,6 +12,7 @@ They remain in English; t() localizes runtime responses only.
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 import discord
 from discord.ext import commands
@@ -22,7 +23,7 @@ from bot.models.greeting_config import GreetingConfig
 from bot.utils.checks import can
 from bot.utils.embeds import error_embed, info_embed
 
-if False:  # TYPE_CHECKING
+if TYPE_CHECKING:
     from bot.bot import NebulosaBot
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
 
     __slots__ = ("bot",)
 
-    def __init__(self, bot: NebulosaBot) -> None:  # type: ignore[no-redef]
+    def __init__(self, bot: NebulosaBot) -> None:
         self.bot = bot
 
     # ------------------------------------------------------------------
@@ -145,7 +146,7 @@ class GreetingsCog(commands.Cog, name="Greetings"):
         )
 
 
-async def setup(bot: NebulosaBot) -> None:  # type: ignore[no-redef]
+async def setup(bot: NebulosaBot) -> None:
     """Load the GreetingsCog into the bot."""
     await bot.add_cog(GreetingsCog(bot))
 
