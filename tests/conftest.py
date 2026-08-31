@@ -13,9 +13,11 @@ read-only verifier behind ``--run-live`` / ``LIVE_SUPABASE=1``.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import selectors
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
@@ -24,7 +26,7 @@ from freezegun import freeze_time
 
 from bot.core import i18n as i18n_mod
 from bot.core.cache import TTLCache
-from bot.core.i18n import load_locales
+from bot.core.i18n import load_locales, set_guild_language
 from bot.models.guild import GuildConfig
 
 # Frozen deterministic timestamp: 2024-06-15 12:00:00 UTC
@@ -83,6 +85,82 @@ def _isolate_i18n_state():
     i18n_mod._guild_languages.clear()
     i18n_mod._locales.update(orig_locales)
     i18n_mod._guild_languages.update(orig_guild_langs)
+
+
+# ---------------------------------------------------------------------------
+# Shared locale helpers (tests-slim S1 — D1)
+# ---------------------------------------------------------------------------
+# Import-only from bot.core.i18n (conftest never imports cog/service code).
+# _isolate_i18n_state remains outermost; hoisted fixtures yield and rely on it
+# for restore, exactly as the per-file fixtures did before the hoist.
+
+
+def build_nested_locale(markers: dict[str, str]) -> dict:
+    """Convert flat dot-notation keys into a nested dict for locale JSON."""
+    result: dict = {}
+    for key, value in markers.items():
+        parts = key.split(".")
+        current = result
+        for part in parts[:-1]:
+            nxt = current.get(part)
+            if not isinstance(nxt, dict):
+                nxt = {}
+                current[part] = nxt
+            current = nxt
+        current[parts[-1]] = value
+    return result
+
+
+def swap_suffix(markers: dict[str, str], sfx: str) -> dict[str, str]:
+    """Derive a sibling-locale marker set by swapping the ``_ES`` suffix."""
+    return {key: value.replace("_ES", sfx) for key, value in markers.items()}
+
+
+def load_test_locales(
+    tmp_path: Path,
+    es_markers: dict,
+    en_markers: dict | None = None,
+    *,
+    guild_langs: dict[str, str] | None = None,
+) -> None:
+    """Write locale JSON files to tmp_path and load them via i18n.
+
+    Args:
+        tmp_path: pytest tmp_path fixture root.
+        es_markers: Flat (dot-notation) or already-nested ES marker dict.
+            Flat dicts are converted via build_nested_locale; nested dicts
+            are written as-is (e.g. stellar's {"stellar": {"daily": ...}}).
+        en_markers: Optional EN marker dict; when None and es_markers is
+            flat, EN is derived via swap_suffix(es_markers, "_EN").
+            When None and es_markers is nested, caller must have built EN
+            separately — pass it explicitly.
+        guild_langs: Optional guild_id(str)->language mapping to install
+            after load (e.g. {"111...": "es", "222...": "en"}).
+    """
+    locale_dir = tmp_path / "locales"
+    locale_dir.mkdir(parents=True, exist_ok=True)
+
+    def _needs_nesting(m: dict) -> bool:
+        return any("." in k for k in m)
+
+    # Detect flat vs already-nested by presence of dots in keys.
+    es_is_flat = _needs_nesting(es_markers)
+    if en_markers is None and es_is_flat:
+        en_markers = swap_suffix(es_markers, "_EN")
+
+    def _dump(markers: dict) -> dict:
+        if any("." in k for k in markers):
+            return build_nested_locale(markers)
+        return markers
+
+    (locale_dir / "es.json").write_text(json.dumps(_dump(es_markers)), encoding="utf-8")
+    if en_markers is not None:
+        (locale_dir / "en.json").write_text(json.dumps(_dump(en_markers)), encoding="utf-8")
+
+    load_locales(locale_dir)
+    if guild_langs:
+        for gid, lang in guild_langs.items():
+            set_guild_language(str(gid), lang)
 
 
 # ---------------------------------------------------------------------------

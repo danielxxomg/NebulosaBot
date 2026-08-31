@@ -26,9 +26,9 @@ Chain strategy: stacked-to-main
 
 ## Phase 1: S1 Locale Hoist
 
-- [ ] 1.1 Add `build_nested_locale`/`swap_suffix`/`load_test_locales` to `tests/conftest.py` import-only `bot.core.i18n` outermost [Isolation and drop documented]
-- [ ] 1.2 Hoist 5 carriers `id=es/en`: `sentinel:135` 680, `stellar:113` 343, `tickets` 1031, `utility:36` 218 `en=None`, `ocio:33` 138; keep `core_cog:37` [Suite green with cov floor; KEEP untouched]
-- [ ] 1.3 Gate: `pytest -q --seed 42 --cov` green ty/ruff/vulture 0 ledger `files A→B lines X→Y N→M cov→Z% seed 42` [Ledger present; KEEP green]
+- [x] 1.1 Add `build_nested_locale`/`swap_suffix`/`load_test_locales` to `tests/conftest.py` import-only `bot.core.i18n` outermost [Isolation and drop documented]
+- [x] 1.2 Hoist 5 carriers `id=es/en`: `sentinel:135` 680, `stellar:113` 343, `tickets` 1031, `utility:36` 218 `en=None`, `ocio:33` 138; keep `core_cog:37` [Suite green with cov floor; KEEP untouched]
+- [x] 1.3 Gate: `pytest -q --seed 42 --cov` green ty/ruff/vulture 0 ledger `files A→B lines X→Y N→M cov→Z% seed 42` [Ledger present; KEEP green]
 
 ## Phase 2: S2 Factory Hoist
 
