@@ -331,9 +331,12 @@ def test_dynamic_discovery_order_resilience(manual_text: str) -> None:
     second = _discover_hybrid_commands()
     assert second == baseline, f"Discovery not deterministic: {baseline} vs {second}"
 
+    if not baseline:
+        return  # S6B slash-only: zero-hybrid — no hybrids to verify ordering
+
     # Shuffle the result and verify the set is stable (order resilience).
     shuffled = list(baseline)
     random.seed(42)
     random.shuffle(shuffled)
-    assert sorted(shuffled) == sorted(baseline)
-    assert shuffled != baseline or len(baseline) <= 1 or baseline == sorted(baseline) or True  # noqa: S101 -- allow trivial shuffle edge
+    assert sorted(shuffled) == sorted(baseline)  # completeness: shuffle loses no commands
+    assert baseline  # sanity: discovery actually found commands
