@@ -8,7 +8,6 @@ Uses real NebulosaBot.setup_hook with DB/cache mocked per D4.
 from __future__ import annotations
 
 import logging
-import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -50,7 +49,6 @@ async def test_probe_import_error_falls_back_to_pillow_and_logs_warning(caplog):
     mock_sync = AsyncMock()
     with (
         patch("builtins.__import__", side_effect=fake_import),
-        patch.dict(sys.modules, {"cairosvg": None}, clear=False),
         patch("bot.bot.Database") as mock_db_cls,
         patch("bot.bot.RealtimeCacheSubscriber") as mock_sub_cls,
         patch.object(bot, "load_extension", new=AsyncMock()),
@@ -61,20 +59,17 @@ async def test_probe_import_error_falls_back_to_pillow_and_logs_warning(caplog):
     ):
         mock_db_cls.return_value.connect = AsyncMock()
         mock_sub_cls.return_value.start = AsyncMock()
-        try:
-            with caplog.at_level(logging.WARNING, logger="bot.bot"):
-                await bot.setup_hook()
+        with caplog.at_level(logging.WARNING, logger="bot.bot"):
+            await bot.setup_hook()
 
-            # Must have injected Pillow renderer even though probe raised ImportError
-            assert isinstance(bot.greeting_service._greeting_renderer, PillowGreetingRenderer)  # type: ignore[union-attr]
-            assert isinstance(bot.rank_renderer, object)
-            # WARNING must have been logged
-            warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
-            assert any("cairosvg" in r.getMessage().lower() for r in warnings)
-            # No abort — tree.sync still ran
-            mock_sync.assert_awaited_once()
-        finally:
-            sys.modules.pop("cairosvg", None)
+        # Must have injected Pillow renderer even though probe raised ImportError
+        assert isinstance(bot.greeting_service._greeting_renderer, PillowGreetingRenderer)  # type: ignore[union-attr]
+        assert isinstance(bot.rank_renderer, object)
+        # WARNING must have been logged
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert any("cairosvg" in r.getMessage().lower() for r in warnings)
+        # No abort — tree.sync still ran
+        mock_sync.assert_awaited_once()
 
 
 @pytest.mark.asyncio

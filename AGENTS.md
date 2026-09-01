@@ -10,7 +10,7 @@
 - Use `logging` module, never `print()` for runtime output
 - Constants in UPPER_SNAKE_CASE, configurable values in `.env`
 - Docstrings on public classes and non-obvious functions (Google style)
-- **Function-level imports (PLC0415) are banned by default.** Allowed ONLY with an inline documented-exception comment for: cycle-breaking imports, optional-dependency probes (e.g. the cairosvg boot probe), or facade indirection. A bare stdlib import inside a function is a violation
+- **Function-level imports (PLC0415) are banned by default — stdlib, first-party, and third-party alike.** Allowed ONLY with the canonical inline comment `# noqa: PLC0415 -- <reason>` (matching the per-file ignores in `pyproject.toml`) for exactly three categories: (1) **cycle-break** — hoisting the import would create a module import cycle; (2) **optional-dependency probe** — the import tests whether an optional package exists (e.g. the cairosvg boot probe); (3) **facade indirection** — the function-level import IS a deliberate lazy facade whose symbol is re-exported by that module; mere cycle-avoidance is (1), not (3). Documented carve-out: `scripts/**/*.py` is fully exempt via pyproject per-file ignores. If import order must be frozen, add `# isort: skip` alongside the noqa.
 
 ## Discord.py
 
