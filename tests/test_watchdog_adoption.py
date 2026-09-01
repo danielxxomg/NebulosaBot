@@ -9,7 +9,7 @@ Covers ops-observability delta (spec.md 5 ADDED req, 11 scenarios):
 - Gated scheduled_close_loop register respects TICKET_TIMER_ENABLED (off→no register).
 - resource_log_loop running after CoreCog.cog_load (dead-loop activation).
 - Intervals: 300 / 3600 / 60 / 3600 / 3600.
-- WARNING exercisable at 2× via _check_once (caplog, stale monotonic).
+- WARNING exercisable at 2x via _check_once (caplog, stale monotonic).
 
 RED expectation: suite FAILS before wiring (loops unwired), GREEN after S1.
 """
@@ -53,15 +53,14 @@ def _loop_names_in_source(src: str, filename: str = "<unknown>") -> list[str]:
             elif isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute):
                 attr_name = dec.func.attr
             # Fallback via unparse text
-            if attr_name == "loop" or _LOOP_DECOR in dec_src or "loop(" in dec_src:
-                # Heuristic: decorator text contains "loop"
-                if "loop" in dec_src or attr_name == "loop":
-                    names.append(node.name)
-                    break
+            if (attr_name == "loop" or _LOOP_DECOR in dec_src or "loop(" in dec_src) and (
+                "loop" in dec_src or attr_name == "loop"
+            ):
+                names.append(node.name)
+                break
             # Also catch simple @tasks.loop without args where unparse may be empty on older py
-            if attr_name == "loop":
-                if node.name not in names:
-                    names.append(node.name)
+            if attr_name == "loop" and node.name not in names:
+                names.append(node.name)
     # Deduplicate preserving order
     seen: set[str] = set()
     uniq: list[str] = []
@@ -190,9 +189,9 @@ class TestWatchdogWiring:
         # Ensure business-logic helper doesn't hide heartbeat
         if hasattr(cog, "_log_resource_usage"):
             with patch.object(cog, "_log_resource_usage", new_callable=AsyncMock):
-                await cog.resource_log_loop()  # type: ignore[operator]
+                await cog.resource_log_loop()
         else:
-            await cog.resource_log_loop()  # type: ignore[operator]
+            await cog.resource_log_loop()
         watchdog.heartbeat.assert_called_with("resource_log_loop")
 
     @pytest.mark.asyncio
@@ -207,8 +206,8 @@ class TestWatchdogWiring:
         cog = SentinelCog(bot)
         bot.db = MagicMock()
         bot.infraction_service = MagicMock()
-        cog._collect_guild_ids = MagicMock(return_value=[])  # type: ignore[method-assign]
-        await cog.decay_expiry_loop()  # type: ignore[operator]
+        cog._collect_guild_ids = MagicMock(return_value=[])  # type: ignore[method-assign]  # ty: allow assignment shape
+        await cog.decay_expiry_loop()
         watchdog.heartbeat.assert_called_with("decay_expiry_loop")
 
     @pytest.mark.asyncio
@@ -222,7 +221,7 @@ class TestWatchdogWiring:
         bot.ticket_service = MagicMock()
         bot.ticket_service.get_due_scheduled_tickets = AsyncMock(return_value=[])
         bot.db = MagicMock()
-        await cog.scheduled_close_loop()  # type: ignore[operator]
+        await cog.scheduled_close_loop()
         watchdog.heartbeat.assert_called_with("scheduled_close_loop")
 
     @pytest.mark.asyncio
@@ -237,7 +236,7 @@ class TestWatchdogWiring:
         bot.ticket_service = MagicMock()
         bot.ticket_service.get_stale_tickets = AsyncMock(return_value=[])
         bot.guilds = []
-        await cog.auto_close_stale_tickets()  # type: ignore[operator]
+        await cog.auto_close_stale_tickets()
         watchdog.heartbeat.assert_called_with("auto_close_stale_tickets")
 
     @pytest.mark.asyncio
@@ -251,7 +250,7 @@ class TestWatchdogWiring:
         bot.ticket_service = MagicMock()
         bot.ticket_service.sweep_integrity = AsyncMock()
         bot.guilds = []
-        await cog.integrity_sweep_loop()  # type: ignore[operator]
+        await cog.integrity_sweep_loop()
         watchdog.heartbeat.assert_called_with("integrity_sweep_loop")
 
     @pytest.mark.asyncio
@@ -271,7 +270,7 @@ class TestWatchdogWiring:
 
         with patch.object(cog, "_log_resource_usage", side_effect=_fake_log):
             # Should not raise even though watchdog is None
-            await cog.resource_log_loop()  # type: ignore[operator]
+            await cog.resource_log_loop()
         assert called, "Business logic must complete when watchdog absent"
 
     @pytest.mark.asyncio
@@ -330,7 +329,7 @@ class TestWatchdogWiring:
         cog = CoreCog(bot)
         # Replace real Loop with mock to observe start + is_running
         mock_loop = MagicMock(is_running=MagicMock(side_effect=[False, True]), start=MagicMock())
-        cog.resource_log_loop = mock_loop  # type: ignore[assignment]
+        cog.resource_log_loop = mock_loop
         await cog.cog_load()
         mock_loop.start.assert_called_once()
         # After cog_load, is_running should be True
@@ -343,7 +342,7 @@ class TestWatchdogWiring:
         bot.wait_until_ready = AsyncMock()
         cog = WatchdogCog(bot)
         cog.register("resource_log_loop", 300)
-        # Stale beyond 2× (600s)
+        # Stale beyond 2x (600s)
         cog._last_heartbeat["resource_log_loop"] = time.monotonic() - 650
         with caplog.at_level(logging.WARNING, logger="bot.cogs.watchdog"):
             await cog._check_once()

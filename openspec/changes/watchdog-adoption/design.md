@@ -83,10 +83,11 @@ _check (30s) ──_check_once──► 2×? ──WARNING──► logging only
 def get_watchdog(bot: NebulosaBot) -> WatchdogCog | None:
     return bot.get_cog("Watchdog")  # type: ignore[return-value]
 
+
 wd = get_watchdog(self.bot)
 if wd:
     wd.register("loop_name", interval_s)  # cog_load after start
-    wd.heartbeat("loop_name")             # loop body first line
+    wd.heartbeat("loop_name")  # loop body first line
 ```
 
 ## Testing Strategy
