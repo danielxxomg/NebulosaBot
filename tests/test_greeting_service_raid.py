@@ -15,11 +15,11 @@ import logging
 import time
 from unittest.mock import AsyncMock, MagicMock
 
-import discord
 import pytest
 
 from bot.core.cache import TTLCache
 from bot.services.greeting_service import GreetingService
+from tests.conftest import make_member
 
 _GUILD_ID = 123456789
 
@@ -43,25 +43,15 @@ class _CountingRenderer:
 
 
 def _make_member(guild_id: int = _GUILD_ID) -> MagicMock:
-    """Build a mock discord.Member whose guild exposes a sendable channel."""
-    mock_channel = MagicMock(spec=discord.TextChannel)
-    mock_channel.send = AsyncMock(return_value=None)
-    guild = MagicMock()
-    guild.id = guild_id
-    guild.name = f"Guild{guild_id}"
-    guild.member_count = 150
-    guild.get_channel.return_value = mock_channel
-    guild.icon = None
-    avatar = MagicMock()
-    avatar.url = f"https://cdn.discordapp.com/avatars/333/{guild_id}.png"
-    member = MagicMock(spec=discord.Member)
-    member.id = 333
-    member.name = "RaidUser"
-    member.display_name = "RaidUser"
-    member.display_avatar = avatar
-    member.guild = guild
-    member.mention = "<@333>"
-    return member
+    """Raid-member shim — delegates to conftest with raid guild_name/avatar."""
+    return make_member(
+        guild_id=guild_id,
+        member_id=333,
+        display_name="RaidUser",
+        name="RaidUser",
+        guild_name=f"Guild{guild_id}",
+        avatar_url=f"https://cdn.discordapp.com/avatars/333/{guild_id}.png",
+    )
 
 
 def _make_service(renderer: _CountingRenderer) -> tuple[GreetingService, AsyncMock]:

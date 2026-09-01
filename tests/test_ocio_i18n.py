@@ -9,7 +9,6 @@ Uses distinct locale overrides to prove t() is called.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -18,9 +17,8 @@ import pytest
 from discord.ext import commands
 
 from bot.cogs.ocio import OcioCog
-from bot.core.i18n import load_locales, set_guild_language
 from bot.services.ocio_service import OcioService
-from tests.conftest import make_ctx
+from tests.conftest import load_test_locales, make_ctx
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -31,16 +29,8 @@ _GUILD_ID = 123456789
 
 @pytest.fixture(autouse=True)
 def _load_i18n(tmp_path: Path) -> Generator[None, None, None]:
-    """Load custom locale overrides."""
-    from bot.core import i18n as i18n_mod
-
-    orig_locales = dict(i18n_mod._locales)
-    orig_guild_langs = dict(i18n_mod._guild_languages)
-
-    i18n_mod._locales.clear()
-    i18n_mod._guild_languages.clear()
-
-    es_data = {
+    """Load custom locale overrides (single-locale)."""
+    es_data: dict = {
         "common": {"footer": "NB • {timestamp}"},
         "ocio": {
             "dados": {
@@ -55,20 +45,8 @@ def _load_i18n(tmp_path: Path) -> Generator[None, None, None]:
             },
         },
     }
-
-    locale_dir = tmp_path / "locales"
-    locale_dir.mkdir(parents=True, exist_ok=True)
-    (locale_dir / "es.json").write_text(json.dumps(es_data), encoding="utf-8")
-
-    load_locales(locale_dir)
-    set_guild_language(str(_GUILD_ID), "es")
-
+    load_test_locales(tmp_path, es_data, en_markers=None, guild_langs={str(_GUILD_ID): "es"})
     yield
-
-    i18n_mod._locales.clear()
-    i18n_mod._locales.update(orig_locales)
-    i18n_mod._guild_languages.clear()
-    i18n_mod._guild_languages.update(orig_guild_langs)
 
 
 @pytest.fixture

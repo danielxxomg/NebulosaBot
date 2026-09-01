@@ -10,36 +10,25 @@ from __future__ import annotations
 import io
 from unittest.mock import AsyncMock, MagicMock
 
-import discord
 import pytest
 
 import bot.services.greeting_service as gs
 from bot.core.cache import TTLCache
 from bot.services.greeting_renderer import PillowGreetingRenderer
 from bot.services.greeting_service import GreetingService
+from tests.conftest import make_member
 
 
 def _make_member(member_id: int = 333, name: str = "TestUser", guild_id: int = 123456789) -> MagicMock:
-    mock_channel = MagicMock(spec=discord.TextChannel)
-    mock_channel.send = AsyncMock(return_value=None)
-    guild = MagicMock()
-    guild.id = guild_id
-    guild.name = "TestServer"
-    guild.member_count = 150
-    guild.get_channel.return_value = mock_channel
-    avatar = MagicMock()
-    avatar.url = "https://cdn.discordapp.com/avatars/333/abc.png"
-    icon = MagicMock()
-    icon.url = "https://cdn.discordapp.com/icons/123/icon.png"
-    guild.icon = icon
-    member = MagicMock(spec=discord.Member)
-    member.id = member_id
-    member.name = name
-    member.display_name = name
-    member.display_avatar = avatar
-    member.guild = guild
-    member.mention = f"<@{member_id}>"
-    return member
+    """Shim — delegates to ``tests.conftest.make_member`` with greeting scaffolding."""
+    return make_member(
+        guild_id=guild_id,
+        member_id=member_id,
+        name=name,
+        display_name=name,
+        avatar_url="https://cdn.discordapp.com/avatars/333/abc.png",
+        guild_icon_url="https://cdn.discordapp.com/icons/123/icon.png",
+    )
 
 
 @pytest.mark.asyncio

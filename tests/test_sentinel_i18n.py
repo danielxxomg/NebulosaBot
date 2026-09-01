@@ -10,7 +10,6 @@ concept is parametrized over the shared ES/EN locale matrix.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,6 +22,7 @@ from bot.cogs.sentinel import SentinelCog, _build_modlog_pages
 from bot.core import i18n as i18n_mod
 from bot.core.i18n import load_locales, set_guild_language
 from bot.utils.paginator import EmbedPaginator
+from tests.conftest import load_test_locales
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -109,62 +109,20 @@ _ES_MARKERS = {
 }
 
 
-def _build_nested_locale(markers: dict[str, str]) -> dict:
-    """Convert flat dot-notation keys into a nested dict for locale JSON."""
-    result: dict = {}
-    for key, value in markers.items():
-        parts = key.split(".")
-        current = result
-        for part in parts[:-1]:
-            current = current.setdefault(part, {})
-        current[parts[-1]] = value
-    return result
-
-
-def _swap_suffix(markers: dict[str, str], sfx: str) -> dict[str, str]:
-    """Derive a sibling-locale marker set by swapping the ``_ES`` suffix."""
-    return {key: value.replace("_ES", sfx) for key, value in markers.items()}
-
-
 # ---------------------------------------------------------------------------
-# Fixtures
+# Fixtures — hoisted to tests.conftest (S1); _isolate_i18n_state remains outermost
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
 def _load_i18n(tmp_path: Path) -> Generator[None, None, None]:
     """Load custom locale overrides for sentinel i18n tests."""
-
-    # Save original state.
-    orig_locales = dict(i18n_mod._locales)
-    orig_guild_langs = dict(i18n_mod._guild_languages)
-
-    i18n_mod._locales.clear()
-    i18n_mod._guild_languages.clear()
-
-    locale_dir = tmp_path / "locales"
-    locale_dir.mkdir(parents=True, exist_ok=True)
-
-    (locale_dir / "es.json").write_text(
-        json.dumps(_build_nested_locale(_ES_MARKERS)),
-        encoding="utf-8",
+    load_test_locales(
+        tmp_path,
+        _ES_MARKERS,
+        guild_langs={str(_GUILD_ID_ES): "es", str(_GUILD_ID_EN): "en"},
     )
-    (locale_dir / "en.json").write_text(
-        json.dumps(_build_nested_locale(_swap_suffix(_ES_MARKERS, "_EN"))),
-        encoding="utf-8",
-    )
-
-    load_locales(locale_dir)
-    set_guild_language(str(_GUILD_ID_ES), "es")
-    set_guild_language(str(_GUILD_ID_EN), "en")
-
     yield
-
-    # Restore original state so other test modules are not affected.
-    i18n_mod._locales.clear()
-    i18n_mod._locales.update(orig_locales)
-    i18n_mod._guild_languages.clear()
-    i18n_mod._guild_languages.update(orig_guild_langs)
 
 
 @pytest.fixture

@@ -637,257 +637,146 @@ class TestDispatchWelcome:
 
         member.guild.get_channel.return_value.send.assert_not_awaited()
 
+    # S3: collapsed disabled-card / welcome-disabled cluster (11 cases, 1 left standalone
+    # at 621 + near-twins 552/575 excluded as assertion-different). Each param preserves
+    # the original two assertions (resolve_cta not called + send check) 1:1.
     @pytest.mark.asyncio
-    async def test_global_disabled_ignores_resolvable_cta(
+    @pytest.mark.parametrize(
+        ("config_update", "mention_override", "locale", "expected_content", "use_side_effect"),
+        [
+            pytest.param(
+                {"welcomeEnabled": False, "onboardingChannelId": "999999999"},
+                None,
+                None,
+                None,
+                False,
+                id="welcome-disabled-global-resolvable-cta",
+            ),
+            pytest.param(
+                {"welcomeCardEnabled": False, "welcomeMessage": None, "onboardingChannelId": "999999999"},
+                None,
+                None,
+                None,
+                False,
+                id="welcome-disabled-card-none",
+            ),
+            pytest.param(
+                {"welcomeCardEnabled": False, "welcomeMessage": "", "onboardingChannelId": "999999999"},
+                None,
+                None,
+                None,
+                False,
+                id="welcome-disabled-card-empty-string",
+            ),
+            pytest.param(
+                {"welcomeCardEnabled": False, "welcomeMessage": "   \n\t ", "onboardingChannelId": "999999999"},
+                None,
+                None,
+                None,
+                False,
+                id="welcome-disabled-card-whitespace",
+            ),
+            pytest.param(
+                {"welcomeCardEnabled": False, "welcomeMessage": " {mention} ", "onboardingChannelId": "999999999"},
+                "",
+                None,
+                None,
+                False,
+                id="welcome-disabled-card-template-whitespace",
+            ),
+            pytest.param(
+                {
+                    "welcomeCardEnabled": False,
+                    "welcomeMessage": "Welcome {mention}!",
+                    "onboardingChannelId": "999999999",
+                },
+                None,
+                None,
+                "Welcome <@333>!",
+                False,
+                id="welcome-disabled-card-non-empty-no-cta",
+            ),
+            pytest.param(
+                {
+                    "welcomeCardEnabled": False,
+                    "welcomeMessage": "Welcome {mention}!",
+                    "onboardingChannelId": "not-a-channel-id",
+                },
+                None,
+                None,
+                "Welcome <@333>!",
+                True,
+                id="welcome-disabled-card-invalid-cta-still-text",
+            ),
+            pytest.param(
+                {"welcomeCardEnabled": False, "welcomeMessage": "Welcome {mention}!", "onboardingChannelId": None},
+                None,
+                None,
+                "Welcome <@333>!",
+                True,
+                id="welcome-disabled-card-missing-cta-still-text",
+            ),
+            pytest.param(
+                {"welcomeCardEnabled": False, "welcomeMessage": "", "onboardingChannelId": "999999999"},
+                None,
+                None,
+                None,
+                False,
+                id="welcome-disabled-card-empty-resolvable-cta-dup",
+            ),
+            pytest.param(
+                {"welcomeCardEnabled": False, "welcomeMessage": "", "onboardingChannelId": "not-a-channel-id"},
+                None,
+                None,
+                None,
+                True,
+                id="welcome-disabled-card-empty-invalid-cta",
+            ),
+            pytest.param(
+                {
+                    "welcomeCardEnabled": False,
+                    "welcomeMessage": "Hola {mention} en {server}!",
+                    "onboardingChannelId": "999999999",
+                },
+                None,
+                "es",
+                "Hola <@333> en TestServer!",
+                False,
+                id="welcome-disabled-card-preserves-locale-es",
+            ),
+        ],
+    )
+    async def test_dispatch_welcome_disabled_variants(
         self,
         service: GreetingService,
         mock_db: AsyncMock,
         greeting_config_row: dict,
+        config_update: dict,
+        mention_override: str | None,
+        locale: str | None,
+        expected_content: str | None,
+        use_side_effect: bool,
     ) -> None:
-        """A globally disabled welcome must not resolve onboarding CTA data."""
-        mock_db.get_greeting_config.return_value = {
-            **greeting_config_row,
-            "welcomeEnabled": False,
-            "onboardingChannelId": "999999999",
-        }
+        """Parametrized disabled-card / welcome-disabled variants — same assertions per param."""
+        mock_db.get_greeting_config.return_value = {**greeting_config_row, **config_update}
         member = make_mock_member()
+        if mention_override is not None:
+            member.mention = mention_override
+        if locale is not None:
+            set_guild_language(str(member.guild.id), locale)
 
-        with patch("bot.services.greeting_service._resolve_welcome_cta") as resolve_cta:
+        patch_kwargs: dict = {}
+        if use_side_effect:
+            patch_kwargs["side_effect"] = AssertionError("disabled-card text must skip CTA resolution")
+
+        with patch("bot.services.greeting_service._resolve_welcome_cta", **patch_kwargs) as resolve_cta:
             await service.dispatch_welcome(member)
 
         resolve_cta.assert_not_called()
-        member.guild.get_channel.return_value.send.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_disabled_card_none_message_sends_nothing(
-        self,
-        service: GreetingService,
-        mock_db: AsyncMock,
-        greeting_config_row: dict,
-    ) -> None:
-        """A disabled card with no message must not fall back to a CTA-only send."""
-        mock_db.get_greeting_config.return_value = {
-            **greeting_config_row,
-            "welcomeCardEnabled": False,
-            "welcomeMessage": None,
-            "onboardingChannelId": "999999999",
-        }
-        member = make_mock_member()
-
-        with patch("bot.services.greeting_service._resolve_welcome_cta") as resolve_cta:
-            await service.dispatch_welcome(member)
-
-        resolve_cta.assert_not_called()
-        member.guild.get_channel.return_value.send.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_disabled_card_empty_string_sends_nothing(
-        self,
-        service: GreetingService,
-        mock_db: AsyncMock,
-        greeting_config_row: dict,
-    ) -> None:
-        """An empty disabled-card template must not produce a CTA-only send."""
-        mock_db.get_greeting_config.return_value = {
-            **greeting_config_row,
-            "welcomeCardEnabled": False,
-            "welcomeMessage": "",
-            "onboardingChannelId": "999999999",
-        }
-        member = make_mock_member()
-
-        with patch("bot.services.greeting_service._resolve_welcome_cta") as resolve_cta:
-            await service.dispatch_welcome(member)
-
-        resolve_cta.assert_not_called()
-        member.guild.get_channel.return_value.send.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_disabled_card_whitespace_only_sends_nothing(
-        self,
-        service: GreetingService,
-        mock_db: AsyncMock,
-        greeting_config_row: dict,
-    ) -> None:
-        """Whitespace-only disabled-card content is empty after formatting."""
-        mock_db.get_greeting_config.return_value = {
-            **greeting_config_row,
-            "welcomeCardEnabled": False,
-            "welcomeMessage": "   \n\t ",
-            "onboardingChannelId": "999999999",
-        }
-        member = make_mock_member()
-
-        with patch("bot.services.greeting_service._resolve_welcome_cta") as resolve_cta:
-            await service.dispatch_welcome(member)
-
-        resolve_cta.assert_not_called()
-        member.guild.get_channel.return_value.send.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_disabled_card_template_substitutes_to_whitespace_sends_nothing(
-        self,
-        service: GreetingService,
-        mock_db: AsyncMock,
-        greeting_config_row: dict,
-    ) -> None:
-        """Formatted content that becomes whitespace must be treated as empty."""
-        mock_db.get_greeting_config.return_value = {
-            **greeting_config_row,
-            "welcomeCardEnabled": False,
-            "welcomeMessage": " {mention} ",
-            "onboardingChannelId": "999999999",
-        }
-        member = make_mock_member()
-        member.mention = ""
-
-        with patch("bot.services.greeting_service._resolve_welcome_cta") as resolve_cta:
-            await service.dispatch_welcome(member)
-
-        resolve_cta.assert_not_called()
-        member.guild.get_channel.return_value.send.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_disabled_card_non_empty_sends_text_only_no_cta(
-        self,
-        service: GreetingService,
-        mock_db: AsyncMock,
-        greeting_config_row: dict,
-    ) -> None:
-        """A non-empty disabled-card welcome sends formatted text without CTA."""
-        mock_db.get_greeting_config.return_value = {
-            **greeting_config_row,
-            "welcomeCardEnabled": False,
-            "welcomeMessage": "Welcome {mention}!",
-            "onboardingChannelId": "999999999",
-        }
-        member = make_mock_member()
-
-        with patch("bot.services.greeting_service._resolve_welcome_cta") as resolve_cta:
-            await service.dispatch_welcome(member)
-
-        resolve_cta.assert_not_called()
-        member.guild.get_channel.return_value.send.assert_awaited_once_with(content="Welcome <@333>!")
-
-    @pytest.mark.asyncio
-    async def test_disabled_card_invalid_cta_does_not_block_text(
-        self,
-        service: GreetingService,
-        mock_db: AsyncMock,
-        greeting_config_row: dict,
-    ) -> None:
-        """An invalid onboarding channel must not block disabled-card text."""
-        mock_db.get_greeting_config.return_value = {
-            **greeting_config_row,
-            "welcomeCardEnabled": False,
-            "welcomeMessage": "Welcome {mention}!",
-            "onboardingChannelId": "not-a-channel-id",
-        }
-        member = make_mock_member()
-
-        with patch(
-            "bot.services.greeting_service._resolve_welcome_cta",
-            side_effect=AssertionError("disabled-card text must skip CTA resolution"),
-        ) as resolve_cta:
-            await service.dispatch_welcome(member)
-
-        resolve_cta.assert_not_called()
-        member.guild.get_channel.return_value.send.assert_awaited_once_with(content="Welcome <@333>!")
-
-    @pytest.mark.asyncio
-    async def test_disabled_card_missing_cta_sends_text(
-        self,
-        service: GreetingService,
-        mock_db: AsyncMock,
-        greeting_config_row: dict,
-    ) -> None:
-        """A missing onboarding channel must not affect disabled-card text."""
-        mock_db.get_greeting_config.return_value = {
-            **greeting_config_row,
-            "welcomeCardEnabled": False,
-            "welcomeMessage": "Welcome {mention}!",
-            "onboardingChannelId": None,
-        }
-        member = make_mock_member()
-
-        with patch(
-            "bot.services.greeting_service._resolve_welcome_cta",
-            side_effect=AssertionError("disabled-card text must skip CTA resolution"),
-        ) as resolve_cta:
-            await service.dispatch_welcome(member)
-
-        resolve_cta.assert_not_called()
-        member.guild.get_channel.return_value.send.assert_awaited_once_with(content="Welcome <@333>!")
-
-    @pytest.mark.asyncio
-    async def test_disabled_card_empty_despite_resolvable_cta(
-        self,
-        service: GreetingService,
-        mock_db: AsyncMock,
-        greeting_config_row: dict,
-    ) -> None:
-        """An empty disabled-card message remains silent with a valid CTA target."""
-        mock_db.get_greeting_config.return_value = {
-            **greeting_config_row,
-            "welcomeCardEnabled": False,
-            "welcomeMessage": "",
-            "onboardingChannelId": "999999999",
-        }
-        member = make_mock_member()
-
-        with patch("bot.services.greeting_service._resolve_welcome_cta") as resolve_cta:
-            await service.dispatch_welcome(member)
-
-        resolve_cta.assert_not_called()
-        member.guild.get_channel.return_value.send.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_disabled_card_empty_despite_invalid_cta(
-        self,
-        service: GreetingService,
-        mock_db: AsyncMock,
-        greeting_config_row: dict,
-    ) -> None:
-        """An empty disabled-card message remains silent with an invalid CTA target."""
-        mock_db.get_greeting_config.return_value = {
-            **greeting_config_row,
-            "welcomeCardEnabled": False,
-            "welcomeMessage": "",
-            "onboardingChannelId": "not-a-channel-id",
-        }
-        member = make_mock_member()
-
-        with patch(
-            "bot.services.greeting_service._resolve_welcome_cta",
-            side_effect=AssertionError("disabled-card text must skip CTA resolution"),
-        ) as resolve_cta:
-            await service.dispatch_welcome(member)
-
-        resolve_cta.assert_not_called()
-        member.guild.get_channel.return_value.send.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_disabled_card_preserves_localization(
-        self,
-        service: GreetingService,
-        mock_db: AsyncMock,
-        greeting_config_row: dict,
-    ) -> None:
-        """Disabled-card text preserves locale-independent template substitution."""
-        mock_db.get_greeting_config.return_value = {
-            **greeting_config_row,
-            "welcomeCardEnabled": False,
-            "welcomeMessage": "Hola {mention} en {server}!",
-            "onboardingChannelId": "999999999",
-        }
-        member = make_mock_member()
-        set_guild_language(str(member.guild.id), "es")
-
-        with patch("bot.services.greeting_service._resolve_welcome_cta") as resolve_cta:
-            await service.dispatch_welcome(member)
-
-        resolve_cta.assert_not_called()
-        member.guild.get_channel.return_value.send.assert_awaited_once_with(content="Hola <@333> en TestServer!")
+        if expected_content is None:
+            member.guild.get_channel.return_value.send.assert_not_awaited()
+        else:
+            member.guild.get_channel.return_value.send.assert_awaited_once_with(content=expected_content)
 
     @pytest.mark.asyncio
     async def test_card_enabled_empty_msg_resolvable_cta_sends_cta_only(

@@ -22,7 +22,7 @@ from bot.utils.ticket_helpers import (
     resolve_mod_role,
     sanitize_channel_name,
 )
-from tests.conftest import make_member
+from tests.conftest import make_member as _conftest_make_member
 
 # ---------------------------------------------------------------------------
 # Standard happy path
@@ -242,9 +242,8 @@ def _make_guild(*, default_role: MagicMock | None = None, me: MagicMock | None =
 
 
 def _make_member(name: str = "TestUser", member_id: int = 111) -> MagicMock:
-    """Shared factory with the mock-name pinned to the display name."""
-    member = make_member(member_id=member_id, display_name=name)
-    member.name = name
+    """Shim — delegates to conftest (member_id + display_name); keeps name pin."""
+    member = _conftest_make_member(member_id=member_id, display_name=name, name=name)
     return member
 
 

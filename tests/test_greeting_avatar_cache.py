@@ -12,33 +12,28 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import discord
 import pytest
 
 from bot.core.cache import TTLCache, cache_key
 from bot.services.greeting_renderer import PillowGreetingRenderer
 from bot.services.greeting_service import AVATAR_CACHE_TTL, GreetingService
+from tests.conftest import make_member
 
 
 def _make_member(guild_id: int = 100, member_id: int = 333) -> MagicMock:
-    mock_channel = MagicMock(spec=discord.TextChannel)
-    mock_channel.send = AsyncMock(return_value=None)
-    guild = MagicMock()
-    guild.id = guild_id
-    guild.name = "G"
-    guild.member_count = 7
-    guild.get_channel.return_value = mock_channel
-    guild.icon = None
-    avatar = MagicMock()
-    avatar.url = f"https://cdn/{member_id}.png"
-    member = MagicMock(spec=discord.Member)
-    member.id = member_id
-    member.name = "U"
-    member.display_name = "U"
-    member.display_avatar = avatar
-    member.guild = guild
-    member.mention = f"<@{member_id}>"
-    return member
+    """Shim for divergent call shape (guild_id, member_id) — delegates to conftest.
+
+    Preserves avatar/thread local semantics: guild_name="G", member_count=7,
+    display_name/name="U". Channel scaffolding via conftest ``with_channel``.
+    """
+    return make_member(
+        guild_id=guild_id,
+        member_id=member_id,
+        display_name="U",
+        name="U",
+        guild_name="G",
+        member_count=7,
+    )
 
 
 def _make_service(cache: TTLCache) -> GreetingService:

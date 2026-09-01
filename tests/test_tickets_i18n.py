@@ -25,9 +25,9 @@ from bot.cogs.tickets import (
     TicketsCog,
     _build_ticket_embed,
 )
-from bot.core.i18n import load_locales, set_guild_language, t
+from bot.core.i18n import t
 from bot.models.ticket import Ticket
-from tests.conftest import make_ctx, make_interaction, make_member
+from tests.conftest import load_test_locales, make_ctx, make_interaction, make_member
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -228,23 +228,6 @@ _ES_MARKERS: dict[str, str] = {
 }
 
 
-def _build_nested_locale(markers: dict[str, str]) -> dict:
-    """Convert flat dot-notation keys into a nested dict for locale JSON."""
-    result: dict = {}
-    for key, value in markers.items():
-        parts = key.split(".")
-        current = result
-        for part in parts[:-1]:
-            current = current.setdefault(part, {})
-        current[parts[-1]] = value
-    return result
-
-
-def _swap_suffix(markers: dict[str, str], sfx: str) -> dict[str, str]:
-    """Derive a sibling-locale marker set by swapping the ``_ES`` suffix."""
-    return {key: value.replace("_ES", sfx) for key, value in markers.items()}
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -293,23 +276,12 @@ def _category_row(guild_id: str = _ES_GUILD_ID) -> dict:
 
 @pytest.fixture(autouse=True)
 def _load_ticket_i18n(tmp_path: Path) -> Generator[None, None, None]:
-    """Load distinctive locale overrides for ticket strings.
-
-    Uses strings that are DIFFERENT from any hardcoded default so tests can
-    prove t() is being called.
-    """
-    locale_dir = tmp_path / "locales"
-    locale_dir.mkdir(parents=True, exist_ok=True)
-    (locale_dir / "es.json").write_text(json.dumps(_build_nested_locale(_ES_MARKERS)), encoding="utf-8")
-    (locale_dir / "en.json").write_text(
-        json.dumps(_build_nested_locale(_swap_suffix(_ES_MARKERS, "_EN"))),
-        encoding="utf-8",
+    """Load distinctive locale overrides for ticket strings."""
+    load_test_locales(
+        tmp_path,
+        _ES_MARKERS,
+        guild_langs={str(_ES_GUILD_ID): "es", str(_EN_GUILD_ID): "en"},
     )
-
-    load_locales(locale_dir)
-    set_guild_language(_ES_GUILD_ID, "es")
-    set_guild_language(_EN_GUILD_ID, "en")
-
     yield
 
 
