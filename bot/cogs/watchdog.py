@@ -18,6 +18,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def get_watchdog(bot: NebulosaBot) -> WatchdogCog | None:
+    """Return the WatchdogCog or None when not yet loaded (no-op helper).
+
+    Used by loop owners via ``wd = get_watchdog(self.bot); if wd: wd.heartbeat(..)``.
+    Import-free of other cogs; safe when watchdog absent.
+    """
+    return bot.get_cog("Watchdog")  # type: ignore[return-value]
+
+
 class WatchdogCog(commands.Cog, name="Watchdog"):
     """Monotonic heartbeat watchdog for background loops."""
 

@@ -51,6 +51,7 @@ logger = logging.getLogger(__name__)
 # once in order; a failure is logged at ERROR and does not prevent subsequent
 # paths or tree.sync().
 EXTENSIONS: tuple[str, ...] = (
+    "bot.cogs.watchdog",
     "bot.cogs.core",
     "bot.cogs.sentinel",
     "bot.cogs.tickets",
@@ -59,7 +60,6 @@ EXTENSIONS: tuple[str, ...] = (
     "bot.cogs.utility",
     "bot.cogs.ocio",
     "bot.cogs.setup",
-    "bot.cogs.watchdog",
     "bot.listeners.xp_listener",
     "bot.listeners.audit_listener",
     "bot.listeners.voice_listener",

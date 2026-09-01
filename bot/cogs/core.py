@@ -15,6 +15,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
+from bot.cogs.watchdog import get_watchdog
 from bot.core.i18n import SLASH_DESCRIPTIONS, t
 from bot.utils.brand import INFO
 from bot.utils.embeds import error_embed, info_embed
@@ -117,6 +118,15 @@ class CoreCog(commands.Cog, name="Core"):
     def __init__(self, bot: NebulosaBot) -> None:
         self.bot: NebulosaBot = bot
 
+    async def cog_load(self) -> None:
+        """Start resource_log_loop and register with watchdog atomically."""
+        if not self.resource_log_loop.is_running():
+            self.resource_log_loop.start()
+            logger.info("Resource log loop started (interval: 5m)")
+            wd = get_watchdog(self.bot)
+            if wd:
+                wd.register("resource_log_loop", 300)
+
     # ==================================================================
     # Background tasks (S4.6 — resource snapshot)
     # ==================================================================
@@ -130,6 +140,9 @@ class CoreCog(commands.Cog, name="Core"):
         restarts. AGENTS.md background-loop rules honored via
         ``before_loop`` wait + ``cog_unload`` cancel.
         """
+        wd = get_watchdog(self.bot)  # noqa: F811 -- literal for AST guard
+        if wd:
+            wd.heartbeat("resource_log_loop")
         await self._log_resource_usage()
 
     @resource_log_loop.before_loop

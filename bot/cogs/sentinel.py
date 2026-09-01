@@ -21,6 +21,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
+from bot.cogs.watchdog import get_watchdog
 from bot.core.context import NebulosaContext  # noqa: F401 -- kept for shim compat
 from bot.core.i18n import t
 from bot.utils.brand import INFO
@@ -89,6 +90,9 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         if hasattr(self, "decay_expiry_loop") and not self.decay_expiry_loop.is_running():
             self.decay_expiry_loop.start()
             logger.info("Sentinel decay+expiry loop started (interval: 1h)")
+            wd = get_watchdog(self.bot)
+            if wd:
+                wd.register("decay_expiry_loop", 3600)
 
     def _to_ctx(self, src: object):
         from bot.cogs._slash_compat import is_context_like as _is_ctx  # noqa: PLC0415 -- cycle-breaking: compat shim avoids circular import  # isort: skip
@@ -168,6 +172,9 @@ class SentinelCog(commands.Cog, name="Sentinel"):
         (scan + deactivate + count) stays in ``InfractionService``; this cog only
         orchestrates per-guild iteration and injects the Discord unban callback.
         """
+        wd = get_watchdog(self.bot)
+        if wd:
+            wd.heartbeat("decay_expiry_loop")
         if self.bot.db is None or self.bot.infraction_service is None:
             return
         for gid in self._collect_guild_ids():
