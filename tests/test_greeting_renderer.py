@@ -150,17 +150,17 @@ class TestGreetingRendererFontFallback:
                 return_value=dummy_font,
             ) as mock_default,
         ):
-            caplog.set_level(logging.WARNING)
-            buf = renderer.render(
-                username="User",
-                avatar_url=None,
-                guild_name="Guild",
-                member_count=1,
-                card_type="welcome",
-                greeting_title="Welcome!",
-                member_count_text="Member #1",
-                guild_icon_url=None,
-            )
+            with caplog.at_level(logging.WARNING):
+                buf = renderer.render(
+                    username="User",
+                    avatar_url=None,
+                    guild_name="Guild",
+                    member_count=1,
+                    card_type="welcome",
+                    greeting_title="Welcome!",
+                    member_count_text="Member #1",
+                    guild_icon_url=None,
+                )
             # Must have called load_default at least once.
             assert mock_default.called, "OSError must trigger ImageFont.load_default()"
             # Must have logged WARNING.

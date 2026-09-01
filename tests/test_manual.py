@@ -336,7 +336,7 @@ def test_dynamic_discovery_order_resilience(manual_text: str) -> None:
 
     # Shuffle the result and verify the set is stable (order resilience).
     shuffled = list(baseline)
-    random.seed(42)
-    random.shuffle(shuffled)
+    rng = random.Random(42)  # noqa: S311 -- deterministic test shuffle, not cryptographic
+    rng.shuffle(shuffled)
     assert sorted(shuffled) == sorted(baseline)  # completeness: shuffle loses no commands
     assert baseline  # sanity: discovery actually found commands

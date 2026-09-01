@@ -45,7 +45,6 @@ async def test_probe_import_error_falls_back_to_pillow_and_logs_warning(caplog):
             raise ImportError("No module named 'cairosvg'")
         return real_import(name, *args, **kwargs)
 
-    caplog.set_level(logging.WARNING)
     bot = NebulosaBot(config=_make_config(), intents=discord.Intents.default())
 
     mock_sync = AsyncMock()
@@ -62,18 +61,20 @@ async def test_probe_import_error_falls_back_to_pillow_and_logs_warning(caplog):
     ):
         mock_db_cls.return_value.connect = AsyncMock()
         mock_sub_cls.return_value.start = AsyncMock()
-        sys.modules.pop("cairosvg", None)
-        with caplog.at_level(logging.WARNING, logger="bot.bot"):
-            await bot.setup_hook()
+        try:
+            with caplog.at_level(logging.WARNING, logger="bot.bot"):
+                await bot.setup_hook()
 
-        # Must have injected Pillow renderer even though probe raised ImportError
-        assert isinstance(bot.greeting_service._greeting_renderer, PillowGreetingRenderer)  # type: ignore[union-attr]
-        assert isinstance(bot.rank_renderer, object)
-        # WARNING must have been logged
-        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
-        assert any("cairosvg" in r.getMessage().lower() for r in warnings)
-        # No abort — tree.sync still ran
-        mock_sync.assert_awaited_once()
+            # Must have injected Pillow renderer even though probe raised ImportError
+            assert isinstance(bot.greeting_service._greeting_renderer, PillowGreetingRenderer)  # type: ignore[union-attr]
+            assert isinstance(bot.rank_renderer, object)
+            # WARNING must have been logged
+            warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+            assert any("cairosvg" in r.getMessage().lower() for r in warnings)
+            # No abort — tree.sync still ran
+            mock_sync.assert_awaited_once()
+        finally:
+            sys.modules.pop("cairosvg", None)
 
 
 @pytest.mark.asyncio
