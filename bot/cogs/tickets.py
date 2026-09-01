@@ -22,6 +22,7 @@ from bot.cogs.ticket_admin_flow import TicketAdminFlow
 from bot.cogs.ticket_integrity_flow import TicketIntegrityFlow
 from bot.cogs.ticket_lifecycle_flow import TicketLifecycleFlow
 from bot.cogs.ticket_notes_flow import TicketNotesFlow
+from bot.cogs.watchdog import get_watchdog
 from bot.config import TICKET_TIMER_ENABLED
 from bot.core.i18n import t
 from bot.services.ticket_repair_service import is_cancel_message
@@ -98,15 +99,27 @@ class TicketsCog(commands.Cog, name="Tickets"):
         if not self.auto_close_stale_tickets.is_running():
             self.auto_close_stale_tickets.start()
             logger.info("Auto-close task started (interval: %d h)", AUTO_CLOSE_HOURS)
+            wd = get_watchdog(self.bot)
+            if wd:
+                wd.register("auto_close_stale_tickets", 3600)
         if not self.integrity_sweep_loop.is_running():
             self.integrity_sweep_loop.start()
             logger.info("Integrity sweep task started (periodic)")
+            wd = get_watchdog(self.bot)
+            if wd:
+                wd.register("integrity_sweep_loop", 3600)
         if not self.scheduled_close_loop.is_running() and TICKET_TIMER_ENABLED:
             self.scheduled_close_loop.start()
             logger.info("Scheduled-close loop started (interval: 60s)")
+            wd = get_watchdog(self.bot)
+            if wd:
+                wd.register("scheduled_close_loop", 60)
 
     @tasks.loop(seconds=60)
     async def scheduled_close_loop(self) -> None:
+        wd = get_watchdog(self.bot)
+        if wd:
+            wd.heartbeat("scheduled_close_loop")
         logger.debug("Scheduled-close loop: checking due tickets ...")
         if self.bot.ticket_service is None or self.bot.db is None:
             return
@@ -186,6 +199,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
 
     @tasks.loop(hours=1)
     async def auto_close_stale_tickets(self) -> None:
+        wd = get_watchdog(self.bot)
+        if wd:
+            wd.heartbeat("auto_close_stale_tickets")
         logger.info("Auto-close task: checking for stale tickets ...")
         closed = 0
         if self.bot.guild_service is None:
@@ -222,6 +238,9 @@ class TicketsCog(commands.Cog, name="Tickets"):
 
     @tasks.loop(hours=1)
     async def integrity_sweep_loop(self) -> None:
+        wd = get_watchdog(self.bot)
+        if wd:
+            wd.heartbeat("integrity_sweep_loop")
         logger.info("Integrity sweep task: checking active ticket channels ...")
         if self.bot.ticket_service is None:
             msg = "ticket_service not initialised"

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import io
 import time
 from unittest.mock import AsyncMock, MagicMock
 
@@ -75,9 +76,9 @@ class TestRankCooldown:
             # app_commands path: inspect checks for cooldown predicate
             checks = getattr(cmd, "checks", [])
             assert len(checks) > 0, "/rank MUST register a cooldown check"
-            # app_commands cooldown check carries rate/per in its closure
-            # Verify by driving the cooldown via CooldownMapping simulation
-            assert any("cooldown" in str(c).lower() for c in checks) or True
+            assert any("cooldown" in str(c).lower() for c in checks), (
+                "app_commands cooldown check must be present — str(checks) must mention 'cooldown'"
+            )
 
 
 class TestRankSharedSemaphore:
@@ -99,12 +100,14 @@ class TestRankSharedSemaphore:
         active = {"n": 0}
         peak = {"n": 0}
 
-        def _slow_render(**_kwargs: object) -> MagicMock:
+        def _slow_render(**_kwargs: object) -> io.BytesIO:
             active["n"] += 1
             peak["n"] = max(peak["n"], active["n"])
             time.sleep(0.05)
             active["n"] -= 1
-            return MagicMock()
+            buf = io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"\x00" * 64)
+            buf.seek(0)
+            return buf
 
         renderer.generate_rank_card = _slow_render
         bot.rank_renderer = renderer
