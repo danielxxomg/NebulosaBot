@@ -17,7 +17,7 @@ from bot.core.cache import CACHE_TTL as CORE_GREETING_TTL
 from bot.core.cache import cache_key
 from bot.core.i18n import t
 from bot.models.greeting_config import GreetingConfig
-from bot.services.greeting_renderer import GreetingRenderer
+from bot.services.greeting_renderer import TEMPLATE_REGISTRY, GreetingRenderer
 
 if TYPE_CHECKING:
     from bot.core.cache import TTLCache
@@ -211,6 +211,10 @@ class GreetingService:
             avatar_cache_key = cache_key(guild_id, "greeting_avatar")
             if self._cache.get(avatar_cache_key) is None and avatar_url is not None:
                 self._cache.set(avatar_cache_key, avatar_url, ttl=AVATAR_CACHE_TTL)
+            resolved = select_template(config, kind)
+            # S1 compat: legacy thread test expects theme_id=None for default;
+            # template_id carries the resolved value, renderer falls back via template_id.
+            theme_forward = resolved if resolved != "default" else None
             buffer: io.BytesIO = await asyncio.to_thread(
                 render_fn,
                 username=member.display_name,
@@ -225,7 +229,8 @@ class GreetingService:
                     count=member.guild.member_count or 0,
                 ),
                 card_type=card_type,
-                theme_id=getattr(config, "theme_id", None),
+                template_id=resolved,
+                theme_id=theme_forward,
             )
 
             file = discord.File(buffer, filename=filename)
@@ -350,6 +355,14 @@ def _resolve_avatar_url(member: discord.abc.User) -> str | None:
     except Exception:
         logger.debug("Could not resolve avatar URL for user %s", member.id, exc_info=True)
         return None
+
+
+def select_template(config: GreetingConfig, _kind: Literal["welcome", "goodbye"]) -> str:
+    """Resolve template id for *kind* — S1: theme_id -> default, unknown -> default."""
+    raw = getattr(config, "theme_id", None) or "default"
+    if raw not in TEMPLATE_REGISTRY:
+        return "default"
+    return raw
 
 
 def _resolve_guild_icon_url(guild: discord.Guild) -> str | None:

@@ -12,6 +12,8 @@ from __future__ import annotations
 import io
 import logging
 import math
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from PIL import Image, ImageDraw, ImageFilter
@@ -99,6 +101,74 @@ def _render_neon_overlay(img: Image.Image) -> None:
     draw.line([(w - 18, 16), (18, h - 16)], fill=neon_b, width=1)
 
 
+def _render_sunset_wave_overlay(img: Image.Image) -> None:
+    """Sunset diagonal using WARNING+ERROR low-alpha + PANEL_OVERLAY."""
+    w, h = img.size
+    overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    od = ImageDraw.Draw(overlay)
+    # Diagonal wash: WARNING with low alpha
+    warning = brand.WARNING
+    error = brand.ERROR
+    # Use low-alpha variants
+    w_rgba = ((warning >> 16) & 255, (warning >> 8) & 255, warning & 255, 38)
+    e_rgba = ((error >> 16) & 255, (error >> 8) & 255, error & 255, 32)
+    # Diagonal polygons
+    od.polygon([(0, 0), (w, 0), (w, h // 2), (0, h)], fill=w_rgba)
+    od.polygon([(w // 2, 0), (w, 0), (w, h), (0, h)], fill=e_rgba)
+    # Panel overlay wash
+    od.rectangle((18, 16, w - 18, 56), fill=brand.PANEL_OVERLAY)
+    img.alpha_composite(overlay)
+
+
+def _render_minimal_light_overlay(img: Image.Image) -> None:
+    """Minimal: single ACCENT hairline + CARD_BG/MUTED_TEXT subtle accent."""
+    w, h = img.size
+    draw = ImageDraw.Draw(img)
+    accent = _brand_accent_rgba()
+    # Hairline top accent
+    draw.line([(18, 18), (w - 18, 18)], fill=accent, width=1)
+    # Subtle bottom line using MUTED_TEXT low alpha
+    mt = brand.MUTED_TEXT
+    mt_low = (mt[0], mt[1], mt[2], 40)
+    draw.line([(18, h - 18), (w - 18, h - 18)], fill=mt_low, width=1)
+
+
+@dataclass(frozen=True)
+class Template:
+    id: str
+    label_key: str
+    description_key: str
+    overlay_fn: Callable[[Image.Image], None] | None
+
+
+TEMPLATE_REGISTRY: dict[str, Template] = {
+    "default": Template(
+        id="default",
+        label_key="templates.greeting.default.label",
+        description_key="templates.greeting.default.description",
+        overlay_fn=None,
+    ),
+    "gaming_neon": Template(
+        id="gaming_neon",
+        label_key="templates.greeting.gaming_neon.label",
+        description_key="templates.greeting.gaming_neon.description",
+        overlay_fn=_render_neon_overlay,
+    ),
+    "sunset_wave": Template(
+        id="sunset_wave",
+        label_key="templates.greeting.sunset_wave.label",
+        description_key="templates.greeting.sunset_wave.description",
+        overlay_fn=_render_sunset_wave_overlay,
+    ),
+    "minimal_light": Template(
+        id="minimal_light",
+        label_key="templates.greeting.minimal_light.label",
+        description_key="templates.greeting.minimal_light.description",
+        overlay_fn=_render_minimal_light_overlay,
+    ),
+}
+
+
 @runtime_checkable
 class GreetingRenderer(Protocol):
     """Render a branded greeting card PNG from pre-translated strings.
@@ -120,6 +190,7 @@ class GreetingRenderer(Protocol):
         member_count_text: str,  # pre-translated
         guild_icon_url: str | None,
         theme_id: str | None = None,
+        template_id: str | None = None,
     ) -> io.BytesIO: ...
 
 
@@ -143,6 +214,7 @@ class PillowGreetingRenderer:
         member_count_text: str,
         guild_icon_url: str | None = None,
         theme_id: str | None = None,
+        template_id: str | None = None,
     ) -> io.BytesIO:
         """Render a welcome or goodbye card PNG image.
 
@@ -167,9 +239,13 @@ class PillowGreetingRenderer:
         # -- Base image with gradient background --------------------------
         img, draw = shared_assets._card_base()
 
-        # -- Neon overlay when theme_id == gaming_neon --------------------
-        if theme_id == "gaming_neon":
-            _render_neon_overlay(img)
+        # -- Template overlay (dual-param: template_id or theme_id or "default") --
+        resolved = template_id or theme_id or "default"
+        tmpl = TEMPLATE_REGISTRY.get(resolved)
+        if tmpl is None:
+            tmpl = TEMPLATE_REGISTRY["default"]
+        if tmpl.overlay_fn is not None:
+            tmpl.overlay_fn(img)
             # Re-acquire draw after overlay (alpha_composite invalidates prior draw)
             draw = ImageDraw.Draw(img)
 

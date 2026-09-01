@@ -1066,3 +1066,80 @@ class TestDispatchGoodbye:
         channel = member.guild.get_channel.return_value
         mock_renderer.render.assert_not_called()
         channel.send.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# S1 RED — select_template chain (theme_id → default via alias)
+# ---------------------------------------------------------------------------
+
+
+class TestSelectTemplateS1:
+    """S1.1 — select_template(config, kind) → theme_id or default."""
+
+    def test_welcome_resolves_theme_id(self) -> None:
+        from bot.services.greeting_service import select_template
+
+        cfg = GreetingConfig(guild_id="123", theme_id="gaming_neon")
+        assert select_template(cfg, "welcome") == "gaming_neon"
+
+    def test_goodbye_resolves_theme_id(self) -> None:
+        from bot.services.greeting_service import select_template
+
+        cfg = GreetingConfig(guild_id="123", theme_id="gaming_neon")
+        assert select_template(cfg, "goodbye") == "gaming_neon"
+
+    def test_fallback_to_default_when_both_absent(self) -> None:
+        from bot.services.greeting_service import select_template
+
+        cfg = GreetingConfig(guild_id="123", theme_id=None)
+        assert select_template(cfg, "welcome") == "default"
+        assert select_template(cfg, "goodbye") == "default"
+
+    def test_unknown_theme_falls_back_to_default(self) -> None:
+        from bot.services.greeting_service import select_template
+
+        cfg = GreetingConfig(guild_id="123", theme_id="unknown_xyz")
+        assert select_template(cfg, "welcome") == "default"
+
+    def test_dispatch_forwards_template_id_and_theme_id_via_to_thread(self) -> None:
+        """dispatch_greeting must forward template_id AND theme_id via to_thread."""
+        import asyncio
+        from unittest.mock import patch
+
+        from bot.core.cache import TTLCache
+        from bot.services.greeting_renderer import PillowGreetingRenderer
+
+        async def _run() -> None:
+            db = AsyncMock()
+            db.get_greeting_config.return_value = {
+                "guildId": "123456789",
+                "welcomeEnabled": True,
+                "welcomeChannelId": "111111111",
+                "welcomeCardEnabled": True,
+                "welcomeMessage": "hi",
+                "themeId": "gaming_neon",
+            }
+            cache = TTLCache()
+            renderer = PillowGreetingRenderer()
+            svc = GreetingService(db=db, cache=cache, greeting_renderer=renderer)
+            member = make_mock_member()
+            captured: list[dict] = []
+            real = asyncio.to_thread
+
+            async def _rec(func, *a, **kw):  # noqa: ANN001,ANN002,ANN003
+                captured.append(kw)
+                return await real(func, *a, **kw)
+
+            with (
+                patch("bot.services.greeting_service.asyncio.to_thread", side_effect=_rec),
+                patch("bot.services.shared_assets._safe_fetch_avatar", return_value=None),
+            ):
+                await svc.dispatch_welcome(member)
+            kw = next((k for k in captured if "card_type" in k), None)
+            assert kw is not None
+            assert kw.get("template_id") == "gaming_neon"
+            assert kw.get("theme_id") == "gaming_neon"
+
+        import asyncio as _asyncio
+
+        _asyncio.run(_run())
