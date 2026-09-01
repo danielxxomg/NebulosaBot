@@ -45,10 +45,10 @@ Chain strategy: stacked-to-main
 
 ## Phase 4: S4 Deletions LAST
 
-- [ ] 4.1 Batch A delete 3 proven: `pr3_8ball:162→ephemeral`, `pr4_greetings:164→can(greeting.manage)`, `pr4_tickets:234→CheckFailure` `Proof:` [Deletion with twin accepted]
-- [ ] 4.2 Batch B 12 need D3 `Proof: rg + twin` else SURVIVES: `hierarchy:186`, `intent:34`, `inventory:126`, `logging:128`, `banana:17`, `ocio_service:108`, `prek:314`, `service:178`, `voice:344`, `pr4a:167`, `pr4b:221`, `pr4c:235` [Deletion without proof rejected]
-- [ ] 4.3 Per-batch `pytest --cov -q` revert `<80.50%→revert`; no squash; final ledger `184/61622/3005/80.50%→169-181/~57-59.5k` KEEP 7 green ty/ruff/vulture 0 [Deletion without proof rejected; Final target]
+- [x] 4.1 Batch A delete 2 proven + 1 survived (S4 batch A 90e985f): `pr3_8ball:162→ephemeral+twin` deleted, `pr4_tickets:234→CheckFailure+twin` deleted, `pr4_greetings:164→can(greeting.manage)` SURVIVES (sole caller of GreetingsCog._admin_guard 91-94,101; no twin; cov 80.50->80.45 if deleted) [Deletion with twin accepted]
+- [x] 4.2 Batch B 12 D3 `Proof: rg + twin` (S4 batch B e9f355a): deleted 2 with proof `logging:128→rg log_voice_event->test_logging_service.py:883`, `banana:17→rg dorada->test_ocio_permanence.py:177`; 10 SURVIVE: hierarchy:186 (023 exact-7+bounce unique), intent:34 (voice_states no twin), inventory:126 (GAPS/015/CD unique), ocio_service:108 (empty/corrupt/to_thread 6/8), prek:314 (21 hooks), service:178 (fake_JWT partial), voice:344 (sole VoiceListener 17), pr4a/b/c:623 (ruff meta-guards) [Proof-required deletions without twin rejected]
+- [x] 4.3 Per-batch `pytest --cov -q` revert <80.50%→revert (S4 4.3+C.1): batch A 80.50% 2947 passed, batch B 80.50% 2938 passed; final 184/61480/3005/80.50%->180/60939/2957/80.50% (S4 -4/-541/-48); KEEP 7 green 59; ty 0 ruff 0 format 980; filterwarnings=error; test_core_cog.py untouched; bot/ empty [Final target]
 
 ## Cross-Slice Invariants
 
-- [ ] C.1 `bot/` untouched KEEP 7 untouchable ledger `files A→B lines X→Y N→M cov→Z% seed 42` `filterwarnings=error` `revert` per slice [KEEP untouched]
+- [x] C.1 bot/ untouched KEEP 7 untouchable (comma_timer:42, zero_hybrid:49, i18n_key_coverage:416, s3d1_guardrails:325, ops_observability:245, economy_math:76, rank_renderer_wiring:33) green; ledger files A->B lines X->Y N->M cov->Z% seed 42; filterwarnings=error; bot/ empty [KEEP untouched]

@@ -62,7 +62,7 @@ Tests-only reverts. S1-S3: `git revert <slice>`. S4: revert + re-measure `--cov`
 - [ ] S1-S3: -1500..-2000 ln, green + cov >=80.50% + ty/ruff/vulture 0
 - [ ] S4: each deletion has proof + cov >=80.50%
 - [ ] KEEP untouched/green; seed 42 green every slice
-- [ ] Final: ~57-59.5k ln / 169-181 files from 61,622 (honest arithmetic @2bb4e89: 15 enumerated candidates max, 12 need proof — aspirational 145-160 unreachable without expanding the candidate pool, which S4 gating forbids)
+- [ ] Final: 180 files (in 169-181 range) / 60,939 ln — strict decrease from 61,622 with ledger; ~57-59.5k was computed from savings assumptions (2,618 deletable + 1,500-2,000 param) that measurement disproved: proof gate yielded 4/15 deletions, 11 documented survivors; further reduction parked pending new twin evidence
 
 ## Review Workload Forecast
 

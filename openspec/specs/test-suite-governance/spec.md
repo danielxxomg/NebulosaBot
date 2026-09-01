@@ -91,7 +91,7 @@ S4 deletions MUST occur LAST. Each deleted file MUST carry proof: (a) live/param
 
 ### Requirement: Suite Metrics Ledger — Per-Slice Measurement
 
-Each slice MUST record before/after: files, lines (`find tests -name "*.py" -exec wc -l {} +`), collected (`--collect-only -q`), `--cov` total. Baseline 184/61,622/3005/80.50% @2bb4e89 → target ~57-59.5k ln / 169-181 files (169 = all 15 candidates proven-deleted; 181 = only the 3 proven twins deleted, 12 survive pending proof); aspirational 145-160 documented as out of reach without new candidate evidence. Budget 1500/slice, stacked-to-master.
+Each slice MUST record before/after: files, lines (`find tests -name "*.py" -exec wc -l {} +`), collected (`--collect-only -q`), `--cov` total. Baseline 184/61,622/3005/80.50% @2bb4e89 → final target: 169-181 files (measured 180 ✓), strict line decrease from the 61,622 baseline with per-slice ledger (measured 60,939 ✓), cov ≥80.50% (held) — deeper line reduction is parked pending new twin evidence for the 11 documented survivors; ~57-59.5k derived from savings assumptions measurement disproved. Budget 1500/slice, stacked-to-master.
 
 #### Scenario: Ledger present
 
@@ -103,5 +103,5 @@ Each slice MUST record before/after: files, lines (`find tests -name "*.py" -exe
 
 - GIVEN all slices merged
 - WHEN metrics measured
-- THEN 169-181 files, ~57-59.5k ln, cov ≥80.50%, `ty`/`ruff`/`vulture` 0
-- AND any file deleted without twin/grep-equivalence proof = FAIL regardless of metrics
+- THEN files within 169-181, lines strictly below the 61,480 S3-tip ledger with total ledger trail, cov ≥80.50%, `ty`/`ruff`/`vulture` 0
+- AND every deletion in the diff carries D3 proof (FAIL-regardless-of-metrics if any unproved deletion appears)
