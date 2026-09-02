@@ -26,6 +26,16 @@ from bot.core.database import Database
 from bot.core.realtime import RecentWriteSet
 from bot.models.economy_config import EconomyConfig
 from bot.models.guild import GuildConfig
+from bot.services.schema_inventory import (
+    CDC_TABLES,
+    FK_RETENTION,
+    GUILD_SCOPE_GAPS,
+    LEADERBOARD_TTL_SECONDS,
+    TTL_SECONDS,
+    UNUSED_INDEXES_FOR_REVIEW,
+    SchemaInventory,
+    is_guild_scope_gap,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers — fake query builder that supports Supabase chain calls
@@ -1729,7 +1739,7 @@ class TestDatabaseFacade:
         """from bot.core.database import Database MUST succeed after mixin split."""
         # PLC0415 documented exception — facade-indirection probe: asserting
         # post-split importability REQUIRES the import inside the test.
-        from bot.core.database import Database as Db
+        from bot.core.database import Database as Db  # noqa: PLC0415 -- facade indirection
 
         assert Db is not None
 
@@ -1737,7 +1747,7 @@ class TestDatabaseFacade:
         """from bot.core.database import create_realtime_client MUST still work."""
         # PLC0415 documented exception — facade-indirection probe: asserting
         # post-split importability REQUIRES the import inside the test.
-        from bot.core.database import create_realtime_client
+        from bot.core.database import create_realtime_client  # noqa: PLC0415 -- facade indirection
 
         assert callable(create_realtime_client)
 
@@ -2076,3 +2086,109 @@ class TestMemberEconomyOnWriteHooks:
         await db.update_member_xp("G1", "u1", 5)
 
         assert await rws.contains("member", "G1") is True
+
+
+# ===========================================================================
+# Schema inventory twin (tests-slim-fase-2 B1) — replaces
+# tests/test_pr3_inventory.py.
+# D3 proof: GUILD_SCOPE_GAPS enumeration, 015 index idx_ticket_guild_ticket_number,
+# CDC TTL 300 / leaderboard TTL 30, FK retention (CASCADE / SET NULL), and the
+# 12-unused-indexes review list — asserted with exact values, read-only.
+# ===========================================================================
+
+
+class TestSchemaInventoryTwin:
+    """Guild-scope gaps + 015 parity + read-only contract, parametrized."""
+
+    @pytest.mark.parametrize(
+        ("method", "expected"),
+        [
+            pytest.param("get_ticket", True, id="gap-get_ticket"),
+            pytest.param("get_ticket_by_channel", True, id="gap-get_ticket_by_channel"),
+            pytest.param("update_ticket", True, id="gap-update_ticket"),
+            pytest.param("get_tickets_by_parent", True, id="gap-get_tickets_by_parent"),
+            pytest.param("get_ticket_by_number", False, id="nogap-get_ticket_by_number"),
+            pytest.param("get_guild", False, id="nogap-get_guild"),
+            pytest.param("get_tickets_by_guild", False, id="nogap-get_tickets_by_guild"),
+        ],
+    )
+    def test_guild_scope_gap_classification(self, method: str, expected: bool) -> None:
+        """GUILD_SCOPE_GAPS MUST classify ID-only methods; guild-scoped ones are not gaps."""
+        assert is_guild_scope_gap(method) is expected
+
+    def test_guild_scope_gaps_enumerates_core_and_families(self) -> None:
+        """GUILD_SCOPE_GAPS MUST contain the core ticket ID-only methods plus category/note/audit families."""
+        core_required = {
+            "get_ticket",
+            "get_ticket_by_channel",
+            "update_ticket",
+            "get_tickets_by_parent",
+        }
+        assert core_required.issubset(set(GUILD_SCOPE_GAPS))
+        gaps = set(GUILD_SCOPE_GAPS)
+        assert any("category" in m.lower() for m in gaps), "category methods missing from GUILD_SCOPE_GAPS"
+        assert any("note" in m.lower() for m in gaps), "note methods missing from GUILD_SCOPE_GAPS"
+        assert any("audit" in m.lower() for m in gaps), "audit methods missing from GUILD_SCOPE_GAPS"
+
+    @pytest.mark.parametrize(
+        "fact",
+        [
+            pytest.param("migration_015_filename", id="inv-015-filename"),
+            pytest.param("migration_015_defines_unique_guild_ticket_number", id="inv-015-unique-index"),
+        ],
+    )
+    def test_schema_inventory_reports_015_parity(self, fact: str) -> None:
+        """SchemaInventory MUST report 015 parity (idx_ticket_guild_ticket_number) without DDL."""
+        inv = SchemaInventory.build()
+        value = getattr(inv, fact)
+        if fact == "migration_015_filename":
+            assert value == "015_ticket_lifecycle_reliability.sql"
+        else:
+            assert value is True
+
+    @pytest.mark.parametrize(
+        ("attr", "expected"),
+        [
+            pytest.param("ttl_seconds", 300, id="cdc-ttl-300"),
+            pytest.param("leaderboard_ttl_seconds", 30, id="leaderboard-ttl-30"),
+        ],
+    )
+    def test_schema_inventory_ttl_values(self, attr: str, expected: int) -> None:
+        """CDC TTL 300s and leaderboard TTL 30s MUST be inventoried exactly."""
+        inv = SchemaInventory.build()
+        assert getattr(inv, attr) == expected
+
+    def test_schema_inventory_cdc_tables(self) -> None:
+        """Inventory MUST document the 6 CDC publication tables."""
+        assert set(CDC_TABLES) == {"guild", "greeting_config", "ticket", "ticket_note", "member", "economy_config"}
+        assert TTL_SECONDS == 300
+        assert LEADERBOARD_TTL_SECONDS == 30
+
+    def test_schema_inventory_fk_retention_policy(self) -> None:
+        """FK retention MUST be documented: ticket_note CASCADE, ticket_audit SET NULL."""
+        assert FK_RETENTION["ticket_note"] == "CASCADE"
+        assert FK_RETENTION["ticket_audit"] == "SET NULL"
+
+    def test_schema_inventory_flags_12_unused_indexes(self) -> None:
+        """12-unused-indexes MUST be flagged for review (no DDL)."""
+        assert len(UNUSED_INDEXES_FOR_REVIEW) == 12
+        # The duplicate ticket-number index must be flagged alongside 015's unique index.
+        assert "idx_ticket_guild_number" in UNUSED_INDEXES_FOR_REVIEW
+
+    def test_schema_inventory_no_ddl_contract(self) -> None:
+        """SchemaInventory MUST be read-only — no DDL statements."""
+        inv = SchemaInventory.build()
+        assert inv.no_ddl is True
+        assert inv.ddl_statements == ""
+        assert "CREATE" not in inv.ddl_statements and "ALTER" not in inv.ddl_statements
+
+    def test_schema_inventory_runtime_parity_binding(self) -> None:
+        """SchemaInventory MUST expose runtime parity facts with FK/RLS deferral."""
+        inv = SchemaInventory.build()
+        assert hasattr(inv, "runtime_parity_reasons")
+        assert hasattr(inv, "fk_live_verified")
+        assert hasattr(inv, "rls_live_verified")
+        # Live FK/RLS require DB connection — deferred (fail-closed default False).
+        assert inv.fk_live_verified is False
+        assert inv.rls_live_verified is False
+        assert isinstance(inv.runtime_parity_reasons, tuple)

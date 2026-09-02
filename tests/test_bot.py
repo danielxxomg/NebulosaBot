@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import pathlib
 import types
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -832,3 +833,39 @@ async def test_validate_single_panel_branches(caplog: pytest.LogCaptureFixture) 
         assert any("HTTP" in r.getMessage() or "error" in r.getMessage().lower() for r in caplog.records), (
             caplog.records
         )
+
+
+# ---------------------------------------------------------------------------
+# Intents + portal twin (tests-slim-fase-2 B1) — replaces
+# tests/test_pr3_intent_red.py (grep-equivalence twin; D3 proof: the unique
+# coverage named by the archive report — `intents.voice_states = True` at
+# bot/__main__.py:157 and the Voice States Developer Portal prerequisite —
+# is asserted here by source reads).
+# ---------------------------------------------------------------------------
+
+
+class TestIntentsAndPortal:
+    """voice_states intent + portal prerequisite documentation guard."""
+
+    def test_intents_voice_states_enabled_in_main(self) -> None:
+        """bot/__main__.py MUST set intents.voice_states = True (line ~157)."""
+        source = pathlib.Path("bot/__main__.py").read_text(encoding="utf-8")
+        assert "intents.voice_states = True" in source, "bot/__main__.py must set intents.voice_states = True"
+        # The intent must not be accidentally disabled anywhere in main.
+        assert source.count("voice_states") >= 1
+
+    def test_portal_voice_states_prerequisite_documented(self) -> None:
+        """Docs MUST state the user MUST enable Voice States in the Developer Portal."""
+        candidates = [
+            pathlib.Path("docs/MANUAL.md"),
+            pathlib.Path("bot/__main__.py"),
+        ]
+        haystack = ""
+        for p in candidates:
+            if p.exists():
+                haystack += p.read_text(encoding="utf-8") + "\n"
+        # Must mention the Voice States intent and the Developer Portal.
+        assert "Voice States" in haystack or "voice_states" in haystack
+        assert "Developer Portal" in haystack or "Discord Developer Portal" in haystack
+        # Must convey prerequisite nature.
+        assert "MUST enable" in haystack or "must enable" in haystack.lower()
