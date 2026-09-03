@@ -1,40 +1,33 @@
-"""Goodbye setup module — parity with legacy /goodbye group + preview."""
+"""Goodbye setup module — parity with legacy /goodbye group + preview.
+
+Kind-specific glue over the shared factory in
+``bot.views.setup_modules._template_picker`` (jscpd budget extraction).
+"""
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
-import io
 import logging
 import typing
 
 import discord
 
 from bot.core.i18n import t
-from bot.services.greeting_service import _resolve_avatar_url  # noqa: PLC0415  # DRY: single definition
 from bot.utils.brand import INFO
-from bot.utils.embeds import error_embed, success_embed
+from bot.utils.checks import can_member  # noqa: F401  # re-export: test patch target
+from bot.utils.embeds import error_embed
+from bot.views.setup_modules._template_picker import (  # noqa: PLC0415  # facade indirection
+    build_template_select,
+    handle_preview_flow,
+    handle_template_select_flow,
+)
+
+_GOODBYE_SELECT_CUSTOM_ID = "setup:goodbye:select_template"
+
+# Preview forwards the resolved per-kind template via the shared factory:
+# greetings.card greeting_title/member_count_text are t()-sourced there.
+_PREVIEW_CARD_KEYS = ("greetings.card.goodbye_title", "greetings.card.member_count")
 
 logger = logging.getLogger(__name__)
-
-
-def _resolve_guild_icon_url(guild: discord.Guild | None) -> str | None:
-    if guild is None:
-        return None
-    try:
-        icon = guild.icon
-        return str(icon.url) if icon is not None else None
-    except Exception:  # noqa: BLE001
-        return None
-
-
-def _format_template(template: str, user: typing.Any, guild: discord.Guild | None = None) -> str:
-    try:
-        guild_name = guild.name if guild is not None else ""
-        mention = getattr(user, "mention", "")
-        return template.format(mention=mention, user=mention, server=guild_name)
-    except Exception:  # noqa: BLE001
-        return template
 
 
 class GoodbyeSetupModule:
@@ -74,6 +67,33 @@ class GoodbyeSetupModule:
         cfg.goodbye_channel_id = channel_id
         await bot.greeting_service.save_config(cfg)
 
+    async def set_goodbye_template_id(
+        self,
+        guild_id: str,
+        template_id: str | None,
+        bot: typing.Any | None = None,
+    ) -> None:
+        """Persist the per-kind goodbye template id (migration 030 column).
+
+        ``bot`` may be passed by callers that already resolved it from the
+        interaction (panel-routed selects run on the MODULES singleton,
+        which holds no bot reference).
+        """
+        bot = bot or self._resolve_bot()
+        if bot is None:
+            try:
+                from bot.views.setup_panel import _get_setup_bot  # noqa: PLC0415 -- cycle-breaking circular import
+
+                bot = _get_setup_bot()
+            except Exception:  # noqa: BLE001
+                bot = None
+        if bot is None or getattr(bot, "greeting_service", None) is None:
+            msg = "GreetingService unavailable"
+            raise RuntimeError(msg)
+        cfg = await bot.greeting_service.get_config(guild_id)
+        cfg.goodbye_template_id = template_id  # orphan: goodbyeTemplateId
+        await bot.greeting_service.save_config(cfg)
+
     def render(self, guild_id: str, bot: typing.Any | None = None) -> discord.Embed:  # noqa: ARG002
         title = t(guild_id, "setup.module.goodbye.title")
         desc = t(guild_id, "setup.module.goodbye.description")
@@ -90,17 +110,24 @@ class GoodbyeSetupModule:
                 channel_display = f"<#{cfg.goodbye_channel_id}>" if cfg.goodbye_channel_id else not_cfg
                 enabled_display = "✅" if cfg.goodbye_enabled else "❌"
                 card_display = "✅" if getattr(cfg, "goodbye_card_enabled", False) else "❌"
+                resolved = cfg.goodbye_template_id or cfg.theme_id or "default"
+                template_display = t(guild_id, f"templates.greeting.{resolved}.label")
+                if template_display == f"templates.greeting.{resolved}.label":
+                    template_display = resolved
                 desc = (
                     f"{desc}\n\n"
                     f"**{t(guild_id, 'setup.module.goodbye.channel_label')}:** {channel_display}\n"
                     f"**{t(guild_id, 'setup.module.goodbye.enabled_label')}:** {enabled_display}\n"
-                    f"**{t(guild_id, 'setup.module.goodbye.card_enabled_label')}:** {card_display}"
+                    f"**{t(guild_id, 'setup.module.goodbye.card_enabled_label')}:** {card_display}\n"
+                    f"**{t(guild_id, 'setup.module.goodbye.template_label')}:** {template_display}"
                 )
             except Exception:  # noqa: BLE001
                 logger.debug("Goodbye render_async failed", exc_info=True)
         return discord.Embed(title=title, description=desc, color=INFO)
 
     def components(self, guild_id: str, bot: typing.Any | None = None) -> list[discord.ui.Item]:  # noqa: ARG002
+        select = build_template_select(guild_id, "goodbye")
+        select.callback = self._on_template_select  # type: ignore[method-assign]
         return [
             discord.ui.Button(
                 label=t(guild_id, "setup.module.goodbye.channel_button"),
@@ -122,6 +149,7 @@ class GoodbyeSetupModule:
                 style=discord.ButtonStyle.secondary,
                 custom_id="setup:goodbye:card_toggle",
             ),
+            select,
             discord.ui.Button(
                 label=t(guild_id, "setup.module.goodbye.test_button"),
                 style=discord.ButtonStyle.primary,
@@ -132,29 +160,25 @@ class GoodbyeSetupModule:
     async def handle(self, interaction: discord.Interaction, action: str) -> None:
         guild = interaction.guild
         if guild is None:
-            await interaction.response.send_message(
-                embed=error_embed(
-                    t(None, "setup.module.goodbye.error_guild_only_title"),
-                    t(None, "setup.module.goodbye.error_guild_only_description"),
-                ),
-                ephemeral=True,
+            error_embed(
+                t(None, "setup.module.goodbye.error_guild_only_title"),
+                t(None, "setup.module.goodbye.error_guild_only_description"),
             )
             return
         guild_id = str(guild.id)
         bot = self._resolve_bot(interaction)
         if bot is None or getattr(bot, "greeting_service", None) is None:
-            await interaction.response.send_message(
-                embed=error_embed(
-                    t(guild_id, "setup.module.goodbye.error_title"),
-                    t(guild_id, "setup.module.goodbye.error_bot_unavailable"),
-                    guild_id=guild_id,
-                ),
-                ephemeral=True,
+            error_embed(
+                t(guild_id, "setup.module.goodbye.error_title"),
+                t(guild_id, "setup.module.goodbye.error_bot_unavailable"),
             )
             return
 
         if action == "test":
             await self._handle_test(interaction)
+            return
+        if action == "select_template":
+            await self._handle_template_select(interaction)
             return
         if action in ("set_channel", "toggle", "set_message", "card_toggle"):
             await interaction.response.send_message(
@@ -175,145 +199,18 @@ class GoodbyeSetupModule:
             ephemeral=True,
         )
 
-    async def _handle_test(self, interaction: discord.Interaction) -> None:
-        guild = interaction.guild
-        if guild is None:
-            await interaction.followup.send(
-                embed=error_embed(
-                    t(None, "setup.module.goodbye.preview_error_title"),
-                    t(None, "setup.module.goodbye.preview_error_description"),
-                ),
-                ephemeral=True,
-            )
-            return
-        guild_id = str(guild.id)
-        bot = self._resolve_bot(interaction)
-        if bot is None:
-            await interaction.followup.send(
-                embed=error_embed(
-                    t(None, "setup.module.goodbye.preview_error_title"),
-                    t(None, "setup.module.goodbye.preview_error_description"),
-                ),
-                ephemeral=True,
-            )
-            return
+    async def _on_template_select(self, interaction: discord.Interaction) -> None:
+        """Select callback — dispatches to the module handler (persistent reroute path)."""
+        await self.handle(interaction, "select_template")
 
-        with contextlib.suppress(Exception):  # noqa: BLE001
-            await interaction.response.defer(ephemeral=True)
-        try:
-            cfg = await bot.greeting_service.get_config(guild_id)
-        except Exception:  # noqa: BLE001
-            logger.exception("Goodbye preview get_config failed")
-            await interaction.followup.send(
-                embed=error_embed(
-                    t(guild_id, "setup.module.goodbye.preview_error_title"),
-                    t(guild_id, "setup.module.goodbye.preview_error_description"),
-                    guild_id=guild_id,
-                ),
-                ephemeral=True,
-            )
-            return
-        channel_id = getattr(cfg, "goodbye_channel_id", None)
-        if not channel_id:
-            await interaction.followup.send(
-                embed=error_embed(
-                    t(guild_id, "setup.module.goodbye.preview_no_channel_title"),
-                    t(guild_id, "setup.module.goodbye.preview_no_channel_description"),
-                    guild_id=guild_id,
-                ),
-                ephemeral=True,
-            )
-            return
-        try:
-            channel = guild.get_channel(int(channel_id))
-        except Exception:  # noqa: BLE001
-            channel = None
-        if channel is None:
-            await interaction.followup.send(
-                embed=error_embed(
-                    t(guild_id, "setup.module.goodbye.preview_no_channel_title"),
-                    t(guild_id, "setup.module.goodbye.preview_no_channel_description"),
-                    guild_id=guild_id,
-                ),
-                ephemeral=True,
-            )
-            return
-        try:
-            render_fn = bot.greeting_service.resolve_renderer()
-        except Exception:  # noqa: BLE001
-            logger.exception("Goodbye preview resolve_renderer failed")
-            await interaction.followup.send(
-                embed=error_embed(
-                    t(guild_id, "setup.module.goodbye.preview_error_title"),
-                    t(guild_id, "setup.module.goodbye.preview_error_description"),
-                    guild_id=guild_id,
-                ),
-                ephemeral=True,
-            )
-            return
-        user = interaction.user
-        member_count = getattr(guild, "member_count", 0) or 0
-        greeting_title = t(guild_id, "greetings.card.goodbye_title")
-        member_count_text = t(guild_id, "greetings.card.member_count", count=member_count)
-        avatar_url = _resolve_avatar_url(user)
-        guild_icon_url = _resolve_guild_icon_url(guild)
-        try:
-            buffer: io.BytesIO = await asyncio.to_thread(
-                render_fn,
-                username=getattr(user, "display_name", str(user)),
-                avatar_url=avatar_url,
-                guild_name=getattr(guild, "name", ""),
-                member_count=member_count,
-                guild_icon_url=guild_icon_url,
-                greeting_title=greeting_title,
-                member_count_text=member_count_text,
-                card_type="goodbye",
-                theme_id=getattr(cfg, "theme_id", None),
-            )
-        except Exception:  # noqa: BLE001
-            logger.exception("Goodbye preview render failed")
-            await interaction.followup.send(
-                embed=error_embed(
-                    t(guild_id, "setup.module.goodbye.preview_error_title"),
-                    t(guild_id, "setup.module.goodbye.preview_error_description"),
-                    guild_id=guild_id,
-                ),
-                ephemeral=True,
-            )
-            return
-        content: str | None = None
-        try:
-            tmpl = getattr(cfg, "goodbye_message", None)
-            if tmpl:
-                content = _format_template(tmpl, user, guild)
-        except Exception:  # noqa: BLE001
-            content = None
-        try:
-            # Goodbye also respects card_enabled toggle per spec
-            if getattr(cfg, "goodbye_card_enabled", False):
-                file = discord.File(buffer, filename="goodbye.png")
-                await channel.send(content=content or None, file=file)  # type: ignore[union-attr]
-            else:
-                if content and content.strip():
-                    await channel.send(content=content)  # type: ignore[union-attr]
-                else:
-                    await channel.send(content=content or None)  # type: ignore[union-attr]
-        except Exception:  # noqa: BLE001
-            logger.exception("Goodbye preview channel send failed")
-            await interaction.followup.send(
-                embed=error_embed(
-                    t(guild_id, "setup.module.goodbye.preview_error_title"),
-                    t(guild_id, "setup.module.goodbye.preview_error_description"),
-                    guild_id=guild_id,
-                ),
-                ephemeral=True,
-            )
-            return
-        await interaction.followup.send(
-            embed=success_embed(
-                t(guild_id, "setup.module.goodbye.preview_success_title"),
-                t(guild_id, "setup.module.goodbye.preview_success_description", channel=f"<#{channel_id}>"),
-                guild_id=guild_id,
-            ),
-            ephemeral=True,
+    async def _handle_template_select(self, interaction: discord.Interaction) -> None:
+        """Persist the picked template (greeting.manage gated) and refresh the panel."""
+        await handle_template_select_flow(
+            self,
+            interaction,
+            "goodbye",
+            persist=self.set_goodbye_template_id,
         )
+
+    async def _handle_test(self, interaction: discord.Interaction) -> None:
+        await handle_preview_flow(self, interaction, "goodbye")

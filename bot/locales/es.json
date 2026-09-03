@@ -400,7 +400,11 @@
         "preview_no_channel_title": "Sin Canal Configurado",
         "preview_no_channel_description": "Configura un canal de bienvenida primero.",
         "preview_success_title": "✅ Vista Previa Enviada",
-        "preview_success_description": "Vista previa entregada a {channel}."
+        "preview_success_description": "Vista previa entregada a {channel}.",
+        "template_label": "Plantilla de tarjeta",
+        "template_placeholder": "Elegí una plantilla...",
+        "template_select_title": "Plantilla de bienvenida",
+        "template_select_description": "Elegí la plantilla visual para la tarjeta de bienvenida."
       },
       "goodbye": {
         "title": "Configuración de Despedida",
@@ -426,7 +430,11 @@
         "preview_no_channel_title": "Sin Canal Configurado",
         "preview_no_channel_description": "Configura un canal de despedida primero.",
         "preview_success_title": "✅ Vista Previa Enviada",
-        "preview_success_description": "Vista previa entregada a {channel}."
+        "preview_success_description": "Vista previa entregada a {channel}.",
+        "template_label": "Plantilla de tarjeta",
+        "template_placeholder": "Elegí una plantilla...",
+        "template_select_title": "Plantilla de despedida",
+        "template_select_description": "Elegí la plantilla visual para la tarjeta de despedida."
       },
       "log": {
         "title": "Configuración de Registro",
@@ -1091,5 +1099,25 @@
     "state_unmuted": "sin silenciar",
     "state_deafened": "ensordecido",
     "state_undeafened": "sin ensordecer"
+  },
+  "templates": {
+    "greeting": {
+      "default": {
+        "label": "Clásica",
+        "description": "Tarjeta clásica con el acento de Nebulosa."
+      },
+      "gaming_neon": {
+        "label": "Neón Gaming",
+        "description": "Marco neón con destello diagonal en hexágono."
+      },
+      "sunset_wave": {
+        "label": "Onda Atardecer",
+        "description": "Degradado diagonal cálido tipo atardecer."
+      },
+      "minimal_light": {
+        "label": "Minimal Clara",
+        "description": "Línea de acento minimalista y fondo sutil."
+      }
+    }
   }
 }

@@ -6,10 +6,16 @@ Same parity + preview contract as welcome; split per tasks artifact.
 from __future__ import annotations
 
 import io
+import json
+import pathlib
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
+
+# Locale snapshot read once at import (sync context — ASYNC240 forbids blocking
+# pathlib reads inside async tests). Read-only; tests never mutate locale files.
+_EN_LOCALE = json.loads(pathlib.Path("bot/locales/en.json").read_text(encoding="utf-8"))
 
 
 def _make_bot_with_greeting(guild_id: str = "123456789", config: MagicMock | None = None) -> MagicMock:
@@ -224,3 +230,131 @@ class TestGoodbyePreviewRealArtifact:
         items = mod.components("123456789")
         cids = {getattr(i, "custom_id", None) for i in items}
         assert "setup:goodbye:test" in cids
+
+
+class TestGoodbyeTemplatePicker:
+    """S3 RED — StringSelect picker with 4 registry options, per-kind persistence (spec setup-panel)."""
+
+    _TEMPLATE_IDS = ("default", "gaming_neon", "sunset_wave", "minimal_light")
+
+    def test_components_include_template_select(self) -> None:
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # documented-exception: facade indirection
+
+        mod = GoodbyeSetupModule(bot=_make_bot_with_greeting())
+        items = mod.components("123456789")
+        select = next(
+            (i for i in items if getattr(i, "custom_id", None) == "setup:goodbye:select_template"),
+            None,
+        )
+        assert select is not None, "goodbye components must include setup:goodbye:select_template StringSelect"
+        assert isinstance(select, discord.ui.Select)
+
+    def test_template_select_offers_exactly_four_options(self) -> None:
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # documented-exception: facade indirection
+
+        mod = GoodbyeSetupModule(bot=_make_bot_with_greeting())
+        items = mod.components("123456789")
+        select = next(i for i in items if getattr(i, "custom_id", None) == "setup:goodbye:select_template")
+        assert isinstance(select, discord.ui.Select)
+        values = tuple(opt.value for opt in select.options)
+        assert values == self._TEMPLATE_IDS, f"picker must offer 4 registry options, got {values}"
+
+    def test_template_option_labels_resolve_via_t_not_hardcoded(self) -> None:
+        """Option labels/descriptions must come from locale values (t()), not English literals."""
+        from bot.core.i18n import set_guild_language  # documented-exception: facade indirection
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # documented-exception: facade indirection
+
+        en = _EN_LOCALE
+        set_guild_language("123456789", "en")
+        mod = GoodbyeSetupModule(bot=_make_bot_with_greeting())
+        items = mod.components("123456789")
+        select = next(i for i in items if getattr(i, "custom_id", None) == "setup:goodbye:select_template")
+        assert isinstance(select, discord.ui.Select)
+        expected_labels = {en["templates"]["greeting"][tid]["label"] for tid in self._TEMPLATE_IDS}
+        actual = {(opt.label, opt.description) for opt in select.options}
+        assert {lbl for lbl, _ in actual} == expected_labels, (
+            f"option labels must equal en.json templates.greeting.*.label values, got {actual}"
+        )
+        assert all(desc for _, desc in actual), "every option must carry a t()-resolved description"
+
+    @pytest.mark.asyncio
+    async def test_selecting_goodbye_template_persists_per_kind(self) -> None:
+        """Selection → set_goodbye_template_id → save_config; welcome id stays sunset_wave (kind-scoped)."""
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # documented-exception: facade indirection
+
+        guild_id = "123456789"
+        bot = _make_bot_with_greeting(guild_id)
+        bot.greeting_service.get_config = AsyncMock(
+            return_value=MagicMock(
+                guild_id=guild_id,
+                welcome_template_id="sunset_wave",
+                goodbye_template_id=None,
+                theme_id=None,
+            )
+        )
+        mod = GoodbyeSetupModule(bot=bot)
+        interaction = _make_interaction(guild_id=int(guild_id), client=bot)
+        interaction.data = {"custom_id": "setup:goodbye:select_template", "values": ["minimal_light"]}
+
+        select = next(
+            i for i in mod.components(guild_id) if getattr(i, "custom_id", None) == "setup:goodbye:select_template"
+        )
+        await select.callback(interaction)
+
+        assert bot.greeting_service.save_config.await_count == 1, "selection must persist via save_config"
+        saved = bot.greeting_service.save_config.call_args.args[0]
+        assert saved.goodbye_template_id == "minimal_light"
+        assert saved.welcome_template_id == "sunset_wave", (
+            "welcome id must remain 'sunset_wave' — kinds are independent (spec setup-panel)"
+        )
+
+    @pytest.mark.asyncio
+    async def test_missing_greeting_manage_denied_ephemeral_no_mutation(self) -> None:
+        """Without greeting.manage grant, picker must deny ephemerally and never mutate config."""
+        from unittest.mock import patch
+
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # documented-exception: facade indirection
+
+        guild_id = "123456789"
+        bot = _make_bot_with_greeting(guild_id)
+        mod = GoodbyeSetupModule(bot=bot)
+        interaction = _make_interaction(guild_id=int(guild_id), client=bot)
+        interaction.user.guild_permissions.administrator = False
+        interaction.data = {"custom_id": "setup:goodbye:select_template", "values": ["minimal_light"]}
+
+        with patch("bot.views.setup_modules.goodbye.can_member", new=AsyncMock(return_value=False)):
+            select = next(
+                i for i in mod.components(guild_id) if getattr(i, "custom_id", None) == "setup:goodbye:select_template"
+            )
+            await select.callback(interaction)
+
+        bot.greeting_service.save_config.assert_not_awaited()
+        ephemeral = interaction.followup.send.await_count + interaction.response.send_message.await_count
+        assert ephemeral >= 1, "denial must surface ephemerally"
+
+    @pytest.mark.asyncio
+    async def test_render_async_shows_template_label(self) -> None:
+        """Embed description includes the resolved template label via t() (spec render_async scenario)."""
+        from bot.core.i18n import set_guild_language  # documented-exception: facade indirection
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # documented-exception: facade indirection
+
+        en = _EN_LOCALE
+        set_guild_language("123456789", "en")
+        guild_id = "123456789"
+        bot = _make_bot_with_greeting(guild_id)
+        bot.greeting_service.get_config = AsyncMock(
+            return_value=MagicMock(
+                guild_id=guild_id,
+                goodbye_channel_id="222333444",
+                goodbye_enabled=True,
+                goodbye_card_enabled=True,
+                theme_id=None,
+                goodbye_template_id="minimal_light",
+            )
+        )
+        mod = GoodbyeSetupModule(bot=bot)
+        embed = await mod.render_async(guild_id)
+        expected = en["templates"]["greeting"]["minimal_light"]["label"]
+        assert expected in (embed.description or ""), (
+            f"render_async must show resolved template label '{expected}', got {embed.description!r}"
+        )
