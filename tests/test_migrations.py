@@ -6,11 +6,18 @@ Covers:
     - Each function has SECURITY DEFINER and SET search_path = public.
     - Migration 010: REVOKE EXECUTE on member RPCs from anon/authenticated.
     - Migration 011: CREATE INDEX on ticket ("channelId").
+    - Migration 023: ENABLE RLS exactly on the 7 baseline tables + rollback.
 """
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from bot.cogs.sentinel import SentinelCog
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"
 
@@ -436,3 +443,127 @@ class TestMigration026:
         sql = _read_migration("026_realtime_member_economy_config.sql")
         assert "idempotent" in sql.lower() or "safe to re-run" in sql.lower()
         assert "Rollback:" in sql or "rollback:" in sql.lower()
+
+
+# ---------------------------------------------------------------------------
+# Hierarchy twin (tests-slim-fase-2 B1) — replaces
+# tests/test_pr3_hierarchy_rls_flags_red.py::TestSentinelAuthorHierarchy.
+# D3 proof: author.top_role <= target.top_role deny, strictly-above allow,
+# and guild-owner exemption through the real SentinelCog._validate_target.
+# The AsyncClientOptions flags contract has a live spy twin in
+# tests/test_remediation_final_partials.py::TestAsyncClientOptionsFlagsSpy.
+# ---------------------------------------------------------------------------
+
+
+def _make_hierarchy_member(role_val: int, member_id: int = 1) -> MagicMock:
+    """Build a member mock whose top_role supports ``<=`` via _val ordering."""
+    m = MagicMock()
+    m.id = member_id
+    m.mention = f"<@{member_id}>"
+    role = MagicMock()
+    role.__le__ = MagicMock(side_effect=lambda other: role_val <= getattr(other, "_val", 0))
+    role._val = role_val
+    m.top_role = role
+    m.roles = []
+    m.guild_permissions = MagicMock()
+    m.guild_permissions.administrator = False
+    return m
+
+
+def _make_hierarchy_ctx(author: MagicMock, target_role_val: int) -> tuple[SentinelCog, MagicMock, MagicMock]:
+    """Build (cog, ctx, target) with a bot top_role strictly above the target's."""
+    bot = MagicMock()
+    bot.user = MagicMock()
+    bot.user.id = 999
+    cog = SentinelCog(bot=bot)
+    guild = MagicMock()
+    guild.owner = MagicMock()
+    guild.owner.id = 9999
+    guild.me = MagicMock()
+    guild.me.top_role = MagicMock()
+    guild.me.top_role.__le__ = MagicMock(return_value=False)
+    guild.id = 123
+    target = _make_hierarchy_member(role_val=target_role_val, member_id=20)
+    ctx = MagicMock()
+    ctx.guild = guild
+    ctx.author = author
+    ctx.send = AsyncMock()
+    return cog, ctx, target
+
+
+class TestSentinelHierarchyTwin:
+    """Parametrized sentinel author-hierarchy contract through _validate_target."""
+
+    @pytest.mark.parametrize(
+        ("scenario", "expected"),
+        [
+            pytest.param("below", False, id="hierarchy-below-denied"),
+            pytest.param("above", True, id="hierarchy-above-allowed"),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_author_hierarchy_denies_below_and_allows_above(self, scenario: str, expected: bool) -> None:
+        """author.top_role <= target.top_role → deny; strictly above → allow."""
+        if scenario == "below":
+            author = _make_hierarchy_member(role_val=5, member_id=10)
+        else:
+            author = _make_hierarchy_member(role_val=10, member_id=10)
+        cog, ctx, target = _make_hierarchy_ctx(author, target_role_val=10 if scenario == "below" else 5)
+
+        result = await cog._validate_target(ctx, target, action="warn")
+
+        assert result is expected, f"author hierarchy {scenario} target → {expected} expected"
+        if expected is False:
+            ctx.send.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_owner_exempt_from_author_hierarchy(self) -> None:
+        """Guild owner must be exempt from the author-hierarchy deny."""
+        cog, ctx, target = _make_hierarchy_ctx(
+            author=_make_hierarchy_member(role_val=1, member_id=10),
+            target_role_val=100,
+        )
+        ctx.guild.owner = ctx.author  # author IS the owner
+
+        result = await cog._validate_target(ctx, target, action="warn")
+
+        assert result is True, "owner must be exempt from author hierarchy"
+
+
+# ---------------------------------------------------------------------------
+# Migration 023 twin (tests-slim-fase-2 B1) — replaces
+# tests/test_pr3_hierarchy_rls_flags_red.py::TestMigration023.
+# D3 proof: 023 ENABLEs RLS on exactly the 7 baseline tables and documents
+# the DISABLE ROW LEVEL SECURITY rollback path.
+# ---------------------------------------------------------------------------
+
+
+class TestMigration023Twin:
+    """Migration 023 RLS contract — parsed statement semantics, not substring greps."""
+
+    _RLS_TABLES = frozenset({
+        "guild",
+        "member",
+        "infraction",
+        "ticket",
+        "ticket_category",
+        "economy_config",
+        "greeting_config",
+    })
+
+    @staticmethod
+    def _enabled_tables() -> set[str]:
+        sql = (MIGRATIONS_DIR / "023_rls_remaining_tables.sql").read_text(encoding="utf-8")
+        return {
+            m.group(1) for m in re.finditer(r"(?im)^ALTER\s+TABLE\s+\"?(\w+)\"?\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY", sql)
+        }
+
+    def test_023_enables_rls_exactly_on_7_tables(self) -> None:
+        enabled = self._enabled_tables()
+        assert enabled == self._RLS_TABLES, f"023 must ENABLE RLS on exactly the 7 tables, got {sorted(enabled)}"
+
+    def test_023_rollback_documented(self) -> None:
+        sql = (MIGRATIONS_DIR / "023_rls_remaining_tables.sql").read_text(encoding="utf-8")
+        assert re.search(r"(?im)^--.*Rollback:.*DISABLE\s+ROW\s+LEVEL\s+SECURITY", sql), (
+            "023 must document the DISABLE ROW LEVEL SECURITY rollback path"
+        )
