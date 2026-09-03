@@ -63,11 +63,12 @@ LOCAL_MIGRATION_STEMS: tuple[str, ...] = (
     "027_private_transcript_bucket",
     "028_retention",
     "029_crash_report_indexes",
+    "030_greeting_templates",
 )
 
 
 def get_local_migration_names(*, migrations_dir: str = "migrations") -> list[str]:
-    """Return exact 29 local migration stems (no extension) — sorted.
+    """Return exact 30 local migration stems (no extension) — sorted.
 
     The returned names must match ``supabase_migrations.schema_migrations``
     remote entries exactly (version/name pair), not just count equality.
@@ -78,6 +79,7 @@ def get_local_migration_names(*, migrations_dir: str = "migrations") -> list[str
     pre-renumber artifact; the file lives on as ``019_subtickets_notes``)
     was dropped and migrations 019-025 were added, matching remote 25/25.
     S1 (clean-1.0): 027_private_transcript_bucket added for triple-path Storage.
+    S2 (greeting-templates): 030_greeting_templates per-kind template columns.
     """
     expected = sorted(LOCAL_MIGRATION_STEMS)
     try:

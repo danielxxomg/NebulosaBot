@@ -69,6 +69,7 @@ EXPECTED_LOCAL_MIGRATIONS = sorted([
     "027_private_transcript_bucket",
     "028_retention",
     "029_crash_report_indexes",
+    "030_greeting_templates",
 ])
 
 
@@ -84,7 +85,7 @@ def _mocked_fks() -> list[dict[str, str]]:
 
 
 class TestRedLiveCatalogModuleExists:
-    """RED: live_catalog module exists and pins exact 29-stem migration identity."""
+    """RED: live_catalog module exists and pins exact 30-stem migration identity."""
 
     def test_live_catalog_module_importable(self) -> None:
 
@@ -94,7 +95,7 @@ class TestRedLiveCatalogModuleExists:
     def test_local_migration_identity_is_29_exact(self) -> None:
 
         names = get_local_migration_names()
-        assert len(names) == 29
+        assert len(names) == 30
         assert sorted(names) == EXPECTED_LOCAL_MIGRATIONS
 
     def test_live_catalog_exposes_db_adapter(self) -> None:
@@ -111,7 +112,7 @@ class TestRedLiveCatalogModuleExists:
 class TestCatalogParityMeasurableRealDB:
     """Catalog parity is measurable only against a real DB — fakes never PASS."""
 
-    def test_9_7_0_6_6_29_exact_passes_with_real_db(self) -> None:
+    def test_9_7_0_6_6_30_exact_passes_with_real_db(self) -> None:
 
         local = get_local_migration_names()
         # Build via real-DB evidence path — include 9/7/0 binding

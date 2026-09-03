@@ -1,12 +1,27 @@
 """Unit tests for bot.models.greeting_config.GreetingConfig.
 
 Covers the GreetingConfig model: field defaults, from_db_row mapping,
-to_db_dict conversion, and roundtrip consistency.
+to_db_dict conversion, and roundtrip consistency. Also covers the S2
+per-kind template persistence: fallback chain via select_template and
+greeting_db write/read paths for welcomeTemplateId/goodbyeTemplateId.
 """
 
 from __future__ import annotations
 
+from typing import Any
+from unittest.mock import AsyncMock
+
+import pytest
+
+from bot.core.database import Database
 from bot.models.greeting_config import GreetingConfig
+from bot.services.greeting_service import select_template
+
+
+def _captured_select(client: Any) -> str | None:
+    """Extract the select column list the fake table observed (test seam)."""
+    return getattr(client._table, "last_select", None)  # noqa: SLF001 — test seam
+
 
 # ---------------------------------------------------------------------------
 # Default values
@@ -147,8 +162,12 @@ class TestToDbDict:
             "goodbyeCardEnabled",
             "updatedAt",
             "themeId",
+            "welcomeTemplateId",
+            "goodbyeTemplateId",
         }
         assert set(result.keys()) == expected_keys
+        assert result["welcomeTemplateId"] is None
+        assert result["goodbyeTemplateId"] is None
         assert result["guildId"] == "123456789"
         assert result["welcomeEnabled"] is True
         assert result["goodbyeEnabled"] is False
@@ -242,3 +261,273 @@ class TestThemeIdRoundTrip:
         restored = GreetingConfig.from_db_row(original.to_db_dict())
         assert restored.theme_id is None
         assert restored == original
+
+
+# ---------------------------------------------------------------------------
+# Per-kind template columns (greeting-templates S2)
+# ---------------------------------------------------------------------------
+
+
+class TestPerKindTemplateFields:
+    """GreetingConfig carries welcome_template_id / goodbye_template_id (S2)."""
+
+    def test_default_new_guild_fields_are_null(self) -> None:
+        """Spec: new guild defaults → per-kind template ids null → default render."""
+        config = GreetingConfig(guild_id="g1")
+        assert config.welcome_template_id is None
+        assert config.goodbye_template_id is None
+
+    def test_from_db_row_reads_per_kind_ids(self) -> None:
+        row = {
+            "guildId": "g1",
+            "welcomeTemplateId": "sunset_wave",
+            "goodbyeTemplateId": "minimal_light",
+        }
+        cfg = GreetingConfig.from_db_row(row)
+        assert cfg.welcome_template_id == "sunset_wave"
+        assert cfg.goodbye_template_id == "minimal_light"
+
+    def test_from_db_row_missing_per_kind_ids_are_none(self) -> None:
+        """Legacy rows (pre-030) without the columns map to None."""
+        cfg = GreetingConfig.from_db_row({"guildId": "g1", "themeId": "gaming_neon"})
+        assert cfg.welcome_template_id is None
+        assert cfg.goodbye_template_id is None
+        assert cfg.theme_id == "gaming_neon"
+
+
+class TestWelcomeWinsDualWrite:
+    """to_db_dict dual-writes themeId; explicit templateId wins over themeId mapping."""
+
+    def test_welcome_template_wins_over_theme_id(self) -> None:
+        """welcome_template_id='minimal_light' → themeId dual-written as 'minimal_light'."""
+        cfg = GreetingConfig(guild_id="g1", theme_id="gaming_neon", welcome_template_id="minimal_light")
+        d = cfg.to_db_dict()
+        assert d["welcomeTemplateId"] == "minimal_light"
+        assert d["themeId"] == "minimal_light"
+
+    def test_goodbye_template_wins_when_welcome_absent(self) -> None:
+        """Only goodbye set → legacy themeId mirrors goodbye."""
+        cfg = GreetingConfig(guild_id="g1", theme_id=None, goodbye_template_id="sunset_wave")
+        d = cfg.to_db_dict()
+        assert d["goodbyeTemplateId"] == "sunset_wave"
+        assert d["themeId"] == "sunset_wave"
+
+    def test_welcome_wins_tie_between_kinds(self) -> None:
+        """Both kinds set and theme_id present → welcome wins the legacy mirror."""
+        cfg = GreetingConfig(
+            guild_id="g1",
+            theme_id="gaming_neon",
+            welcome_template_id="sunset_wave",
+            goodbye_template_id="minimal_light",
+        )
+        d = cfg.to_db_dict()
+        assert d["themeId"] == "sunset_wave"
+        assert d["welcomeTemplateId"] == "sunset_wave"
+        assert d["goodbyeTemplateId"] == "minimal_light"
+
+    def test_legacy_theme_id_preserved_when_no_per_kind_set(self) -> None:
+        """Neither per-kind id set → themeId passes through unchanged."""
+        cfg = GreetingConfig(guild_id="g1", theme_id="gaming_neon")
+        d = cfg.to_db_dict()
+        assert d["themeId"] == "gaming_neon"
+        assert d["welcomeTemplateId"] is None
+        assert d["goodbyeTemplateId"] is None
+
+    def test_all_null_stay_null(self) -> None:
+        """All template ids null → themeId stays null (new guild, default render)."""
+        cfg = GreetingConfig(guild_id="g1")
+        d = cfg.to_db_dict()
+        assert d["themeId"] is None
+        assert d["welcomeTemplateId"] is None
+        assert d["goodbyeTemplateId"] is None
+
+
+class TestPerKindRoundtrip:
+    """Per-kind template ids survive to_db_dict → from_db_row."""
+
+    def test_roundtrip_preserves_per_kind_ids(self) -> None:
+        """Per-kind ids survive a roundtrip.
+
+        Full dataclass equality is intentionally NOT asserted: the dual-write
+        contract mirrors the effective per-kind selection into legacy
+        ``themeId``, so a config with only per-kind ids re-reads with
+        ``theme_id`` set to the welcome id (documented S2 behavior).
+        """
+        original = GreetingConfig(
+            guild_id="g1",
+            welcome_template_id="sunset_wave",
+            goodbye_template_id="minimal_light",
+        )
+        restored = GreetingConfig.from_db_row(original.to_db_dict())
+        assert restored.welcome_template_id == "sunset_wave"
+        assert restored.goodbye_template_id == "minimal_light"
+        assert restored.theme_id == "sunset_wave"  # welcome-wins dual-write
+
+    def test_roundtrip_null_per_kind_ids(self) -> None:
+        original = GreetingConfig(guild_id="g1")
+        restored = GreetingConfig.from_db_row(original.to_db_dict())
+        assert restored.welcome_template_id is None
+        assert restored.goodbye_template_id is None
+        assert restored == original
+
+
+# ---------------------------------------------------------------------------
+# Per-kind fallback chain via select_template (greeting-templates S2)
+# ---------------------------------------------------------------------------
+
+
+def _make_config(**kwargs: object) -> GreetingConfig:
+    """Build a GreetingConfig with defaults overridden by *kwargs*."""
+    return GreetingConfig(guild_id="g1", **kwargs)  # type: ignore[arg-type]
+
+
+class TestSelectTemplateFallbackChain:
+    """select_template resolves per-kind → legacy theme_id → default (S2 spec)."""
+
+    def test_welcome_resolves_welcome_template_id(self) -> None:
+        cfg = _make_config(
+            welcome_template_id="sunset_wave",
+            goodbye_template_id="default",
+            theme_id="gaming_neon",
+        )
+        assert select_template(cfg, "welcome") == "sunset_wave"
+
+    def test_goodbye_resolves_independently(self) -> None:
+        """Same config, goodbye resolves its own kind — kinds MAY differ."""
+        cfg = _make_config(
+            welcome_template_id="sunset_wave",
+            goodbye_template_id="default",
+            theme_id="gaming_neon",
+        )
+        assert select_template(cfg, "goodbye") == "default"
+
+    def test_fallback_to_legacy_theme_id_when_kind_null(self) -> None:
+        cfg = _make_config(welcome_template_id=None, theme_id="gaming_neon")
+        assert select_template(cfg, "welcome") == "gaming_neon"
+
+    def test_fallback_to_default_when_both_absent(self) -> None:
+        cfg = _make_config(welcome_template_id=None, theme_id=None)
+        assert select_template(cfg, "welcome") == "default"
+
+    def test_unknown_template_id_falls_back_to_default(self) -> None:
+        cfg = _make_config(welcome_template_id="unknown_xyz", theme_id=None)
+        assert select_template(cfg, "welcome") == "default"
+
+    def test_unknown_theme_falls_back_to_default(self) -> None:
+        cfg = _make_config(welcome_template_id=None, theme_id="unknown_xyz")
+        assert select_template(cfg, "goodbye") == "default"
+
+
+# ---------------------------------------------------------------------------
+# DB write/read paths for per-kind columns (greeting-templates S2)
+# ---------------------------------------------------------------------------
+
+
+class _FakeResult:
+    def __init__(self, rows: list[dict[str, Any]] | None = None) -> None:
+        self.data = rows if rows is not None else []
+
+
+class _FakeTable:
+    """Minimal greeting_config table stub — records select cols + last upsert."""
+
+    def __init__(self, rows: list[dict[str, Any]] | None = None) -> None:
+        self._rows = rows or []
+        self.last_upsert: dict[str, Any] | None = None
+        self.last_select: str | None = None
+
+    def select(self, cols: str) -> _FakeTable:
+        self.last_select = cols
+        return self
+
+    def eq(self, _col: str, _val: str) -> _FakeTable:
+        return self
+
+    def upsert(self, payload: dict[str, Any], on_conflict: str) -> _FakeTable:  # noqa: ARG002
+        self.last_upsert = payload
+        return self
+
+    async def execute(self) -> _FakeResult:
+        return _FakeResult(self._rows)
+
+
+class _FakeClient:
+    def __init__(self, rows: list[dict[str, Any]] | None = None) -> None:
+        self.table_calls: list[str] = []
+        self._table = _FakeTable(rows)
+
+    def table(self, name: str) -> _FakeTable:
+        self.table_calls.append(name)
+        return self._table
+
+
+class TestGreetingDbPerKindPaths:
+    """greeting_db select columns + upsert payload carry per-kind template ids."""
+
+    @pytest.mark.asyncio
+    async def test_get_greeting_config_selects_per_kind_columns(self) -> None:
+        """Column list includes welcomeTemplateId/goodbyeTemplateId (no select('*'))."""
+        row = {"guildId": "g1", "welcomeTemplateId": "sunset_wave"}
+        client = _FakeClient([row])
+        db = Database.__new__(Database)
+        db._client = client
+        db._on_write = None
+
+        result = await db.get_greeting_config("g1")
+
+        assert result == row
+        select_clause = client.table_calls and _captured_select(client)
+        assert select_clause is not None
+        assert "welcomeTemplateId" in select_clause
+        assert "goodbyeTemplateId" in select_clause
+
+    @pytest.mark.asyncio
+    async def test_upsert_payload_includes_per_kind_columns(self) -> None:
+        """Upsert persists welcomeTemplateId/goodbyeTemplateId + dual-written themeId."""
+        client = _FakeClient()
+        db = Database.__new__(Database)
+        db._client = client
+        db._on_write = None
+        config = GreetingConfig(guild_id="g1", theme_id="gaming_neon", welcome_template_id="minimal_light")
+
+        await db.upsert_greeting_config("g1", config)
+
+        payload = client._table.last_upsert  # noqa: SLF001 — test seam
+        assert payload is not None
+        assert payload["welcomeTemplateId"] == "minimal_light"
+        assert payload["goodbyeTemplateId"] is None
+        assert payload["themeId"] == "minimal_light"  # welcome-wins dual-write
+
+    @pytest.mark.asyncio
+    async def test_upsert_triggers_cache_invalidation_on_write(self) -> None:
+        """CDC contract: upsert fires _on_write('greeting_config', guild_id)."""
+        client = _FakeClient()
+        db = Database.__new__(Database)
+        db._client = client
+        on_write = AsyncMock()
+        db._on_write = on_write
+        config = GreetingConfig(guild_id="g1", welcome_template_id="sunset_wave")
+
+        await db.upsert_greeting_config("g1", config)
+
+        on_write.assert_awaited_once_with("greeting_config", "g1")
+
+    @pytest.mark.asyncio
+    async def test_upsert_propagates_non_unique_errors(self) -> None:
+        """Non-23505 upsert errors propagate — per-kind payload writes are not swallowed."""
+        client = _FakeClient()
+
+        class _BrokenTable(_FakeTable):
+            def upsert(self, payload: dict[str, Any], on_conflict: str) -> _FakeTable:  # noqa: ARG002
+                exc = RuntimeError("boom")
+                exc.code = "42710"  # type: ignore[attr-defined] — non-unique violation
+                raise exc
+
+        client._table = _BrokenTable()
+        db = Database.__new__(Database)
+        db._client = client
+        db._on_write = None
+        config = GreetingConfig(guild_id="g1", welcome_template_id="minimal_light")
+
+        with pytest.raises(RuntimeError, match="boom"):
+            await db.upsert_greeting_config("g1", config)

@@ -290,6 +290,76 @@ class TestMigration021:
         assert "DROP COLUMN" in sql.upper()
 
 
+class TestMigration030:
+    """S2 — migration 030_greeting_templates.sql per-kind template columns.
+
+    Additive nullable TEXT columns ``welcomeTemplateId``/``goodbyeTemplateId``
+    with COALESCE backfill from legacy ``themeId`` (welcome-wins is a write
+    contract, not a migration concern — the migration backfills both kinds).
+    """
+
+    def test_file_exists(self) -> None:
+        _read_migration("030_greeting_templates.sql")
+
+    def test_adds_both_template_columns_to_greeting_config(self) -> None:
+        sql = _read_migration("030_greeting_templates.sql")
+        assert "ALTER TABLE" in sql
+        assert "greeting_config" in sql
+        assert '"welcomeTemplateId"' in sql
+        assert '"goodbyeTemplateId"' in sql
+
+    def test_is_additive_nullable_text(self) -> None:
+        """Both columns MUST be nullable TEXT (no NOT NULL, no non-null default)."""
+        sql = _read_migration("030_greeting_templates.sql")
+        # Comments are documentation, not DDL — guard executable statements only
+        # (house pattern: TestMigration008/009 strip comment lines first).
+        code = "\n".join(line for line in sql.splitlines() if not line.strip().startswith("--"))
+        assert code.upper().count("TEXT") >= 2
+        assert "NOT NULL" not in code.upper()
+        assert "DEFAULT" not in code.upper()
+
+    def test_is_idempotent_add_column_if_not_exists(self) -> None:
+        """Migration MUST use ADD COLUMN IF NOT EXISTS for idempotency (re-run = 0 errors)."""
+        sql = _read_migration("030_greeting_templates.sql")
+        upper = sql.upper()
+        assert upper.count("ADD COLUMN IF NOT EXISTS") >= 2, (
+            "both per-kind columns must be guarded by ADD COLUMN IF NOT EXISTS for idempotent live re-run"
+        )
+
+    def test_coalesce_backfills_nulls_from_legacy_theme_id(self) -> None:
+        """Backfill MUST fill null per-kind columns from legacy themeId via COALESCE + WHERE IS NULL.
+
+        Spec scenario: row themeId='gaming_neon', welcomeTemplateId IS NULL →
+        backfill sets 'gaming_neon'. Null themeId stays null (COALESCE with
+        NULL legacy → NULL, so null stays null → default render).
+        """
+        sql = _read_migration("030_greeting_templates.sql")
+        upper = sql.upper()
+        assert upper.count("COALESCE") >= 2, "both per-kind columns must be backfilled via COALESCE"
+        # Guard: only fill rows where the new column IS NULL (idempotent re-runs
+        # must never overwrite an explicit null with a stale legacy value twice —
+        # and re-running after explicit writes must not clobber).
+        assert upper.count("WHERE") >= 2
+        assert '"WELCOMETEMPLATEID" IS NULL' in upper
+        assert '"GOODBYETEMPLATEID" IS NULL' in upper
+        # Source of truth for the backfill is the legacy themeId column.
+        assert '"welcomeTemplateId"=COALESCE("welcomeTemplateId","themeId")' in sql
+        assert '"goodbyeTemplateId"=COALESCE("goodbyeTemplateId","themeId")' in sql
+
+    def test_documents_schema_migrations_check(self) -> None:
+        """Migration comment MUST mention checking schema_migrations before apply."""
+        sql = _read_migration("030_greeting_templates.sql").lower()
+        assert "schema_migrations" in sql
+
+    def test_documents_rollback_drop_column(self) -> None:
+        """Migration MUST document DROP COLUMN rollback for both new columns."""
+        sql = _read_migration("030_greeting_templates.sql")
+        upper = sql.upper()
+        assert "DROP COLUMN" in upper
+        assert '"welcomeTemplateId"' in sql
+        assert '"goodbyeTemplateId"' in sql
+
+
 class TestMigration024:
     """PR1 1.1 — migration 024_permission_matrix_indexes.sql additive JSONB + partial indexes."""
 

@@ -26,6 +26,8 @@ _GREETING_CONFIG_COLUMNS = (
     "goodbyeCardEnabled",
     "updatedAt",
     "themeId",
+    "welcomeTemplateId",
+    "goodbyeTemplateId",
 )
 
 

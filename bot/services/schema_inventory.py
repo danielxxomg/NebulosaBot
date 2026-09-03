@@ -368,7 +368,7 @@ class SchemaInventory:
         """Bind read-only live evidence; fail-closed with documented reasons.
 
         No DDL — SELECT-only semantics: validates 9 zero-policy RLS tables,
-        6 guild CASCADE FKs, 6 CDC publication tables, 27 migrations, 12 gaps,
+        6 guild CASCADE FKs, 6 CDC publication tables, 30 migrations, 12 gaps,
         and the TEXT/UUID categoryId mismatch flag. Any absent/mismatched fact
         yields ``resolved=False`` with non-empty ``reasons``.
         """
@@ -426,7 +426,7 @@ class SchemaInventory:
             if "/" in s:
                 s = s.rsplit("/", 1)[-1]
             normalized_live.add(s)
-        if len(live_migrations) != 29 or not any("015" in str(m) for m in live_migrations):
+        if len(live_migrations) != 30 or not any("015" in str(m) for m in live_migrations):
             reasons.append("migration_count_mismatch")
         if normalized_live != local_stems:
             reasons.append("migration_identity_mismatch")
