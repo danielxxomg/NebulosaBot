@@ -3216,9 +3216,7 @@ class TestRepairTicketCommand:
         # not-found cases return None (return_value). Preserves the original
         # per-case semantics after parametrization.
         mock_kwargs = (
-            {"side_effect": lookup_result}
-            if isinstance(lookup_result, Exception)
-            else {"return_value": lookup_result}
+            {"side_effect": lookup_result} if isinstance(lookup_result, Exception) else {"return_value": lookup_result}
         )
         setattr(mock_db, lookup_attr, AsyncMock(**mock_kwargs))
         mock_db.insert_audit_row = AsyncMock(return_value={})
