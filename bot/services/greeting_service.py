@@ -357,9 +357,14 @@ def _resolve_avatar_url(member: discord.abc.User) -> str | None:
         return None
 
 
-def select_template(config: GreetingConfig, _kind: Literal["welcome", "goodbye"]) -> str:
-    """Resolve template id for *kind* — S1: theme_id -> default, unknown -> default."""
-    raw = getattr(config, "theme_id", None) or "default"
+def select_template(config: GreetingConfig, kind: Literal["welcome", "goodbye"]) -> str:
+    """Resolve template id for *kind* — S2 chain: per-kind id → theme_id → default.
+
+    Unknown ids (e.g. removed templates) resolve to ``default`` so renders
+    never raise (spec: unknown/null → default).
+    """
+    per_kind = config.welcome_template_id if kind == "welcome" else config.goodbye_template_id
+    raw = per_kind or config.theme_id or "default"
     if raw not in TEMPLATE_REGISTRY:
         return "default"
     return raw

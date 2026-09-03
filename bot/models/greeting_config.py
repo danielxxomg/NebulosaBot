@@ -29,6 +29,10 @@ class GreetingConfig:
     goodbye_card_enabled: bool = False
     updated_at: datetime | None = None
     theme_id: str | None = None
+    # Per-kind card template ids (migration 030). ``None`` → resolve via
+    # theme_id → "default" (see GreetingService.select_template fallback chain).
+    welcome_template_id: str | None = None
+    goodbye_template_id: str | None = None
 
     @classmethod
     def from_db_row(cls, row: dict[str, Any]) -> GreetingConfig:
@@ -46,10 +50,19 @@ class GreetingConfig:
             goodbye_card_enabled=row.get("goodbyeCardEnabled", False),
             updated_at=row.get("updatedAt"),
             theme_id=row.get("themeId"),
+            welcome_template_id=row.get("welcomeTemplateId"),
+            goodbye_template_id=row.get("goodbyeTemplateId"),
         )
 
     def to_db_dict(self) -> dict[str, Any]:
-        """Convert to a dict with camelCase keys for Supabase."""
+        """Convert to a dict with camelCase keys for Supabase.
+
+        Dual-write: ``themeId`` mirrors the effective template selection so the
+        legacy column stays consistent for one cycle (design D5). Explicit
+        per-kind values win over the legacy mapping when both are present —
+        welcome first, then goodbye (welcome-wins tie-break).
+        """
+        effective_template = self.welcome_template_id or self.goodbye_template_id or self.theme_id
         return {
             "guildId": self.guild_id,
             "welcomeEnabled": self.welcome_enabled,
@@ -62,5 +75,7 @@ class GreetingConfig:
             "welcomeCardEnabled": self.welcome_card_enabled,
             "goodbyeCardEnabled": self.goodbye_card_enabled,
             "updatedAt": self.updated_at,
-            "themeId": self.theme_id,
+            "themeId": effective_template,
+            "welcomeTemplateId": self.welcome_template_id,
+            "goodbyeTemplateId": self.goodbye_template_id,
         }
