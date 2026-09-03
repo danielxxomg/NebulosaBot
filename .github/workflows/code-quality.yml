@@ -86,7 +86,10 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: "20"
+          # Oxlint loads oxlint.config.ts (TS config); Node 20 cannot parse it
+          # (native type-stripping for .ts configs needs Node >=22.6/23). Node 24
+          # strips types natively without flags. Local dev already runs Node 26.
+          node-version: "24"
 
       - name: Install dashboard deps (npm ci)
         working-directory: dashboard
