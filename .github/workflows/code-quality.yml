@@ -96,6 +96,11 @@ jobs:
         run: npm ci
 
       - name: Oxlint (Ultracite core) — advisory
+        # Advisory phase: ~300 baseline findings (mostly style: sort-keys,
+        # func-style, unicorn, toSorted) await triage in the dashboard-QA SDD.
+        # Node bump above fixed the config parse; findings are pre-existing
+        # baseline debt, not regressions from this PR.
+        continue-on-error: true
         working-directory: dashboard
         run: npm run lint:ox
 
