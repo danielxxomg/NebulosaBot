@@ -362,13 +362,17 @@ class TestWelcomeTemplatePicker:
             return_value=MagicMock(
                 guild_id=guild_id,
                 welcome_template_id=None,
-                goodbye_template_id=None,
+                goodbye_template_id="minimal_light",
                 theme_id=None,
             )
         )
         mod = WelcomeSetupModule(bot=bot)
         interaction = _make_interaction(guild_id=int(guild_id), client=bot)
         interaction.data = {"custom_id": "setup:welcome:select_template", "values": ["sunset_wave"]}
+
+        # Capture the opposite-kind id BEFORE the welcome action so the
+        # independence assertion below is falsifiable (never `x in (None, x)`).
+        goodbye_before = (await bot.greeting_service.get_config(guild_id)).goodbye_template_id
 
         select = next(
             i for i in mod.components(guild_id) if getattr(i, "custom_id", None) == "setup:welcome:select_template"
@@ -378,8 +382,8 @@ class TestWelcomeTemplatePicker:
         assert bot.greeting_service.save_config.await_count == 1, "selection must persist via save_config"
         saved = bot.greeting_service.save_config.call_args.args[0]
         assert saved.welcome_template_id == "sunset_wave"
-        assert saved.goodbye_template_id in (None, getattr(saved, "goodbye_template_id", None)), (
-            "goodbye id must remain untouched by the welcome picker"
+        assert saved.goodbye_template_id == goodbye_before, (
+            f"goodbye id must remain {goodbye_before!r} — the welcome picker must not touch the opposite kind"
         )
 
     @pytest.mark.asyncio

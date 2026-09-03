@@ -14,7 +14,6 @@ Ref: openspec/changes/greeting-templates/verify-report.md CRITICAL #1.
 
 from __future__ import annotations
 
-import pathlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -239,7 +238,50 @@ class TestPanelPickerRouting:
 class TestSetupHookRegistersPanelWithPickers:
     """bot.setup_hook registers the persistent SetupPanelView that now carries the pickers."""
 
-    def test_setup_hook_add_view_registration_unchanged(self) -> None:
-        """Registration source contract stays intact (add_view(SetupPanelView()))."""
-        src = pathlib.Path("bot/bot.py").read_text(encoding="utf-8")
-        assert "add_view(SetupPanelView())" in src, "setup_hook must keep registering the persistent SetupPanelView"
+    @pytest.mark.asyncio
+    async def test_setup_hook_registers_panel_with_both_template_pickers(self) -> None:
+        """Executing setup_hook must add_view() a SetupPanelView carrying both custom_ids.
+
+        Runtime proof (not source-text matching): the real ``NebulosaBot.setup_hook``
+        runs with DB/cache/extensions mocked (house harness from ``test_bot_probe.py``)
+        and every ``add_view`` call is captured. Registration counts only if the
+        registered object IS a ``SetupPanelView`` instance whose children include both
+        ``setup:{kind}:select_template`` custom_ids — a plain ``View`` or an unrelated
+        class fails the assertion.
+        """
+        from bot.bot import NebulosaBot
+        from bot.config import BotConfig
+        from bot.views.setup_panel import SetupPanelView  # documented-exception: facade indirection
+
+        registered: list[discord.ui.View] = []
+        bot = NebulosaBot(
+            config=BotConfig(
+                discord_token="t",
+                supabase_url="https://x.supabase.co",
+                supabase_key="test-key",
+            ),
+            intents=discord.Intents.default(),
+        )
+        with (
+            patch("bot.bot.Database") as db_cls,
+            patch("bot.bot.RealtimeCacheSubscriber") as sub_cls,
+            patch.object(bot, "load_extension", new=AsyncMock()),
+            patch.object(type(bot.tree), "sync", AsyncMock()),
+            patch("bot.bot.load_locales"),
+            patch("bot.bot.validate_slash_localizations"),
+            patch.object(type(bot.tree), "set_translator", new=AsyncMock()),
+            patch.object(type(bot), "add_view", side_effect=lambda view, *, message_id=None: registered.append(view)),
+        ):
+            db_cls.return_value.connect = AsyncMock()
+            sub_cls.return_value.start = AsyncMock()
+            await bot.setup_hook()
+
+        panels = [v for v in registered if isinstance(v, SetupPanelView)]
+        assert panels, "setup_hook must execute add_view() with a SetupPanelView instance"
+        child_ids = {getattr(c, "custom_id", None) for c in panels[0].children}
+        assert _WELCOME_SELECT_ID in child_ids, (
+            "registered panel must carry setup:welcome:select_template (restart routing)"
+        )
+        assert _GOODBYE_SELECT_ID in child_ids, (
+            "registered panel must carry setup:goodbye:select_template (restart routing)"
+        )
