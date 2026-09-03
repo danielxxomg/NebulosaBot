@@ -15,6 +15,15 @@ from bot.views.setup_modules import MODULES
 
 logger = logging.getLogger(__name__)
 
+# Per-kind template picker custom_ids (SDD greeting-templates remediation):
+# attached from MODULES at construction so the /setup panel the interaction
+# actually reaches exposes the pickers, and the persistent view registered
+# in bot.setup_hook routes them after restarts.
+_TEMPLATE_SELECT_IDS = frozenset({
+    "setup:welcome:select_template",
+    "setup:goodbye:select_template",
+})
+
 # Global bot reference for module render helpers (set in setup_hook)
 _setup_bot: typing.Any | None = None
 
@@ -113,6 +122,20 @@ class SetupPanelView(discord.ui.View):
                 child.label = t(gid, "setup.module.tickets.list_button")
             elif cid == "setup:tickets:configure_fields" and isinstance(child, discord.ui.Button):
                 child.label = t(gid, "setup.module.tickets.fields_button")
+
+        # Attach the per-kind template pickers from the registered greeting
+        # modules (welcome/goodbye) so the runtime panel exposes and routes
+        # them. Each select keeps its module-bound callback (persistent
+        # custom_id; greeting.manage gate enforced by module handler + panel
+        # interaction_check). One full-width select per module row.
+        for module_key in ("welcome", "goodbye"):
+            mod = MODULES.get(module_key)
+            if mod is None:
+                continue
+            for item in mod.components(gid):
+                cid = getattr(item, "custom_id", None)
+                if cid in _TEMPLATE_SELECT_IDS and cid not in {getattr(c, "custom_id", None) for c in self.children}:
+                    self.add_item(item)
 
     # ------------------------------------------------------------------
     # Navigation Select — custom_id setup:nav

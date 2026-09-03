@@ -1,0 +1,245 @@
+"""Remediation RED tests — verify-report CRITICAL #1 (SETUP-ROUTE).
+
+The runtime /setup flow must expose and register the per-kind template
+pickers:
+
+- ``SetupPanelView`` itself carries both ``setup:{kind}:select_template``
+  StringSelects (appended from ``MODULES["welcome"|"goodbye"]``) so the
+  interaction the panel actually reaches can route them.
+- The persistent view registered by ``bot.setup_hook`` contains both
+  custom_ids (restart routing, AGENTS.md persistent-view rule).
+
+Ref: openspec/changes/greeting-templates/verify-report.md CRITICAL #1.
+"""
+
+from __future__ import annotations
+
+import pathlib
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import discord
+import pytest
+
+_WELCOME_SELECT_ID = "setup:welcome:select_template"
+_GOODBYE_SELECT_ID = "setup:goodbye:select_template"
+_TEMPLATE_IDS = ("default", "gaming_neon", "sunset_wave", "minimal_light")
+
+
+def _panel_select_ids() -> set[str | None]:
+    from bot.views.setup_panel import SetupPanelView  # documented-exception: facade indirection
+
+    view = SetupPanelView()
+    return {getattr(c, "custom_id", None) for c in view.children}
+
+
+class TestPanelCarriesTemplatePickers:
+    """SetupPanelView must attach both module template selects at construction."""
+
+    def test_panel_contains_welcome_template_select(self) -> None:
+        assert _WELCOME_SELECT_ID in _panel_select_ids(), (
+            "SetupPanelView must carry setup:welcome:select_template (runtime /setup reachability)"
+        )
+
+    def test_panel_contains_goodbye_template_select(self) -> None:
+        assert _GOODBYE_SELECT_ID in _panel_select_ids(), (
+            "SetupPanelView must carry setup:goodbye:select_template (runtime /setup reachability)"
+        )
+
+    def test_panel_pickers_offer_exactly_four_registry_options(self) -> None:
+        """Both panel-attached pickers mirror the four-template registry."""
+        from bot.views.setup_panel import SetupPanelView  # documented-exception: facade indirection
+
+        view = SetupPanelView()
+        for cid in (_WELCOME_SELECT_ID, _GOODBYE_SELECT_ID):
+            select = next(c for c in view.children if getattr(c, "custom_id", None) == cid)
+            assert isinstance(select, discord.ui.Select)
+            values = tuple(opt.value for opt in select.options)
+            assert values == _TEMPLATE_IDS, f"{cid} must offer the four registry options, got {values}"
+
+    def test_panel_pickers_are_persistent(self) -> None:
+        """Panel keeps timeout=None with static custom_ids after picker wiring."""
+        from bot.views.setup_panel import SetupPanelView  # documented-exception: facade indirection
+
+        view = SetupPanelView()
+        assert view.timeout is None
+        for child in view.children:
+            cid = getattr(child, "custom_id", None)
+            if cid is not None:
+                assert cid.startswith("setup:"), f"custom_id must stay in the static setup: namespace, got {cid!r}"
+
+
+class TestPanelPickerRouting:
+    """Panel picker callbacks must route through the module handle() (greeting.manage gated)."""
+
+    @pytest.mark.asyncio
+    async def test_panel_welcome_select_routes_to_module_handler(self) -> None:
+        """The panel-attached welcome select persists the picked value via the module path."""
+        from bot.views.setup_panel import SetupPanelView  # documented-exception: facade indirection
+
+        guild_id = "123456789"
+        bot = MagicMock()
+        bot.greeting_service = MagicMock()
+        bot.greeting_service.get_config = AsyncMock(
+            return_value=MagicMock(
+                guild_id=guild_id,
+                welcome_template_id=None,
+                goodbye_template_id=None,
+                theme_id=None,
+            )
+        )
+        bot.greeting_service.save_config = AsyncMock(return_value=None)
+
+        view = SetupPanelView()
+        select = next(c for c in view.children if getattr(c, "custom_id", None) == _WELCOME_SELECT_ID)
+        assert isinstance(select, discord.ui.Select)
+
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.guild = MagicMock(spec=discord.Guild)
+        interaction.guild.id = int(guild_id)
+        interaction.user = MagicMock(spec=discord.Member)
+        interaction.user.guild_permissions.administrator = True
+        interaction.response = MagicMock()
+        interaction.response.edit_message = AsyncMock()
+        interaction.followup = MagicMock()
+        interaction.followup.send = AsyncMock()
+        interaction.data = {"custom_id": _WELCOME_SELECT_ID, "values": ["sunset_wave"]}
+        interaction.client = bot
+
+        await select.callback(interaction)
+
+        assert bot.greeting_service.save_config.await_count == 1, (
+            "panel-attached welcome picker must persist through the module handler"
+        )
+        saved = bot.greeting_service.save_config.call_args.args[0]
+        assert saved.welcome_template_id == "sunset_wave"
+
+    @pytest.mark.asyncio
+    async def test_panel_goodbye_select_routes_to_module_handler(self) -> None:
+        """The panel-attached goodbye select persists independently (kind-scoped)."""
+        from bot.views.setup_panel import SetupPanelView  # documented-exception: facade indirection
+
+        guild_id = "123456789"
+        bot = MagicMock()
+        bot.greeting_service = MagicMock()
+        bot.greeting_service.get_config = AsyncMock(
+            return_value=MagicMock(
+                guild_id=guild_id,
+                welcome_template_id="sunset_wave",
+                goodbye_template_id=None,
+                theme_id=None,
+            )
+        )
+        bot.greeting_service.save_config = AsyncMock(return_value=None)
+
+        view = SetupPanelView()
+        select = next(c for c in view.children if getattr(c, "custom_id", None) == _GOODBYE_SELECT_ID)
+        assert isinstance(select, discord.ui.Select)
+
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.guild = MagicMock(spec=discord.Guild)
+        interaction.guild.id = int(guild_id)
+        interaction.user = MagicMock(spec=discord.Member)
+        interaction.user.guild_permissions.administrator = True
+        interaction.response = MagicMock()
+        interaction.response.edit_message = AsyncMock()
+        interaction.followup = MagicMock()
+        interaction.followup.send = AsyncMock()
+        interaction.data = {"custom_id": _GOODBYE_SELECT_ID, "values": ["minimal_light"]}
+        interaction.client = bot
+
+        await select.callback(interaction)
+
+        assert bot.greeting_service.save_config.await_count == 1
+        saved = bot.greeting_service.save_config.call_args.args[0]
+        assert saved.goodbye_template_id == "minimal_light"
+        assert saved.welcome_template_id == "sunset_wave", "welcome id must stay kind-scoped"
+
+    @pytest.mark.asyncio
+    async def test_panel_select_refresh_keeps_panel_controls(self) -> None:
+        """After a picker selection the panel edit must not strip components (no view=None)."""
+        from bot.views.setup_panel import SetupPanelView  # documented-exception: facade indirection
+
+        guild_id = "123456789"
+        bot = MagicMock()
+        bot.greeting_service = MagicMock()
+        bot.greeting_service.get_config = AsyncMock(
+            return_value=MagicMock(
+                guild_id=guild_id,
+                welcome_template_id=None,
+                goodbye_template_id=None,
+                theme_id=None,
+            )
+        )
+        bot.greeting_service.save_config = AsyncMock(return_value=None)
+
+        view = SetupPanelView()
+        select = next(c for c in view.children if getattr(c, "custom_id", None) == _WELCOME_SELECT_ID)
+        assert isinstance(select, discord.ui.Select)
+
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.guild = MagicMock(spec=discord.Guild)
+        interaction.guild.id = int(guild_id)
+        interaction.user = MagicMock(spec=discord.Member)
+        interaction.user.guild_permissions.administrator = True
+        interaction.response = MagicMock()
+        interaction.response.edit_message = AsyncMock()
+        interaction.followup = MagicMock()
+        interaction.followup.send = AsyncMock()
+        interaction.data = {"custom_id": _WELCOME_SELECT_ID, "values": ["sunset_wave"]}
+        interaction.client = bot
+
+        await select.callback(interaction)
+
+        assert interaction.response.edit_message.await_count == 1
+        kwargs = interaction.response.edit_message.call_args.kwargs
+        assert kwargs.get("view", object()) is not None, (
+            "panel edit must not pass view=None — discord.py serializes it as components: [] "
+            "and strips every control from the panel message"
+        )
+
+    @pytest.mark.asyncio
+    async def test_panel_picker_denies_without_greeting_manage(self) -> None:
+        """Non-granted user through the panel picker → ephemeral denial, no mutation."""
+        from bot.views.setup_panel import SetupPanelView  # documented-exception: facade indirection
+
+        guild_id = "123456789"
+        bot = MagicMock()
+        bot.greeting_service = MagicMock()
+        bot.greeting_service.get_config = AsyncMock(return_value=MagicMock(guild_id=guild_id))
+        bot.greeting_service.save_config = AsyncMock(return_value=None)
+
+        view = SetupPanelView()
+        select = next(c for c in view.children if getattr(c, "custom_id", None) == _WELCOME_SELECT_ID)
+        assert isinstance(select, discord.ui.Select)
+
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.guild = MagicMock(spec=discord.Guild)
+        interaction.guild.id = int(guild_id)
+        interaction.user = MagicMock(spec=discord.Member)
+        interaction.user.guild_permissions.administrator = False
+        interaction.user.roles = []
+        interaction.response = MagicMock()
+        interaction.response.send_message = AsyncMock()
+        interaction.followup = MagicMock()
+        interaction.followup.send = AsyncMock()
+        interaction.data = {"custom_id": _WELCOME_SELECT_ID, "values": ["sunset_wave"]}
+        interaction.client = bot
+
+        with patch("bot.views.setup_panel.can_member", new=AsyncMock(return_value=False)):
+            assert await view.interaction_check(interaction) is False
+        # Module-level gate must also deny (defense in depth, same key).
+        with patch("bot.views.setup_modules.welcome.can_member", new=AsyncMock(return_value=False)):
+            await select.callback(interaction)
+
+        bot.greeting_service.save_config.assert_not_awaited()
+        ephemeral = interaction.response.send_message.await_count + interaction.followup.send.await_count
+        assert ephemeral >= 1, "denial must surface ephemerally"
+
+
+class TestSetupHookRegistersPanelWithPickers:
+    """bot.setup_hook registers the persistent SetupPanelView that now carries the pickers."""
+
+    def test_setup_hook_add_view_registration_unchanged(self) -> None:
+        """Registration source contract stays intact (add_view(SetupPanelView()))."""
+        src = pathlib.Path("bot/bot.py").read_text(encoding="utf-8")
+        assert "add_view(SetupPanelView())" in src, "setup_hook must keep registering the persistent SetupPanelView"

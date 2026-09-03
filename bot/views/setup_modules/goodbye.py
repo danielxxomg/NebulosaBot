@@ -58,6 +58,19 @@ def _build_template_select(guild_id: str) -> discord.ui.Select:
     return select
 
 
+class _TemplateRefreshView(discord.ui.View):
+    """Ephemeral one-item view that re-renders the picker after a selection.
+
+    Carries the rebound template select so the panel message keeps its
+    controls after ``edit_message`` (never ``view=None``). Not persistent —
+    restart routing uses the panel's static custom_ids instead.
+    """
+
+    def __init__(self, select: discord.ui.Select) -> None:
+        super().__init__(timeout=180)
+        self.add_item(select)
+
+
 class GoodbyeSetupModule:
     """Setup module for goodbye — gated by greeting.manage."""
 
@@ -95,9 +108,19 @@ class GoodbyeSetupModule:
         cfg.goodbye_channel_id = channel_id
         await bot.greeting_service.save_config(cfg)
 
-    async def set_goodbye_template_id(self, guild_id: str, template_id: str | None) -> None:
-        """Persist the per-kind goodbye template id (migration 030 column)."""
-        bot = self._resolve_bot()
+    async def set_goodbye_template_id(
+        self,
+        guild_id: str,
+        template_id: str | None,
+        bot: typing.Any | None = None,
+    ) -> None:
+        """Persist the per-kind goodbye template id (migration 030 column).
+
+        ``bot`` may be passed by callers that already resolved it from the
+        interaction (panel-routed selects run on the MODULES singleton,
+        which holds no bot reference).
+        """
+        bot = bot or self._resolve_bot()
         if bot is None:
             try:
                 from bot.views.setup_panel import _get_setup_bot  # noqa: PLC0415 -- cycle-breaking circular import
@@ -289,9 +312,14 @@ class GoodbyeSetupModule:
                 ephemeral=True,
             )
             return
-        await self.set_goodbye_template_id(guild_id, template_id)
+        await self.set_goodbye_template_id(guild_id, template_id, bot=bot)
         embed = await self.render_async(guild_id, bot=bot)
-        await interaction.response.edit_message(embed=embed, view=None)
+        # Re-render the picker with the current label; never pass view=None —
+        # discord.py serializes it as components: [] and strips every control
+        # from the panel message (verify-report CRITICAL #1 probe 2).
+        select = _build_template_select(guild_id)
+        select.callback = self._on_template_select  # type: ignore[method-assign]
+        await interaction.response.edit_message(embed=embed, view=_TemplateRefreshView(select))
         await interaction.followup.send(
             embed=success_embed(
                 t(guild_id, "setup.module.goodbye.template_select_title"),
@@ -402,7 +430,10 @@ class GoodbyeSetupModule:
                 member_count_text=member_count_text,
                 card_type="goodbye",
                 template_id=resolved,
-                theme_id=getattr(cfg, "theme_id", None),
+                # theme_id receives the SAME resolved id (legacy alias per
+                # setup-panel spec: preview forwards template_id=resolved,
+                # theme_id=resolved — never the raw config value).
+                theme_id=resolved,
             )
         except Exception:  # noqa: BLE001
             logger.exception("Goodbye preview render failed")
