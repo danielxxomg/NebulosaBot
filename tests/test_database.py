@@ -14,10 +14,13 @@ Covers the qa-database-coverage spec scenarios:
 
 from __future__ import annotations
 
+import base64
+import json
 from collections import defaultdict
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import jwt as pyjwt
 import pytest
 from freezegun import freeze_time
 
@@ -31,10 +34,12 @@ from bot.services.schema_inventory import (
     FK_RETENTION,
     GUILD_SCOPE_GAPS,
     LEADERBOARD_TTL_SECONDS,
+    RLS_NO_POLICY_TABLES,
     TTL_SECONDS,
     UNUSED_INDEXES_FOR_REVIEW,
     SchemaInventory,
     is_guild_scope_gap,
+    is_rls_denied_for_anon,
 )
 
 # ---------------------------------------------------------------------------
@@ -2192,3 +2197,134 @@ class TestSchemaInventoryTwin:
         assert inv.fk_live_verified is False
         assert inv.rls_live_verified is False
         assert isinstance(inv.runtime_parity_reasons, tuple)
+
+
+# ===========================================================================
+# service_role twins (tests-slim-fase-2 B2) — replaces
+# tests/test_pr3_service_role_rls.py. D3 proof: LITERAL fake_JWT helper +
+# publishable-key matrix + 9 RLS checks — connect() fail-closed on every
+# non-service_role credential, anon denial across all 9 RLS no-policy tables.
+# ===========================================================================
+
+
+def fake_JWT(role: str) -> str:  # noqa: N802 -- D3 literal: twin MUST be greppable as `fake_JWT`
+    """Return a minimal unsigned fake_JWT with the given role claim."""
+    header = base64.urlsafe_b64encode(json.dumps({"alg": "HS256", "typ": "JWT"}).encode()).decode().rstrip("=")
+    payload = base64.urlsafe_b64encode(json.dumps({"role": role}).encode()).decode().rstrip("=")
+    return f"{header}.{payload}.fake-signature"
+
+
+PUBLISHABLE_KEY = "sb_publishable_fake1234567890"
+
+RLS_TABLES: tuple[str, ...] = (
+    "guild",
+    "member",
+    "infraction",
+    "ticket",
+    "ticket_category",
+    "economy_config",
+    "greeting_config",
+    "ticket_note",
+    "ticket_audit",
+)
+
+
+class TestServiceRoleConnectTwin:
+    """Database.connect() fail-closed on non-service_role credentials."""
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            pytest.param(fake_JWT("anon"), id="connect-fails-anon-jwt"),
+            pytest.param(fake_JWT("authenticated"), id="connect-fails-authenticated-jwt"),
+            pytest.param("", id="connect-fails-empty-key"),
+            pytest.param(PUBLISHABLE_KEY, id="connect-fails-publishable-key"),
+            pytest.param("garbage-not-a-jwt", id="connect-fails-garbage"),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_service_role_connect_fails_closed(self, key: str) -> None:
+        """Database.connect() MUST raise ServiceRoleValidationError and clear the client."""
+        from bot.core.db.base import ServiceRoleValidationError  # noqa: PLC0415 -- facade indirection
+
+        db = Database(url="https://test.supabase.co", key=key)
+        with pytest.raises(ServiceRoleValidationError):
+            await db.connect()
+        assert db._client is None
+
+    def test_service_role_validation_rejects_anon_jwt(self) -> None:
+        """validate_service_role_key helper MUST reject anon fake_JWT."""
+        from bot.core.db.base import (  # noqa: PLC0415 -- facade indirection
+            ServiceRoleValidationError,
+            validate_service_role_key,
+        )
+
+        with pytest.raises(ServiceRoleValidationError):
+            validate_service_role_key(fake_JWT("anon"))
+
+    def test_service_role_validation_accepts_verified_service_role_jwt(self) -> None:
+        """validate_service_role_key helper MUST accept a verified service_role JWT."""
+        from bot.core.db.base import validate_service_role_key  # noqa: PLC0415 -- facade indirection
+
+        secret = "s3-guard-secret-32bytes-strong-123456"
+        with patch.dict("os.environ", {"SUPABASE_JWT_SECRET": secret}):
+            signed = pyjwt.encode({"role": "service_role"}, secret, algorithm="HS256")
+            validate_service_role_key(signed)
+
+    def test_service_role_validation_helper_via_config(self) -> None:
+        """BotConfig layer MUST also validate service_role via the helper."""
+        from bot.config import ServiceRoleValidationError as ConfigError  # noqa: PLC0415 -- facade indirection
+        from bot.config import validate_supabase_key  # noqa: PLC0415 -- facade indirection
+
+        with pytest.raises(ConfigError):
+            validate_supabase_key(fake_JWT("anon"))
+        secret = "s3-guard-secret-32bytes-strong-123456"
+        with patch.dict("os.environ", {"SUPABASE_JWT_SECRET": secret}):
+            signed = pyjwt.encode({"role": "service_role"}, secret, algorithm="HS256")
+            validate_supabase_key(signed)
+
+    @pytest.mark.asyncio
+    async def test_service_role_connect_succeeds_with_valid_key(self) -> None:
+        """Database.connect() MUST succeed when key is a verified service_role JWT."""
+        db = Database(url="https://test.supabase.co", key=fake_JWT("service_role"))
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.data = [{"id": "1"}]
+        mock_client.table.return_value.select.return_value.limit.return_value.execute = AsyncMock(
+            return_value=mock_response
+        )
+        secret = "s3-guard-secret-32bytes-strong-123456"
+        with (
+            patch.dict("os.environ", {"SUPABASE_JWT_SECRET": secret}),
+            patch("bot.core.db.base.acreate_client", return_value=mock_client),
+        ):
+            # Re-sign with the same secret so PyJWT verification passes
+            signed = pyjwt.encode({"role": "service_role"}, secret, algorithm="HS256")
+            db._key = signed
+            await db.connect()
+        assert db._client is mock_client
+
+
+class TestRlsAnonDeniedTwin:
+    """RLS negative matrix: anon/authenticated denied on all 9 no-policy tables."""
+
+    @pytest.mark.parametrize("table", RLS_TABLES, ids=[f"rls-{t}" for t in RLS_TABLES])
+    def test_rls_anon_denied_on_9_tables(self, table: str) -> None:
+        """Any direct anon/authenticated query to the 9 tables MUST be denied."""
+        assert is_rls_denied_for_anon(table, role="anon") is True
+        assert is_rls_denied_for_anon(table, role="authenticated") is True
+
+    def test_rls_service_role_not_denied(self) -> None:
+        """service_role MUST NOT be flagged as RLS-denied (it bypasses RLS)."""
+        for table in RLS_TABLES:
+            assert is_rls_denied_for_anon(table, role="service_role") is False
+
+    def test_rls_publishable_key_role_denied(self) -> None:
+        """The publishable-key matrix MUST extend to the publishable pseudo-role."""
+        for table in RLS_TABLES:
+            assert is_rls_denied_for_anon(table, role="publishable") is True
+
+    def test_rls_explicit_9_tables_contract(self) -> None:
+        """Inventory MUST enumerate exactly the 9 RLS no-policy tables."""
+        assert set(RLS_NO_POLICY_TABLES) == set(RLS_TABLES)
+        assert len(RLS_NO_POLICY_TABLES) == 9
