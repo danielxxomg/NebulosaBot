@@ -3212,7 +3212,15 @@ class TestRepairTicketCommand:
         service = TicketService(db=mock_db, cache=TTLCache())
         ticket_bot.ticket_service = service
         ctx = self._repair_ctx(ticket_bot)
-        setattr(mock_db, lookup_attr, AsyncMock(return_value=lookup_result))
+        # DB-failure cases must RAISE like the real driver (side_effect);
+        # not-found cases return None (return_value). Preserves the original
+        # per-case semantics after parametrization.
+        mock_kwargs = (
+            {"side_effect": lookup_result}
+            if isinstance(lookup_result, Exception)
+            else {"return_value": lookup_result}
+        )
+        setattr(mock_db, lookup_attr, AsyncMock(**mock_kwargs))
         mock_db.insert_audit_row = AsyncMock(return_value={})
 
         await tickets_cog.repair_ticket.callback(tickets_cog, ctx, ticket_ref=ticket_ref)
