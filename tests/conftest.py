@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import io
 import json
 import os
 import selectors
@@ -461,6 +462,174 @@ def make_interaction(
     interaction.client = client if client is not None else MagicMock()
     interaction.guild_id = interaction.guild.id
     return interaction
+
+
+# ---------------------------------------------------------------------------
+# Greeting/ticket setup-module builders (tests-slim-fase-3 Slice A — 1.3).
+# Hoists the per-file ``_make_bot_with_greeting`` / ``_make_interaction`` /
+# ``_make_bot`` twins into shared plain functions next to make_interaction.
+# ``_isolate_i18n_state`` remains outermost and untouched.
+# ---------------------------------------------------------------------------
+
+
+def make_greeting_bot(
+    kind: str,
+    *,
+    guild_id: str = "123456789",
+    config: MagicMock | None = None,
+    language: str = "es",
+) -> MagicMock:
+    """Return a mock bot wired with GreetingService for setup-module tests.
+
+    ``kind`` selects the default config shape: ``welcome`` seeds the welcome
+    fields enabled, ``goodbye`` seeds the goodbye fields enabled, and any
+    other value seeds an all-neutral config. ``config`` overrides the default
+    config entirely (its ``guild_id`` is re-asserted onto ``cfg.guild_id``).
+    """
+    bot = MagicMock()
+    bot.greeting_service = MagicMock()
+    if kind == "welcome":
+        cfg = config or MagicMock(
+            guild_id=guild_id,
+            welcome_channel_id="111222333",
+            welcome_enabled=True,
+            welcome_message="Welcome {mention}",
+            welcome_card_enabled=True,
+            theme_id=None,
+            goodbye_channel_id=None,
+            goodbye_enabled=False,
+            goodbye_message=None,
+            goodbye_card_enabled=False,
+            onboarding_channel_id=None,
+            card_enabled=True,
+            updated_at=None,
+        )
+    elif kind == "goodbye":
+        cfg = config or MagicMock(
+            guild_id=guild_id,
+            welcome_channel_id=None,
+            welcome_enabled=False,
+            welcome_message=None,
+            welcome_card_enabled=False,
+            theme_id=None,
+            goodbye_channel_id="222333444",
+            goodbye_enabled=True,
+            goodbye_message="Bye {mention}",
+            goodbye_card_enabled=True,
+            onboarding_channel_id=None,
+        )
+    else:
+        cfg = config or MagicMock(
+            guild_id=guild_id,
+            welcome_channel_id=None,
+            welcome_enabled=False,
+            welcome_message=None,
+            welcome_card_enabled=False,
+            theme_id=None,
+            goodbye_channel_id=None,
+            goodbye_enabled=False,
+            goodbye_message=None,
+            goodbye_card_enabled=False,
+            onboarding_channel_id=None,
+        )
+    cfg.guild_id = guild_id
+    bot.greeting_service.get_config = AsyncMock(return_value=cfg)
+    bot.greeting_service.save_config = AsyncMock(return_value=None)
+    bot.greeting_service.resolve_renderer = MagicMock(return_value=lambda **_: io.BytesIO(b"fake-card"))
+    bot.greeting_service.dispatch_greeting = AsyncMock()
+    # For dispatch_welcome preview path we also mock GreetingService internals indirectly via real render path
+    bot.guild_service = MagicMock()
+    bot.guild_service.get_config = AsyncMock(return_value=MagicMock(language=language))
+    return bot
+
+
+def make_greeting_interaction(
+    *,
+    guild_id: int = 123456789,
+    user_id: int = 111,
+    client: MagicMock | None = None,
+    custom_id: str = "setup:welcome:test",
+    display_name: str = "Tester",
+    avatar_url: str = "https://cdn.example/ava.png",
+) -> MagicMock:
+    """Return a setup-panel interaction mock with greeting scaffolding.
+
+    Mirrors the per-file ``_make_interaction`` twins: spec'd Interaction with
+    guild (get_channel → TextChannel AsyncMock send), user (administrator),
+    full response/followup/message AsyncMocks, and ``data`` custom_id.
+    ``client`` defaults to ``make_greeting_bot("welcome")`` for the given
+    guild (matching the legacy welcome-file default).
+    """
+    inter = MagicMock(spec=discord.Interaction)
+    inter.guild = MagicMock(spec=discord.Guild)
+    inter.guild.id = guild_id
+    inter.guild_id = guild_id
+    inter.guild.name = "TestGuild"
+    # guild.get_channel for preview delivery
+    chan = MagicMock(spec=discord.TextChannel)
+    chan.send = AsyncMock()
+    inter.guild.get_channel = MagicMock(return_value=chan)
+    inter.guild.member_count = 42
+    inter.guild.icon = None
+    inter.user = MagicMock(spec=discord.Member)
+    inter.user.id = user_id
+    inter.user.display_name = display_name
+    inter.user.display_avatar = MagicMock()
+    inter.user.display_avatar.url = avatar_url
+    inter.user.guild_permissions.administrator = True
+    inter.response = MagicMock()
+    inter.response.send_message = AsyncMock()
+    inter.response.send_modal = AsyncMock()
+    inter.response.defer = AsyncMock()
+    inter.response.edit_message = AsyncMock()
+    inter.response.is_done.return_value = False
+    inter.followup = MagicMock()
+    inter.followup.send = AsyncMock()
+    inter.message = MagicMock()
+    inter.message.edit = AsyncMock()
+    inter.client = client or make_greeting_bot("welcome", guild_id=str(guild_id))
+    inter.data = {"custom_id": custom_id}
+    return inter
+
+
+def make_ticket_bot(guild_id: str = "123456789") -> MagicMock:
+    """Return a mock bot wired with ticket-category DB mocks (setup-module tickets tests).
+
+    Mirrors the per-file ``_make_bot`` twin: db insert/get/delete/update/count
+    AsyncMocks pre-seeded with two categories, plus guild_service language es.
+    """
+    bot = MagicMock()
+    bot.db = MagicMock()
+    bot.db.insert_ticket_category = AsyncMock(return_value={"id": "new-uuid", "name": "Support", "guildId": guild_id})
+    bot.db.get_ticket_categories = AsyncMock(
+        return_value=[
+            {
+                "id": "cat-1",
+                "name": "Support",
+                "guildId": guild_id,
+                "position": 0,
+                "active": True,
+                "emoji": None,
+                "description": None,
+            },
+            {
+                "id": "cat-2",
+                "name": "Reports",
+                "guildId": guild_id,
+                "position": 1,
+                "active": True,
+                "emoji": None,
+                "description": None,
+            },
+        ]
+    )
+    bot.db.get_ticket_category = AsyncMock(return_value={"id": "cat-1", "name": "Support", "guildId": guild_id})
+    bot.db.delete_ticket_category = AsyncMock(return_value=None)
+    bot.db.update_ticket_category_field_definitions = AsyncMock(return_value=None)
+    bot.db.count_open_tickets_by_category = AsyncMock(return_value=0)
+    bot.guild_service = MagicMock()
+    bot.guild_service.get_config = AsyncMock(return_value=MagicMock(language="es"))
+    return bot
 
 
 # ---------------------------------------------------------------------------

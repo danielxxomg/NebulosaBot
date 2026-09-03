@@ -17,44 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch  # noqa: F401
 import discord
 import pytest
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_bot(guild_id: str = "123456789") -> MagicMock:
-    bot = MagicMock()
-    bot.db = MagicMock()
-    bot.db.insert_ticket_category = AsyncMock(return_value={"id": "new-uuid", "name": "Support", "guildId": guild_id})
-    bot.db.get_ticket_categories = AsyncMock(
-        return_value=[
-            {
-                "id": "cat-1",
-                "name": "Support",
-                "guildId": guild_id,
-                "position": 0,
-                "active": True,
-                "emoji": None,
-                "description": None,
-            },
-            {
-                "id": "cat-2",
-                "name": "Reports",
-                "guildId": guild_id,
-                "position": 1,
-                "active": True,
-                "emoji": None,
-                "description": None,
-            },
-        ]
-    )
-    bot.db.get_ticket_category = AsyncMock(return_value={"id": "cat-1", "name": "Support", "guildId": guild_id})
-    bot.db.delete_ticket_category = AsyncMock(return_value=None)
-    bot.db.update_ticket_category_field_definitions = AsyncMock(return_value=None)
-    bot.db.count_open_tickets_by_category = AsyncMock(return_value=0)
-    bot.guild_service = MagicMock()
-    bot.guild_service.get_config = AsyncMock(return_value=MagicMock(language="es"))
-    return bot
+from tests.conftest import make_ticket_bot as _make_bot
 
 
 def _make_interaction(guild_id: int = 123456789, user_id: int = 111) -> MagicMock:

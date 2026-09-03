@@ -21,6 +21,7 @@ from discord.ext import commands
 from bot.cogs.utility import UtilityCog
 from bot.core.i18n import load_locales, set_guild_language
 from bot.utils.brand import ERROR
+from tests.conftest import make_member
 
 # ---------------------------------------------------------------------------
 # i18n setup — load real locale files for all tests
@@ -108,18 +109,13 @@ def _make_member(
     display_name: str = "TargetUser",
     roles: list[MagicMock] | None = None,
 ) -> MagicMock:
-    """Build a mock discord.Member with avatar, roles, and timestamps."""
-    member = MagicMock(spec=discord.Member)
-    member.id = user_id
-    member.display_name = display_name
+    """Build a mock discord.Member via the shared factory, enriched for UtilityCog rendering."""
+    member = make_member(member_id=user_id, display_name=display_name, roles=roles or [])
     member.display_avatar = MagicMock()
     member.display_avatar.url = f"https://cdn.discord.com/avatars/{user_id}/target.png"
     member.color = discord.Color.blue()
-    member.mention = f"<@{user_id}>"
-    member.roles = roles or []
     member.joined_at = datetime(2024, 5, 1, tzinfo=UTC)
     member.created_at = datetime(2023, 1, 1, tzinfo=UTC)
-    member.bot = False
     member.__str__ = MagicMock(return_value=f"{display_name}#1234")
     return member
 
@@ -128,43 +124,37 @@ def _make_member(
 # /avatar — show user avatar
 # ---------------------------------------------------------------------------
 
+# Self/target cases share one behavior contract: the embed shows the target's
+# (author when no member given) avatar as a large image. Case flag selects the
+# original per-test construction; asserts are verbatim from the pair.
+_AVATAR_CASES = [
+    pytest.param(False, id="self"),
+    pytest.param(True, id="target"),
+]
+
 
 class TestAvatarCommand:
     """Tests for /avatar hybrid command."""
 
     @pytest.mark.asyncio
-    async def test_avatar_self_shows_author_image(
+    @pytest.mark.parametrize(("use_target",), _AVATAR_CASES)
+    async def test_avatar_shows_target_image(
         self,
         cog: UtilityCog,
+        use_target: bool,
     ) -> None:
-        """Invoking /avatar without a target shows the caller's avatar as a large image."""
+        """Invoking /avatar shows the target's (or caller's) avatar as a large image."""
         ctx = _make_ctx()
+        target = _make_member() if use_target else None
+        shown: MagicMock = ctx.author if not use_target else target  # type: ignore[assignment] -- same flag built target
 
-        await cog.avatar.callback(cog, ctx, member=None)
-
+        await cog.avatar.callback(cog, ctx, member=target)
         ctx.send.assert_called_once()
         call_args = ctx.send.call_args
         embed = call_args[1]["embed"]
         assert isinstance(embed, discord.Embed)
-        assert embed.image.url == f"{ctx.author.display_avatar.url}?size=1024"
-        assert ctx.author.display_name in embed.title
-
-    @pytest.mark.asyncio
-    async def test_avatar_target_shows_member_image(
-        self,
-        cog: UtilityCog,
-    ) -> None:
-        """Invoking /avatar @member shows the target's avatar as a large image."""
-        ctx = _make_ctx()
-        target = _make_member()
-
-        await cog.avatar.callback(cog, ctx, member=target)
-
-        ctx.send.assert_called_once()
-        call_args = ctx.send.call_args
-        embed = call_args[1]["embed"]
-        assert embed.image.url == f"{target.display_avatar.url}?size=1024"
-        assert target.display_name in embed.title
+        assert embed.image.url == f"{shown.display_avatar.url}?size=1024"
+        assert shown.display_name in embed.title
 
     @pytest.mark.asyncio
     async def test_avatar_fallback_when_no_avatar(

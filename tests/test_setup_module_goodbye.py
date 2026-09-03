@@ -13,66 +13,12 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
+from tests.conftest import make_greeting_bot as _make_bot_with_greeting
+from tests.conftest import make_greeting_interaction as _make_interaction
+
 # Locale snapshot read once at import (sync context — ASYNC240 forbids blocking
 # pathlib reads inside async tests). Read-only; tests never mutate locale files.
 _EN_LOCALE = json.loads(pathlib.Path("bot/locales/en.json").read_text(encoding="utf-8"))
-
-
-def _make_bot_with_greeting(guild_id: str = "123456789", config: MagicMock | None = None) -> MagicMock:
-    bot = MagicMock()
-    bot.greeting_service = MagicMock()
-    cfg = config or MagicMock(
-        guild_id=guild_id,
-        welcome_channel_id=None,
-        welcome_enabled=False,
-        welcome_message=None,
-        welcome_card_enabled=False,
-        theme_id=None,
-        goodbye_channel_id="222333444",
-        goodbye_enabled=True,
-        goodbye_message="Bye {mention}",
-        goodbye_card_enabled=True,
-        onboarding_channel_id=None,
-    )
-    cfg.guild_id = guild_id
-    bot.greeting_service.get_config = AsyncMock(return_value=cfg)
-    bot.greeting_service.save_config = AsyncMock(return_value=None)
-    bot.greeting_service.resolve_renderer = MagicMock(return_value=lambda **_: io.BytesIO(b"fake-goodbye"))
-    bot.guild_service = MagicMock()
-    bot.guild_service.get_config = AsyncMock(return_value=MagicMock(language="en"))
-    return bot
-
-
-def _make_interaction(guild_id: int = 123456789, user_id: int = 111, client: MagicMock | None = None) -> MagicMock:
-    inter = MagicMock(spec=discord.Interaction)
-    inter.guild = MagicMock(spec=discord.Guild)
-    inter.guild.id = guild_id
-    inter.guild_id = guild_id
-    inter.guild.name = "TestGuild"
-    chan = MagicMock(spec=discord.TextChannel)
-    chan.send = AsyncMock()
-    inter.guild.get_channel = MagicMock(return_value=chan)
-    inter.guild.member_count = 99
-    inter.guild.icon = None
-    inter.user = MagicMock(spec=discord.Member)
-    inter.user.id = user_id
-    inter.user.display_name = "LeavingUser"
-    inter.user.display_avatar = MagicMock()
-    inter.user.display_avatar.url = "https://cdn.example/ava2.png"
-    inter.user.guild_permissions.administrator = True
-    inter.response = MagicMock()
-    inter.response.send_message = AsyncMock()
-    inter.response.send_modal = AsyncMock()
-    inter.response.defer = AsyncMock()
-    inter.response.edit_message = AsyncMock()
-    inter.response.is_done.return_value = False
-    inter.followup = MagicMock()
-    inter.followup.send = AsyncMock()
-    inter.message = MagicMock()
-    inter.message.edit = AsyncMock()
-    inter.client = client or _make_bot_with_greeting(str(guild_id))
-    inter.data = {"custom_id": "setup:goodbye:test"}
-    return inter
 
 
 class TestGoodbyeModuleRegistration:
@@ -119,7 +65,7 @@ class TestGoodbyeModuleParity:
             onboarding_channel_id=None,
         )
         cfg.guild_id = guild_id
-        bot = _make_bot_with_greeting(guild_id, cfg)
+        bot = _make_bot_with_greeting("goodbye", guild_id=guild_id, config=cfg)
         mod = GoodbyeSetupModule(bot=bot)
         if hasattr(mod, "set_goodbye_channel"):
             await mod.set_goodbye_channel(guild_id, "444555666")
@@ -159,7 +105,7 @@ class TestGoodbyePreviewRealArtifact:
             onboarding_channel_id=None,
         )
         cfg.guild_id = guild_id
-        bot = _make_bot_with_greeting(guild_id, cfg)
+        bot = _make_bot_with_greeting("goodbye", guild_id=guild_id, config=cfg)
         render_calls: list[dict] = []
 
         def _real_renderer(**kw: object) -> io.BytesIO:  # noqa: ANN002
@@ -171,7 +117,13 @@ class TestGoodbyePreviewRealArtifact:
         from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # documented-exception: facade indirection
 
         mod = GoodbyeSetupModule(bot=bot)
-        interaction = _make_interaction(guild_id=int(guild_id), client=bot)
+        interaction = _make_interaction(
+            guild_id=int(guild_id),
+            client=bot,
+            custom_id="setup:goodbye:test",
+            display_name="LeavingUser",
+            avatar_url="https://cdn.example/ava2.png",
+        )
         interaction.guild = guild
         await mod.handle(interaction, "test")
 
@@ -193,13 +145,19 @@ class TestGoodbyePreviewRealArtifact:
             goodbye_card_enabled=True,
         )
         cfg.guild_id = guild_id
-        bot = _make_bot_with_greeting(guild_id, cfg)
+        bot = _make_bot_with_greeting("goodbye", guild_id=guild_id, config=cfg)
         bot.greeting_service.resolve_renderer = MagicMock(return_value=lambda **_: io.BytesIO(b"x"))
 
         from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # documented-exception: facade indirection
 
         mod = GoodbyeSetupModule(bot=bot)
-        interaction = _make_interaction(guild_id=int(guild_id), client=bot)
+        interaction = _make_interaction(
+            guild_id=int(guild_id),
+            client=bot,
+            custom_id="setup:goodbye:test",
+            display_name="LeavingUser",
+            avatar_url="https://cdn.example/ava2.png",
+        )
         interaction.guild = MagicMock(spec=discord.Guild)
         interaction.guild.id = int(guild_id)
         interaction.guild.get_channel = MagicMock(return_value=None)
@@ -226,7 +184,7 @@ class TestGoodbyePreviewRealArtifact:
     def test_components_include_test_button(self) -> None:
         from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # documented-exception: facade indirection
 
-        mod = GoodbyeSetupModule(bot=_make_bot_with_greeting())
+        mod = GoodbyeSetupModule(bot=_make_bot_with_greeting("goodbye"))
         items = mod.components("123456789")
         cids = {getattr(i, "custom_id", None) for i in items}
         assert "setup:goodbye:test" in cids
@@ -240,7 +198,7 @@ class TestGoodbyeTemplatePicker:
     def test_components_include_template_select(self) -> None:
         from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # documented-exception: facade indirection
 
-        mod = GoodbyeSetupModule(bot=_make_bot_with_greeting())
+        mod = GoodbyeSetupModule(bot=_make_bot_with_greeting("goodbye"))
         items = mod.components("123456789")
         select = next(
             (i for i in items if getattr(i, "custom_id", None) == "setup:goodbye:select_template"),
@@ -252,7 +210,7 @@ class TestGoodbyeTemplatePicker:
     def test_template_select_offers_exactly_four_options(self) -> None:
         from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # documented-exception: facade indirection
 
-        mod = GoodbyeSetupModule(bot=_make_bot_with_greeting())
+        mod = GoodbyeSetupModule(bot=_make_bot_with_greeting("goodbye"))
         items = mod.components("123456789")
         select = next(i for i in items if getattr(i, "custom_id", None) == "setup:goodbye:select_template")
         assert isinstance(select, discord.ui.Select)
@@ -266,7 +224,7 @@ class TestGoodbyeTemplatePicker:
 
         en = _EN_LOCALE
         set_guild_language("123456789", "en")
-        mod = GoodbyeSetupModule(bot=_make_bot_with_greeting())
+        mod = GoodbyeSetupModule(bot=_make_bot_with_greeting("goodbye"))
         items = mod.components("123456789")
         select = next(i for i in items if getattr(i, "custom_id", None) == "setup:goodbye:select_template")
         assert isinstance(select, discord.ui.Select)
@@ -283,7 +241,7 @@ class TestGoodbyeTemplatePicker:
         from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # documented-exception: facade indirection
 
         guild_id = "123456789"
-        bot = _make_bot_with_greeting(guild_id)
+        bot = _make_bot_with_greeting("goodbye", guild_id=guild_id)
         bot.greeting_service.get_config = AsyncMock(
             return_value=MagicMock(
                 guild_id=guild_id,
@@ -293,7 +251,13 @@ class TestGoodbyeTemplatePicker:
             )
         )
         mod = GoodbyeSetupModule(bot=bot)
-        interaction = _make_interaction(guild_id=int(guild_id), client=bot)
+        interaction = _make_interaction(
+            guild_id=int(guild_id),
+            client=bot,
+            custom_id="setup:goodbye:test",
+            display_name="LeavingUser",
+            avatar_url="https://cdn.example/ava2.png",
+        )
         interaction.data = {"custom_id": "setup:goodbye:select_template", "values": ["minimal_light"]}
 
         select = next(
@@ -316,9 +280,15 @@ class TestGoodbyeTemplatePicker:
         from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # documented-exception: facade indirection
 
         guild_id = "123456789"
-        bot = _make_bot_with_greeting(guild_id)
+        bot = _make_bot_with_greeting("goodbye", guild_id=guild_id)
         mod = GoodbyeSetupModule(bot=bot)
-        interaction = _make_interaction(guild_id=int(guild_id), client=bot)
+        interaction = _make_interaction(
+            guild_id=int(guild_id),
+            client=bot,
+            custom_id="setup:goodbye:test",
+            display_name="LeavingUser",
+            avatar_url="https://cdn.example/ava2.png",
+        )
         interaction.user.guild_permissions.administrator = False
         interaction.data = {"custom_id": "setup:goodbye:select_template", "values": ["minimal_light"]}
 
@@ -341,7 +311,7 @@ class TestGoodbyeTemplatePicker:
         en = _EN_LOCALE
         set_guild_language("123456789", "en")
         guild_id = "123456789"
-        bot = _make_bot_with_greeting(guild_id)
+        bot = _make_bot_with_greeting("goodbye", guild_id=guild_id)
         bot.greeting_service.get_config = AsyncMock(
             return_value=MagicMock(
                 guild_id=guild_id,
