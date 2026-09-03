@@ -8,7 +8,7 @@ from __future__ import annotations
 import io
 import json
 import pathlib
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
@@ -23,12 +23,12 @@ _EN_LOCALE = json.loads(pathlib.Path("bot/locales/en.json").read_text(encoding="
 
 class TestGoodbyeModuleRegistration:
     def test_module_exists(self) -> None:
-        from bot.views.setup_panel import MODULES  # documented-exception: facade indirection
+        from bot.views.setup_panel import MODULES  # noqa: PLC0415 -- facade indirection
 
         assert "goodbye" in MODULES, f"MODULES must contain goodbye, got {list(MODULES.keys())}"
 
     def test_module_protocol(self) -> None:
-        from bot.views.setup_panel import MODULES  # documented-exception: facade indirection
+        from bot.views.setup_panel import MODULES  # noqa: PLC0415 -- facade indirection
 
         mod = MODULES["goodbye"]
         assert hasattr(mod, "key") and mod.key == "goodbye"
@@ -38,7 +38,7 @@ class TestGoodbyeModuleRegistration:
         assert callable(getattr(mod, "handle", None))
 
     def test_registered_without_framework_edits(self) -> None:
-        import pathlib  # documented-exception: facade indirection
+        import pathlib  # noqa: PLC0415 -- facade indirection
 
         src = pathlib.Path("bot/views/setup_panel.py").read_text(encoding="utf-8")
         assert "class GoodbyeSetupModule" not in src
@@ -48,7 +48,7 @@ class TestGoodbyeModuleRegistration:
 class TestGoodbyeModuleParity:
     @pytest.mark.asyncio
     async def test_save_channel_matches_legacy_effect(self) -> None:
-        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # documented-exception: facade indirection
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # noqa: PLC0415 -- facade indirection
 
         guild_id = "123456789"
         cfg = MagicMock(
@@ -114,7 +114,7 @@ class TestGoodbyePreviewRealArtifact:
 
         bot.greeting_service.resolve_renderer = MagicMock(return_value=_real_renderer)
 
-        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # documented-exception: facade indirection
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # noqa: PLC0415 -- facade indirection
 
         mod = GoodbyeSetupModule(bot=bot)
         interaction = _make_interaction(
@@ -148,7 +148,7 @@ class TestGoodbyePreviewRealArtifact:
         bot = _make_bot_with_greeting("goodbye", guild_id=guild_id, config=cfg)
         bot.greeting_service.resolve_renderer = MagicMock(return_value=lambda **_: io.BytesIO(b"x"))
 
-        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # documented-exception: facade indirection
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # noqa: PLC0415 -- facade indirection
 
         mod = GoodbyeSetupModule(bot=bot)
         interaction = _make_interaction(
@@ -175,14 +175,14 @@ class TestGoodbyePreviewRealArtifact:
         bot.greeting_service.save_config.assert_not_awaited()
 
     def test_caller_passes_translated_strings_no_hardcoded_copy(self) -> None:
-        import pathlib  # documented-exception: facade indirection
+        import pathlib  # noqa: PLC0415 -- facade indirection
 
         src = pathlib.Path("bot/views/setup_modules/goodbye.py").read_text(encoding="utf-8")
         assert "t(" in src
         assert "greeting_title" in src or "greetings.card" in src
 
     def test_components_include_test_button(self) -> None:
-        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # documented-exception: facade indirection
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # noqa: PLC0415 -- facade indirection
 
         mod = GoodbyeSetupModule(bot=_make_bot_with_greeting("goodbye"))
         items = mod.components("123456789")
@@ -196,7 +196,7 @@ class TestGoodbyeTemplatePicker:
     _TEMPLATE_IDS = ("default", "gaming_neon", "sunset_wave", "minimal_light")
 
     def test_components_include_template_select(self) -> None:
-        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # documented-exception: facade indirection
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # noqa: PLC0415 -- facade indirection
 
         mod = GoodbyeSetupModule(bot=_make_bot_with_greeting("goodbye"))
         items = mod.components("123456789")
@@ -208,7 +208,7 @@ class TestGoodbyeTemplatePicker:
         assert isinstance(select, discord.ui.Select)
 
     def test_template_select_offers_exactly_four_options(self) -> None:
-        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # documented-exception: facade indirection
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # noqa: PLC0415 -- facade indirection
 
         mod = GoodbyeSetupModule(bot=_make_bot_with_greeting("goodbye"))
         items = mod.components("123456789")
@@ -219,8 +219,8 @@ class TestGoodbyeTemplatePicker:
 
     def test_template_option_labels_resolve_via_t_not_hardcoded(self) -> None:
         """Option labels/descriptions must come from locale values (t()), not English literals."""
-        from bot.core.i18n import set_guild_language  # documented-exception: facade indirection
-        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # documented-exception: facade indirection
+        from bot.core.i18n import set_guild_language  # noqa: PLC0415 -- facade indirection
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # noqa: PLC0415 -- facade indirection
 
         en = _EN_LOCALE
         set_guild_language("123456789", "en")
@@ -238,7 +238,7 @@ class TestGoodbyeTemplatePicker:
     @pytest.mark.asyncio
     async def test_selecting_goodbye_template_persists_per_kind(self) -> None:
         """Selection → set_goodbye_template_id → save_config; welcome id stays sunset_wave (kind-scoped)."""
-        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # documented-exception: facade indirection
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # noqa: PLC0415 -- facade indirection
 
         guild_id = "123456789"
         bot = _make_bot_with_greeting("goodbye", guild_id=guild_id)
@@ -275,9 +275,8 @@ class TestGoodbyeTemplatePicker:
     @pytest.mark.asyncio
     async def test_missing_greeting_manage_denied_ephemeral_no_mutation(self) -> None:
         """Without greeting.manage grant, picker must deny ephemerally and never mutate config."""
-        from unittest.mock import patch
 
-        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # documented-exception: facade indirection
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # noqa: PLC0415 -- facade indirection
 
         guild_id = "123456789"
         bot = _make_bot_with_greeting("goodbye", guild_id=guild_id)
@@ -305,8 +304,8 @@ class TestGoodbyeTemplatePicker:
     @pytest.mark.asyncio
     async def test_render_async_shows_template_label(self) -> None:
         """Embed description includes the resolved template label via t() (spec render_async scenario)."""
-        from bot.core.i18n import set_guild_language  # documented-exception: facade indirection
-        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # documented-exception: facade indirection
+        from bot.core.i18n import set_guild_language  # noqa: PLC0415 -- facade indirection
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # noqa: PLC0415 -- facade indirection
 
         en = _EN_LOCALE
         set_guild_language("123456789", "en")
@@ -328,3 +327,123 @@ class TestGoodbyeTemplatePicker:
         assert expected in (embed.description or ""), (
             f"render_async must show resolved template label '{expected}', got {embed.description!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Coverage: goodbye setter fallbacks + handle branches
+# ---------------------------------------------------------------------------
+
+
+class TestGoodbyeCoverageSettersAndHandle:
+    """Cover goodbye.py setter fallback branches and handle edge paths."""
+
+    @pytest.mark.asyncio
+    async def test_set_goodbye_channel_persists(self) -> None:
+
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        cfg = MagicMock(guild_id="g1", goodbye_channel_id=None)
+        bot = MagicMock()
+        bot.greeting_service = MagicMock()
+        bot.greeting_service.get_config = AsyncMock(return_value=cfg)
+        bot.greeting_service.save_config = AsyncMock(return_value=None)
+        mod = GoodbyeSetupModule(bot=None)
+        with patch("bot.views.setup_panel._get_setup_bot", return_value=bot):
+            await mod.set_goodbye_channel("g1", "chan-9")
+        assert cfg.goodbye_channel_id == "chan-9"
+
+    @pytest.mark.asyncio
+    async def test_set_goodbye_template_via_explicit_bot(self) -> None:
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        cfg = MagicMock(guild_id="g1", goodbye_template_id=None)
+        bot = MagicMock()
+        bot.greeting_service = MagicMock()
+        bot.greeting_service.get_config = AsyncMock(return_value=cfg)
+        bot.greeting_service.save_config = AsyncMock(return_value=None)
+        mod = GoodbyeSetupModule(bot=None)
+        await mod.set_goodbye_template_id("g1", "sunset_wave", bot=bot)
+        assert cfg.goodbye_template_id == "sunset_wave"
+
+    @pytest.mark.asyncio
+    async def test_set_goodbye_channel_raises_without_bot(self) -> None:
+
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        mod = GoodbyeSetupModule(bot=None)
+        with (
+            patch("bot.views.setup_panel._get_setup_bot", return_value=None),
+            pytest.raises(RuntimeError, match="GreetingService unavailable"),
+        ):
+            await mod.set_goodbye_channel("g1", "x")
+
+    @pytest.mark.asyncio
+    async def test_handle_guild_none_early_return(self) -> None:
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        mod = GoodbyeSetupModule(bot=None)
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild = None
+        await mod.handle(inter, "test")
+
+    @pytest.mark.asyncio
+    async def test_handle_bot_none_early_return(self) -> None:
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        mod = GoodbyeSetupModule(bot=None)
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild = MagicMock(spec=discord.Guild)
+        inter.guild.id = 123
+        orig = mod._resolve_bot
+        mod._resolve_bot = MagicMock(return_value=None)  # type: ignore[method-assign]
+        try:
+            await mod.handle(inter, "test")
+        finally:
+            mod._resolve_bot = orig  # type: ignore[method-assign]
+
+    @pytest.mark.asyncio
+    async def test_handle_unknown_action_shows_error(self) -> None:
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        bot = _make_bot_with_greeting("goodbye", guild_id="123456789")
+        mod = GoodbyeSetupModule(bot=bot)
+        inter = _make_interaction(guild_id=123456789, client=bot)
+        inter.response.send_message = AsyncMock()
+        await mod.handle(inter, "bogus_xyz")
+        assert inter.response.send_message.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_handle_editor_actions_send_ephemeral(self) -> None:
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        bot = _make_bot_with_greeting("goodbye", guild_id="123456789")
+        mod = GoodbyeSetupModule(bot=bot)
+        inter = _make_interaction(guild_id=123456789, client=bot)
+        for action in ("set_channel", "toggle", "set_message", "card_toggle"):
+            inter.response.send_message = AsyncMock()
+            await mod.handle(inter, action)
+            assert inter.response.send_message.await_count == 1, f"{action!r} must send ephemeral"
+
+    def test_render_sync_returns_embed(self) -> None:
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        mod = GoodbyeSetupModule(bot=None)
+        embed = mod.render("123456789")
+        assert isinstance(embed, discord.Embed)
+
+    @pytest.mark.asyncio
+    async def test_render_async_without_bot_returns_embed(self) -> None:
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        mod = GoodbyeSetupModule(bot=None)
+        embed = await mod.render_async("123456789")
+        assert isinstance(embed, discord.Embed)
+
+    def test_resolve_bot_via_interaction_client(self) -> None:
+        from bot.views.setup_modules.goodbye import GoodbyeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        bot = MagicMock()
+        mod = GoodbyeSetupModule(bot=None)
+        inter = MagicMock(spec=discord.Interaction)
+        inter.client = bot
+        assert mod._resolve_bot(inter) is bot

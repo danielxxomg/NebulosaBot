@@ -12,7 +12,7 @@ from __future__ import annotations
 import io
 import json
 import pathlib
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
@@ -29,12 +29,12 @@ class TestWelcomeModuleRegistration:
     """MODULES must contain welcome module implementing SetupModule protocol without framework edits."""
 
     def test_module_exists(self) -> None:
-        from bot.views.setup_panel import MODULES  # documented-exception: facade indirection
+        from bot.views.setup_panel import MODULES  # noqa: PLC0415 -- facade indirection
 
         assert "welcome" in MODULES, f"MODULES must contain welcome, got {list(MODULES.keys())}"
 
     def test_module_protocol(self) -> None:
-        from bot.views.setup_panel import MODULES  # documented-exception: facade indirection
+        from bot.views.setup_panel import MODULES  # noqa: PLC0415 -- facade indirection
 
         mod = MODULES["welcome"]
         assert hasattr(mod, "key") and mod.key == "welcome"
@@ -45,7 +45,7 @@ class TestWelcomeModuleRegistration:
 
     def test_registered_without_framework_edits(self) -> None:
         """Welcome module must be registered via MODULES dict, not by editing setup_panel framework to hardcode welcome."""
-        import pathlib  # documented-exception: facade indirection
+        import pathlib  # noqa: PLC0415 -- facade indirection
 
         src = pathlib.Path("bot/views/setup_panel.py").read_text(encoding="utf-8")
         # Framework does not hardcode Welcome-specific logic beyond generic MODULES routing
@@ -60,7 +60,7 @@ class TestWelcomeModuleParity:
 
     @pytest.mark.asyncio
     async def test_save_channel_matches_legacy_effect(self) -> None:
-        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
 
         guild_id = "123456789"
         cfg = MagicMock(
@@ -102,7 +102,7 @@ class TestWelcomeModuleParity:
         """Cache invalidation must be delegated to GreetingService.save_config (same as legacy /welcome channel)."""
         guild_id = "123456789"
         bot = _make_bot_with_greeting("welcome", guild_id=guild_id)
-        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
 
         mod = WelcomeSetupModule(bot=bot)
         if hasattr(mod, "set_welcome_channel"):
@@ -117,7 +117,7 @@ class TestWelcomeModuleParity:
 
     def test_orphan_columns_exposed_in_editors(self) -> None:
         """Orphan columns cardEnabled, themeId, onboardingChannelId must be exposed in Welcome module editors."""
-        import pathlib  # documented-exception: facade indirection
+        import pathlib  # noqa: PLC0415 -- facade indirection
 
         src = pathlib.Path("bot/views/setup_modules/welcome.py").read_text(encoding="utf-8")
         lower = src.lower()
@@ -164,7 +164,7 @@ class TestWelcomePreviewRealArtifact:
 
         bot.greeting_service.resolve_renderer = MagicMock(return_value=_real_renderer)
 
-        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
 
         mod = WelcomeSetupModule(bot=bot)
         interaction = _make_interaction(guild_id=int(guild_id), client=bot)
@@ -200,7 +200,7 @@ class TestWelcomePreviewRealArtifact:
         bot = _make_bot_with_greeting("welcome", guild_id=guild_id, config=cfg)
         bot.greeting_service.resolve_renderer = MagicMock(return_value=lambda **_: io.BytesIO(b"x"))
 
-        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
 
         mod = WelcomeSetupModule(bot=bot)
         interaction = _make_interaction(guild_id=int(guild_id), client=bot)
@@ -226,7 +226,7 @@ class TestWelcomePreviewRealArtifact:
 
     def test_caller_passes_translated_strings_no_hardcoded_copy(self) -> None:
         """Greeting card text must come from t() via caller; no hardcoded copy in module."""
-        import pathlib  # documented-exception: facade indirection
+        import pathlib  # noqa: PLC0415 -- facade indirection
 
         src = pathlib.Path("bot/views/setup_modules/welcome.py").read_text(encoding="utf-8")
         # Ensure t("greetings.card.*") or similar is used; and no hardcoded "Welcome to" literal as title
@@ -239,7 +239,7 @@ class TestWelcomeComponents:
     """Welcome module must expose components including test button setup:welcome:test."""
 
     def test_components_include_test_button(self) -> None:
-        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
 
         mod = WelcomeSetupModule(bot=_make_bot_with_greeting("welcome"))
         items = mod.components("123456789")
@@ -253,7 +253,7 @@ class TestWelcomeTemplatePicker:
     _TEMPLATE_IDS = ("default", "gaming_neon", "sunset_wave", "minimal_light")
 
     def test_components_include_template_select(self) -> None:
-        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
 
         mod = WelcomeSetupModule(bot=_make_bot_with_greeting("welcome"))
         items = mod.components("123456789")
@@ -265,7 +265,7 @@ class TestWelcomeTemplatePicker:
         assert isinstance(select, discord.ui.Select)
 
     def test_template_select_offers_exactly_four_options(self) -> None:
-        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
 
         mod = WelcomeSetupModule(bot=_make_bot_with_greeting("welcome"))
         items = mod.components("123456789")
@@ -276,8 +276,8 @@ class TestWelcomeTemplatePicker:
 
     def test_template_option_labels_resolve_via_t_not_hardcoded(self) -> None:
         """Option labels/descriptions must come from locale values (t()), not English literals."""
-        from bot.core.i18n import set_guild_language  # documented-exception: facade indirection
-        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
+        from bot.core.i18n import set_guild_language  # noqa: PLC0415 -- facade indirection
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
 
         es = _ES_LOCALE
         set_guild_language("123456789", "es")
@@ -295,7 +295,7 @@ class TestWelcomeTemplatePicker:
     @pytest.mark.asyncio
     async def test_selecting_welcome_template_persists_per_kind(self) -> None:
         """Selection → set_welcome_template_id → save_config (welcome-wins dual-write); goodbye untouched."""
-        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
 
         guild_id = "123456789"
         bot = _make_bot_with_greeting("welcome", guild_id=guild_id)
@@ -330,9 +330,8 @@ class TestWelcomeTemplatePicker:
     @pytest.mark.asyncio
     async def test_missing_greeting_manage_denied_ephemeral_no_mutation(self) -> None:
         """Without greeting.manage grant, picker must deny ephemerally and never mutate config."""
-        from unittest.mock import patch
 
-        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
 
         guild_id = "123456789"
         bot = _make_bot_with_greeting("welcome", guild_id=guild_id)
@@ -354,8 +353,8 @@ class TestWelcomeTemplatePicker:
     @pytest.mark.asyncio
     async def test_render_async_shows_template_label(self) -> None:
         """Embed description includes the resolved template label via t() (spec render_async scenario)."""
-        from bot.core.i18n import set_guild_language  # documented-exception: facade indirection
-        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
+        from bot.core.i18n import set_guild_language  # noqa: PLC0415 -- facade indirection
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
 
         es = _ES_LOCALE
         set_guild_language("123456789", "es")
@@ -378,3 +377,244 @@ class TestWelcomeTemplatePicker:
         assert expected in (embed.description or ""), (
             f"render_async must show resolved template label '{expected}', got {embed.description!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Coverage: setter fallbacks + handle branches + _resolve_bot fallback
+# ---------------------------------------------------------------------------
+
+
+class TestWelcomeCoverageSettersAndHandle:
+    """Cover welcome.py setter fallback branches and handle edge paths."""
+
+    @pytest.mark.asyncio
+    async def test_set_welcome_channel_via_resolve_bot(self) -> None:
+        """set_welcome_channel resolves bot via _resolve_bot fallback (no injected bot)."""
+
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        cfg = MagicMock(guild_id="g1", welcome_channel_id=None)
+        bot = MagicMock()
+        bot.greeting_service = MagicMock()
+        bot.greeting_service.get_config = AsyncMock(return_value=cfg)
+        bot.greeting_service.save_config = AsyncMock(return_value=None)
+        mod = WelcomeSetupModule(bot=None)
+        with patch("bot.views.setup_panel._get_setup_bot", return_value=bot):
+            await mod.set_welcome_channel("g1", "chan-1")
+        assert cfg.welcome_channel_id == "chan-1"
+        bot.greeting_service.save_config.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_set_welcome_card_enabled_persists(self) -> None:
+
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        cfg = MagicMock(guild_id="g1", welcome_card_enabled=False)
+        bot = MagicMock()
+        bot.greeting_service = MagicMock()
+        bot.greeting_service.get_config = AsyncMock(return_value=cfg)
+        bot.greeting_service.save_config = AsyncMock(return_value=None)
+        mod = WelcomeSetupModule(bot=None)
+        with patch("bot.views.setup_panel._get_setup_bot", return_value=bot):
+            await mod.set_welcome_card_enabled("g1", True)
+        assert cfg.welcome_card_enabled is True
+
+    @pytest.mark.asyncio
+    async def test_set_theme_id_persists(self) -> None:
+
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        cfg = MagicMock(guild_id="g1", theme_id=None)
+        bot = MagicMock()
+        bot.greeting_service = MagicMock()
+        bot.greeting_service.get_config = AsyncMock(return_value=cfg)
+        bot.greeting_service.save_config = AsyncMock(return_value=None)
+        mod = WelcomeSetupModule(bot=None)
+        with patch("bot.views.setup_panel._get_setup_bot", return_value=bot):
+            await mod.set_theme_id("g1", "sunset_wave")
+        assert cfg.theme_id == "sunset_wave"
+
+    @pytest.mark.asyncio
+    async def test_set_onboarding_channel_id_persists(self) -> None:
+
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        cfg = MagicMock(guild_id="g1", onboarding_channel_id=None)
+        bot = MagicMock()
+        bot.greeting_service = MagicMock()
+        bot.greeting_service.get_config = AsyncMock(return_value=cfg)
+        bot.greeting_service.save_config = AsyncMock(return_value=None)
+        mod = WelcomeSetupModule(bot=None)
+        with patch("bot.views.setup_panel._get_setup_bot", return_value=bot):
+            await mod.set_onboarding_channel_id("g1", "chan-2")
+        assert cfg.onboarding_channel_id == "chan-2"
+
+    @pytest.mark.asyncio
+    async def test_set_welcome_template_id_via_explicit_bot(self) -> None:
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        cfg = MagicMock(guild_id="g1", welcome_template_id=None)
+        bot = MagicMock()
+        bot.greeting_service = MagicMock()
+        bot.greeting_service.get_config = AsyncMock(return_value=cfg)
+        bot.greeting_service.save_config = AsyncMock(return_value=None)
+        mod = WelcomeSetupModule(bot=None)
+        # Pass bot explicitly (panel-routed path)
+        await mod.set_welcome_template_id("g1", "minimal_light", bot=bot)
+        assert cfg.welcome_template_id == "minimal_light"
+
+    @pytest.mark.asyncio
+    async def test_set_welcome_channel_raises_without_bot(self) -> None:
+        """No bot available → RuntimeError (GreetingService unavailable)."""
+
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        mod = WelcomeSetupModule(bot=None)
+        with (
+            patch("bot.views.setup_panel._get_setup_bot", return_value=None),
+            pytest.raises(RuntimeError, match="GreetingService unavailable"),
+        ):
+            await mod.set_welcome_channel("g1", "x")
+
+    @pytest.mark.asyncio
+    async def test_handle_guild_none_early_return(self) -> None:
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        mod = WelcomeSetupModule(bot=None)
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild = None
+        # Should return without raising, exercising the guild-None branch
+        await mod.handle(inter, "test")
+
+    @pytest.mark.asyncio
+    async def test_handle_bot_none_early_return(self) -> None:
+
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        mod = WelcomeSetupModule(bot=None)
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild = MagicMock(spec=discord.Guild)
+        inter.guild.id = 123
+        with patch.object(mod, "_resolve_bot", return_value=None):
+            await mod.handle(inter, "test")
+
+    @pytest.mark.asyncio
+    async def test_handle_unknown_action_shows_error(self) -> None:
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        bot = _make_bot_with_greeting("welcome", guild_id="123456789")
+        mod = WelcomeSetupModule(bot=bot)
+        inter = _make_interaction(guild_id=123456789, client=bot)
+        inter.response.send_message = AsyncMock()
+        # Unknown action should send ephemeral error (covers :268-275)
+        await mod.handle(inter, "bogus_unknown")
+        assert inter.response.send_message.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_handle_editor_actions_send_ephemeral(self) -> None:
+        """set_channel/toggle/etc editor stubs send ephemeral embed (covers :258-267)."""
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        bot = _make_bot_with_greeting("welcome", guild_id="123456789")
+        mod = WelcomeSetupModule(bot=bot)
+        inter = _make_interaction(guild_id=123456789, client=bot)
+        inter.response.send_message = AsyncMock()
+        for action in ("set_channel", "toggle", "set_message", "card_toggle", "set_theme", "set_onboarding"):
+            inter.response.send_message.reset_mock()
+            await mod.handle(inter, action)
+            assert inter.response.send_message.await_count == 1, f"editor action {action!r} must send ephemeral"
+
+    def test_render_sync_returns_embed(self) -> None:
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        mod = WelcomeSetupModule(bot=None)
+        embed = mod.render("123456789")
+        assert isinstance(embed, discord.Embed)
+
+    @pytest.mark.asyncio
+    async def test_render_async_without_bot_returns_embed(self) -> None:
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        mod = WelcomeSetupModule(bot=None)
+        embed = await mod.render_async("123456789")
+        assert isinstance(embed, discord.Embed)
+
+    def test_resolve_bot_via_interaction_client(self) -> None:
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        bot = MagicMock()
+        mod = WelcomeSetupModule(bot=None)
+        inter = MagicMock(spec=discord.Interaction)
+        inter.client = bot
+        assert mod._resolve_bot(inter) is bot
+
+    def test_resolve_bot_returns_none_when_no_client(self) -> None:
+
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        mod = WelcomeSetupModule(bot=None)
+        with patch("bot.views.setup_panel._get_setup_bot", return_value=None):
+            assert mod._resolve_bot(None) is None
+
+    def test_resolve_bot_catches_import_exception(self) -> None:
+        """_resolve_bot handles import exception when setup_panel import fails."""
+        import bot.views.setup_modules.welcome as wmod  # noqa: PLC0415 -- facade indirection
+
+        mod = wmod.WelcomeSetupModule(bot=None)
+        # Patch the import to raise
+        import unittest.mock as _mock
+
+        with _mock.patch.dict("sys.modules", {"bot.views.setup_panel": None}):
+            # Force re-import failure path — _resolve_bot catches and returns None
+            result = mod._resolve_bot(None)
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_render_async_exception_falls_back_to_basic_embed(self) -> None:
+        """render_async exception (e.g. get_config raises) → still returns basic embed."""
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        bot = MagicMock()
+        bot.greeting_service = MagicMock()
+        bot.greeting_service.get_config = AsyncMock(side_effect=RuntimeError("db down"))
+        mod = WelcomeSetupModule(bot=bot)
+        embed = await mod.render_async("g1")
+        assert isinstance(embed, discord.Embed)
+
+    @pytest.mark.asyncio
+    async def test_on_template_select_dispatches_to_handle(self) -> None:
+        """_on_template_select dispatches to handle() select_template path."""
+
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        bot = MagicMock()
+        bot.greeting_service = MagicMock()
+        bot.greeting_service.get_config = AsyncMock(return_value=MagicMock(guild_id="g1"))
+        bot.greeting_service.save_config = AsyncMock(return_value=None)
+        mod = WelcomeSetupModule(bot=bot)
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild = MagicMock(spec=discord.Guild)
+        inter.guild.id = 123
+        inter.client = bot
+        inter.data = {"custom_id": "setup:welcome:select_template", "values": ["default"]}
+        inter.response = MagicMock()
+        inter.response.edit_message = AsyncMock()
+        inter.response.send_message = AsyncMock()
+        inter.followup = MagicMock()
+        inter.followup.send = AsyncMock()
+        inter.user = MagicMock(spec=discord.Member)
+        inter.user.guild_permissions.administrator = True
+        # Ensure can_member passes
+        with patch("bot.views.setup_modules._template_picker.can_member", new=AsyncMock(return_value=True)):
+            await mod._on_template_select(inter)
+        # After select, save_config should have been called via handle_template_select_flow
+        bot.greeting_service.save_config.assert_awaited()
+
+    def test_components_binds_callback(self) -> None:
+        """components() binds _on_template_select as the select callback."""
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+
+        mod = WelcomeSetupModule(bot=None)
+        items = mod.components("g1")
+        sel = next(i for i in items if getattr(i, "custom_id", None) == "setup:welcome:select_template")
+        assert callable(sel.callback)

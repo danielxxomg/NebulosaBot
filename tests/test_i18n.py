@@ -65,6 +65,62 @@ def _write_locale(tmp_path: Path, locale: str, data: dict) -> Path:
     return path
 
 
+def _slash_locale_data() -> tuple[dict, dict]:
+    """Return the shared slash locale pair used by translator and validation tests."""
+    es_data = {
+        "slash": {
+            "descriptions": {
+                "ping": "Muestra la latencia WebSocket del bot.",
+                "ban": "Prohibir a un miembro del servidor.",
+            },
+            "describes": {
+                "warn": {
+                    "member": "El miembro a advertir",
+                    "reason": "Razón de la advertencia",
+                },
+            },
+        },
+    }
+    en_data = {
+        "slash": {
+            "descriptions": {
+                "ping": "Show the bot's WebSocket latency.",
+                "ban": "Ban a member from the server.",
+            },
+            "describes": {
+                "warn": {
+                    "member": "The member to warn",
+                    "reason": "Reason for the warning",
+                },
+            },
+        },
+    }
+    return es_data, en_data
+
+
+def _make_setup_bot_with_tracking():
+    """Return (bot, call_order, set_translator, sync) for setup_hook ordering tests."""
+    from bot.bot import NebulosaBot  # noqa: PLC0415 -- facade indirection
+    from bot.config import BotConfig  # noqa: PLC0415 -- facade indirection
+
+    config = BotConfig(
+        discord_token="t",
+        supabase_url="https://x.supabase.co",
+        supabase_key="k",
+    )
+    bot = NebulosaBot(config=config, intents=discord.Intents.default())
+    call_order: list[str] = []
+
+    async def tracking_set_translator(translator):
+        call_order.append("set_translator")
+
+    async def tracking_sync(*args, **kwargs):
+        call_order.append("sync")
+        return []
+
+    return bot, call_order, tracking_set_translator, tracking_sync
+
+
 # ---------------------------------------------------------------------------
 # load_locales
 # ---------------------------------------------------------------------------
@@ -375,35 +431,7 @@ class TestLocaleTranslator:
         """Load test locales with slash keys for translator tests."""
         from bot.core.i18n import load_locales
 
-        es_data = {
-            "slash": {
-                "descriptions": {
-                    "ping": "Muestra la latencia WebSocket del bot.",
-                    "ban": "Prohibir a un miembro del servidor.",
-                },
-                "describes": {
-                    "warn": {
-                        "member": "El miembro a advertir",
-                        "reason": "Razón de la advertencia",
-                    },
-                },
-            },
-        }
-        en_data = {
-            "slash": {
-                "descriptions": {
-                    "ping": "Show the bot's WebSocket latency.",
-                    "ban": "Ban a member from the server.",
-                },
-                "describes": {
-                    "warn": {
-                        "member": "The member to warn",
-                        "reason": "Reason for the warning",
-                    },
-                },
-            },
-        }
-
+        es_data, en_data = _slash_locale_data()
         _write_locale(tmp_path, "es", es_data)
         _write_locale(tmp_path, "en", en_data)
         load_locales(tmp_path / "locales")
@@ -522,35 +550,7 @@ class TestValidateSlashLocalizations:
         """Load test locales with slash keys for validation tests."""
         from bot.core.i18n import load_locales
 
-        es_data = {
-            "slash": {
-                "descriptions": {
-                    "ping": "Muestra la latencia WebSocket del bot.",
-                    "ban": "Prohibir a un miembro del servidor.",
-                },
-                "describes": {
-                    "warn": {
-                        "member": "El miembro a advertir",
-                        "reason": "Razón de la advertencia",
-                    },
-                },
-            },
-        }
-        en_data = {
-            "slash": {
-                "descriptions": {
-                    "ping": "Show the bot's WebSocket latency.",
-                    "ban": "Ban a member from the server.",
-                },
-                "describes": {
-                    "warn": {
-                        "member": "The member to warn",
-                        "reason": "Reason for the warning",
-                    },
-                },
-            },
-        }
-
+        es_data, en_data = _slash_locale_data()
         _write_locale(tmp_path, "es", es_data)
         _write_locale(tmp_path, "en", en_data)
         load_locales(tmp_path / "locales")
@@ -825,24 +825,7 @@ class TestTranslatorRegistrationOrder:
     @pytest.mark.asyncio
     async def test_set_translator_called_before_tree_sync(self) -> None:
         """set_translator() MUST be called before tree.sync() in setup_hook."""
-        from bot.bot import NebulosaBot
-        from bot.config import BotConfig
-
-        config = BotConfig(
-            discord_token="t",
-            supabase_url="https://x.supabase.co",
-            supabase_key="k",
-        )
-        bot = NebulosaBot(config=config, intents=discord.Intents.default())
-
-        call_order: list[str] = []
-
-        async def tracking_set_translator(translator):
-            call_order.append("set_translator")
-
-        async def tracking_sync():
-            call_order.append("sync")
-            return []
+        bot, call_order, tracking_set_translator, tracking_sync = _make_setup_bot_with_tracking()
 
         with (
             patch("bot.bot.Database") as mock_db_cls,
@@ -862,24 +845,7 @@ class TestTranslatorRegistrationOrder:
     @pytest.mark.asyncio
     async def test_validate_slash_localizations_called_before_sync(self) -> None:
         """validate_slash_localizations() MUST be called before tree.sync() in setup_hook."""
-        from bot.bot import NebulosaBot
-        from bot.config import BotConfig
-
-        config = BotConfig(
-            discord_token="t",
-            supabase_url="https://x.supabase.co",
-            supabase_key="k",
-        )
-        bot = NebulosaBot(config=config, intents=discord.Intents.default())
-
-        call_order: list[str] = []
-
-        async def tracking_sync():
-            call_order.append("sync")
-            return []
-
-        async def tracking_set_translator(translator):
-            call_order.append("set_translator")
+        bot, call_order, tracking_set_translator, tracking_sync = _make_setup_bot_with_tracking()
 
         with (
             patch("bot.bot.Database") as mock_db_cls,
@@ -900,4 +866,4 @@ class TestTranslatorRegistrationOrder:
 
 
 # Import AsyncMock and patch at module level for the bot tests.
-from unittest.mock import AsyncMock, patch  # noqa: E402
+from unittest.mock import AsyncMock, patch  # noqa: E402, PLC0415 -- facade indirection  # isort: skip
