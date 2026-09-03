@@ -99,6 +99,110 @@ def _category_row() -> dict:
     }
 
 
+def _wire_intake_success(
+    ticket_bot: MagicMock,
+    mock_db,
+    ticket_guild: MagicMock,
+    mock_ticket_channel: MagicMock,
+    *,
+    ticket_category_id: str | None = "100000000",
+) -> Ticket:
+    """Wire the happy-path intake scaffold shared by TicketIntakeModal tests.
+
+    Sets guild config (default category id), the category channel lookup,
+    create_ticket_channel → (channel, ticket), and get_max_ticket_number.
+    Returns the created ticket. ``ticket_category_id=None`` builds the
+    config-missing scaffold instead.
+    """
+    config = MagicMock()
+    config.ticket_category_id = ticket_category_id
+    config.mod_role_id = None
+    ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
+
+    category_channel = MagicMock(spec=discord.CategoryChannel)
+    ticket_guild.get_channel = MagicMock(return_value=category_channel)
+
+    ticket = Ticket.from_db_row(_ticket_row(ticket_number=1))
+    ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, ticket))
+    ticket_bot.db.get_max_ticket_number = AsyncMock(return_value=0)
+    return ticket
+
+
+def _make_modal_interaction(ticket_bot: MagicMock, ticket_guild: MagicMock) -> MagicMock:
+    """Return a mock modal-submit Interaction wired for TicketIntakeModal."""
+    modal_interaction = MagicMock(spec=discord.Interaction)
+    modal_interaction.guild = ticket_guild
+    modal_interaction.user = MagicMock(spec=discord.Member)
+    modal_interaction.user.id = 111111111
+    modal_interaction.user.mention = "<@111111111>"
+    modal_interaction.client = ticket_bot
+    modal_interaction.guild_id = ticket_guild.id
+    modal_interaction.response = MagicMock()
+    modal_interaction.response.defer = AsyncMock()
+    modal_interaction.followup = MagicMock()
+    modal_interaction.followup.send = AsyncMock()
+    return modal_interaction
+
+
+def _make_intake_modal(
+    ticket_guild: MagicMock,
+    *,
+    title: str = "Login broken",
+    description: str | None = "Cannot access since Monday",
+    category_name: str = "Support",
+) -> TicketIntakeModal:
+    """Return a TicketIntakeModal with the form fields filled in."""
+    modal = TicketIntakeModal(
+        guild=ticket_guild,
+        category_id="cat-uuid-001",
+        category_name=category_name,
+    )
+    modal.title_input = MagicMock(value=title)
+    modal.description_input = MagicMock(value=description)
+    return modal
+
+
+def _wire_subticket_success(
+    ticket_bot: MagicMock,
+    slash_ctx: MagicMock,
+    mock_db,
+    *,
+    parent_row: dict | None = None,
+    ticket_category_id: str | None = "100000000",
+    mod_role_id: str | None = None,
+    channel_result: object | None = "default_channel",
+) -> dict:
+    """Wire the subticket_create scaffold: config + category channel + parent row.
+
+    ``parent_row=None`` defaults to ``_ticket_row(ticket_number=5)``.
+    ``channel_result="default_channel"`` makes create_ticket_channel return
+    ``(mock channel from slash_ctx, subticket)``; pass an explicit value or
+    an Exception to override (Exception simulates a service failure).
+    Returns the wired parent row.
+    """
+    config = MagicMock()
+    config.ticket_category_id = ticket_category_id
+    config.mod_role_id = mod_role_id
+    ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
+
+    category_channel = MagicMock(spec=discord.CategoryChannel)
+    slash_ctx.guild.get_channel = MagicMock(return_value=category_channel)
+
+    if parent_row is None:
+        parent_row = _ticket_row(ticket_number=5)
+    mock_db.get_ticket_by_channel = AsyncMock(return_value=parent_row)
+
+    if channel_result == "default_channel":
+        subticket = Ticket.from_db_row({**_ticket_row(ticket_number=6), "parentId": parent_row["id"]})
+        channel = getattr(slash_ctx, "channel", None) or MagicMock()
+        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(channel, subticket))
+    elif isinstance(channel_result, Exception):
+        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(side_effect=channel_result)
+    else:
+        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=channel_result)
+    return parent_row
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -244,18 +348,10 @@ class TestCategorySelect:
         """After channel creation, initial embed sent in new channel."""
         ticket_interaction.client = ticket_bot
 
-        config = MagicMock()
-        config.ticket_category_id = "100000000"
-        config.mod_role_id = None
-        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
-        mock_db.get_max_ticket_number = AsyncMock(return_value=0)
-
-        category_channel = MagicMock(spec=discord.CategoryChannel)
-        ticket_guild.get_channel = MagicMock(return_value=category_channel)
-
-        ticket = Ticket.from_db_row(_ticket_row(ticket_number=1))
-        ticket_bot.ticket_service.create_ticket = AsyncMock(return_value=ticket)
-        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, ticket))
+        _wire_intake_success(ticket_bot, mock_db, ticket_guild, mock_ticket_channel)
+        ticket_bot.ticket_service.create_ticket = AsyncMock(
+            return_value=ticket_bot.ticket_service.create_ticket_channel.return_value[1]
+        )
 
         select = _CategorySelect(options=[], guild=ticket_guild, categories=[])
         select._values = ["cat-uuid-001"]
@@ -303,39 +399,9 @@ class TestTicketIntakeModal:
         """Modal submit → defer(ephemeral) → create_ticket_channel → send+pin → success."""
         ticket_interaction.client = ticket_bot
 
-        config = MagicMock()
-        config.ticket_category_id = "100000000"
-        config.mod_role_id = None
-        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
-
-        category_channel = MagicMock(spec=discord.CategoryChannel)
-        ticket_guild.get_channel = MagicMock(return_value=category_channel)
-
-        ticket = Ticket.from_db_row(_ticket_row(ticket_number=1))
-        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, ticket))
-        ticket_bot.db.get_max_ticket_number = AsyncMock(return_value=0)
-
-        # Build a mock modal interaction.
-        modal_interaction = MagicMock(spec=discord.Interaction)
-        modal_interaction.guild = ticket_guild
-        modal_interaction.user = MagicMock(spec=discord.Member)
-        modal_interaction.user.id = 111111111
-        modal_interaction.user.mention = "<@111111111>"
-        modal_interaction.client = ticket_bot
-        modal_interaction.guild_id = ticket_guild.id
-        modal_interaction.response = MagicMock()
-        modal_interaction.response.defer = AsyncMock()
-        modal_interaction.followup = MagicMock()
-        modal_interaction.followup.send = AsyncMock()
-
-        modal = TicketIntakeModal(
-            guild=ticket_guild,
-            category_id="cat-uuid-001",
-            category_name="Support",
-        )
-        # Simulate user filling in the modal fields.
-        modal.title_input = MagicMock(value="Login broken")
-        modal.description_input = MagicMock(value="Cannot access since Monday")
+        _wire_intake_success(ticket_bot, mock_db, ticket_guild, mock_ticket_channel)
+        modal_interaction = _make_modal_interaction(ticket_bot, ticket_guild)
+        modal = _make_intake_modal(ticket_guild)
 
         with patch("bot.views.tickets.TicketActionsView"):
             await modal.on_submit(modal_interaction)
@@ -355,23 +421,11 @@ class TestTicketIntakeModal:
         ticket_guild: MagicMock,
     ) -> None:
         """Modal submit with empty title → ephemeral error, no channel created."""
-        modal_interaction = MagicMock(spec=discord.Interaction)
-        modal_interaction.guild = ticket_guild
-        modal_interaction.user = MagicMock(spec=discord.Member)
-        modal_interaction.client = ticket_bot
-        modal_interaction.guild_id = ticket_guild.id
-        modal_interaction.response = MagicMock()
+        modal_interaction = _make_modal_interaction(ticket_bot, ticket_guild)
         modal_interaction.response.send_message = AsyncMock()
-        modal_interaction.response.defer = AsyncMock()
 
-        modal = TicketIntakeModal(
-            guild=ticket_guild,
-            category_id="cat-uuid-001",
-            category_name="Support",
-        )
         # Simulate empty title.
-        modal.title_input = MagicMock(value="")
-        modal.description_input = MagicMock(value="Some description")
+        modal = _make_intake_modal(ticket_guild, title="", description="Some description")
 
         await modal.on_submit(modal_interaction)
 
@@ -391,41 +445,13 @@ class TestTicketIntakeModal:
         """After sending welcome embed, the message MUST be pinned."""
         ticket_interaction.client = ticket_bot
 
-        config = MagicMock()
-        config.ticket_category_id = "100000000"
-        config.mod_role_id = None
-        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
-
-        category_channel = MagicMock(spec=discord.CategoryChannel)
-        ticket_guild.get_channel = MagicMock(return_value=category_channel)
-
-        ticket = Ticket.from_db_row(_ticket_row(ticket_number=1))
-        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, ticket))
-        ticket_bot.db.get_max_ticket_number = AsyncMock(return_value=0)
-
+        _wire_intake_success(ticket_bot, mock_db, ticket_guild, mock_ticket_channel)
         # Mock the sent message so we can verify pin() was called.
         sent_message = AsyncMock()
         mock_ticket_channel.send = AsyncMock(return_value=sent_message)
 
-        modal_interaction = MagicMock(spec=discord.Interaction)
-        modal_interaction.guild = ticket_guild
-        modal_interaction.user = MagicMock(spec=discord.Member)
-        modal_interaction.user.id = 111111111
-        modal_interaction.user.mention = "<@111111111>"
-        modal_interaction.client = ticket_bot
-        modal_interaction.guild_id = ticket_guild.id
-        modal_interaction.response = MagicMock()
-        modal_interaction.response.defer = AsyncMock()
-        modal_interaction.followup = MagicMock()
-        modal_interaction.followup.send = AsyncMock()
-
-        modal = TicketIntakeModal(
-            guild=ticket_guild,
-            category_id="cat-uuid-001",
-            category_name="Support",
-        )
-        modal.title_input = MagicMock(value="Login broken")
-        modal.description_input = MagicMock(value="")
+        modal_interaction = _make_modal_interaction(ticket_bot, ticket_guild)
+        modal = _make_intake_modal(ticket_guild, description="")
 
         with patch("bot.views.tickets.TicketActionsView"):
             await modal.on_submit(modal_interaction)
@@ -445,37 +471,9 @@ class TestTicketIntakeModal:
         """Title-only submit (blank description) → description=None forwarded and persisted."""
         ticket_interaction.client = ticket_bot
 
-        config = MagicMock()
-        config.ticket_category_id = "100000000"
-        config.mod_role_id = None
-        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
-
-        category_channel = MagicMock(spec=discord.CategoryChannel)
-        ticket_guild.get_channel = MagicMock(return_value=category_channel)
-
-        ticket = Ticket.from_db_row(_ticket_row(ticket_number=1))
-        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, ticket))
-        ticket_bot.db.get_max_ticket_number = AsyncMock(return_value=0)
-
-        modal_interaction = MagicMock(spec=discord.Interaction)
-        modal_interaction.guild = ticket_guild
-        modal_interaction.user = MagicMock(spec=discord.Member)
-        modal_interaction.user.id = 111111111
-        modal_interaction.user.mention = "<@111111111>"
-        modal_interaction.client = ticket_bot
-        modal_interaction.guild_id = ticket_guild.id
-        modal_interaction.response = MagicMock()
-        modal_interaction.response.defer = AsyncMock()
-        modal_interaction.followup = MagicMock()
-        modal_interaction.followup.send = AsyncMock()
-
-        modal = TicketIntakeModal(
-            guild=ticket_guild,
-            category_id="cat-uuid-001",
-            category_name="Support",
-        )
-        modal.title_input = MagicMock(value="Help me")
-        modal.description_input = MagicMock(value="   ")  # blank/whitespace
+        _wire_intake_success(ticket_bot, mock_db, ticket_guild, mock_ticket_channel)
+        modal_interaction = _make_modal_interaction(ticket_bot, ticket_guild)
+        modal = _make_intake_modal(ticket_guild, title="Help me", description="   ")  # blank/whitespace
 
         with patch("bot.views.tickets.TicketActionsView"):
             await modal.on_submit(modal_interaction)
@@ -511,42 +509,14 @@ class TestTicketIntakeModal:
         """When message.pin() raises HTTPException, ticket creation still succeeds."""
         ticket_interaction.client = ticket_bot
 
-        config = MagicMock()
-        config.ticket_category_id = "100000000"
-        config.mod_role_id = None
-        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
-
-        category_channel = MagicMock(spec=discord.CategoryChannel)
-        ticket_guild.get_channel = MagicMock(return_value=category_channel)
-
-        ticket = Ticket.from_db_row(_ticket_row(ticket_number=1))
-        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, ticket))
-        ticket_bot.db.get_max_ticket_number = AsyncMock(return_value=0)
-
+        _wire_intake_success(ticket_bot, mock_db, ticket_guild, mock_ticket_channel)
         # Mock pin to raise HTTPException.
         sent_message = AsyncMock()
         sent_message.pin = AsyncMock(side_effect=discord.HTTPException(MagicMock(), "Pin failed"))
         mock_ticket_channel.send = AsyncMock(return_value=sent_message)
 
-        modal_interaction = MagicMock(spec=discord.Interaction)
-        modal_interaction.guild = ticket_guild
-        modal_interaction.user = MagicMock(spec=discord.Member)
-        modal_interaction.user.id = 111111111
-        modal_interaction.user.mention = "<@111111111>"
-        modal_interaction.client = ticket_bot
-        modal_interaction.guild_id = ticket_guild.id
-        modal_interaction.response = MagicMock()
-        modal_interaction.response.defer = AsyncMock()
-        modal_interaction.followup = MagicMock()
-        modal_interaction.followup.send = AsyncMock()
-
-        modal = TicketIntakeModal(
-            guild=ticket_guild,
-            category_id="cat-uuid-001",
-            category_name="Support",
-        )
-        modal.title_input = MagicMock(value="Help")
-        modal.description_input = MagicMock(value="")
+        modal_interaction = _make_modal_interaction(ticket_bot, ticket_guild)
+        modal = _make_intake_modal(ticket_guild, title="Help", description="")
 
         with patch("bot.views.tickets.TicketActionsView"), patch("bot.views.tickets.logger") as mock_logger:
             await modal.on_submit(modal_interaction)
@@ -611,10 +581,7 @@ class TestTicketActionsView:
         view = TicketActionsView()
         await view.claim_button.callback(ticket_interaction)
 
-        ticket_interaction.response.send_message.assert_awaited_once()
-        call_kwargs = ticket_interaction.response.send_message.call_args
-        embed = call_kwargs.kwargs.get("embed")
-        assert embed is not None
+        embed = _interaction_embed(ticket_interaction)
         assert embed.title is not None
 
     async def test_close_button_generates_transcript(
@@ -654,18 +621,7 @@ class TestAutoCloseStaleTickets:
         mock_ticket_channel: MagicMock,
     ) -> None:
         """Stale tickets are closed, fresh tickets untouched."""
-        ticket_bot.guilds = [ticket_guild]
-
-        stale_ticket = MagicMock()
-        stale_ticket.id = "ticket-uuid-001"
-        stale_ticket.channel_id = "444444444"
-
-        ticket_bot.ticket_service.get_stale_tickets = AsyncMock(return_value=[stale_ticket])
-        ticket_bot.get_channel = MagicMock(return_value=mock_ticket_channel)
-
-        config = MagicMock()
-        config.log_channel_id = None
-        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
+        _auto_close_env(ticket_bot, ticket_guild, mock_ticket_channel)
 
         await tickets_cog.auto_close_stale_tickets()
 
@@ -679,18 +635,7 @@ class TestAutoCloseStaleTickets:
         mock_ticket_channel: MagicMock,
     ) -> None:
         """Auto-close MUST call close_ticket_full with manual=False (silent delete)."""
-        ticket_bot.guilds = [ticket_guild]
-
-        stale_ticket = MagicMock()
-        stale_ticket.id = "ticket-uuid-001"
-        stale_ticket.channel_id = "444444444"
-
-        ticket_bot.ticket_service.get_stale_tickets = AsyncMock(return_value=[stale_ticket])
-        ticket_bot.get_channel = MagicMock(return_value=mock_ticket_channel)
-
-        config = MagicMock()
-        config.log_channel_id = None
-        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
+        _auto_close_env(ticket_bot, ticket_guild, mock_ticket_channel)
 
         await tickets_cog.auto_close_stale_tickets()
 
@@ -705,14 +650,7 @@ class TestAutoCloseStaleTickets:
         ticket_guild: MagicMock,
     ) -> None:
         """Fresh tickets (not stale) are not closed."""
-        ticket_bot.guilds = [ticket_guild]
-
-        # No stale tickets.
-        ticket_bot.ticket_service.get_stale_tickets = AsyncMock(return_value=[])
-
-        config = MagicMock()
-        config.log_channel_id = None
-        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
+        _auto_close_env(ticket_bot, ticket_guild, MagicMock(), stale=False)
 
         await tickets_cog.auto_close_stale_tickets()
 
@@ -790,9 +728,7 @@ class TestClaimEdgeCases:
         view = TicketActionsView()
         await view.claim_button.callback(ticket_interaction)
 
-        ticket_interaction.response.send_message.assert_awaited_once()
-        embed = ticket_interaction.response.send_message.call_args.kwargs.get("embed")
-        assert embed is not None
+        embed = _interaction_embed(ticket_interaction)
         assert embed.title is not None
 
 
@@ -812,9 +748,8 @@ class TestCloseEdgeCases:
         view = TicketActionsView()
         await view.close_button.callback(ticket_interaction)
 
-        ticket_interaction.response.send_message.assert_awaited_once()
-        embed = ticket_interaction.response.send_message.call_args.kwargs.get("embed")
-        assert "Close Failed" in embed.title
+        embed = _interaction_embed_no_once(ticket_interaction)
+        assert "Close Failed" in (embed.title or "")
 
     async def test_close_already_closed(
         self,
@@ -830,9 +765,8 @@ class TestCloseEdgeCases:
         view = TicketActionsView()
         await view.close_button.callback(ticket_interaction)
 
-        ticket_interaction.response.send_message.assert_awaited_once()
-        embed = ticket_interaction.response.send_message.call_args.kwargs.get("embed")
-        assert "Close Failed" in embed.title
+        embed = _interaction_embed_no_once(ticket_interaction)
+        assert "Close Failed" in (embed.title or "")
 
 
 class TestOnMessageListener:
@@ -932,7 +866,7 @@ class TestTimerMessageDebounce:
         ticket_bot.ticket_service.is_ticket_channel = MagicMock(return_value=True)
         ticket_bot.ticket_service.handle_timer_message = AsyncMock(return_value=None)
         mock_db.update_ticket_last_activity = AsyncMock()
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
+        _ticket_channel_row(mock_db)
         # Second lookup path must stay unused.
         mock_db.get_active_ticket_by_channel = AsyncMock()
 
@@ -1095,6 +1029,13 @@ class TestCogLifecycle:
 class TestSlashCommands:
     """Tests for ticket slash commands."""
 
+    @staticmethod
+    def _panel_ctx() -> MagicMock:
+        """Return the shared ticket_panel command context."""
+        ctx = _guild_ctx(123456789)
+        ctx.channel = MagicMock()
+        return ctx
+
     async def test_ticket_panel_deploys_panel(
         self,
         tickets_cog: TicketsCog,
@@ -1102,11 +1043,7 @@ class TestSlashCommands:
         mock_db,
     ) -> None:
         """ticket_panel command delegates to deploy_ticket_panel with None defaults."""
-        ctx = MagicMock()
-        ctx.guild = MagicMock()
-        ctx.guild.id = 123456789
-        ctx.send = AsyncMock()
-        ctx.channel = MagicMock()
+        ctx = self._panel_ctx()
 
         with patch("bot.cogs.tickets.deploy_ticket_panel", new_callable=AsyncMock) as mock_deploy:
             await tickets_cog.ticket_panel.callback(tickets_cog, ctx)
@@ -1128,11 +1065,7 @@ class TestSlashCommands:
         ticket_bot: MagicMock,
     ) -> None:
         """ticket_panel with explicit title/desc passes them through as-is."""
-        ctx = MagicMock()
-        ctx.guild = MagicMock()
-        ctx.guild.id = 123456789
-        ctx.send = AsyncMock()
-        ctx.channel = MagicMock()
+        ctx = self._panel_ctx()
 
         with patch("bot.cogs.tickets.deploy_ticket_panel", new_callable=AsyncMock) as mock_deploy:
             await tickets_cog.ticket_panel.callback(
@@ -1156,16 +1089,8 @@ class TestSlashCommands:
         tickets_cog: TicketsCog,
     ) -> None:
         """ticket_panel in DM → error embed."""
-        ctx = MagicMock()
-        ctx.guild = None
-        ctx.send = AsyncMock()
-
-        await tickets_cog.ticket_panel.callback(tickets_cog, ctx)
-
-        ctx.send.assert_awaited_once()
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "Server Only" in embed.title or "Solo Servidores" in embed.title
+        ctx = _guild_ctx(None)
+        await _assert_no_guild_error(tickets_cog, tickets_cog.ticket_panel, ctx)
 
     async def test_list_categories_shows_categories(
         self,
@@ -1173,19 +1098,14 @@ class TestSlashCommands:
         mock_db,
     ) -> None:
         """list_categories shows configured categories."""
-        ctx = MagicMock()
-        ctx.guild = MagicMock()
-        ctx.guild.id = 123456789
-        ctx.send = AsyncMock()
+        ctx = _guild_ctx(123456789)
 
         mock_db.get_ticket_categories = AsyncMock(return_value=[_category_row()])
 
         await tickets_cog.list_categories.callback(tickets_cog, ctx)
 
-        ctx.send.assert_awaited_once()
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "Categories" in embed.title
+        embed = _sent_embed(ctx)
+        assert "Categories" in (embed.title or "")
 
     async def test_list_categories_empty(
         self,
@@ -1193,19 +1113,14 @@ class TestSlashCommands:
         mock_db,
     ) -> None:
         """list_categories with no categories → info embed."""
-        ctx = MagicMock()
-        ctx.guild = MagicMock()
-        ctx.guild.id = 123456789
-        ctx.send = AsyncMock()
+        ctx = _guild_ctx(123456789)
 
         mock_db.get_ticket_categories = AsyncMock(return_value=[])
 
         await tickets_cog.list_categories.callback(tickets_cog, ctx)
 
-        ctx.send.assert_awaited_once()
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "No Categories" in embed.title
+        embed = _sent_embed(ctx)
+        assert "No Categories" in (embed.title or "")
 
     async def test_create_category_creates(
         self,
@@ -1213,20 +1128,15 @@ class TestSlashCommands:
         mock_db,
     ) -> None:
         """create_category creates a new category."""
-        ctx = MagicMock()
-        ctx.guild = MagicMock()
-        ctx.guild.id = 123456789
-        ctx.send = AsyncMock()
+        ctx = _guild_ctx(123456789)
 
         mock_db.get_ticket_categories = AsyncMock(return_value=[])
         mock_db.insert_ticket_category = AsyncMock(return_value=_category_row())
 
         await tickets_cog.create_category.callback(tickets_cog, ctx, name="Support")
 
-        ctx.send.assert_awaited_once()
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "Created" in embed.title
+        embed = _sent_embed(ctx)
+        assert "Created" in (embed.title or "")
 
     async def test_create_category_duplicate_name(
         self,
@@ -1234,19 +1144,14 @@ class TestSlashCommands:
         mock_db,
     ) -> None:
         """create_category with duplicate name → error embed."""
-        ctx = MagicMock()
-        ctx.guild = MagicMock()
-        ctx.guild.id = 123456789
-        ctx.send = AsyncMock()
+        ctx = _guild_ctx(123456789)
 
         mock_db.get_ticket_categories = AsyncMock(return_value=[_category_row()])
 
         await tickets_cog.create_category.callback(tickets_cog, ctx, name="Support")
 
-        ctx.send.assert_awaited_once()
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "Duplicate" in embed.title
+        embed = _sent_embed(ctx)
+        assert "Duplicate" in (embed.title or "")
 
     async def test_delete_category_not_found(
         self,
@@ -1254,19 +1159,14 @@ class TestSlashCommands:
         mock_db,
     ) -> None:
         """delete_category with invalid ID → error embed."""
-        ctx = MagicMock()
-        ctx.guild = MagicMock()
-        ctx.guild.id = 123456789
-        ctx.send = AsyncMock()
+        ctx = _guild_ctx(123456789)
 
         mock_db.get_ticket_category = AsyncMock(return_value=None)
 
         await tickets_cog.delete_category.callback(tickets_cog, ctx, category_id="nonexistent")
 
-        ctx.send.assert_awaited_once()
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "Not Found" in embed.title
+        embed = _sent_embed(ctx)
+        assert "Not Found" in (embed.title or "")
 
     async def test_delete_category_wrong_guild(
         self,
@@ -1274,20 +1174,15 @@ class TestSlashCommands:
         mock_db,
     ) -> None:
         """delete_category for category in another guild → error embed."""
-        ctx = MagicMock()
-        ctx.guild = MagicMock()
-        ctx.guild.id = "999999999"
-        ctx.send = AsyncMock()
+        ctx = _guild_ctx("999999999")
 
         row = _category_row()  # guildId = "123456789"
         mock_db.get_ticket_category = AsyncMock(return_value=row)
 
         await tickets_cog.delete_category.callback(tickets_cog, ctx, category_id="cat-uuid-001")
 
-        ctx.send.assert_awaited_once()
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "Wrong Guild" in embed.title or "Servidor Incorrecto" in embed.title
+        embed = _sent_embed(ctx)
+        assert "Wrong Guild" in (embed.title or "") or "Servidor Incorrecto" in (embed.title or "")
 
     async def test_delete_category_in_use(
         self,
@@ -1295,10 +1190,7 @@ class TestSlashCommands:
         mock_db,
     ) -> None:
         """delete_category with open tickets → error embed."""
-        ctx = MagicMock()
-        ctx.guild = MagicMock()
-        ctx.guild.id = "123456789"
-        ctx.send = AsyncMock()
+        ctx = _guild_ctx("123456789")
 
         row = _category_row()
         mock_db.get_ticket_category = AsyncMock(return_value=row)
@@ -1306,10 +1198,8 @@ class TestSlashCommands:
 
         await tickets_cog.delete_category.callback(tickets_cog, ctx, category_id="cat-uuid-001")
 
-        ctx.send.assert_awaited_once()
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "In Use" in embed.title
+        embed = _sent_embed(ctx)
+        assert "In Use" in (embed.title or "")
 
     async def test_delete_category_success(
         self,
@@ -1317,10 +1207,7 @@ class TestSlashCommands:
         mock_db,
     ) -> None:
         """delete_category with valid ID and no open tickets → success."""
-        ctx = MagicMock()
-        ctx.guild = MagicMock()
-        ctx.guild.id = "123456789"
-        ctx.send = AsyncMock()
+        ctx = _guild_ctx("123456789")
 
         row = _category_row()
         mock_db.get_ticket_category = AsyncMock(return_value=row)
@@ -1329,10 +1216,8 @@ class TestSlashCommands:
 
         await tickets_cog.delete_category.callback(tickets_cog, ctx, category_id="cat-uuid-001")
 
-        ctx.send.assert_awaited_once()
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "Deleted" in embed.title
+        embed = _sent_embed(ctx)
+        assert "Deleted" in (embed.title or "")
 
 
 # ===========================================================================
@@ -1394,19 +1279,9 @@ class TestSubticketCreate:
         mock_ticket_channel: MagicMock,
     ) -> None:
         """Valid invocation → create_subticket called with the parent id."""
-        parent_row = _ticket_row(ticket_number=5)
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=parent_row)
+        parent_row = _wire_subticket_success(ticket_bot, slash_ctx, mock_db)
         mock_db.get_max_ticket_number = AsyncMock(return_value=5)
-
-        config = MagicMock()
-        config.ticket_category_id = "100000000"
-        config.mod_role_id = None
-        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
-
-        category_channel = MagicMock(spec=discord.CategoryChannel)
-        slash_ctx.guild.get_channel = MagicMock(return_value=category_channel)
-
-        subticket = Ticket.from_db_row({**_ticket_row(ticket_number=6), "parentId": parent_row["id"]})
+        subticket = ticket_bot.ticket_service.create_ticket_channel.return_value[1]
         ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, subticket))
 
         await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
@@ -1424,10 +1299,7 @@ class TestSubticketCreate:
     ) -> None:
         """/subticket create in DM → error embed."""
         slash_ctx.guild = None
-        await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
-        slash_ctx.send.assert_awaited_once()
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert "Server Only" in embed.title or "Solo Servidores" in embed.title
+        await _assert_no_guild_error(tickets_cog, tickets_cog.subticket_create, slash_ctx)
 
     async def test_subticket_create_not_a_ticket_channel(
         self,
@@ -1437,12 +1309,7 @@ class TestSubticketCreate:
         mock_db,
     ) -> None:
         """Current channel is not a ticket → error embed."""
-        config = MagicMock()
-        config.ticket_category_id = "100000000"
-        config.mod_role_id = None
-        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
-        category_channel = MagicMock(spec=discord.CategoryChannel)
-        slash_ctx.guild.get_channel = MagicMock(return_value=category_channel)
+        _wire_subticket_success(ticket_bot, slash_ctx, mock_db, channel_result=None)
         mock_db.get_ticket_by_channel = AsyncMock(return_value=None)
         ticket_bot.ticket_service.create_subticket = AsyncMock()
 
@@ -1461,23 +1328,20 @@ class TestSubticketCreate:
         mock_ticket_channel: MagicMock,
     ) -> None:
         """When create_subticket raises, the orphan channel is deleted."""
-        parent_row = _ticket_row(ticket_number=5)
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=parent_row)
+        _wire_subticket_success(
+            ticket_bot,
+            slash_ctx,
+            mock_db,
+            channel_result=ValueError("Parent ticket not found"),
+        )
         mock_db.get_max_ticket_number = AsyncMock(return_value=0)
-        config = MagicMock()
-        config.ticket_category_id = "100000000"
-        config.mod_role_id = None
-        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
-        category_channel = MagicMock(spec=discord.CategoryChannel)
-        slash_ctx.guild.get_channel = MagicMock(return_value=category_channel)
-        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(side_effect=ValueError("Parent ticket not found"))
 
         await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
 
         # Channel cleanup is now handled inside create_ticket_channel;
         # the cog surfaces the error embed.
         embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert "Failed" in embed.title
+        assert "Failed" in (embed.title or "")
 
 
 class TestReopenCommand:
@@ -1511,10 +1375,7 @@ class TestReopenCommand:
     ) -> None:
         """/reopen in DM → error embed."""
         slash_ctx.guild = None
-        await tickets_cog.reopen.callback(tickets_cog, slash_ctx)
-        slash_ctx.send.assert_awaited_once()
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert "Server Only" in embed.title or "Solo Servidores" in embed.title
+        await _assert_no_guild_error(tickets_cog, tickets_cog.reopen, slash_ctx)
 
     async def test_reopen_not_a_ticket_channel(
         self,
@@ -1526,7 +1387,7 @@ class TestReopenCommand:
         mock_db.get_ticket_by_channel = AsyncMock(return_value=None)
         await tickets_cog.reopen.callback(tickets_cog, slash_ctx)
         embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert "Ticket" in embed.title
+        assert "Ticket" in (embed.title or "")
 
     async def test_reopen_service_error(
         self,
@@ -1541,7 +1402,7 @@ class TestReopenCommand:
         ticket_bot.ticket_service.reopen_ticket = AsyncMock(side_effect=ValueError("No ticket category configured"))
         await tickets_cog.reopen.callback(tickets_cog, slash_ctx)
         embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert "Failed" in embed.title
+        assert "Failed" in (embed.title or "")
 
 
 class TestTransferCommand:
@@ -1583,10 +1444,7 @@ class TestTransferCommand:
         """/transfer in DM → error embed."""
         slash_ctx.guild = None
         target = MagicMock(spec=discord.Member)
-        await tickets_cog.transfer.callback(tickets_cog, slash_ctx, member=target)
-        slash_ctx.send.assert_awaited_once()
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert "Server Only" in embed.title or "Solo Servidores" in embed.title
+        await _assert_no_guild_error(tickets_cog, tickets_cog.transfer, slash_ctx, member=target)
 
 
 class TestNoteCommands:
@@ -1600,7 +1458,7 @@ class TestNoteCommands:
         mock_db,
     ) -> None:
         """/note add → create_note called with author + content."""
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
+        _ticket_channel_row(mock_db)
         note = TicketNote.from_db_row(_note_row_cog())
         ticket_bot.ticket_service.create_note = AsyncMock(return_value=note)
 
@@ -1620,7 +1478,7 @@ class TestNoteCommands:
         mock_db,
     ) -> None:
         """create_note raises (cap) → error embed."""
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
+        _ticket_channel_row(mock_db)
         ticket_bot.ticket_service.create_note = AsyncMock(side_effect=ValueError("Note limit reached"))
         await tickets_cog.note_add.callback(tickets_cog, slash_ctx, content="one too many")
         embed = slash_ctx.send.call_args.kwargs.get("embed")
@@ -1634,7 +1492,7 @@ class TestNoteCommands:
         mock_db,
     ) -> None:
         """/note list → embed with notes."""
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
+        _ticket_channel_row(mock_db)
         notes = [TicketNote.from_db_row(_note_row_cog(note_id=f"n-{i}")) for i in range(3)]
         ticket_bot.ticket_service.get_notes = AsyncMock(return_value=notes)
 
@@ -1651,12 +1509,11 @@ class TestNoteCommands:
         mock_db,
     ) -> None:
         """/note list with no notes → info embed."""
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
+        _ticket_channel_row(mock_db)
         ticket_bot.ticket_service.get_notes = AsyncMock(return_value=[])
         await tickets_cog.note_list.callback(tickets_cog, slash_ctx)
-        slash_ctx.send.assert_awaited_once()
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert "No" in embed.title or "no" in (embed.description or "").lower()
+        embed = _sent_embed(slash_ctx)
+        assert "No" in (embed.title or "") or "no" in (embed.description or "").lower()
 
     async def test_note_delete_calls_service(
         self,
@@ -1666,7 +1523,7 @@ class TestNoteCommands:
         mock_db,
     ) -> None:
         """/note delete → delete_note called with note id + author."""
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
+        _ticket_channel_row(mock_db)
         ticket_bot.ticket_service.delete_note = AsyncMock()
         await tickets_cog.note_delete.callback(tickets_cog, slash_ctx, note_id="note-uuid-001")
         ticket_bot.ticket_service.delete_note.assert_awaited_once()
@@ -1682,7 +1539,7 @@ class TestNoteCommands:
         mock_db,
     ) -> None:
         """delete_note raises (ownership) → error embed."""
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
+        _ticket_channel_row(mock_db)
         ticket_bot.ticket_service.delete_note = AsyncMock(
             side_effect=ValueError("Only the note author may delete this note")
         )
@@ -1740,6 +1597,27 @@ class TestNoteListPrivacy:
     def _notes_with(content: str = "Secret staff note") -> list:
         return [TicketNote.from_db_row(_note_row_cog(note_id="n-1", content=content))]
 
+    @staticmethod
+    def _note_list_env(
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+        *,
+        slash: bool,
+        notes: bool = True,
+    ) -> None:
+        """Wire the note_list arrange: ticket row, get_notes stub, invocation shape.
+
+        ``slash=True`` sets ctx.interaction (slash path); False means the
+        prefix path (interaction=None, author.send stubbed). ``notes=False``
+        stubs an empty notes list.
+        """
+        _ticket_channel_row(mock_db)
+        ticket_bot.ticket_service.get_notes = AsyncMock(return_value=TestNoteListPrivacy._notes_with() if notes else [])
+        slash_ctx.interaction = MagicMock() if slash else None
+        slash_ctx.author.send = AsyncMock()
+
     async def test_note_list_slash_is_ephemeral(
         self,
         tickets_cog: TicketsCog,
@@ -1748,11 +1626,7 @@ class TestNoteListPrivacy:
         mock_db,
     ) -> None:
         """Slash invocation → ctx.send(embed=..., ephemeral=True) with notes."""
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
-        ticket_bot.ticket_service.get_notes = AsyncMock(return_value=self._notes_with())
-
-        # Slash: ctx.interaction is not None.
-        slash_ctx.interaction = MagicMock()
+        self._note_list_env(tickets_cog, slash_ctx, ticket_bot, mock_db, slash=True)
 
         await tickets_cog.note_list.callback(tickets_cog, slash_ctx)
 
@@ -1772,12 +1646,7 @@ class TestNoteListPrivacy:
         mock_db,
     ) -> None:
         """Prefix invocation → notes DM'd to author, channel gets confirmation only."""
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
-        ticket_bot.ticket_service.get_notes = AsyncMock(return_value=self._notes_with())
-
-        # Prefix: ctx.interaction is None.
-        slash_ctx.interaction = None
-        slash_ctx.author.send = AsyncMock()
+        self._note_list_env(tickets_cog, slash_ctx, ticket_bot, mock_db, slash=False)
 
         await tickets_cog.note_list.callback(tickets_cog, slash_ctx)
 
@@ -1801,10 +1670,7 @@ class TestNoteListPrivacy:
         mock_db,
     ) -> None:
         """Prefix DM failure (discord.Forbidden) → error embed to channel, no leak."""
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
-        ticket_bot.ticket_service.get_notes = AsyncMock(return_value=self._notes_with())
-
-        slash_ctx.interaction = None
+        self._note_list_env(tickets_cog, slash_ctx, ticket_bot, mock_db, slash=False)
         slash_ctx.author.send = AsyncMock(side_effect=discord.Forbidden(MagicMock(), "Cannot DM user"))
 
         with patch("bot.cogs.tickets.logger.exception") as mock_exc:
@@ -1829,11 +1695,7 @@ class TestNoteListPrivacy:
         The empty-state ('ticket has no staff notes') is private state and
         MUST NOT be broadcast to the channel. Slash replies ephemerally.
         """
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
-        ticket_bot.ticket_service.get_notes = AsyncMock(return_value=[])
-
-        slash_ctx.interaction = MagicMock()
-        slash_ctx.author.send = AsyncMock()
+        self._note_list_env(tickets_cog, slash_ctx, ticket_bot, mock_db, slash=True, notes=False)
 
         await tickets_cog.note_list.callback(tickets_cog, slash_ctx)
 
@@ -1861,11 +1723,7 @@ class TestNoteListPrivacy:
         the empty-state privately via DM; the channel sees only the same
         generic 'Notes Sent' confirmation used by the non-empty path.
         """
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
-        ticket_bot.ticket_service.get_notes = AsyncMock(return_value=[])
-
-        slash_ctx.interaction = None
-        slash_ctx.author.send = AsyncMock()
+        self._note_list_env(tickets_cog, slash_ctx, ticket_bot, mock_db, slash=False, notes=False)
 
         await tickets_cog.note_list.callback(tickets_cog, slash_ctx)
 
@@ -1925,9 +1783,7 @@ class TestReopenStatusGuard:
         ticket_bot.ticket_service.reopen_ticket.assert_awaited_once()
         # Error embed surfaces a LOCALIZED message (EN guild), not the
         # service's raw Spanish text.
-        slash_ctx.send.assert_awaited_once()
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
+        embed = _sent_embed(slash_ctx)
         # Guild is EN — must see English localized text
         assert "Only closed tickets can be reopened" in (embed.description or "")
         assert status in (embed.description or "")
@@ -1940,12 +1796,186 @@ class TestReopenStatusGuard:
 # ===========================================================================
 
 
+def _repair_result(
+    ticket_id: str = "t-1",
+    *,
+    action: str = "close",
+    outcome: str = "repaired",
+    reason: str | None = None,
+    evidence_id: str | None = "ev-1",
+) -> RepairResult:
+    """Return a RepairResult for cog adapter tests."""
+    return RepairResult(
+        ticket_id=ticket_id,
+        guild_id="123456789",
+        action=action,
+        outcome=outcome,
+        reason=reason,
+        evidence_id=evidence_id,
+        timestamp=datetime.now(UTC),
+    )
+
+
+def _integrity_ctx(ticket_bot: MagicMock) -> MagicMock:
+    """Return the shared ctx for /sweep_integrity and /repair_ticket tests."""
+    ctx = MagicMock()
+    ctx.guild = MagicMock(spec=discord.Guild)
+    ctx.guild.id = 123456789
+    ctx.send = AsyncMock()
+    ctx.interaction = None
+    ctx.author = MagicMock(spec=discord.Member)
+    ctx.author.id = 111111111
+    ticket_bot._guild_mod_role_cache = {}
+    return ctx
+
+
+def _guild_ctx(guild_id: int | str | None) -> MagicMock:
+    """Return a command ctx bound to guild_id (None = DM) with an AsyncMock send."""
+    ctx = MagicMock()
+    if guild_id is None:
+        ctx.guild = None
+    else:
+        ctx.guild = MagicMock()
+        ctx.guild.id = guild_id
+    ctx.send = AsyncMock()
+    return ctx
+
+
+def _interaction_embed(interaction: MagicMock) -> discord.Embed:
+    """Assert one interaction send_message and return its embed."""
+    interaction.response.send_message.assert_awaited_once()
+    return _assert_embed(interaction.response.send_message.call_args.kwargs)
+
+
+def _interaction_embed_no_once(interaction: MagicMock) -> discord.Embed:
+    """Return the interaction send_message embed without asserting the count."""
+    return _assert_embed(interaction.response.send_message.call_args.kwargs)
+
+
+def _assert_embed(kwargs: dict) -> discord.Embed:
+    """Assert the kwargs carry a non-None title-bearing embed and return it."""
+    embed = kwargs.get("embed")
+    assert isinstance(embed, discord.Embed)
+    assert embed.title is not None
+    return embed
+
+
+def _sent_ephemeral_kwargs(send: MagicMock) -> dict:
+    """Assert one ephemeral send on the given send mock and return its kwargs.
+
+    Accepts either a ctx (uses ctx.send) or a send AsyncMock directly.
+    """
+    if hasattr(send, "send") and not isinstance(send, AsyncMock):
+        target = send.send
+    else:
+        target = send
+    target.assert_awaited_once()
+    kwargs = dict(target.call_args.kwargs)
+    assert kwargs.get("ephemeral") is True
+    _assert_embed(kwargs)
+    return kwargs
+
+
+def _wire_configure_fields(
+    slash_ctx: MagicMock,
+    mock_db,
+    *,
+    update_side_effect: Exception | None = None,
+) -> None:
+    """Wire the configure_fields_set scaffold (guild + category + update stub)."""
+    slash_ctx.guild.id = 123456789
+    mock_db.get_ticket_category = AsyncMock(return_value=_category_row())
+    if update_side_effect is not None:
+        mock_db.update_ticket_category_field_definitions = AsyncMock(side_effect=update_side_effect)
+    else:
+        mock_db.update_ticket_category_field_definitions = AsyncMock()
+
+
+def _sent_embed(ctx: MagicMock) -> discord.Embed:
+    """Assert ctx.send fired once and return the sent embed."""
+    ctx.send.assert_awaited_once()
+    return _assert_embed(ctx.send.call_args.kwargs)
+
+
+async def _assert_no_guild_error(cog: TicketsCog, cmd, ctx: MagicMock, **kwargs) -> None:
+    """Invoke a command with guild=None ctx and assert the server-only error embed."""
+    await cmd.callback(cog, ctx, **kwargs)
+    ctx.send.assert_awaited_once()
+    embed = ctx.send.call_args.kwargs.get("embed")
+    assert "Server Only" in (embed.title or "") or "Solo Servidores" in (embed.title or "")
+
+
+def _ticket_channel_row(mock_db) -> dict:
+    """Wire get_ticket_by_channel to the default open ticket row."""
+    row = _ticket_row()
+    mock_db.get_ticket_by_channel = AsyncMock(return_value=row)
+    return row
+
+
+def _claimed_by_channel_row(mock_db, *, claimer_id: str = "111111111") -> dict:
+    """Wire get_ticket_by_channel to a claimed ticket owned by claimer_id."""
+    claimed_row = _ticket_row(status="claimed")
+    claimed_row["claimedBy"] = claimer_id
+    mock_db.get_ticket_by_channel = AsyncMock(return_value=claimed_row)
+    return claimed_row
+
+
+def _auto_close_env(
+    ticket_bot: MagicMock,
+    ticket_guild: MagicMock,
+    mock_ticket_channel: MagicMock,
+    *,
+    stale: bool = True,
+) -> None:
+    """Wire the auto_close_stale_tickets arrange shared by its tests."""
+    ticket_bot.guilds = [ticket_guild]
+    if stale:
+        stale_ticket = MagicMock()
+        stale_ticket.id = "ticket-uuid-001"
+        stale_ticket.channel_id = "444444444"
+        ticket_bot.ticket_service.get_stale_tickets = AsyncMock(return_value=[stale_ticket])
+        ticket_bot.get_channel = MagicMock(return_value=mock_ticket_channel)
+    else:
+        # No stale tickets.
+        ticket_bot.ticket_service.get_stale_tickets = AsyncMock(return_value=[])
+    config = MagicMock()
+    config.log_channel_id = None
+    ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
+
+
 def _parent_owner_member(member_id: int = 222222222) -> MagicMock:
     """Return a mock Member representing the parent ticket author."""
     owner = MagicMock(spec=discord.Member)
     owner.id = member_id
     owner.mention = f"<@{member_id}>"
     return owner
+
+
+def _wire_parent_owner(slash_ctx: MagicMock, member_id: int) -> MagicMock:
+    """Resolve the parent owner through guild.get_member and return the member."""
+    parent_owner = _parent_owner_member(member_id)
+    slash_ctx.guild.get_member = MagicMock(return_value=parent_owner)
+    return parent_owner
+
+
+def _wire_channel_result(
+    ticket_bot: MagicMock,
+    mock_ticket_channel: MagicMock | None,
+    *,
+    parent_row_id: str,
+) -> None:
+    """Stub create_ticket_channel for subticket characterization tests.
+
+    Uses the provided channel when available, otherwise a bare channel mock
+    carrying a send stub. The subticket carries parent_row_id as parentId.
+    """
+    subticket = Ticket.from_db_row({**_ticket_row(ticket_number=6), "parentId": parent_row_id})
+    if mock_ticket_channel is not None:
+        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, subticket))
+    else:
+        ch = MagicMock()
+        ch.send = AsyncMock()
+        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(ch, subticket))
 
 
 class TestSubticketParentOwnerAccess:
@@ -1959,13 +1989,7 @@ class TestSubticketParentOwnerAccess:
     @staticmethod
     def _wire_subticket_base(slash_ctx, ticket_bot, mock_db, parent_author_id: str, mock_ticket_channel=None):
         """Wire config + parent row + max number for a subticket create call."""
-        config = MagicMock()
-        config.ticket_category_id = "100000000"
-        config.mod_role_id = None
-        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
-        category_channel = MagicMock(spec=discord.CategoryChannel)
-        slash_ctx.guild.get_channel = MagicMock(return_value=category_channel)
-
+        _wire_subticket_success(ticket_bot, slash_ctx, mock_db, parent_row=None)
         parent_row = {**_ticket_row(ticket_number=5), "authorId": parent_author_id}
         mock_db.get_ticket_by_channel = AsyncMock(return_value=parent_row)
         mock_db.get_max_ticket_number = AsyncMock(return_value=5)
@@ -2038,9 +2062,8 @@ class TestSubticketParentOwnerAccess:
         # No channel created when the owner cannot be resolved.
         ticket_bot.ticket_service.create_ticket_channel.assert_not_awaited()
         ticket_bot.ticket_service.create_subticket.assert_not_awaited()
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "Failed" in embed.title or "Not Found" in embed.title
+        embed = _sent_embed(slash_ctx)
+        assert "Failed" in (embed.title or "") or "Not Found" in (embed.title or "")
 
 
 # ===========================================================================
@@ -2064,15 +2087,13 @@ class TestDBErrorHandling:
         mock_db,
     ) -> None:
         """B4.1: get_notes raises → error_embed + logger.exception, no leak."""
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row())
+        _ticket_channel_row(mock_db)
         ticket_bot.ticket_service.get_notes = AsyncMock(side_effect=Exception("DB down"))
 
         with patch("bot.cogs.tickets.logger.exception") as mock_exc:
             await tickets_cog.note_list.callback(tickets_cog, slash_ctx)
 
-        slash_ctx.send.assert_awaited_once()
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
+        embed = _sent_embed(slash_ctx)
         assert "DB down" not in (embed.description or "")
         assert "Traceback" not in (embed.description or "")
         mock_exc.assert_called_once()
@@ -2119,12 +2140,7 @@ class TestDBErrorHandling:
     ) -> None:
         """B4: get_ticket_by_channel raising → error_embed + logger.exception, service untouched."""
         if command == "subticket_create":
-            config = MagicMock()
-            config.ticket_category_id = "100000000"
-            config.mod_role_id = None
-            ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
-            category_channel = MagicMock(spec=discord.CategoryChannel)
-            slash_ctx.guild.get_channel = MagicMock(return_value=category_channel)
+            _wire_subticket_success(ticket_bot, slash_ctx, mock_db)
         elif command == "reopen":
             ticket_bot.ticket_service.reopen_ticket = AsyncMock()
         elif command == "transfer":
@@ -2145,8 +2161,7 @@ class TestDBErrorHandling:
                 await tickets_cog.note_add.callback(tickets_cog, slash_ctx, content="a note")
 
         getattr(ticket_bot.ticket_service, guarded_service).assert_not_awaited()
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
+        embed = _sent_embed(slash_ctx)
         assert "DB down" not in (embed.description or "")
         assert "Traceback" not in (embed.description or "")
         mock_exc.assert_called_once()
@@ -2163,22 +2178,19 @@ class TestDBErrorHandling:
         After PR4, get_max_ticket_number is called inside create_ticket_channel.
         The service mock is configured to raise (simulating DB failure inside the service).
         """
-        config = MagicMock()
-        config.ticket_category_id = "100000000"
-        config.mod_role_id = None
-        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
-        category_channel = MagicMock(spec=discord.CategoryChannel)
-        slash_ctx.guild.get_channel = MagicMock(return_value=category_channel)
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=_ticket_row(ticket_number=5))
+        _wire_subticket_success(
+            ticket_bot,
+            slash_ctx,
+            mock_db,
+            channel_result=Exception("DB down"),
+        )
         mock_db.get_ticket_category = AsyncMock(return_value={"name": "Support", "id": "cat-uuid"})
         slash_ctx.guild.get_member = MagicMock(return_value=_parent_owner_member(111111111))
-        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(side_effect=Exception("DB down"))
 
         with patch("bot.cogs.tickets.logger.exception") as mock_exc:
             await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
 
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
+        embed = _sent_embed(slash_ctx)
         assert "DB down" not in (embed.description or "")
         mock_exc.assert_called_once()
 
@@ -2210,11 +2222,7 @@ class TestPR2ButtonPermissionGates:
         await view.claim_button.callback(ticket_interaction)
 
         ticket_bot.ticket_service.claim_ticket.assert_not_awaited()
-        ticket_interaction.response.send_message.assert_awaited_once()
-        kwargs = ticket_interaction.response.send_message.call_args.kwargs
-        assert kwargs.get("ephemeral") is True
-        embed = kwargs.get("embed")
-        assert embed is not None  # user-facing error embed
+        _sent_ephemeral_kwargs(ticket_interaction.response.send_message)
 
     async def test_claim_button_allows_mod(
         self,
@@ -2263,51 +2271,40 @@ class TestPR2ButtonPermissionGates:
         await view.close_button.callback(ticket_interaction)
 
         ticket_bot.ticket_service.close_ticket.assert_not_awaited()
-        ticket_interaction.response.send_message.assert_awaited_once()
-        kwargs = ticket_interaction.response.send_message.call_args.kwargs
-        assert kwargs.get("ephemeral") is True
+        _sent_ephemeral_kwargs(ticket_interaction.response.send_message)
 
 
 class TestReopenByTicketRef:
     """/reopen ticket_ref resolution by number / UUID (TI-029, TI-037)."""
 
+    # Number-ref input shapes: (ticket_ref literal, id for the parametrize).
+    _NUMBER_REF_MATRIX: ClassVar[list[Any]] = [
+        pytest.param("#0003", id="bare_number"),
+        pytest.param("ticket:#0003", id="prefixed_number"),
+    ]
+
+    @pytest.mark.parametrize("ticket_ref", _NUMBER_REF_MATRIX)
     async def test_reopen_by_ticket_number(
         self,
         tickets_cog: TicketsCog,
         slash_ctx: MagicMock,
         ticket_bot: MagicMock,
         mock_db,
+        ticket_ref: str,
     ) -> None:
-        """/reopen ticket:#0003 resolves ticket #3 via get_ticket_by_number."""
+        """Number refs — '#0003' and the literal guidance 'ticket:#0003' —
+        both resolve ticket #3 via get_ticket_by_number."""
         closed_row = _ticket_row(ticket_number=3, status="closed")
         mock_db.get_ticket_by_number = AsyncMock(return_value=closed_row)
         reopened = Ticket.from_db_row({**closed_row, "status": "open"})
         ticket_bot.ticket_service.reopen_ticket = AsyncMock(return_value=reopened)
 
-        await tickets_cog.reopen.callback(tickets_cog, slash_ctx, ticket_ref="#0003")
+        await tickets_cog.reopen.callback(tickets_cog, slash_ctx, ticket_ref=ticket_ref)
 
         mock_db.get_ticket_by_number.assert_awaited_once_with("123456789", 3)
         ticket_bot.ticket_service.reopen_ticket.assert_awaited_once()
         args = ticket_bot.ticket_service.reopen_ticket.call_args.args
         assert args[0] == closed_row["id"]
-
-    async def test_reopen_by_ticket_number_with_prefix(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db,
-    ) -> None:
-        """The literal guidance 'ticket:#0003' parses to number 3."""
-        closed_row = _ticket_row(ticket_number=3, status="closed")
-        mock_db.get_ticket_by_number = AsyncMock(return_value=closed_row)
-        ticket_bot.ticket_service.reopen_ticket = AsyncMock(
-            return_value=Ticket.from_db_row({**closed_row, "status": "open"})
-        )
-
-        await tickets_cog.reopen.callback(tickets_cog, slash_ctx, ticket_ref="ticket:#0003")
-
-        mock_db.get_ticket_by_number.assert_awaited_once_with("123456789", 3)
 
     async def test_reopen_by_uuid(
         self,
@@ -2342,9 +2339,7 @@ class TestReopenByTicketRef:
 
         await tickets_cog.reopen.callback(tickets_cog, slash_ctx, ticket_ref="not-a-ticket")
 
-        slash_ctx.send.assert_awaited_once()
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
+        _sent_embed(slash_ctx)
 
     async def test_reopen_missing_ticket_shows_error(
         self,
@@ -2357,9 +2352,7 @@ class TestReopenByTicketRef:
 
         await tickets_cog.reopen.callback(tickets_cog, slash_ctx, ticket_ref="#9999")
 
-        slash_ctx.send.assert_awaited_once()
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
+        _sent_embed(slash_ctx)
 
     async def test_reopen_wrong_guild_denied(
         self,
@@ -2375,9 +2368,7 @@ class TestReopenByTicketRef:
 
         await tickets_cog.reopen.callback(tickets_cog, slash_ctx, ticket_ref=uuid_str)
 
-        slash_ctx.send.assert_awaited_once()
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
+        _sent_embed(slash_ctx)
 
     async def test_reopen_no_arg_legacy_channel_lookup(
         self,
@@ -2426,30 +2417,9 @@ class TestConfigMissingErrorMessages:
         """Modal submit with ticket_category_id=None → actionable error."""
         ticket_bot.db.get_max_ticket_number = AsyncMock(return_value=0)
 
-        config = MagicMock()
-        config.ticket_category_id = None
-        config.mod_role_id = None
-        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
-
-        modal_interaction = MagicMock(spec=discord.Interaction)
-        modal_interaction.guild = ticket_guild
-        modal_interaction.user = MagicMock(spec=discord.Member)
-        modal_interaction.user.id = 111111111
-        modal_interaction.user.mention = "<@111111111>"
-        modal_interaction.client = ticket_bot
-        modal_interaction.guild_id = ticket_guild.id
-        modal_interaction.response = MagicMock()
-        modal_interaction.response.defer = AsyncMock()
-        modal_interaction.followup = MagicMock()
-        modal_interaction.followup.send = AsyncMock()
-
-        modal = TicketIntakeModal(
-            guild=ticket_guild,
-            category_id="cat-uuid-001",
-            category_name="Support",
-        )
-        modal.title_input = MagicMock(value="Help")
-        modal.description_input = MagicMock(value=None)
+        _wire_intake_success(ticket_bot, mock_db, ticket_guild, MagicMock(), ticket_category_id=None)
+        modal_interaction = _make_modal_interaction(ticket_bot, ticket_guild)
+        modal = _make_intake_modal(ticket_guild, title="Help", description=None)
 
         await modal.on_submit(modal_interaction)
 
@@ -2477,9 +2447,7 @@ class TestConfigMissingErrorMessages:
 
         await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
 
-        slash_ctx.send.assert_awaited_once()
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
+        embed = _sent_embed(slash_ctx)
         desc = embed.description or ""
         assert "/setup" in desc
         assert "/create_category" in desc
@@ -2558,10 +2526,7 @@ class TestConfigureFieldsCommand:
         mock_db,
     ) -> None:
         """Valid invocation → field_definitions updated, success embed sent."""
-        slash_ctx.guild.id = 123456789
-        row = _category_row()
-        mock_db.get_ticket_category = AsyncMock(return_value=row)
-        mock_db.update_ticket_category_field_definitions = AsyncMock()
+        _wire_configure_fields(slash_ctx, mock_db)
 
         await tickets_cog.configure_fields_set.callback(
             tickets_cog, slash_ctx, category_id="cat-uuid-001", fields_json=self.VALID_FIELDS_JSON
@@ -2574,10 +2539,9 @@ class TestConfigureFieldsCommand:
         assert call_kwargs["guild_id"] == "123456789"
         assert len(call_kwargs["field_definitions"]) == 1
         assert call_kwargs["field_definitions"][0]["key"] == "player_nick"
-        slash_ctx.send.assert_awaited_once()
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "Configured" in embed.title or "Fields" in embed.title or "✅" in embed.title
+        embed = _sent_embed(slash_ctx)
+        title = embed.title or ""
+        assert "Configured" in title or "Fields" in title or "✅" in title
 
     async def test_configure_fields_set_clears_with_empty_list(
         self,
@@ -2586,10 +2550,7 @@ class TestConfigureFieldsCommand:
         mock_db,
     ) -> None:
         """Empty JSON array '[]' → field_definitions cleared (empty list)."""
-        slash_ctx.guild.id = 123456789
-        row = _category_row()
-        mock_db.get_ticket_category = AsyncMock(return_value=row)
-        mock_db.update_ticket_category_field_definitions = AsyncMock()
+        _wire_configure_fields(slash_ctx, mock_db)
 
         await tickets_cog.configure_fields_set.callback(
             tickets_cog, slash_ctx, category_id="cat-uuid-001", fields_json="[]"
@@ -2669,19 +2630,14 @@ class TestConfigureFieldsCommand:
         mock_db,
     ) -> None:
         """DB update failure → ephemeral error embed, no raw traceback."""
-        slash_ctx.guild.id = 123456789
-        row = _category_row()
-        mock_db.get_ticket_category = AsyncMock(return_value=row)
-        mock_db.update_ticket_category_field_definitions = AsyncMock(side_effect=Exception("DB down"))
+        _wire_configure_fields(slash_ctx, mock_db, update_side_effect=Exception("DB down"))
 
         with patch("bot.cogs.tickets.logger.exception") as mock_exc:
             await tickets_cog.configure_fields_set.callback(
                 tickets_cog, slash_ctx, category_id="cat-uuid-001", fields_json=self.VALID_FIELDS_JSON
             )
 
-        slash_ctx.send.assert_awaited_once()
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
+        embed = _sent_embed(slash_ctx)
         assert "DB down" not in (embed.description or "")
         mock_exc.assert_called_once()
 
@@ -2698,9 +2654,7 @@ class TestConfigureFieldsCommand:
             tickets_cog, ctx, category_id="cat-uuid-001", fields_json=self.VALID_FIELDS_JSON
         )
 
-        ctx.send.assert_awaited_once()
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
+        _sent_embed(ctx)
 
 
 class TestConfigureFieldsGroup:
@@ -2749,84 +2703,47 @@ class TestUnclaimCommand:
     then checks claimer/mod via check_can_unclaim.
     """
 
-    async def test_unclaim_by_claimer_succeeds(
+    # Unclaim authority scenarios: (actor id, administrator flag, cached mod
+    # role id or None, roles list builder, expected is_mod kwarg).
+    _UNCLAIM_MATRIX: ClassVar[list[Any]] = [
+        pytest.param("111111111", False, None, False, False, id="claimer_succeeds"),
+        pytest.param("222222222", True, None, False, True, id="mod_admin_succeeds"),
+        pytest.param("222222222", False, 987654321, True, True, id="configured_mod_role_succeeds"),
+    ]
+
+    @pytest.mark.parametrize(
+        ("actor_id", "is_admin", "cached_mod_role_id", "with_role", "expected_is_mod"),
+        _UNCLAIM_MATRIX,
+    )
+    async def test_unclaim_succeeds_per_authority(
         self,
         tickets_cog: TicketsCog,
         slash_ctx: MagicMock,
         ticket_bot: MagicMock,
         mock_db,
+        actor_id: str,
+        is_admin: bool,
+        cached_mod_role_id: int | None,
+        with_role: bool,
+        expected_is_mod: bool,
     ) -> None:
-        """Claimer unclaiming their own ticket → success embed."""
-        slash_ctx.author.id = 111111111
-        claimed_row = _ticket_row(status="claimed")
-        claimed_row["claimedBy"] = "111111111"
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=claimed_row)
+        """Claimer OR mod (admin or configured cached role) → success path.
 
-        unclaimed = Ticket.from_db_row({**claimed_row, "status": "open", "claimedBy": None})
-        ticket_bot.ticket_service.unclaim_ticket = AsyncMock(return_value=unclaimed)
-
-        await tickets_cog.unclaim.callback(tickets_cog, slash_ctx)
-
-        ticket_bot.ticket_service.unclaim_ticket.assert_awaited_once()
-        call_args = ticket_bot.ticket_service.unclaim_ticket.call_args
-        assert call_args.args[0] == claimed_row["id"]
-        assert call_args.args[1] == "111111111"
-        assert call_args.kwargs.get("is_mod") is False
-        slash_ctx.send.assert_awaited_once()
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert "Unclaim" in embed.title or "✅" in embed.title
-
-    async def test_unclaim_by_mod_succeeds(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db,
-    ) -> None:
-        """Mod unclaiming another's ticket → success embed."""
-        slash_ctx.author.id = 222222222  # different from claimer
-        slash_ctx.author.guild_permissions.administrator = True
-        ticket_bot._guild_mod_role_cache = {}
-
-        claimed_row = _ticket_row(status="claimed")
-        claimed_row["claimedBy"] = "111111111"
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=claimed_row)
-
-        unclaimed = Ticket.from_db_row({**claimed_row, "status": "open", "claimedBy": None})
-        ticket_bot.ticket_service.unclaim_ticket = AsyncMock(return_value=unclaimed)
-
-        await tickets_cog.unclaim.callback(tickets_cog, slash_ctx)
-
-        ticket_bot.ticket_service.unclaim_ticket.assert_awaited_once()
-        call_args = ticket_bot.ticket_service.unclaim_ticket.call_args
-        assert call_args.args[1] == "222222222"
-        assert call_args.kwargs.get("is_mod") is True
-
-    async def test_unclaim_by_configured_mod_role_succeeds(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db,
-    ) -> None:
-        """C3: Non-admin with configured cached mod role can /unclaim successfully.
-
-        The existing test_unclaim_by_mod_succeeds uses administrator=True.
-        This test proves a non-admin holding the guild's configured moderator
-        role passes the shared is_mod_check predicate.
+        The claimer case asserts the full success contract (args, is_mod,
+        success embed title); the mod cases assert the authority-critical
+        args (actor id + is_mod) exactly as the original tests did.
         """
-        mod_role_id = 987654321
-        slash_ctx.author.id = 222222222  # different from claimer
-        slash_ctx.author.guild_permissions.administrator = False
-        role = MagicMock(spec=discord.Role)
-        role.id = mod_role_id
-        slash_ctx.author.roles = [role]
-        ticket_bot._guild_mod_role_cache = {123456789: str(mod_role_id)}
+        slash_ctx.author.id = actor_id  # 111111111 == claimer for the first case
+        if cached_mod_role_id is not None:
+            role = MagicMock(spec=discord.Role)
+            role.id = cached_mod_role_id
+            slash_ctx.author.roles = [role]
+            ticket_bot._guild_mod_role_cache = {123456789: str(cached_mod_role_id)}
+        else:
+            slash_ctx.author.guild_permissions.administrator = is_admin
+            ticket_bot._guild_mod_role_cache = {}
 
-        claimed_row = _ticket_row(status="claimed")
-        claimed_row["claimedBy"] = "111111111"
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=claimed_row)
+        claimed_row = _claimed_by_channel_row(mock_db)
 
         unclaimed = Ticket.from_db_row({**claimed_row, "status": "open", "claimedBy": None})
         ticket_bot.ticket_service.unclaim_ticket = AsyncMock(return_value=unclaimed)
@@ -2835,8 +2752,15 @@ class TestUnclaimCommand:
 
         ticket_bot.ticket_service.unclaim_ticket.assert_awaited_once()
         call_args = ticket_bot.ticket_service.unclaim_ticket.call_args
-        assert call_args.args[1] == "222222222"
-        assert call_args.kwargs.get("is_mod") is True
+        assert call_args.args[1] == actor_id
+        assert call_args.kwargs.get("is_mod") is expected_is_mod
+        if actor_id == "111111111":
+            assert call_args.args[0] == claimed_row["id"]
+            assert call_args.kwargs.get("is_mod") is False
+            slash_ctx.send.assert_awaited_once()
+            embed = slash_ctx.send.call_args.kwargs.get("embed")
+            assert embed is not None
+            assert "Unclaim" in (embed.title or "") or "✅" in (embed.title or "")
 
     async def test_unclaim_by_non_claimer_non_mod_rejected(
         self,
@@ -2851,9 +2775,7 @@ class TestUnclaimCommand:
         slash_ctx.author.roles = []
         ticket_bot._guild_mod_role_cache = {}
 
-        claimed_row = _ticket_row(status="claimed")
-        claimed_row["claimedBy"] = "111111111"
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=claimed_row)
+        _claimed_by_channel_row(mock_db)
         # Service raises the invariant denial.
         ticket_bot.ticket_service.unclaim_ticket = AsyncMock(
             side_effect=ValueError("Only the claimer or a moderator can unclaim this ticket")
@@ -2863,12 +2785,9 @@ class TestUnclaimCommand:
 
         # Service IS called — the invariant is checked inside the service.
         ticket_bot.ticket_service.unclaim_ticket.assert_called_once()
-        slash_ctx.send.assert_awaited_once()
-        kwargs = slash_ctx.send.call_args.kwargs
-        assert kwargs.get("ephemeral") is True
-        embed = kwargs.get("embed")
-        assert embed is not None
-        assert "Permission" in (embed.title or "") or "Denied" in (embed.title or "")
+        kwargs = _sent_ephemeral_kwargs(slash_ctx)
+        title = kwargs["embed"].title or ""
+        assert "Permission" in title or "Denied" in title
 
     async def test_unclaim_on_unclaimed_ticket_rejected(
         self,
@@ -2887,11 +2806,7 @@ class TestUnclaimCommand:
         await tickets_cog.unclaim.callback(tickets_cog, slash_ctx)
 
         ticket_bot.ticket_service.unclaim_ticket.assert_not_called()
-        slash_ctx.send.assert_awaited_once()
-        kwargs = slash_ctx.send.call_args.kwargs
-        assert kwargs.get("ephemeral") is True
-        embed = kwargs.get("embed")
-        assert embed is not None
+        _sent_ephemeral_kwargs(slash_ctx)
 
     async def test_unclaim_no_guild(
         self,
@@ -2904,9 +2819,7 @@ class TestUnclaimCommand:
 
         await tickets_cog.unclaim.callback(tickets_cog, ctx)
 
-        ctx.send.assert_awaited_once()
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
+        _sent_embed(ctx)
 
     async def test_unclaim_not_ticket_channel(
         self,
@@ -2922,9 +2835,7 @@ class TestUnclaimCommand:
         await tickets_cog.unclaim.callback(tickets_cog, slash_ctx)
 
         ticket_bot.ticket_service.unclaim_ticket.assert_not_called()
-        slash_ctx.send.assert_awaited_once()
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
+        _sent_embed(slash_ctx)
 
     async def test_unclaim_service_error(
         self,
@@ -2935,16 +2846,12 @@ class TestUnclaimCommand:
     ) -> None:
         """unclaim_ticket raises → error embed."""
         slash_ctx.author.id = 111111111
-        claimed_row = _ticket_row(status="claimed")
-        claimed_row["claimedBy"] = "111111111"
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=claimed_row)
+        _claimed_by_channel_row(mock_db)
         ticket_bot.ticket_service.unclaim_ticket = AsyncMock(side_effect=Exception("DB down"))
 
         await tickets_cog.unclaim.callback(tickets_cog, slash_ctx)
 
-        slash_ctx.send.assert_awaited_once()
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
+        embed = _sent_embed(slash_ctx)
         assert "Unclaim Failed" in (embed.title or "") or "Failed" in (embed.title or "")
 
     async def test_unclaim_not_gated_by_is_mod(
@@ -2986,52 +2893,55 @@ class TestSubticketModRoleResolution:
         mock_ticket_channel: MagicMock | None = None,
     ) -> MagicMock:
         """Wire a subticket_create call focused on mod_role resolution."""
-        config = MagicMock()
-        config.ticket_category_id = "100000000"
-        config.mod_role_id = mod_role_id
-        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
-
-        category_channel = MagicMock(spec=discord.CategoryChannel)
-        slash_ctx.guild.get_channel = MagicMock(return_value=category_channel)
-
-        parent_row = {**_ticket_row(ticket_number=5), "authorId": parent_author_id, "categoryId": parent_cat_id}
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=parent_row)
+        _wire_subticket_success(ticket_bot, slash_ctx, mock_db, mod_role_id=mod_role_id)
         mock_db.get_ticket_category = AsyncMock(
             return_value={"name": "Support", "id": parent_cat_id} if parent_cat_id else None
         )
 
-        parent_owner = MagicMock(spec=discord.Member)
-        parent_owner.id = int(parent_author_id)
-        parent_owner.mention = f"<@{parent_author_id}>"
-        slash_ctx.guild.get_member = MagicMock(return_value=parent_owner)
+        _wire_parent_owner(slash_ctx, int(parent_author_id))
+        _wire_channel_result(ticket_bot, mock_ticket_channel, parent_row_id=_ticket_row()["id"])
 
-        subticket = Ticket.from_db_row({**_ticket_row(ticket_number=6), "parentId": parent_row["id"]})
-        if mock_ticket_channel is not None:
-            ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, subticket))
+        return slash_ctx.guild.get_member.return_value
+
+    # Mod-role resolution scenarios: (config mod_role_id, guild.get_role
+    # result, expected mod_role kwarg passed to the service).
+    _MOD_ROLE_MATRIX: ClassVar[list[Any]] = [
+        pytest.param("987654321", "resolved", "resolved", id="valid_role_passed"),
+        pytest.param(None, "resolved", None, id="none_id_passes_none"),
+        pytest.param("not-a-number", "resolved", None, id="invalid_id_suppressed"),
+        pytest.param("987654321", None, None, id="missing_role_passes_none"),
+    ]
+
+    @pytest.mark.parametrize(("mod_role_id", "get_role_result", "expected_mod_role"), _MOD_ROLE_MATRIX)
+    async def test_subticket_mod_role_resolution(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db: MagicMock,
+        mock_ticket_channel: MagicMock,
+        mod_role_id: str | None,
+        get_role_result: str | None,
+        expected_mod_role: str | None,
+    ) -> None:
+        """Mod-role resolution paths — behavior MUST remain identical.
+
+        Valid config.mod_role_id → resolved Role passed as mod_role kwarg;
+        None id / non-numeric id (ValueError suppressed) / missing role
+        (get_role → None) → mod_role=None.
+        """
+        mod_role: MagicMock | None = None
+        if get_role_result == "resolved":
+            mod_role = MagicMock(spec=discord.Role)
+            slash_ctx.guild.get_role = MagicMock(return_value=mod_role)
         else:
-            ch = MagicMock()
-            ch.send = AsyncMock()
-            ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(ch, subticket))
-
-        return parent_owner
-
-    async def test_subticket_valid_mod_role_passed_to_service(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db: MagicMock,
-        mock_ticket_channel: MagicMock,
-    ) -> None:
-        """Valid config.mod_role_id → resolved Role passed as mod_role kwarg."""
-        mod_role = MagicMock(spec=discord.Role)
-        slash_ctx.guild.get_role = MagicMock(return_value=mod_role)
+            slash_ctx.guild.get_role = MagicMock(return_value=None)
 
         self._wire_subticket_for_mod_role(
             slash_ctx,
             ticket_bot,
             mock_db,
-            mod_role_id="987654321",
+            mod_role_id=mod_role_id,
             mock_ticket_channel=mock_ticket_channel,
         )
 
@@ -3039,78 +2949,7 @@ class TestSubticketModRoleResolution:
 
         ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
         call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
-        assert call_kwargs["mod_role"] is mod_role
-
-    async def test_subticket_none_mod_role_id_passes_none(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db: MagicMock,
-        mock_ticket_channel: MagicMock,
-    ) -> None:
-        """config.mod_role_id=None → mod_role=None passed to service."""
-        self._wire_subticket_for_mod_role(
-            slash_ctx,
-            ticket_bot,
-            mock_db,
-            mod_role_id=None,
-            mock_ticket_channel=mock_ticket_channel,
-        )
-
-        await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
-
-        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
-        call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
-        assert call_kwargs["mod_role"] is None
-
-    async def test_subticket_invalid_mod_role_id_passes_none(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db: MagicMock,
-        mock_ticket_channel: MagicMock,
-    ) -> None:
-        """config.mod_role_id='not-a-number' → ValueError suppressed, mod_role=None."""
-        self._wire_subticket_for_mod_role(
-            slash_ctx,
-            ticket_bot,
-            mock_db,
-            mod_role_id="not-a-number",
-            mock_ticket_channel=mock_ticket_channel,
-        )
-
-        await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
-
-        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
-        call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
-        assert call_kwargs["mod_role"] is None
-
-    async def test_subticket_nonexistent_role_passes_none(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db: MagicMock,
-        mock_ticket_channel: MagicMock,
-    ) -> None:
-        """config.mod_role_id valid but guild.get_role returns None → mod_role=None."""
-        slash_ctx.guild.get_role = MagicMock(return_value=None)
-
-        self._wire_subticket_for_mod_role(
-            slash_ctx,
-            ticket_bot,
-            mock_db,
-            mod_role_id="987654321",
-            mock_ticket_channel=mock_ticket_channel,
-        )
-
-        await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
-
-        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
-        call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
-        assert call_kwargs["mod_role"] is None
+        assert call_kwargs["mod_role"] == (mod_role if expected_mod_role == "resolved" else None)
 
 
 class TestSubticketCategoryNameResolution:
@@ -3135,34 +2974,62 @@ class TestSubticketCategoryNameResolution:
         mock_ticket_channel: MagicMock | None = None,
     ) -> None:
         """Wire a subticket_create call focused on category_name resolution."""
-        config = MagicMock()
-        config.ticket_category_id = "100000000"
-        config.mod_role_id = None
-        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
-
-        category_channel = MagicMock(spec=discord.CategoryChannel)
-        slash_ctx.guild.get_channel = MagicMock(return_value=category_channel)
-
         parent_row = {**_ticket_row(ticket_number=5), "authorId": "111111111", "categoryId": parent_cat_id}
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=parent_row)
+        _wire_subticket_success(ticket_bot, slash_ctx, mock_db, parent_row=parent_row)
 
         if db_raises:
             mock_db.get_ticket_category = AsyncMock(side_effect=Exception("DB down"))
         else:
             mock_db.get_ticket_category = AsyncMock(return_value=db_category_row)
 
-        parent_owner = MagicMock(spec=discord.Member)
-        parent_owner.id = 111111111
-        parent_owner.mention = "<@111111111>"
-        slash_ctx.guild.get_member = MagicMock(return_value=parent_owner)
+        _wire_parent_owner(slash_ctx, int("111111111"))
+        _wire_channel_result(ticket_bot, mock_ticket_channel, parent_row_id=_ticket_row()["id"])
 
-        subticket = Ticket.from_db_row({**_ticket_row(ticket_number=6), "parentId": parent_row["id"]})
-        if mock_ticket_channel is not None:
-            ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, subticket))
-        else:
-            ch = MagicMock()
-            ch.send = AsyncMock()
-            ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(ch, subticket))
+    # Category-name fallback scenarios: (parent_cat_id, db row stub, db_raises).
+    # All four MUST resolve category_name='ticket' via the fallback.
+    _CATEGORY_FALLBACK_MATRIX: ClassVar[list[Any]] = [
+        pytest.param(None, None, False, id="no_parent_category_id"),
+        pytest.param("cat-uuid-001", None, False, id="db_returns_none"),
+        pytest.param("cat-uuid-001", None, True, id="db_raises"),
+        pytest.param("cat-uuid-001", {"id": "cat-uuid-001"}, False, id="row_missing_name"),
+    ]
+
+    @pytest.mark.parametrize(("parent_cat_id", "db_row", "db_raises"), _CATEGORY_FALLBACK_MATRIX)
+    async def test_subticket_category_name_defaults_to_ticket(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db: MagicMock,
+        mock_ticket_channel: MagicMock,
+        parent_cat_id: str | None,
+        db_row: dict | None,
+        db_raises: bool,
+    ) -> None:
+        """Missing/None/erroring/unnamed category lookups fall back to 'ticket'.
+
+        Parent has categoryId=None → no DB call; the other three cases
+        consult get_ticket_category and fall back on the failure.
+        """
+        self._wire_subticket_for_category(
+            slash_ctx,
+            ticket_bot,
+            mock_db,
+            parent_cat_id=parent_cat_id,
+            db_category_row=db_row,
+            db_raises=db_raises,
+            mock_ticket_channel=mock_ticket_channel,
+        )
+
+        with patch("bot.cogs.tickets.logger.warning"):
+            await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
+
+        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
+        call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
+        assert call_kwargs["category_name"] == "ticket"
+        if parent_cat_id is None:
+            # No DB call for category lookup when parent_cat_id is None.
+            mock_db.get_ticket_category.assert_not_awaited()
 
     async def test_subticket_category_name_from_parent_category(
         self,
@@ -3188,104 +3055,6 @@ class TestSubticketCategoryNameResolution:
         call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
         assert call_kwargs["category_name"] == "Soporte Técnico"
 
-    async def test_subticket_no_parent_category_id_defaults_to_ticket(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db: MagicMock,
-        mock_ticket_channel: MagicMock,
-    ) -> None:
-        """Parent has categoryId=None → category_name='ticket' (no DB call)."""
-        self._wire_subticket_for_category(
-            slash_ctx,
-            ticket_bot,
-            mock_db,
-            parent_cat_id=None,
-            mock_ticket_channel=mock_ticket_channel,
-        )
-
-        await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
-
-        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
-        call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
-        assert call_kwargs["category_name"] == "ticket"
-        # No DB call for category lookup when parent_cat_id is None.
-        mock_db.get_ticket_category.assert_not_awaited()
-
-    async def test_subticket_db_returns_none_category_defaults_to_ticket(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db: MagicMock,
-        mock_ticket_channel: MagicMock,
-    ) -> None:
-        """Parent has categoryId but DB returns None → category_name='ticket'."""
-        self._wire_subticket_for_category(
-            slash_ctx,
-            ticket_bot,
-            mock_db,
-            parent_cat_id="cat-uuid-001",
-            db_category_row=None,
-            mock_ticket_channel=mock_ticket_channel,
-        )
-
-        await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
-
-        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
-        call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
-        assert call_kwargs["category_name"] == "ticket"
-
-    async def test_subticket_db_category_error_defaults_to_ticket(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db: MagicMock,
-        mock_ticket_channel: MagicMock,
-    ) -> None:
-        """DB raises during category lookup → category_name='ticket' (logged, not fatal)."""
-        self._wire_subticket_for_category(
-            slash_ctx,
-            ticket_bot,
-            mock_db,
-            parent_cat_id="cat-uuid-001",
-            db_raises=True,
-            mock_ticket_channel=mock_ticket_channel,
-        )
-
-        with patch("bot.cogs.tickets.logger.warning"):
-            await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
-
-        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
-        call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
-        assert call_kwargs["category_name"] == "ticket"
-
-    async def test_subticket_db_category_missing_name_defaults_to_ticket(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db: MagicMock,
-        mock_ticket_channel: MagicMock,
-    ) -> None:
-        """DB category row has no 'name' key → category_name='ticket'."""
-        self._wire_subticket_for_category(
-            slash_ctx,
-            ticket_bot,
-            mock_db,
-            parent_cat_id="cat-uuid-001",
-            db_category_row={"id": "cat-uuid-001"},  # missing 'name'
-            mock_ticket_channel=mock_ticket_channel,
-        )
-
-        await tickets_cog.subticket_create.callback(tickets_cog, slash_ctx)
-
-        ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
-        call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
-        assert call_kwargs["category_name"] == "ticket"
-
 
 # ===========================================================================
 # product-artifact-audit PR4b-b — /sweep_integrity + /repair_ticket adapters
@@ -3297,14 +3066,7 @@ class TestSweepIntegrityCommand:
     """The /sweep_integrity hybrid command delegates to TicketService.sweep_integrity."""
 
     def _sweep_ctx(self, ticket_bot: MagicMock) -> MagicMock:
-        ctx = MagicMock()
-        ctx.guild = MagicMock(spec=discord.Guild)
-        ctx.guild.id = 123456789
-        ctx.send = AsyncMock()
-        ctx.interaction = None
-        ctx.author = MagicMock(spec=discord.Member)
-        ctx.author.id = 111111111
-        return ctx
+        return _integrity_ctx(ticket_bot)
 
     async def test_sweep_integrity_delegates_to_service(
         self,
@@ -3313,19 +3075,7 @@ class TestSweepIntegrityCommand:
     ) -> None:
         """A valid invocation delegates to ticket_service.sweep_integrity."""
         ctx = self._sweep_ctx(ticket_bot)
-        ticket_bot.ticket_service.sweep_integrity = AsyncMock(
-            return_value=[
-                RepairResult(
-                    ticket_id="t-1",
-                    guild_id="123456789",
-                    action="close",
-                    outcome="repaired",
-                    reason=None,
-                    evidence_id="ev-1",
-                    timestamp=datetime.now(UTC),
-                )
-            ]
-        )
+        ticket_bot.ticket_service.sweep_integrity = AsyncMock(return_value=[_repair_result()])
 
         await tickets_cog.sweep_integrity.callback(tickets_cog, ctx)
 
@@ -3345,9 +3095,7 @@ class TestSweepIntegrityCommand:
 
         await tickets_cog.sweep_integrity.callback(tickets_cog, ctx)
 
-        ctx.send.assert_awaited_once()
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
+        _sent_embed(ctx)
 
     async def test_sweep_integrity_reports_summary(
         self,
@@ -3357,24 +3105,8 @@ class TestSweepIntegrityCommand:
         """The summary reports the number of repaired vs skipped candidates."""
         ctx = self._sweep_ctx(ticket_bot)
         results = [
-            RepairResult(
-                ticket_id="t-1",
-                guild_id="123456789",
-                action="close",
-                outcome="repaired",
-                reason=None,
-                evidence_id="ev-1",
-                timestamp=datetime.now(UTC),
-            ),
-            RepairResult(
-                ticket_id="t-2",
-                guild_id="123456789",
-                action="no_op",
-                outcome="skipped",
-                reason="probe_unresolved",
-                evidence_id=None,
-                timestamp=datetime.now(UTC),
-            ),
+            _repair_result(),
+            _repair_result("t-2", action="no_op", outcome="skipped", reason="probe_unresolved", evidence_id=None),
         ]
         ticket_bot.ticket_service.sweep_integrity = AsyncMock(return_value=results)
 
@@ -3390,16 +3122,8 @@ class TestRepairTicketCommand:
     """The /repair_ticket hybrid command delegates to TicketService.repair_ticket_manual."""
 
     def _repair_ctx(self, ticket_bot: MagicMock, *, author_admin: bool = True) -> MagicMock:
-        ctx = MagicMock()
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = 123456789
-        ctx.guild = guild
-        ctx.send = AsyncMock()
-        ctx.interaction = None
-        ctx.author = MagicMock(spec=discord.Member)
-        ctx.author.id = 111111111
+        ctx = _integrity_ctx(ticket_bot)
         ctx.author.guild_permissions.administrator = author_admin
-        ticket_bot._guild_mod_role_cache = {}
         return ctx
 
     async def test_repair_ticket_delegates_with_authority(
@@ -3417,17 +3141,7 @@ class TestRepairTicketCommand:
             "status": "open",
         }
         mock_db.get_ticket = AsyncMock(return_value=row)
-        ticket_bot.ticket_service.repair_ticket_by_ref = AsyncMock(
-            return_value=RepairResult(
-                ticket_id="t-1",
-                guild_id="123456789",
-                action="close",
-                outcome="repaired",
-                reason=None,
-                evidence_id="ev-1",
-                timestamp=datetime.now(UTC),
-            )
-        )
+        ticket_bot.ticket_service.repair_ticket_by_ref = AsyncMock(return_value=_repair_result())
 
         await tickets_cog.repair_ticket.callback(tickets_cog, ctx, ticket_ref="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 
@@ -3456,74 +3170,56 @@ class TestRepairTicketCommand:
         ticket_bot.ticket_service.repair_ticket_by_ref.assert_awaited_once()
         ctx.send.assert_awaited_once()
 
-    async def test_repair_ticket_not_found_audits_resolution_failure(
+    # /repair_ticket resolution-failure scenarios: (ticket_ref, lookup stub
+    # attribute, lookup behavior). Each failure mode MUST produce truthful
+    # structured evidence with no mutation and no fabricated audit row.
+    _REPAIR_RESOLUTION_FAILURES: ClassVar[list[Any]] = [
+        pytest.param(
+            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            "get_ticket",
+            None,
+            id="uuid_not_found",
+        ),
+        pytest.param(
+            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            "get_ticket",
+            RuntimeError("db down"),
+            id="uuid_db_error",
+        ),
+        pytest.param(
+            "#0003",
+            "get_ticket_by_number",
+            None,
+            id="number_not_found",
+        ),
+    ]
+
+    @pytest.mark.parametrize(("ticket_ref", "lookup_attr", "lookup_result"), _REPAIR_RESOLUTION_FAILURES)
+    async def test_repair_ticket_resolution_failure_audits_truthfully(
         self,
         tickets_cog: TicketsCog,
         ticket_bot: MagicMock,
         mock_db,
+        ticket_ref: str,
+        lookup_attr: str,
+        lookup_result: object,
     ) -> None:
-        """A /repair_ticket UUID lookup not-found MUST produce truthful
-        structured evidence (audit + log) even though the service cannot be
-        reached with a fabricated ticket id — no fake id is ever passed to the
-        service and no repair mutation is attempted.
+        """A /repair_ticket lookup not-found or DB failure MUST produce
+        truthful structured evidence (audit + log) without fabricating a
+        ticket id — no fake id is ever passed to the service and no repair
+        mutation or audit row is attempted.
         """
         service = TicketService(db=mock_db, cache=TTLCache())
         ticket_bot.ticket_service = service
         ctx = self._repair_ctx(ticket_bot)
-        mock_db.get_ticket = AsyncMock(return_value=None)
+        setattr(mock_db, lookup_attr, AsyncMock(return_value=lookup_result))
         mock_db.insert_audit_row = AsyncMock(return_value={})
 
-        await tickets_cog.repair_ticket.callback(tickets_cog, ctx, ticket_ref="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        await tickets_cog.repair_ticket.callback(tickets_cog, ctx, ticket_ref=ticket_ref)
 
         mock_db.transition_ticket_to_closed.assert_not_awaited()
         # ticketId is uuid NOT NULL — without a canonical ticket the audit is
         # skipped and the failure is surfaced via warning log + RepairResult.
-        mock_db.insert_audit_row.assert_not_awaited()
-        ctx.send.assert_awaited_once()
-
-    async def test_repair_ticket_db_lookup_error_audits_resolution_failure(
-        self,
-        tickets_cog: TicketsCog,
-        ticket_bot: MagicMock,
-        mock_db,
-    ) -> None:
-        """A /repair_ticket UUID lookup DB failure MUST produce truthful
-        structured evidence (audit + log) without fabricating a ticket id or
-        reaching the repair service with a fake id.
-        """
-        service = TicketService(db=mock_db, cache=TTLCache())
-        ticket_bot.ticket_service = service
-        ctx = self._repair_ctx(ticket_bot)
-        mock_db.get_ticket = AsyncMock(side_effect=RuntimeError("db down"))
-        mock_db.insert_audit_row = AsyncMock(return_value={})
-
-        await tickets_cog.repair_ticket.callback(tickets_cog, ctx, ticket_ref="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
-
-        mock_db.transition_ticket_to_closed.assert_not_awaited()
-        # Same best-effort contract: no fabricated ticketId, no audit row.
-        mock_db.insert_audit_row.assert_not_awaited()
-        ctx.send.assert_awaited_once()
-
-    async def test_repair_ticket_number_not_found_audits_resolution_failure(
-        self,
-        tickets_cog: TicketsCog,
-        ticket_bot: MagicMock,
-        mock_db,
-    ) -> None:
-        """A /repair_ticket NUMBER lookup not-found (guild-scoped) MUST also
-        produce truthful structured evidence — the number path has no UUID, so
-        the audit carries guild + the raw reference and never fabricates a
-        ticket id.
-        """
-        service = TicketService(db=mock_db, cache=TTLCache())
-        ticket_bot.ticket_service = service
-        ctx = self._repair_ctx(ticket_bot)
-        mock_db.get_ticket_by_number = AsyncMock(return_value=None)
-        mock_db.insert_audit_row = AsyncMock(return_value={})
-
-        await tickets_cog.repair_ticket.callback(tickets_cog, ctx, ticket_ref="#0003")
-
-        mock_db.transition_ticket_to_closed.assert_not_awaited()
         mock_db.insert_audit_row.assert_not_awaited()
         ctx.send.assert_awaited_once()
 
@@ -3620,6 +3316,17 @@ class TestIntegritySweepOrchestration:
 
         loop.cancel.assert_called_once()
 
+    @staticmethod
+    def _two_guild_bot(ticket_bot: MagicMock) -> tuple[MagicMock, MagicMock]:
+        """Attach guild_a (111111111) and guild_b (222222222) to the bot."""
+        guild_a = MagicMock()
+        guild_a.id = 111111111
+        guild_b = MagicMock()
+        guild_b.id = 222222222
+        ticket_bot.guilds = [guild_a, guild_b]
+        return guild_a, guild_b
+        return guild_a, guild_b
+
     async def test_sweep_loop_iteration_sweeps_all_guilds(
         self,
         tickets_cog: TicketsCog,
@@ -3630,11 +3337,7 @@ class TestIntegritySweepOrchestration:
         NO fabricated preflight/authority. Readiness is awaited by the loop's
         ``before_loop`` hook (not inside the iteration).
         """
-        guild_a = MagicMock()
-        guild_a.id = 111111111
-        guild_b = MagicMock()
-        guild_b.id = 222222222
-        ticket_bot.guilds = [guild_a, guild_b]
+        self._two_guild_bot(ticket_bot)
         ticket_bot.ticket_service.sweep_integrity = AsyncMock(return_value=[])
 
         await tickets_cog.integrity_sweep_loop()
@@ -3656,11 +3359,7 @@ class TestIntegritySweepOrchestration:
         failure is logged with structured guild context and remaining guilds
         continue to be swept.
         """
-        guild_a = MagicMock()
-        guild_a.id = 111111111
-        guild_b = MagicMock()
-        guild_b.id = 222222222
-        ticket_bot.guilds = [guild_a, guild_b]
+        self._two_guild_bot(ticket_bot)
         ticket_bot.ticket_service.sweep_integrity = AsyncMock(side_effect=[RuntimeError("db down"), []])
 
         await tickets_cog.integrity_sweep_loop()

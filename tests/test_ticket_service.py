@@ -206,12 +206,7 @@ async def test_create_ticket_retries_exhausted(
         RuntimeError,
         match=f"Failed to create ticket after {MAX_RETRIES} attempts",
     ):
-        await service.create_ticket(
-            guild_id="123456789",
-            author_id="111111111",
-            category_id=None,
-            channel_id="888888888",
-        )
+        await _create_ticket(service)
 
     assert mock_db.insert_ticket.call_count == MAX_RETRIES
 
@@ -261,12 +256,7 @@ async def test_create_ticket_without_subject_and_description(
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {**ticket_row, "subject": None, "description": None}
 
-    ticket = await service.create_ticket(
-        guild_id="123456789",
-        author_id="111111111",
-        category_id=None,
-        channel_id="888888888",
-    )
+    ticket = await _create_ticket(service)
 
     call_kwargs = mock_db.insert_ticket.call_args.kwargs
     assert call_kwargs["subject"] is None
@@ -313,12 +303,7 @@ async def test_create_ticket_allowed_in_different_category(
     mock_db.count_user_open_tickets_in_category.return_value = 0  # no open in this category
     mock_db.insert_ticket.return_value = {**ticket_row, "categoryId": "cat-uuid-002"}
 
-    ticket = await service.create_ticket(
-        guild_id="123456789",
-        author_id="111111111",
-        category_id="cat-uuid-002",
-        channel_id="888888888",
-    )
+    ticket = await _create_ticket(service, category_id="cat-uuid-002")
 
     assert isinstance(ticket, Ticket)
     mock_db.insert_ticket.assert_awaited_once()
@@ -340,12 +325,7 @@ async def test_create_ticket_allowed_when_closed_frees_slot(
     mock_db.count_user_open_tickets_in_category.return_value = 0  # closed doesn't count
     mock_db.insert_ticket.return_value = {**ticket_row, "categoryId": "cat-uuid-001"}
 
-    ticket = await service.create_ticket(
-        guild_id="123456789",
-        author_id="111111111",
-        category_id="cat-uuid-001",
-        channel_id="888888888",
-    )
+    ticket = await _create_ticket(service, category_id="cat-uuid-001")
 
     assert isinstance(ticket, Ticket)
     mock_db.insert_ticket.assert_awaited_once()
@@ -390,12 +370,7 @@ async def test_create_ticket_null_category_id_bypasses_guard(
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {**ticket_row, "categoryId": None}
 
-    ticket = await service.create_ticket(
-        guild_id="123456789",
-        author_id="111111111",
-        category_id=None,
-        channel_id="888888888",
-    )
+    ticket = await _create_ticket(service)
 
     assert isinstance(ticket, Ticket)
     # Count MUST NOT be called when categoryId is None.
@@ -421,12 +396,7 @@ async def test_close_ticket_updates_status(
     service._ticket_channel_cache.add(channel_id)
     assert channel_id in service._ticket_channel_cache
 
-    closed_row = {
-        **ticket_row,
-        "status": "closed",
-        "closedAt": "2026-06-16T18:00:00+00:00",
-        "transcriptUrl": "https://cdn.discord.com/transcript.html",
-    }
+    closed_row = {**_closed_from_transition(ticket_row), "transcriptUrl": "https://cdn.discord.com/transcript.html"}
     mock_db.get_ticket.return_value = ticket_row
     mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
 
@@ -464,14 +434,8 @@ async def test_close_unclaimed_ticket_preserves_null_claimant(
     ticket_id = ticket_row["id"]
     # Explicit unclaimed fixture: claimedBy is None before and after close.
     assert ticket_row["claimedBy"] is None
-    closed_row = {
-        **ticket_row,
-        "status": "closed",
-        "claimedBy": None,
-        "closedAt": "2026-06-16T18:00:00+00:00",
-    }
+    _wire_transition(mock_db, ticket_row)
     mock_db.get_ticket.return_value = ticket_row
-    mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
 
     ticket = await service.close_ticket(ticket_id, closed_by="999999999")
 
@@ -517,10 +481,7 @@ async def test_claim_ticket_updates_status(
 
     # PR2 contract: service pre-reads the OPEN row (invariant passes),
     # then re-reads the claimed row after update.
-    mock_db.get_ticket.side_effect = [
-        ticket_row,  # pre-read: open + unclaimed
-        {**ticket_row, "status": "claimed", "claimedBy": staff_id},  # post-update
-    ]
+    _claim_preread(mock_db, ticket_row, staff_id)
 
     ticket = await service.claim_ticket(ticket_id, claimed_by=staff_id)
 
@@ -652,6 +613,94 @@ def _parent_row(
     }
 
 
+def _assert_audit(mock_db: AsyncMock, *, index: int = -1) -> dict:
+    """Assert exactly one audit row was written and return its merged kwargs."""
+    mock_db.insert_audit_row.assert_awaited_once()
+    return _audit_kwargs(mock_db, index=index)
+
+
+async def _edit_category(
+    service: TicketService,
+    ticket_id: str,
+    channel: MagicMock,
+    *,
+    category_id: str = "cat-uuid-billing",
+) -> tuple[Ticket, bool]:
+    """Invoke edit_ticket_category with the shared mod-actor arguments."""
+    return await service.edit_ticket_category(
+        ticket_id,
+        category_id,
+        channel=channel,
+        actor_id="999999999",
+        is_mod=True,
+    )
+
+
+def _wire_edit_category(
+    mock_db: AsyncMock,
+    *,
+    category_name: str,
+    category_id: str = "cat-uuid-billing",
+) -> None:
+    """Wire get_ticket (pre-read open → re-read updated), count, and category stubs.
+
+    The open row uses category_id="cat-uuid-support"; the re-read row carries
+    the edited category_id.
+    """
+    open_row = _open_ticket_row_for_edit(category_id="cat-uuid-support")
+    updated_row = {**open_row, "categoryId": category_id}
+    mock_db.get_ticket.side_effect = [open_row, updated_row]
+    mock_db.count_user_open_tickets_in_category.return_value = 0
+    mock_db.get_ticket_category = AsyncMock(return_value={"name": category_name})
+
+
+async def _create_ticket(
+    service: TicketService,
+    *,
+    category_id: str | None = None,
+) -> Ticket:
+    """Invoke create_ticket with the shared guild/author/channel arguments."""
+    return await service.create_ticket(
+        guild_id="123456789",
+        author_id="111111111",
+        category_id=category_id,
+        channel_id="888888888",
+    )
+
+
+def _wire_transition(
+    mock_db: AsyncMock,
+    ticket_row: dict,
+    close_reason: str | None = None,
+) -> dict:
+    """Stub transition_ticket_to_closed to return the closed form of ticket_row.
+
+    Returns the closed row so tests can also use it as the get_ticket re-read.
+    """
+    closed_row = _closed_from_transition(ticket_row, close_reason=close_reason)
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+    return closed_row
+
+
+def _ticket_guild_row(ticket_id: str) -> dict:
+    """Return the minimal ticket row (id + guild) used for guild-scoped note ops."""
+    return {"id": ticket_id, "guildId": "123456789"}
+
+
+def _wire_guild_config(
+    mock_db: AsyncMock,
+    *,
+    mod_role_id: str | None = None,
+    category_id: str | None = "100000000",
+) -> None:
+    """Wire get_guild to the default ticket guild config (both ids overridable)."""
+    mock_db.get_guild.return_value = {
+        "id": "123456789",
+        "ticketCategoryId": category_id,
+        "modRoleId": mod_role_id,
+    }
+
+
 @pytest.mark.asyncio
 async def test_create_subticket_success(
     service: TicketService,
@@ -692,86 +741,60 @@ async def test_create_subticket_success(
 
 
 @pytest.mark.asyncio
-async def test_create_subticket_parent_not_found(
-    service: TicketService,
+@pytest.mark.parametrize(
+    ("parent_kwargs", "match"),
+    [
+        # Non-existent parent raises before any insert.
+        pytest.param(
+            None,
+            r"Parent ticket .* not found",
+            id="parent_not_found",
+        ),
+        # Corrupted parent: its own parentId equals its own id.
+        pytest.param(
+            {"parent_id": "parent-uuid-001"},
+            "self-referential",
+            id="self_reference_rejected",
+        ),
+        # Parent already has a different parentId → it is a sub-ticket.
+        pytest.param(
+            {"parent_id": "grandparent-uuid"},
+            r"depth|subticket|sub",
+            id="sub_of_sub_rejected",
+        ),
+        # Parent in guild A + caller passes guild B.
+        pytest.param(
+            {"parent_id": None, "guild_id": "111000111"},
+            r"guild|same",
+            id="cross_guild_rejected",
+        ),
+    ],
+)
+async def test_create_subticket_invalid_parent_rejected(
     mock_db: AsyncMock,
-) -> None:
-    """Non-existent parent MUST raise ValueError before any insert."""
-    mock_db.get_ticket.return_value = None
-
-    with pytest.raises(ValueError, match=r"Parent ticket .* not found"):
-        await service.create_subticket(
-            parent_id="does-not-exist",
-            author_id="111111111",
-            category_id=None,
-            channel_id="666666666",
-            guild_id="123456789",
-        )
-
-    # No insert attempted after validation failure.
-    mock_db.insert_ticket.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_create_subticket_self_reference_rejected(
     service: TicketService,
-    mock_db: AsyncMock,
+    parent_kwargs: dict,
+    match: str,
 ) -> None:
-    """A parent that points to itself (parentId == id) MUST be rejected."""
+    """Missing or corrupted parent rows MUST be rejected before any insert.
+
+    None row (missing parent), self-reference (parentId == id), depth
+    violation (parent already a child), and cross-guild mismatch all raise
+    ValueError; none may attempt insert_ticket.
+    """
     parent_id = "parent-uuid-001"
-    # Corrupted parent: its own parentId equals its own id.
-    mock_db.get_ticket.return_value = _parent_row(parent_id=parent_id)
+    if parent_kwargs is None:
+        mock_db.get_ticket.return_value = None
+    else:
+        mock_db.get_ticket.return_value = _parent_row(**parent_kwargs)
 
-    with pytest.raises(ValueError, match="self-referential"):
+    with pytest.raises(ValueError, match=match):
         await service.create_subticket(
             parent_id=parent_id,
             author_id="111111111",
             category_id=None,
             channel_id="666666666",
             guild_id="123456789",
-        )
-
-    mock_db.insert_ticket.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_create_subticket_sub_of_sub_rejected(
-    service: TicketService,
-    mock_db: AsyncMock,
-) -> None:
-    """A parent that is itself a child (parentId set, != id) MUST be rejected."""
-    parent_id = "parent-uuid-001"
-    # Parent already has a different parentId → it is a sub-ticket.
-    mock_db.get_ticket.return_value = _parent_row(parent_id="grandparent-uuid")
-
-    with pytest.raises(ValueError, match=r"depth|subticket|sub"):
-        await service.create_subticket(
-            parent_id=parent_id,
-            author_id="111111111",
-            category_id=None,
-            channel_id="666666666",
-            guild_id="123456789",
-        )
-
-    mock_db.insert_ticket.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_create_subticket_cross_guild_rejected(
-    service: TicketService,
-    mock_db: AsyncMock,
-) -> None:
-    """Parent in guild A + caller passes guild B MUST raise ValueError."""
-    parent_id = "parent-uuid-001"
-    mock_db.get_ticket.return_value = _parent_row(parent_id=None, guild_id="111000111")
-
-    with pytest.raises(ValueError, match=r"guild|same"):
-        await service.create_subticket(
-            parent_id=parent_id,
-            author_id="111111111",
-            category_id=None,
-            channel_id="666666666",
-            guild_id="123456789",  # different from parent's guild
         )
 
     mock_db.insert_ticket.assert_not_awaited()
@@ -812,14 +835,14 @@ async def test_create_subticket_carve_out_skips_duplicate_check(
 # ===========================================================================
 
 
-def _closed_ticket_row(channel_id: str = "888888888", category_id: str | None = "cat-uuid-001") -> dict:
+def _closed_ticket_row(*, category_id: str | None = "cat-uuid-001") -> dict:
     """Return a closed ticket DB row."""
     return {
         "id": "ticket-uuid-003",
         "ticketNumber": 3,
         "guildId": "123456789",
         "authorId": "111111111",
-        "channelId": channel_id,
+        "channelId": "888888888",
         "categoryId": category_id,
         "status": "closed",
         "claimedBy": None,
@@ -851,6 +874,106 @@ def _mock_guild_for_reopen(
     return guild
 
 
+def _author_member() -> MagicMock:
+    """Return the DanielXX author member used by reopen naming tests."""
+    author = MagicMock()
+    author.display_name = "DanielXX"
+    return author
+
+
+def _wire_reopen_success(
+    mock_db: AsyncMock,
+    *,
+    category: dict | None = None,
+    author_member: MagicMock | None = None,
+) -> MagicMock:
+    """Wire mock_db for a reopen_ticket happy-path call and return the guild.
+
+    Sets get_ticket side effects (closed → reopened), guild config with the
+    configured ticket category, and the category lookup row. Assigns
+    ``guild.get_member`` only when ``author_member`` is supplied.
+    """
+    closed_row = _closed_ticket_row()
+    reopened_row = {**closed_row, "channelId": "555555555", "status": "open", "closedAt": None}
+    mock_db.get_ticket.side_effect = [closed_row, reopened_row]
+    _wire_guild_config(mock_db)
+    mock_db.get_ticket_category = AsyncMock(return_value=category)
+    category_channel = MagicMock(spec=discord.CategoryChannel)
+    guild = _mock_guild_for_reopen(category_channel=category_channel)
+    if author_member is not None:
+        guild.get_member = MagicMock(return_value=author_member)
+    return guild
+
+
+def _ticket_row_for_close() -> dict:
+    """Return the open ticket DB row used by close_ticket_full tests."""
+    return {
+        "id": "ticket-uuid-close",
+        "ticketNumber": 42,
+        "guildId": "123456789",
+        "authorId": "111111111",
+        "channelId": "888888888",
+        "categoryId": None,
+        "status": "open",
+        "claimedBy": None,
+        "transcriptUrl": None,
+        "createdAt": "2026-01-15T10:00:00",
+        "closedAt": None,
+        "lastActivity": "2026-01-15T10:00:00",
+    }
+
+
+def _unclaim_row(*, status: str, claimed_by: str | None) -> dict:
+    """Return a ticket DB row wired for unclaim_ticket tests."""
+    return {
+        "id": "ticket-uuid-unclaim",
+        "ticketNumber": 5,
+        "guildId": "123456789",
+        "authorId": "111111111",
+        "channelId": "888888888",
+        "categoryId": None,
+        "status": status,
+        "claimedBy": claimed_by,
+        "transcriptUrl": None,
+        "createdAt": "2026-01-15T10:00:00",
+        "closedAt": None,
+        "lastActivity": "2026-01-15T10:00:00",
+    }
+
+
+def _closed_from_transition(ticket_row: dict, close_reason: str | None = None) -> dict:
+    """Return the closed row produced by a successful transition_ticket_to_closed."""
+    return {
+        **ticket_row,
+        "status": "closed",
+        "closedAt": "2026-06-16T18:00:00+00:00",
+        "closeReason": close_reason,
+    }
+
+
+def _evidence(
+    ticket_row: dict,
+    *,
+    channel_exists: bool | None = False,
+    status: str = "open",
+    observed_at: datetime | None = None,
+) -> IntegrityEvidence:
+    """Return an IntegrityEvidence built from the sample ticket row.
+
+    The model re-derives ``corroborated`` in ``__post_init__`` from the
+    immutable fields, so callers' verbatim corroboration assertions still
+    hold. ``observed_at=None`` means a fresh (now) observation.
+    """
+    return IntegrityEvidence(
+        ticket_id=ticket_row["id"],
+        guild_id=ticket_row["guildId"],
+        channel_id=ticket_row["channelId"],
+        status=status,
+        channel_exists=channel_exists,
+        observed_at=observed_at if observed_at is not None else datetime.now(UTC),
+    )
+
+
 @pytest.mark.asyncio
 async def test_reopen_creates_new_channel(
     service: TicketService,
@@ -858,32 +981,15 @@ async def test_reopen_creates_new_channel(
 ) -> None:
     """reopen_ticket MUST create a new channel and update channelId/status/closedAt."""
     ticket_id = "ticket-uuid-003"
-    closed_row = _closed_ticket_row()
-    reopened_row = {
-        **closed_row,
-        "channelId": "555555555",
-        "status": "open",
-        "closedAt": None,
-    }
 
-    # First get_ticket → closed row; second (re-read) → reopened row.
-    mock_db.get_ticket.side_effect = [closed_row, reopened_row]
-    # Guild config exposes the configured Discord ticket category.
-    mock_db.get_guild.return_value = {
-        "id": "123456789",
-        "ticketCategoryId": "100000000",
-        "modRoleId": None,
-    }
-
-    category_channel = MagicMock(spec=discord.CategoryChannel)
-    guild = _mock_guild_for_reopen(category_channel=category_channel)
+    guild = _wire_reopen_success(mock_db)
 
     ticket = await service.reopen_ticket(ticket_id, guild=guild)
 
     # New channel created in the configured category.
     guild.create_text_channel.assert_awaited_once()
     create_kwargs = guild.create_text_channel.call_args.kwargs
-    assert create_kwargs["category"] is category_channel
+    assert create_kwargs["category"] is guild.get_channel.return_value
 
     # DB updated: channelId, status=open, closedAt=None.
     mock_db.update_ticket.assert_awaited_once()
@@ -909,11 +1015,7 @@ async def test_reopen_category_channel_deleted_raises(
     ticket_id = "ticket-uuid-003"
     closed_row = _closed_ticket_row()
     mock_db.get_ticket.return_value = closed_row
-    mock_db.get_guild.return_value = {
-        "id": "123456789",
-        "ticketCategoryId": "100000000",
-        "modRoleId": None,
-    }
+    _wire_guild_config(mock_db)
 
     # Configured category channel no longer exists in the guild.
     guild = _mock_guild_for_reopen(category_channel=None)
@@ -935,11 +1037,7 @@ async def test_reopen_no_category_configured_raises(
     ticket_id = "ticket-uuid-003"
     closed_row = _closed_ticket_row()
     mock_db.get_ticket.return_value = closed_row
-    mock_db.get_guild.return_value = {
-        "id": "123456789",
-        "ticketCategoryId": None,
-        "modRoleId": None,
-    }
+    _wire_guild_config(mock_db, category_id=None)
 
     guild = _mock_guild_for_reopen(category_channel=None)
 
@@ -998,6 +1096,32 @@ async def test_reopen_rejects_non_closed_ticket(
 # ===========================================================================
 
 
+def _close_full_preread(mock_db: AsyncMock) -> None:
+    """Wire get_ticket side effects for the close_ticket_full pre-read/re-read."""
+    open_row = _ticket_row_for_close()
+    closed_row = {**open_row, "status": "closed", "closedAt": "2026-06-16T18:00:00"}
+    mock_db.get_ticket.side_effect = [
+        open_row,  # close_ticket pre-read (invariant check)
+        closed_row,  # close_ticket re-read
+    ]
+
+
+def _claim_preread(mock_db: AsyncMock, ticket_row: dict, staff_id: str) -> None:
+    """Wire get_ticket side effects for the claim pre-read/re-read contract."""
+    mock_db.get_ticket.side_effect = [
+        ticket_row,
+        {**ticket_row, "status": "claimed", "claimedBy": staff_id},
+    ]
+
+
+def _transfer_preread(mock_db: AsyncMock, ticket_row: dict, *, new_staff: str = "222222222") -> None:
+    """Wire get_ticket side effects for the transfer pre-read/re-read contract."""
+    mock_db.get_ticket.side_effect = [
+        {**ticket_row, "status": "open", "claimedBy": None},
+        {**ticket_row, "claimedBy": new_staff, "status": "claimed"},
+    ]
+
+
 def _mock_logging_service() -> AsyncMock:
     """Return a mock LoggingService with log_moderation_action as AsyncMock."""
     log = AsyncMock()
@@ -1017,10 +1141,7 @@ async def test_transfer_updates_claimed_by(
     actor = "999999999"
 
     # PR2 contract: pre-read open+unclaimed (invariant passes), re-read claimed.
-    mock_db.get_ticket.side_effect = [
-        {**ticket_row, "status": "open", "claimedBy": None},
-        {**ticket_row, "claimedBy": new_staff, "status": "claimed"},
-    ]
+    _transfer_preread(mock_db, ticket_row, new_staff=new_staff)
 
     guild = MagicMock()
     guild.id = 123456789
@@ -1052,10 +1173,7 @@ async def test_transfer_unclaimed_implicit_claim(
     """Transferring an unclaimed ticket MUST set claimedBy (implicit claim)."""
     ticket_id = ticket_row["id"]
     # PR2 contract: pre-read open+unclaimed, re-read claimed.
-    mock_db.get_ticket.side_effect = [
-        {**ticket_row, "status": "open", "claimedBy": None},
-        {**ticket_row, "claimedBy": "222222222", "status": "claimed"},
-    ]
+    _transfer_preread(mock_db, ticket_row)
 
     guild = MagicMock()
     guild.id = 123456789
@@ -1084,10 +1202,7 @@ async def test_transfer_logs_audit(
     """transfer_ticket MUST call LoggingService with the transfer audit info."""
     ticket_id = ticket_row["id"]
     # PR2 contract: pre-read open+unclaimed, re-read claimed.
-    mock_db.get_ticket.side_effect = [
-        {**ticket_row, "status": "open", "claimedBy": None},
-        {**ticket_row, "claimedBy": "222222222"},
-    ]
+    _transfer_preread(mock_db, ticket_row)
 
     target_member = MagicMock()
     actor_member = MagicMock()
@@ -1160,7 +1275,7 @@ async def test_create_note_inserts(
     """create_note MUST insert a row and return a TicketNote model."""
     mock_db.get_ticket_notes.return_value = []  # under cap
     mock_db.insert_ticket_note.return_value = _note_row()
-    mock_db.get_ticket.return_value = {"id": "ticket-uuid-003", "guildId": "123456789"}
+    mock_db.get_ticket.return_value = _ticket_guild_row("ticket-uuid-003")
 
     note = await service.create_note(
         "ticket-uuid-003",
@@ -1267,7 +1382,7 @@ async def test_delete_note_own(
     mock_db: AsyncMock,
 ) -> None:
     """The note author MUST be able to delete their own note."""
-    mock_db.get_ticket.return_value = {"id": "ticket-uuid-003", "guildId": "123456789"}
+    mock_db.get_ticket.return_value = _ticket_guild_row("ticket-uuid-003")
     mock_db.get_ticket_notes.return_value = [_note_row(author_id="999999999")]
 
     await service.delete_note("note-uuid-001", author_id="999999999", ticket_id="ticket-uuid-003")
@@ -1333,15 +1448,11 @@ async def test_claim_audits_success(service: TicketService, mock_db: AsyncMock, 
     ticket_id = ticket_row["id"]
     staff_id = "999999999"
     # Pre-read returns the OPEN row (invariant passes); re-read returns claimed.
-    mock_db.get_ticket.side_effect = [
-        ticket_row,
-        {**ticket_row, "status": "claimed", "claimedBy": staff_id},
-    ]
+    _claim_preread(mock_db, ticket_row, staff_id)
 
     await service.claim_ticket(ticket_id, claimed_by=staff_id)
 
-    mock_db.insert_audit_row.assert_awaited_once()
-    kwargs = _audit_kwargs(mock_db)
+    kwargs = _assert_audit(mock_db)
     assert kwargs["action"] == "claim"
     assert kwargs["outcome"] == "success"
     assert kwargs["actor_id"] == staff_id
@@ -1359,8 +1470,7 @@ async def test_claim_denied_audits_and_reraises(service: TicketService, mock_db:
     with pytest.raises(ValueError, match=r"claim"):
         await service.claim_ticket(ticket_id, claimed_by="userB")
 
-    mock_db.insert_audit_row.assert_awaited_once()
-    kwargs = _audit_kwargs(mock_db)
+    kwargs = _assert_audit(mock_db)
     assert kwargs["action"] == "claim"
     assert kwargs["outcome"] == "denied"
     assert kwargs["reason"] is not None
@@ -1371,14 +1481,12 @@ async def test_claim_denied_audits_and_reraises(service: TicketService, mock_db:
 async def test_close_audits_success(service: TicketService, mock_db: AsyncMock, ticket_row: dict) -> None:
     """3.9/3.10: close on open/claimed MUST write an audit success row."""
     ticket_id = ticket_row["id"]
-    closed_row = {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"}
+    _wire_transition(mock_db, ticket_row)
     mock_db.get_ticket.return_value = ticket_row
-    mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
 
     await service.close_ticket(ticket_id, closed_by="999999999")
 
-    mock_db.insert_audit_row.assert_awaited_once()
-    kwargs = _audit_kwargs(mock_db)
+    kwargs = _assert_audit(mock_db)
     assert kwargs["action"] == "close"
     assert kwargs["outcome"] == "success"
 
@@ -1404,8 +1512,7 @@ async def test_close_denied_writes_audit(service: TicketService, mock_db: AsyncM
     with pytest.raises(ValueError, match="already closed or not found"):
         await service.close_ticket(ticket_row["id"], closed_by="999999999")
 
-    mock_db.insert_audit_row.assert_awaited_once()
-    kwargs = _audit_kwargs(mock_db)
+    kwargs = _assert_audit(mock_db)
     assert kwargs["action"] == "close"
     assert kwargs["outcome"] == "denied"
     assert kwargs["guild_id"] == ticket_row["guildId"]
@@ -1422,8 +1529,7 @@ async def test_transfer_same_user_denied(service: TicketService, mock_db: AsyncM
     with pytest.raises(ValueError, match=r"same"):
         await service.transfer_ticket(ticket_id, new_claimed_by="userA", actor_id="admin1")
 
-    mock_db.insert_audit_row.assert_awaited_once()
-    kwargs = _audit_kwargs(mock_db)
+    kwargs = _assert_audit(mock_db)
     assert kwargs["action"] == "transfer"
     assert kwargs["outcome"] == "denied"
     mock_db.update_ticket.assert_not_awaited()
@@ -1433,15 +1539,11 @@ async def test_transfer_same_user_denied(service: TicketService, mock_db: AsyncM
 async def test_transfer_audits_success(service: TicketService, mock_db: AsyncMock, ticket_row: dict) -> None:
     """Transfer to a different staff member MUST audit success."""
     ticket_id = ticket_row["id"]
-    mock_db.get_ticket.side_effect = [
-        {**ticket_row, "status": "open", "claimedBy": None},
-        {**ticket_row, "claimedBy": "userB", "status": "claimed"},
-    ]
+    _transfer_preread(mock_db, ticket_row, new_staff="userB")
 
     await service.transfer_ticket(ticket_id, new_claimed_by="userB", actor_id="admin1")
 
-    mock_db.insert_audit_row.assert_awaited_once()
-    kwargs = _audit_kwargs(mock_db)
+    kwargs = _assert_audit(mock_db)
     assert kwargs["action"] == "transfer"
     assert kwargs["outcome"] == "success"
     assert kwargs["actor_id"] == "admin1"
@@ -1489,7 +1591,7 @@ async def test_note_dedup_outside_window_allowed(service: TicketService, mock_db
     """3.5/3.6: outside the dedup window the same content is allowed (audit success)."""
     ticket_id = "ticket-uuid-003"
     author = "999999999"
-    mock_db.get_ticket.return_value = {"id": ticket_id, "guildId": "123456789"}
+    mock_db.get_ticket.return_value = _ticket_guild_row(ticket_id)
     mock_db.get_ticket_notes.return_value = []
     mock_db.get_recent_notes_for_dedup.return_value = []  # no recent → no dup
     mock_db.insert_ticket_note.return_value = _note_row(content="hello")
@@ -1506,7 +1608,7 @@ async def test_note_dedup_outside_window_allowed(service: TicketService, mock_db
 async def test_note_cap_denied_audited(service: TicketService, mock_db: AsyncMock) -> None:
     """3.5/3.6: at the 50-note cap, create_note MUST audit denied + raise."""
     ticket_id = "ticket-uuid-003"
-    mock_db.get_ticket.return_value = {"id": ticket_id, "guildId": "123456789"}
+    mock_db.get_ticket.return_value = _ticket_guild_row(ticket_id)
     mock_db.get_ticket_notes.return_value = [_note_row() for _ in range(50)]
 
     with pytest.raises(ValueError, match=r"cap"):
@@ -1522,7 +1624,7 @@ async def test_note_cap_denied_audited(service: TicketService, mock_db: AsyncMoc
 async def test_note_under_cap_audited_success(service: TicketService, mock_db: AsyncMock) -> None:
     """TI-034: under the cap, create_note persists + audits success."""
     ticket_id = "ticket-uuid-003"
-    mock_db.get_ticket.return_value = {"id": ticket_id, "guildId": "123456789"}
+    mock_db.get_ticket.return_value = _ticket_guild_row(ticket_id)
     mock_db.get_ticket_notes.return_value = [_note_row() for _ in range(30)]
     mock_db.get_recent_notes_for_dedup.return_value = []
     mock_db.insert_ticket_note.return_value = _note_row(content="new note")
@@ -1539,7 +1641,7 @@ async def test_note_delete_author_audited_success(service: TicketService, mock_d
     """TI-035: author deleting own note MUST audit success."""
     ticket_id = "ticket-uuid-003"
     author = "999999999"
-    mock_db.get_ticket.return_value = {"id": ticket_id, "guildId": "123456789"}
+    mock_db.get_ticket.return_value = _ticket_guild_row(ticket_id)
     mock_db.get_ticket_notes.return_value = [_note_row(author_id=author)]
 
     await service.delete_note("note-uuid-001", author_id=author, ticket_id=ticket_id)
@@ -1554,7 +1656,7 @@ async def test_note_delete_author_audited_success(service: TicketService, mock_d
 async def test_note_delete_other_denied_audited(service: TicketService, mock_db: AsyncMock) -> None:
     """delete_note by a non-author MUST audit denied + raise."""
     ticket_id = "ticket-uuid-003"
-    mock_db.get_ticket.return_value = {"id": ticket_id, "guildId": "123456789"}
+    mock_db.get_ticket.return_value = _ticket_guild_row(ticket_id)
     mock_db.get_ticket_notes.return_value = [_note_row(author_id="userA")]
 
     with pytest.raises(ValueError, match=r"[Aa]uthor|owner"):
@@ -1570,21 +1672,11 @@ async def test_note_delete_other_denied_audited(service: TicketService, mock_db:
 async def test_reopen_audits_success(service: TicketService, mock_db: AsyncMock) -> None:
     """3.7/3.8: reopen success MUST write an audit success row after channel creation."""
     ticket_id = "ticket-uuid-003"
-    closed_row = _closed_ticket_row()
-    reopened_row = {**closed_row, "channelId": "555555555", "status": "open", "closedAt": None}
-    mock_db.get_ticket.side_effect = [closed_row, reopened_row]
-    mock_db.get_guild.return_value = {
-        "id": "123456789",
-        "ticketCategoryId": "100000000",
-        "modRoleId": None,
-    }
-    category_channel = MagicMock(spec=discord.CategoryChannel)
-    guild = _mock_guild_for_reopen(category_channel=category_channel)
+    guild = _wire_reopen_success(mock_db)
 
     await service.reopen_ticket(ticket_id, guild=guild)
 
-    mock_db.insert_audit_row.assert_awaited_once()
-    kwargs = _audit_kwargs(mock_db)
+    kwargs = _assert_audit(mock_db)
     assert kwargs["action"] == "reopen"
     assert kwargs["outcome"] == "success"
     assert kwargs["guild_id"] == "123456789"
@@ -1602,8 +1694,7 @@ async def test_reopen_denied_audited(service: TicketService, mock_db: AsyncMock)
     with pytest.raises(ValueError, match=r"cerrados"):
         await service.reopen_ticket(ticket_id, guild=guild)
 
-    mock_db.insert_audit_row.assert_awaited_once()
-    kwargs = _audit_kwargs(mock_db)
+    kwargs = _assert_audit(mock_db)
     assert kwargs["action"] == "reopen"
     assert kwargs["outcome"] == "denied"
     guild.create_text_channel.assert_not_awaited()
@@ -1630,8 +1721,7 @@ async def test_subticket_create_audits_success(service: TicketService, mock_db: 
         guild_id=guild_id,
     )
 
-    mock_db.insert_audit_row.assert_awaited_once()
-    kwargs = _audit_kwargs(mock_db)
+    kwargs = _assert_audit(mock_db)
     assert kwargs["action"] == "subticket_create"
     assert kwargs["outcome"] == "success"
 
@@ -1704,8 +1794,7 @@ async def test_subticket_create_denied_audited(
         )
 
     mock_db.insert_ticket.assert_not_awaited()
-    mock_db.insert_audit_row.assert_awaited_once()
-    kwargs = _audit_kwargs(mock_db)
+    kwargs = _assert_audit(mock_db)
     assert kwargs["action"] == "subticket_create", case
     assert kwargs["outcome"] == "denied", case
     assert kwargs["reason"], f"{case}: reason MUST be non-empty"
@@ -1740,11 +1829,7 @@ async def test_reopen_no_category_raises_typed_exception(
     ticket_id = "ticket-uuid-003"
     closed_row = _closed_ticket_row()
     mock_db.get_ticket.return_value = closed_row
-    mock_db.get_guild.return_value = {
-        "id": "123456789",
-        "ticketCategoryId": None,
-        "modRoleId": None,
-    }
+    _wire_guild_config(mock_db, category_id=None)
 
     guild = _mock_guild_for_reopen(category_channel=None)
 
@@ -1767,11 +1852,7 @@ async def test_reopen_deleted_category_raises_typed_exception(
     ticket_id = "ticket-uuid-003"
     closed_row = _closed_ticket_row()
     mock_db.get_ticket.return_value = closed_row
-    mock_db.get_guild.return_value = {
-        "id": "123456789",
-        "ticketCategoryId": "100000000",
-        "modRoleId": None,
-    }
+    _wire_guild_config(mock_db)
 
     guild = _mock_guild_for_reopen(category_channel=None)
     guild.get_channel = MagicMock(return_value=None)
@@ -1822,9 +1903,7 @@ async def test_create_ticket_channel_rejects_before_creating_channel_when_limit_
     Production logs showed channel create → ValueError → cleanup delete thrashing.
     The invariant must fail fast before guild.create_text_channel.
     """
-    guild = _mock_guild_for_channel(channel_name="support-testuser-0001")
-    category = MagicMock(spec=discord.CategoryChannel)
-    author = _mock_author()
+    guild, category, author = _channel_triple("support-testuser-0001")
 
     mock_db.count_user_open_tickets_in_category.return_value = 1
     mock_db.get_max_ticket_number.return_value = 0
@@ -1855,9 +1934,7 @@ async def test_create_ticket_channel_creates_channel_and_inserts(
     ticket_row: dict,
 ) -> None:
     """create_ticket_channel MUST create a Discord channel AND insert a ticket row."""
-    guild = _mock_guild_for_channel(channel_name="support-testuser-0001")
-    category = MagicMock(spec=discord.CategoryChannel)
-    author = _mock_author()
+    guild, category, author = _channel_triple("support-testuser-0001")
 
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1}
@@ -1897,9 +1974,7 @@ async def test_create_ticket_channel_renames_if_number_differs(
 ) -> None:
     """When tentative name differs from actual ticket number, channel MUST be renamed."""
     # Channel created with tentative name "support-testuser-0001" but DB returns ticketNumber=42.
-    guild = _mock_guild_for_channel(channel_name="support-testuser-0001")
-    category = MagicMock(spec=discord.CategoryChannel)
-    author = _mock_author()
+    guild, category, author = _channel_triple("support-testuser-0001")
 
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 42}
@@ -1924,9 +1999,7 @@ async def test_create_ticket_channel_no_rename_if_name_matches(
     ticket_row: dict,
 ) -> None:
     """When tentative name matches actual ticket number, no rename is needed."""
-    guild = _mock_guild_for_channel(channel_name="support-testuser-0001")
-    category = MagicMock(spec=discord.CategoryChannel)
-    author = _mock_author()
+    guild, category, author = _channel_triple("support-testuser-0001")
 
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1}
@@ -1951,9 +2024,7 @@ async def test_create_ticket_channel_passes_category_id(
     ticket_row: dict,
 ) -> None:
     """create_ticket_channel MUST forward category_id to create_ticket."""
-    guild = _mock_guild_for_channel()
-    category = MagicMock(spec=discord.CategoryChannel)
-    author = _mock_author()
+    guild, category, author = _channel_triple()
 
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1, "categoryId": "cat-uuid-001"}
@@ -1978,9 +2049,7 @@ async def test_create_ticket_channel_forwards_subject_and_description(
     ticket_row: dict,
 ) -> None:
     """create_ticket_channel(subject=..., description=...) MUST forward metadata to insert_ticket."""
-    guild = _mock_guild_for_channel()
-    category = MagicMock(spec=discord.CategoryChannel)
-    author = _mock_author()
+    guild, category, author = _channel_triple()
 
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {
@@ -2046,12 +2115,7 @@ async def test_create_ticket_without_custom_fields(
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {**ticket_row, "customFields": None}
 
-    ticket = await service.create_ticket(
-        guild_id="123456789",
-        author_id="111111111",
-        category_id=None,
-        channel_id="888888888",
-    )
+    ticket = await _create_ticket(service)
 
     insert_kwargs = mock_db.insert_ticket.call_args.kwargs
     assert insert_kwargs["custom_fields"] is None
@@ -2065,9 +2129,7 @@ async def test_create_ticket_channel_forwards_custom_fields(
     ticket_row: dict,
 ) -> None:
     """create_ticket_channel(custom_fields=...) MUST forward to create_ticket."""
-    guild = _mock_guild_for_channel()
-    category = MagicMock(spec=discord.CategoryChannel)
-    author = _mock_author()
+    guild, category, author = _channel_triple()
     cf = {"player_nick": "DarkSlayer42"}
 
     mock_db.get_max_ticket_number.return_value = 0
@@ -2089,9 +2151,7 @@ async def test_create_ticket_channel_without_custom_fields(
     ticket_row: dict,
 ) -> None:
     """create_ticket_channel() without custom_fields MUST pass None to create_ticket."""
-    guild = _mock_guild_for_channel()
-    category = MagicMock(spec=discord.CategoryChannel)
-    author = _mock_author()
+    guild, category, author = _channel_triple()
 
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1, "customFields": None}
@@ -2117,9 +2177,7 @@ async def test_create_ticket_channel_uses_sanitized_name(
     ticket_row: dict,
 ) -> None:
     """create_ticket_channel MUST use sanitize_channel_name for the channel name."""
-    guild = _mock_guild_for_channel(channel_name="soporte-testuser-0001")
-    category = MagicMock(spec=discord.CategoryChannel)
-    author = _mock_author()
+    guild, category, author = _channel_triple("soporte-testuser-0001")
 
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1}
@@ -2144,9 +2202,7 @@ async def test_create_ticket_channel_renames_with_sanitized_actual(
     ticket_row: dict,
 ) -> None:
     """When tentative != actual, rename MUST use sanitized format."""
-    guild = _mock_guild_for_channel(channel_name="soporte-testuser-0001")
-    category = MagicMock(spec=discord.CategoryChannel)
-    author = _mock_author()
+    guild, category, author = _channel_triple("soporte-testuser-0001")
 
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 42}
@@ -2214,29 +2270,10 @@ async def test_reopen_uses_sanitized_channel_name(
 ) -> None:
     """reopen_ticket MUST use sanitize_channel_name with resolved category + author."""
     ticket_id = "ticket-uuid-003"
-    closed_row = _closed_ticket_row()
-    reopened_row = {
-        **closed_row,
-        "channelId": "555555555",
-        "status": "open",
-        "closedAt": None,
-    }
-
-    mock_db.get_ticket.side_effect = [closed_row, reopened_row]
-    mock_db.get_guild.return_value = {
-        "id": "123456789",
-        "ticketCategoryId": "100000000",
-        "modRoleId": None,
-    }
     # Category lookup returns a name.
-    mock_db.get_ticket_category = AsyncMock(return_value={"name": "Soporte", "id": "cat-uuid-001"})
-
-    category_channel = MagicMock(spec=discord.CategoryChannel)
-    guild = _mock_guild_for_reopen(category_channel=category_channel)
-    # Author member with display name.
-    author_member = MagicMock()
-    author_member.display_name = "DanielXX"
-    guild.get_member = MagicMock(return_value=author_member)
+    guild = _wire_reopen_success(
+        mock_db, category={"name": "Soporte", "id": "cat-uuid-001"}, author_member=_author_member()
+    )
 
     await service.reopen_ticket(ticket_id, guild=guild)
 
@@ -2253,25 +2290,8 @@ async def test_reopen_fallback_when_category_not_found(
 ) -> None:
     """When category lookup fails, reopen MUST fall back to 'ticket' prefix."""
     ticket_id = "ticket-uuid-003"
-    closed_row = _closed_ticket_row()
-    reopened_row = {
-        **closed_row,
-        "channelId": "555555555",
-        "status": "open",
-        "closedAt": None,
-    }
-
-    mock_db.get_ticket.side_effect = [closed_row, reopened_row]
-    mock_db.get_guild.return_value = {
-        "id": "123456789",
-        "ticketCategoryId": "100000000",
-        "modRoleId": None,
-    }
     # Category lookup returns None (not found).
-    mock_db.get_ticket_category = AsyncMock(return_value=None)
-
-    category_channel = MagicMock(spec=discord.CategoryChannel)
-    guild = _mock_guild_for_reopen(category_channel=category_channel)
+    guild = _wire_reopen_success(mock_db, category=None)
     guild.get_member = MagicMock(return_value=None)
 
     await service.reopen_ticket(ticket_id, guild=guild)
@@ -2289,24 +2309,7 @@ async def test_reopen_fallback_when_author_not_in_guild(
 ) -> None:
     """When author member is not found, reopen MUST fall back to 'user'."""
     ticket_id = "ticket-uuid-003"
-    closed_row = _closed_ticket_row()
-    reopened_row = {
-        **closed_row,
-        "channelId": "555555555",
-        "status": "open",
-        "closedAt": None,
-    }
-
-    mock_db.get_ticket.side_effect = [closed_row, reopened_row]
-    mock_db.get_guild.return_value = {
-        "id": "123456789",
-        "ticketCategoryId": "100000000",
-        "modRoleId": None,
-    }
-    mock_db.get_ticket_category = AsyncMock(return_value={"name": "Soporte", "id": "cat-uuid-001"})
-
-    category_channel = MagicMock(spec=discord.CategoryChannel)
-    guild = _mock_guild_for_reopen(category_channel=category_channel)
+    guild = _wire_reopen_success(mock_db, category={"name": "Soporte", "id": "cat-uuid-001"})
     # Author not found in guild.
     guild.get_member = MagicMock(return_value=None)
 
@@ -2338,10 +2341,7 @@ async def test_claim_success_audit_failure_continues(
     ticket_id = ticket_row["id"]
     staff_id = "999999999"
 
-    mock_db.get_ticket.side_effect = [
-        ticket_row,
-        {**ticket_row, "status": "claimed", "claimedBy": staff_id},
-    ]
+    _claim_preread(mock_db, ticket_row, staff_id)
     mock_db.insert_audit_row.side_effect = Exception("audit table unavailable")
 
     with caplog.at_level(logging.WARNING, logger="bot.services.ticket_service"):
@@ -2368,9 +2368,8 @@ async def test_close_success_audit_failure_continues(
 
     ticket_id = ticket_row["id"]
 
-    closed_row = {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"}
+    _wire_transition(mock_db, ticket_row)
     mock_db.get_ticket.return_value = ticket_row
-    mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
     mock_db.insert_audit_row.side_effect = Exception("audit table unavailable")
 
     with caplog.at_level(logging.WARNING, logger="bot.services.ticket_service"):
@@ -2405,6 +2404,32 @@ def _mock_bot_for_close() -> MagicMock:
     return bot
 
 
+def _close_full_scaffold() -> tuple[MagicMock, MagicMock, Ticket]:
+    """Return the (channel, bot, ticket) triple used by close_ticket_full tests."""
+    return _mock_channel_for_close(), _mock_bot_for_close(), _ticket_model()
+
+
+def _channel_triple(channel_name: str = "support-testuser-0001") -> tuple[MagicMock, MagicMock, MagicMock]:
+    """Return the (guild, category, author) triple for create_ticket_channel tests."""
+    return _mock_guild_for_channel(channel_name=channel_name), MagicMock(spec=discord.CategoryChannel), _mock_author()
+
+
+def _countdown_msg(
+    channel: MagicMock,
+    *,
+    edit_side_effect: Exception | None = None,
+) -> AsyncMock:
+    """Return the countdown message mock wired as channel.send's result.
+
+    ``edit_side_effect`` optionally raises on edit (e.g. HTTPException/NotFound).
+    """
+    countdown_msg = AsyncMock()
+    if edit_side_effect is not None:
+        countdown_msg.edit = AsyncMock(side_effect=edit_side_effect)
+    channel.send = AsyncMock(return_value=countdown_msg)
+    return countdown_msg
+
+
 def _ticket_model(*, ticket_id: str = "ticket-uuid-close") -> Ticket:
     """Return a sample Ticket model for close tests."""
     return Ticket(
@@ -2425,33 +2450,11 @@ async def test_close_ticket_full_manual_countdown(
     mock_db: AsyncMock,
 ) -> None:
     """close_ticket_full(manual=True) MUST send ONE message and edit 5→1, then delete channel."""
-    channel = _mock_channel_for_close()
-    bot = _mock_bot_for_close()
-    ticket = _ticket_model()
+    channel, bot, ticket = _close_full_scaffold()
 
-    open_row = {
-        "id": ticket.id,
-        "ticketNumber": 42,
-        "guildId": "123456789",
-        "authorId": "111111111",
-        "channelId": "888888888",
-        "categoryId": None,
-        "status": "open",
-        "claimedBy": None,
-        "transcriptUrl": None,
-        "createdAt": "2026-01-15T10:00:00",
-        "closedAt": None,
-        "lastActivity": "2026-01-15T10:00:00",
-    }
-    closed_row = {**open_row, "status": "closed", "closedAt": "2026-06-16T18:00:00"}
-    mock_db.get_ticket.side_effect = [
-        open_row,  # close_ticket pre-read (invariant check)
-        closed_row,  # close_ticket re-read
-    ]
+    _close_full_preread(mock_db)
 
-    # Mock the countdown message.
-    countdown_msg = AsyncMock()
-    channel.send.return_value = countdown_msg
+    countdown_msg = _countdown_msg(channel)
 
     with patch("bot.services.ticket_service.asyncio.sleep", new_callable=AsyncMock):
         result = await service.close_ticket_full(channel, ticket, "999999999", bot=bot, manual=True)
@@ -2478,29 +2481,9 @@ async def test_close_ticket_full_auto_silent(
     mock_db: AsyncMock,
 ) -> None:
     """close_ticket_full(manual=False) MUST delete silently — no countdown messages."""
-    channel = _mock_channel_for_close()
-    bot = _mock_bot_for_close()
-    ticket = _ticket_model()
+    channel, bot, ticket = _close_full_scaffold()
 
-    open_row = {
-        "id": ticket.id,
-        "ticketNumber": 42,
-        "guildId": "123456789",
-        "authorId": "111111111",
-        "channelId": "888888888",
-        "categoryId": None,
-        "status": "open",
-        "claimedBy": None,
-        "transcriptUrl": None,
-        "createdAt": "2026-01-15T10:00:00",
-        "closedAt": None,
-        "lastActivity": "2026-01-15T10:00:00",
-    }
-    closed_row = {**open_row, "status": "closed", "closedAt": "2026-06-16T18:00:00"}
-    mock_db.get_ticket.side_effect = [
-        open_row,  # close_ticket pre-read (invariant check)
-        closed_row,  # close_ticket re-read
-    ]
+    _close_full_preread(mock_db)
 
     with patch("bot.services.ticket_service.asyncio.sleep", new_callable=AsyncMock):
         result = await service.close_ticket_full(channel, ticket, "auto", bot=bot, manual=False)
@@ -2525,29 +2508,9 @@ async def test_close_ticket_full_countdown_cancelled_error_logs_and_reraises(
     cancelled task never reaches deletion."
     """
 
-    channel = _mock_channel_for_close()
-    bot = _mock_bot_for_close()
-    ticket = _ticket_model()
+    channel, bot, ticket = _close_full_scaffold()
 
-    open_row = {
-        "id": ticket.id,
-        "ticketNumber": 42,
-        "guildId": "123456789",
-        "authorId": "111111111",
-        "channelId": "888888888",
-        "categoryId": None,
-        "status": "open",
-        "claimedBy": None,
-        "transcriptUrl": None,
-        "createdAt": "2026-01-15T10:00:00",
-        "closedAt": None,
-        "lastActivity": "2026-01-15T10:00:00",
-    }
-    closed_row = {**open_row, "status": "closed", "closedAt": "2026-06-16T18:00:00"}
-    mock_db.get_ticket.side_effect = [
-        open_row,  # close_ticket pre-read
-        closed_row,  # close_ticket re-read
-    ]
+    _close_full_preread(mock_db)
 
     # First sleep raises CancelledError (simulates task cancellation during countdown).
     async def _cancel_on_first_sleep(*_args, **_kwargs):
@@ -2578,34 +2541,12 @@ async def test_close_ticket_full_countdown_failure_fallback(
 ) -> None:
     """When countdown edit fails, MUST log warning and fall back to silent delete."""
 
-    channel = _mock_channel_for_close()
-    bot = _mock_bot_for_close()
-    ticket = _ticket_model()
+    channel, bot, ticket = _close_full_scaffold()
 
-    open_row = {
-        "id": ticket.id,
-        "ticketNumber": 42,
-        "guildId": "123456789",
-        "authorId": "111111111",
-        "channelId": "888888888",
-        "categoryId": None,
-        "status": "open",
-        "claimedBy": None,
-        "transcriptUrl": None,
-        "createdAt": "2026-01-15T10:00:00",
-        "closedAt": None,
-        "lastActivity": "2026-01-15T10:00:00",
-    }
-    closed_row = {**open_row, "status": "closed", "closedAt": "2026-06-16T18:00:00"}
-    mock_db.get_ticket.side_effect = [
-        open_row,  # close_ticket pre-read (invariant check)
-        closed_row,  # close_ticket re-read
-    ]
+    _close_full_preread(mock_db)
 
     # Send succeeds but edit fails (simulates permission loss during countdown).
-    countdown_msg = AsyncMock()
-    countdown_msg.edit = AsyncMock(side_effect=discord.HTTPException(MagicMock(), "rate limited"))
-    channel.send.return_value = countdown_msg
+    _countdown_msg(channel, edit_side_effect=discord.HTTPException(MagicMock(), "rate limited"))
 
     with (
         patch("bot.services.ticket_service.asyncio.sleep", new_callable=AsyncMock),
@@ -2634,20 +2575,7 @@ async def test_unclaim_ticket_resets_status_and_claimed_by(
     ticket_id = "ticket-uuid-unclaim"
     actor_id = "userA"
 
-    claimed_row = {
-        "id": ticket_id,
-        "ticketNumber": 5,
-        "guildId": "123456789",
-        "authorId": "111111111",
-        "channelId": "888888888",
-        "categoryId": None,
-        "status": "claimed",
-        "claimedBy": actor_id,
-        "transcriptUrl": None,
-        "createdAt": "2026-01-15T10:00:00",
-        "closedAt": None,
-        "lastActivity": "2026-01-15T10:00:00",
-    }
+    claimed_row = _unclaim_row(status="claimed", claimed_by=actor_id)
     unclaimed_row = {**claimed_row, "status": "open", "claimedBy": None}
     mock_db.get_ticket.side_effect = [claimed_row, unclaimed_row]
 
@@ -2661,8 +2589,7 @@ async def test_unclaim_ticket_resets_status_and_claimed_by(
     assert ticket.status == "open"
     assert ticket.claimed_by is None
 
-    mock_db.insert_audit_row.assert_awaited_once()
-    kwargs = _audit_kwargs(mock_db)
+    kwargs = _assert_audit(mock_db)
     assert kwargs["action"] == "unclaim"
     assert kwargs["outcome"] == "success"
 
@@ -2675,28 +2602,14 @@ async def test_unclaim_ticket_unclaimed_raises(
     """unclaim_ticket on an unclaimed ticket MUST raise ValueError + audit denied."""
     ticket_id = "ticket-uuid-unclaim"
 
-    open_row = {
-        "id": ticket_id,
-        "ticketNumber": 5,
-        "guildId": "123456789",
-        "authorId": "111111111",
-        "channelId": "888888888",
-        "categoryId": None,
-        "status": "open",
-        "claimedBy": None,
-        "transcriptUrl": None,
-        "createdAt": "2026-01-15T10:00:00",
-        "closedAt": None,
-        "lastActivity": "2026-01-15T10:00:00",
-    }
+    open_row = _unclaim_row(status="open", claimed_by=None)
     mock_db.get_ticket.return_value = open_row
 
     with pytest.raises(ValueError, match=r"claimed"):
         await service.unclaim_ticket(ticket_id, "userA", is_mod=False)
 
     mock_db.update_ticket.assert_not_awaited()
-    mock_db.insert_audit_row.assert_awaited_once()
-    kwargs = _audit_kwargs(mock_db)
+    kwargs = _assert_audit(mock_db)
     assert kwargs["action"] == "unclaim"
     assert kwargs["outcome"] == "denied"
 
@@ -2709,28 +2622,14 @@ async def test_unclaim_ticket_non_claimer_non_mod_denied(
     """unclaim_ticket by non-claimer non-mod MUST raise ValueError + audit denied."""
     ticket_id = "ticket-uuid-unclaim"
 
-    claimed_row = {
-        "id": ticket_id,
-        "ticketNumber": 5,
-        "guildId": "123456789",
-        "authorId": "111111111",
-        "channelId": "888888888",
-        "categoryId": None,
-        "status": "claimed",
-        "claimedBy": "userA",
-        "transcriptUrl": None,
-        "createdAt": "2026-01-15T10:00:00",
-        "closedAt": None,
-        "lastActivity": "2026-01-15T10:00:00",
-    }
+    claimed_row = _unclaim_row(status="claimed", claimed_by="userA")
     mock_db.get_ticket.return_value = claimed_row
 
     with pytest.raises(ValueError, match=r"claimer|mod|permission"):
         await service.unclaim_ticket(ticket_id, "userB", is_mod=False)
 
     mock_db.update_ticket.assert_not_awaited()
-    mock_db.insert_audit_row.assert_awaited_once()
-    kwargs = _audit_kwargs(mock_db)
+    kwargs = _assert_audit(mock_db)
     assert kwargs["action"] == "unclaim"
     assert kwargs["outcome"] == "denied"
 
@@ -2807,22 +2706,12 @@ async def test_edit_ticket_category_updates_db_and_renames(
 ) -> None:
     """edit_ticket_category MUST update categoryId in DB and rename the channel."""
     ticket_id = "ticket-uuid-edit"
-    open_row = _open_ticket_row_for_edit(category_id="cat-uuid-support")
-    updated_row = {**open_row, "categoryId": "cat-uuid-billing"}
     channel = _mock_channel_for_edit()
 
     # get_ticket: pre-read (open), then re-read (after update).
-    mock_db.get_ticket.side_effect = [open_row, updated_row]
-    mock_db.count_user_open_tickets_in_category.return_value = 0
-    mock_db.get_ticket_category = AsyncMock(return_value={"name": "Billing"})
+    _wire_edit_category(mock_db, category_name="Billing")
 
-    ticket, rename_ok = await service.edit_ticket_category(
-        ticket_id,
-        "cat-uuid-billing",
-        channel=channel,
-        actor_id="999999999",
-        is_mod=True,
-    )
+    ticket, rename_ok = await _edit_category(service, ticket_id, channel)
 
     # DB categoryId updated.
     mock_db.update_ticket.assert_awaited_once()
@@ -2851,23 +2740,13 @@ async def test_edit_ticket_category_rename_failure_does_not_block_db(
     """When channel rename raises HTTPException, DB update MUST still succeed."""
 
     ticket_id = "ticket-uuid-edit"
-    open_row = _open_ticket_row_for_edit(category_id="cat-uuid-support")
-    updated_row = {**open_row, "categoryId": "cat-uuid-billing"}
     channel = _mock_channel_for_edit()
     channel.edit = AsyncMock(side_effect=discord.HTTPException(MagicMock(), "rate limited"))
 
-    mock_db.get_ticket.side_effect = [open_row, updated_row]
-    mock_db.count_user_open_tickets_in_category.return_value = 0
-    mock_db.get_ticket_category = AsyncMock(return_value={"name": "Billing"})
+    _wire_edit_category(mock_db, category_name="Billing")
 
     with caplog.at_level(logging.WARNING, logger="bot.services.ticket_service"):
-        _ticket, rename_ok = await service.edit_ticket_category(
-            ticket_id,
-            "cat-uuid-billing",
-            channel=channel,
-            actor_id="999999999",
-            is_mod=True,
-        )
+        _ticket, rename_ok = await _edit_category(service, ticket_id, channel)
 
     # DB updated despite rename failure.
     mock_db.update_ticket.assert_awaited_once()
@@ -2882,24 +2761,13 @@ async def test_edit_ticket_category_writes_audit_on_success(
 ) -> None:
     """edit_ticket_category MUST write an audit row on success."""
     ticket_id = "ticket-uuid-edit"
-    open_row = _open_ticket_row_for_edit()
-    updated_row = {**open_row, "categoryId": "cat-uuid-billing"}
     channel = _mock_channel_for_edit()
 
-    mock_db.get_ticket.side_effect = [open_row, updated_row]
-    mock_db.count_user_open_tickets_in_category.return_value = 0
-    mock_db.get_ticket_category = AsyncMock(return_value={"name": "Billing"})
+    _wire_edit_category(mock_db, category_name="Billing")
 
-    await service.edit_ticket_category(
-        ticket_id,
-        "cat-uuid-billing",
-        channel=channel,
-        actor_id="999999999",
-        is_mod=True,
-    )
+    await _edit_category(service, ticket_id, channel)
 
-    mock_db.insert_audit_row.assert_awaited_once()
-    kwargs = _audit_kwargs(mock_db)
+    kwargs = _assert_audit(mock_db)
     assert kwargs["action"] == "edit_category"
     assert kwargs["outcome"] == "success"
 
@@ -2928,8 +2796,7 @@ async def test_edit_ticket_category_non_mod_denied(
     # No DB mutation on denial.
     mock_db.update_ticket.assert_not_awaited()
     # Audit denied written.
-    mock_db.insert_audit_row.assert_awaited_once()
-    kwargs = _audit_kwargs(mock_db)
+    kwargs = _assert_audit(mock_db)
     assert kwargs["action"] == "edit_category"
     assert kwargs["outcome"] == "denied"
 
@@ -2947,13 +2814,7 @@ async def test_edit_ticket_category_closed_rejected(
     mock_db.get_ticket.return_value = closed_row
 
     with pytest.raises(ValueError, match=r"[Cc]losed"):
-        await service.edit_ticket_category(
-            ticket_id,
-            "cat-uuid-billing",
-            channel=channel,
-            actor_id="999999999",
-            is_mod=True,
-        )
+        await _edit_category(service, ticket_id, channel)
 
     mock_db.update_ticket.assert_not_awaited()
 
@@ -2972,13 +2833,7 @@ async def test_edit_ticket_category_limit_violation(
     mock_db.count_user_open_tickets_in_category.return_value = 1  # already has one
 
     with pytest.raises(ValueError, match=r"already has an open ticket"):
-        await service.edit_ticket_category(
-            ticket_id,
-            "cat-uuid-billing",
-            channel=channel,
-            actor_id="999999999",
-            is_mod=True,
-        )
+        await _edit_category(service, ticket_id, channel)
 
     mock_db.update_ticket.assert_not_awaited()
 
@@ -2990,21 +2845,11 @@ async def test_edit_ticket_category_empty_category_allowed(
 ) -> None:
     """Edit into a category where author has no open tickets MUST succeed."""
     ticket_id = "ticket-uuid-edit"
-    open_row = _open_ticket_row_for_edit()
-    updated_row = {**open_row, "categoryId": "cat-uuid-billing"}
     channel = _mock_channel_for_edit()
 
-    mock_db.get_ticket.side_effect = [open_row, updated_row]
-    mock_db.count_user_open_tickets_in_category.return_value = 0
-    mock_db.get_ticket_category = AsyncMock(return_value={"name": "Billing"})
+    _wire_edit_category(mock_db, category_name="Billing")
 
-    _ticket, rename_ok = await service.edit_ticket_category(
-        ticket_id,
-        "cat-uuid-billing",
-        channel=channel,
-        actor_id="999999999",
-        is_mod=True,
-    )
+    _ticket, rename_ok = await _edit_category(service, ticket_id, channel)
 
     assert rename_ok is True
     mock_db.update_ticket.assert_awaited_once()
@@ -3017,21 +2862,11 @@ async def test_edit_ticket_category_excludes_edited_ticket_from_count(
 ) -> None:
     """The count MUST exclude the ticket being edited (exclude_ticket_id)."""
     ticket_id = "ticket-uuid-edit"
-    open_row = _open_ticket_row_for_edit(category_id="cat-uuid-billing")
-    updated_row = {**open_row, "categoryId": "cat-uuid-support"}
     channel = _mock_channel_for_edit()
 
-    mock_db.get_ticket.side_effect = [open_row, updated_row]
-    mock_db.count_user_open_tickets_in_category.return_value = 0
-    mock_db.get_ticket_category = AsyncMock(return_value={"name": "Support"})
+    _wire_edit_category(mock_db, category_name="Support")
 
-    await service.edit_ticket_category(
-        ticket_id,
-        "cat-uuid-support",
-        channel=channel,
-        actor_id="999999999",
-        is_mod=True,
-    )
+    await _edit_category(service, ticket_id, channel, category_id="cat-uuid-support")
 
     # Count called with exclude_ticket_id.
     mock_db.count_user_open_tickets_in_category.assert_awaited_once_with(
@@ -3058,13 +2893,7 @@ async def test_edit_ticket_category_same_category_noop(
     mock_db.count_user_open_tickets_in_category.return_value = 0
     mock_db.get_ticket_category = AsyncMock(return_value={"name": "Support"})
 
-    _ticket, rename_ok = await service.edit_ticket_category(
-        ticket_id,
-        "cat-uuid-support",
-        channel=channel,
-        actor_id="999999999",
-        is_mod=True,
-    )
+    _ticket, rename_ok = await _edit_category(service, ticket_id, channel, category_id="cat-uuid-support")
 
     # DB updated (even though category didn't change — the method doesn't optimize for no-op).
     mock_db.update_ticket.assert_awaited_once()
@@ -3081,13 +2910,7 @@ async def test_edit_ticket_category_not_found(
     channel = _mock_channel_for_edit()
 
     with pytest.raises(ValueError, match=r"[Nn]ot found"):
-        await service.edit_ticket_category(
-            "nonexistent",
-            "cat-uuid-billing",
-            channel=channel,
-            actor_id="999999999",
-            is_mod=True,
-        )
+        await _edit_category(service, "nonexistent", channel)
 
     mock_db.update_ticket.assert_not_awaited()
 
@@ -3155,11 +2978,7 @@ class TestTicketChannelOverwriteMatrix:
             reopened_row = {**closed_row, "channelId": "555555555", "status": "open", "closedAt": None}
 
             mock_db.get_ticket.side_effect = [closed_row, reopened_row]
-            mock_db.get_guild.return_value = {
-                "id": "123456789",
-                "ticketCategoryId": "100000000",
-                "modRoleId": "222222222" if with_mod_role else None,
-            }
+            _wire_guild_config(mock_db, mod_role_id="222222222" if with_mod_role else None)
             mock_db.get_ticket_category = AsyncMock(return_value={"name": "Soporte"})
 
             category_channel = MagicMock(spec=discord.CategoryChannel)
@@ -3169,8 +2988,7 @@ class TestTicketChannelOverwriteMatrix:
                 mod_role.id = 222222222
                 guild.get_role = MagicMock(return_value=mod_role)
 
-            author = MagicMock()
-            author.display_name = "DanielXX"
+            author = _author_member()
             guild.get_member = MagicMock(return_value=author)
 
             await service.reopen_ticket(ticket_id, guild=guild)
@@ -3207,23 +3025,7 @@ class TestReopenTicketChannelConstruction:
     ) -> None:
         """Reopen channel name MUST be {category}-{author}-{ticket_number} sanitized."""
         ticket_id = "ticket-uuid-003"
-        closed_row = _closed_ticket_row()
-        reopened_row = {**closed_row, "channelId": "555555555", "status": "open", "closedAt": None}
-
-        mock_db.get_ticket.side_effect = [closed_row, reopened_row]
-        mock_db.get_guild.return_value = {
-            "id": "123456789",
-            "ticketCategoryId": "100000000",
-            "modRoleId": None,
-        }
-        mock_db.get_ticket_category = AsyncMock(return_value={"name": "Soporte"})
-
-        category_channel = MagicMock(spec=discord.CategoryChannel)
-        guild = _mock_guild_for_reopen(category_channel=category_channel)
-
-        author_member = MagicMock()
-        author_member.display_name = "DanielXX"
-        guild.get_member = MagicMock(return_value=author_member)
+        guild = _wire_reopen_success(mock_db, category={"name": "Soporte"}, author_member=_author_member())
 
         await service.reopen_ticket(ticket_id, guild=guild)
 
@@ -3265,9 +3067,7 @@ async def test_countdown_not_found_on_edit_triggers_channel_delete(
     """
 
     channel = _mock_channel_for_close()
-    channel.send = AsyncMock()
-    countdown_msg = AsyncMock()
-    channel.send.return_value = countdown_msg
+    countdown_msg = _countdown_msg(channel)
 
     # msg.edit raises NotFound — message was deleted by a moderator, but
     # the channel itself still exists.
@@ -3297,9 +3097,7 @@ async def test_countdown_not_found_on_final_delete_is_tolerated(
     """
 
     channel = _mock_channel_for_close()
-    channel.send = AsyncMock()
-    countdown_msg = AsyncMock()
-    channel.send.return_value = countdown_msg
+    countdown_msg = _countdown_msg(channel)
 
     # msg.edit raises NotFound (message gone).
     countdown_msg.edit = AsyncMock(
@@ -3332,9 +3130,7 @@ async def test_countdown_not_found_on_final_delete_http_error_logged(
     """
 
     channel = _mock_channel_for_close()
-    channel.send = AsyncMock()
-    countdown_msg = AsyncMock()
-    channel.send.return_value = countdown_msg
+    countdown_msg = _countdown_msg(channel)
 
     # msg.edit raises NotFound (message gone).
     countdown_msg.edit = AsyncMock(
@@ -3372,13 +3168,7 @@ class TestCloseTicketConditional:
     ) -> None:
         """When close_reason is provided, it MUST be forwarded to transition_ticket_to_closed."""
         ticket_id = ticket_row["id"]
-        closed_row = {
-            **ticket_row,
-            "status": "closed",
-            "closedAt": "2026-06-16T18:00:00+00:00",
-            "closeReason": "zombie:channel_missing",
-        }
-        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+        closed_row = _wire_transition(mock_db, ticket_row, close_reason="zombie:channel_missing")
         mock_db.get_ticket.return_value = closed_row
 
         ticket = await service.close_ticket(
@@ -3405,13 +3195,7 @@ class TestCloseTicketConditional:
     ) -> None:
         """When close_reason is None, it MUST NOT be forwarded."""
         ticket_id = ticket_row["id"]
-        closed_row = {
-            **ticket_row,
-            "status": "closed",
-            "closedAt": "2026-06-16T18:00:00+00:00",
-            "closeReason": None,
-        }
-        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+        closed_row = _wire_transition(mock_db, ticket_row)
         mock_db.get_ticket.return_value = closed_row
 
         await service.close_ticket(ticket_id, closed_by="999999999")
@@ -3433,13 +3217,7 @@ class TestCloseTicketConditional:
     ) -> None:
         """SERVICE-1.5: zombie close MUST skip BOTH transcript generation and channel deletion."""
         ticket_id = ticket_row["id"]
-        closed_row = {
-            **ticket_row,
-            "status": "closed",
-            "closedAt": "2026-06-16T18:00:00+00:00",
-            "closeReason": "zombie:channel_missing",
-        }
-        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+        closed_row = _wire_transition(mock_db, ticket_row, close_reason="zombie:channel_missing")
         mock_db.get_ticket.return_value = closed_row
 
         # SERVICE-1.5: zombie path proven via DB contract — transcript_url=None
@@ -3492,8 +3270,7 @@ class TestCloseTicketConditional:
         channel_id = int(ticket_row["channelId"])
         service._ticket_channel_cache.add(channel_id)
 
-        closed_row = {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"}
-        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+        closed_row = _wire_transition(mock_db, ticket_row)
         mock_db.get_ticket.return_value = closed_row
 
         await service.close_ticket(ticket_id, closed_by="999999999")
@@ -3522,29 +3299,12 @@ class TestRepairTicketFromEvidence:
     ) -> None:
         """Corroborated evidence + successful close -> repaired."""
 
-        evidence = IntegrityEvidence(
-            ticket_id=ticket_row["id"],
-            guild_id=ticket_row["guildId"],
-            channel_id=ticket_row["channelId"],
-            status="open",
-            channel_exists=False,
-            corroborated=False,
-        )
+        evidence = _evidence(ticket_row, channel_exists=False)
         assert evidence.corroborated is True
 
-        closed_row = {
-            **ticket_row,
-            "status": "closed",
-            "closedAt": "2026-06-16T18:00:00+00:00",
-            "closeReason": "zombie:channel_deleted",
-        }
-        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+        _wire_transition(mock_db, ticket_row, close_reason="zombie:channel_deleted")
 
-        result = await service.repair_ticket_from_evidence(
-            evidence,
-            preflight=_resolved_preflight(),
-            close_reason="zombie:channel_deleted",
-        )
+        result = await _repair_from_evidence(service, evidence)
 
         assert isinstance(result, RepairResult)
         assert result.action == "close"
@@ -3561,21 +3321,10 @@ class TestRepairTicketFromEvidence:
     ) -> None:
         """Transition returns None -> already_closed."""
 
-        evidence = IntegrityEvidence(
-            ticket_id=ticket_row["id"],
-            guild_id=ticket_row["guildId"],
-            channel_id=ticket_row["channelId"],
-            status="open",
-            channel_exists=False,
-            corroborated=False,
-        )
+        evidence = _evidence(ticket_row, channel_exists=False)
         mock_db.transition_ticket_to_closed = AsyncMock(return_value=None)
 
-        result = await service.repair_ticket_from_evidence(
-            evidence,
-            preflight=_resolved_preflight(),
-            close_reason="zombie:channel_deleted",
-        )
+        result = await _repair_from_evidence(service, evidence)
 
         assert isinstance(result, RepairResult)
         assert result.action == "no_op"
@@ -3590,21 +3339,10 @@ class TestRepairTicketFromEvidence:
     ) -> None:
         """Channel exists -> not corroborated -> skipped."""
 
-        evidence = IntegrityEvidence(
-            ticket_id=ticket_row["id"],
-            guild_id=ticket_row["guildId"],
-            channel_id=ticket_row["channelId"],
-            status="open",
-            channel_exists=True,
-            corroborated=False,
-        )
+        evidence = _evidence(ticket_row, channel_exists=True)
         assert evidence.corroborated is False
 
-        result = await service.repair_ticket_from_evidence(
-            evidence,
-            preflight=_resolved_preflight(),
-            close_reason="zombie:channel_deleted",
-        )
+        result = await _repair_from_evidence(service, evidence)
 
         assert isinstance(result, RepairResult)
         assert result.action == "no_op"
@@ -3621,24 +3359,13 @@ class TestRepairTicketFromEvidence:
     ) -> None:
         """MODEL-2.4: transient Discord verification error must map to outcome=error with exception class name."""
 
-        evidence = IntegrityEvidence(
-            ticket_id=ticket_row["id"],
-            guild_id=ticket_row["guildId"],
-            channel_id=ticket_row["channelId"],
-            status="open",
-            channel_exists=False,
-            corroborated=False,
-        )
+        evidence = _evidence(ticket_row, channel_exists=False)
         # Discord transient verification error (e.g. NotFound/HTTPException/RateLimited during probe).
         mock_db.transition_ticket_to_closed = AsyncMock(
             side_effect=discord.NotFound(MagicMock(), "channel gone"),
         )
 
-        result = await service.repair_ticket_from_evidence(
-            evidence,
-            preflight=_resolved_preflight(),
-            close_reason="zombie:channel_deleted",
-        )
+        result = await _repair_from_evidence(service, evidence)
 
         assert isinstance(result, RepairResult)
         assert result.action == "no_op"
@@ -3650,11 +3377,7 @@ class TestRepairTicketFromEvidence:
             (discord.RateLimited(0.5), "RateLimited"),
         ]:
             mock_db.transition_ticket_to_closed = AsyncMock(side_effect=exc)
-            r2 = await service.repair_ticket_from_evidence(
-                evidence,
-                preflight=_resolved_preflight(),
-                close_reason="zombie:channel_deleted",
-            )
+            r2 = await _repair_from_evidence(service, evidence)
             assert r2.outcome == "error"
             assert r2.reason == cls_name
 
@@ -3688,14 +3411,7 @@ class TestRepairTicketFromEvidence:
     ) -> None:
         """When G.2 is gate_unresolved, repair_ticket_from_evidence MUST NOT mutate."""
 
-        evidence = IntegrityEvidence(
-            ticket_id=ticket_row["id"],
-            guild_id=ticket_row["guildId"],
-            channel_id=ticket_row["channelId"],
-            status="open",
-            channel_exists=False,
-            corroborated=False,
-        )
+        evidence = _evidence(ticket_row, channel_exists=False)
 
         # Simulate gate_unresolved by passing an unresolved preflight.
         result = await service.repair_ticket_from_evidence(
@@ -3718,17 +3434,11 @@ class TestRepairTicketFromEvidence:
     ) -> None:
         """R1-004/R4-002: repair success MUST write a best-effort repair audit row."""
         evidence = _corroborated_evidence(ticket_row)
-        closed_row = {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"}
-        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+        _wire_transition(mock_db, ticket_row)
 
-        await service.repair_ticket_from_evidence(
-            evidence,
-            preflight=_resolved_preflight(),
-            close_reason="zombie:channel_deleted",
-        )
+        await _repair_from_evidence(service, evidence)
 
-        mock_db.insert_audit_row.assert_awaited_once()
-        kwargs = _audit_kwargs(mock_db)
+        kwargs = _assert_audit(mock_db)
         # clean-1.0 D6: automated zombie closures write a dedicated
         # zombie_autoclose row (actorId=system) with the applied close reason
         # verbatim, REPLACING the generic "repair" row.
@@ -3751,14 +3461,7 @@ class TestRepairTicketFromEvidence:
 
 def _corroborated_evidence(ticket_row: dict) -> IntegrityEvidence:
     """Return fresh corroborated evidence for the shared repair path."""
-    return IntegrityEvidence(
-        ticket_id=ticket_row["id"],
-        guild_id=ticket_row["guildId"],
-        channel_id=ticket_row["channelId"],
-        status="open",
-        channel_exists=False,
-        observed_at=datetime.now(UTC),
-    )
+    return _evidence(ticket_row)
 
 
 def _unresolved_preflight() -> object:
@@ -3778,6 +3481,16 @@ def _resolved_preflight() -> object:
         realtime_publication_covers=["guild", "greeting_config", "ticket", "ticket_note"],
         active_rows_channel_id_non_null=3,
         observed_at=datetime.now(UTC).isoformat(),
+    )
+
+
+async def _repair_from_evidence(service: TicketService, evidence: IntegrityEvidence) -> RepairResult:
+    """Drive one shared repair_ticket_from_evidence call with the canonical
+    resolved preflight and zombie close reason used across this module."""
+    return await service.repair_ticket_from_evidence(
+        evidence,
+        preflight=_resolved_preflight(),
+        close_reason="zombie:channel_deleted",
     )
 
 
@@ -3807,8 +3520,7 @@ async def test_repair_denied_when_preflight_unresolved(
     # No ticket mutation ...
     mock_db.transition_ticket_to_closed.assert_not_awaited()
     # ... but a best-effort NON-mutating audit row is still produced.
-    mock_db.insert_audit_row.assert_awaited_once()
-    kwargs = _audit_kwargs(mock_db)
+    kwargs = _assert_audit(mock_db)
     assert kwargs["action"] == "repair"
     assert kwargs["outcome"] == "denied"
     assert kwargs["reason"] == "gate_unresolved"
@@ -3823,21 +3535,10 @@ async def test_repair_quarantines_unknown_evidence(
 ) -> None:
     """Unknown (None) channel existence MUST quarantine, never mutate."""
 
-    evidence = IntegrityEvidence(
-        ticket_id=ticket_row["id"],
-        guild_id=ticket_row["guildId"],
-        channel_id=ticket_row["channelId"],
-        status="open",
-        channel_exists=None,
-        observed_at=datetime.now(UTC),
-    )
+    evidence = _evidence(ticket_row, channel_exists=None)
     assert evidence.corroborated is None
 
-    result = await service.repair_ticket_from_evidence(
-        evidence,
-        preflight=_resolved_preflight(),
-        close_reason="zombie:channel_deleted",
-    )
+    result = await _repair_from_evidence(service, evidence)
 
     assert isinstance(result, RepairResult)
     assert result.action == "no_op"
@@ -3854,21 +3555,10 @@ async def test_repair_quarantines_stale_evidence(
 ) -> None:
     """Stale absence evidence MUST quarantine (unresolved), never mutate."""
 
-    evidence = IntegrityEvidence(
-        ticket_id=ticket_row["id"],
-        guild_id=ticket_row["guildId"],
-        channel_id=ticket_row["channelId"],
-        status="open",
-        channel_exists=False,
-        observed_at=datetime(2020, 1, 1, tzinfo=UTC),
-    )
+    evidence = _evidence(ticket_row, observed_at=datetime(2020, 1, 1, tzinfo=UTC))
     assert evidence.corroborated is None
 
-    result = await service.repair_ticket_from_evidence(
-        evidence,
-        preflight=_resolved_preflight(),
-        close_reason="zombie:channel_deleted",
-    )
+    result = await _repair_from_evidence(service, evidence)
 
     assert isinstance(result, RepairResult)
     assert result.action == "no_op"
@@ -3885,21 +3575,10 @@ async def test_repair_denied_when_channel_still_exists(
 ) -> None:
     """A live channel (corroborated=False) MUST be denied/skipped, no mutation."""
 
-    evidence = IntegrityEvidence(
-        ticket_id=ticket_row["id"],
-        guild_id=ticket_row["guildId"],
-        channel_id=ticket_row["channelId"],
-        status="open",
-        channel_exists=True,
-        observed_at=datetime.now(UTC),
-    )
+    evidence = _evidence(ticket_row, channel_exists=True)
     assert evidence.corroborated is False
 
-    result = await service.repair_ticket_from_evidence(
-        evidence,
-        preflight=_resolved_preflight(),
-        close_reason="zombie:channel_deleted",
-    )
+    result = await _repair_from_evidence(service, evidence)
 
     assert isinstance(result, RepairResult)
     assert result.action == "no_op"
@@ -3916,21 +3595,10 @@ async def test_repair_denied_for_non_active_ticket(
 ) -> None:
     """A closed-ticket evidence (corroborated=False) MUST be denied, no mutation."""
 
-    evidence = IntegrityEvidence(
-        ticket_id=ticket_row["id"],
-        guild_id=ticket_row["guildId"],
-        channel_id=ticket_row["channelId"],
-        status="closed",
-        channel_exists=False,
-        observed_at=datetime.now(UTC),
-    )
+    evidence = _evidence(ticket_row, status="closed")
     assert evidence.corroborated is False
 
-    result = await service.repair_ticket_from_evidence(
-        evidence,
-        preflight=_resolved_preflight(),
-        close_reason="zombie:channel_deleted",
-    )
+    result = await _repair_from_evidence(service, evidence)
 
     assert isinstance(result, RepairResult)
     assert result.action == "no_op"
@@ -3957,22 +3625,14 @@ async def test_duplicate_repair_one_repaired_one_already_closed(
     mutation or a second success audit row.
     """
     evidence = _corroborated_evidence(ticket_row)
-    closed_row = {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"}
+    closed_row = _closed_from_transition(ticket_row)
 
     # Winner: transition returns the closed row. Loser: transition returns None.
     mock_db.transition_ticket_to_closed = AsyncMock(side_effect=[closed_row, None])
     mock_db.insert_audit_row = AsyncMock(return_value={})
 
-    first = await service.repair_ticket_from_evidence(
-        evidence,
-        preflight=_resolved_preflight(),
-        close_reason="zombie:channel_deleted",
-    )
-    second = await service.repair_ticket_from_evidence(
-        evidence,
-        preflight=_resolved_preflight(),
-        close_reason="zombie:channel_deleted",
-    )
+    first = await _repair_from_evidence(service, evidence)
+    second = await _repair_from_evidence(service, evidence)
 
     assert first.action == "close"
     assert first.outcome == "repaired"
@@ -4042,8 +3702,7 @@ async def test_repair_quarantine_never_claims_mutation(
     assert result.action == "no_op"
     mock_db.transition_ticket_to_closed.assert_not_awaited()
     # Best-effort structured audit evidence: denied, non-mutating, reviewable.
-    mock_db.insert_audit_row.assert_awaited_once()
-    kwargs = _audit_kwargs(mock_db)
+    kwargs = _assert_audit(mock_db)
     assert kwargs["action"] == "repair"
     assert kwargs["outcome"] == "denied"
     assert kwargs["reason"] == "evidence_unresolved"
@@ -4072,8 +3731,7 @@ async def test_repair_skipped_live_channel_still_audits_denied(
 
     assert result.outcome == "skipped"
     mock_db.transition_ticket_to_closed.assert_not_awaited()
-    mock_db.insert_audit_row.assert_awaited_once()
-    kwargs = _audit_kwargs(mock_db)
+    kwargs = _assert_audit(mock_db)
     assert kwargs["outcome"] == "denied"
     assert kwargs["reason"] == "not_corroborated"
 
@@ -4088,15 +3746,10 @@ async def test_repair_already_closed_audits_denied(
     evidence = _corroborated_evidence(ticket_row)
     mock_db.transition_ticket_to_closed = AsyncMock(return_value=None)
 
-    result = await service.repair_ticket_from_evidence(
-        evidence,
-        preflight=_resolved_preflight(),
-        close_reason="zombie:channel_deleted",
-    )
+    result = await _repair_from_evidence(service, evidence)
 
     assert result.outcome == "already_closed"
-    mock_db.insert_audit_row.assert_awaited_once()
-    kwargs = _audit_kwargs(mock_db)
+    kwargs = _assert_audit(mock_db)
     assert kwargs["outcome"] == "denied"
     assert kwargs["reason"] == "already_closed"
 
@@ -4159,15 +3812,10 @@ async def test_repair_audit_failure_never_reports_repaired(
     """
 
     evidence = _corroborated_evidence(ticket_row)
-    closed_row = {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"}
-    mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+    _wire_transition(mock_db, ticket_row)
     mock_db.insert_audit_row = AsyncMock(side_effect=RuntimeError("audit down"))
 
-    result = await service.repair_ticket_from_evidence(
-        evidence,
-        preflight=_resolved_preflight(),
-        close_reason="zombie:channel_deleted",
-    )
+    result = await _repair_from_evidence(service, evidence)
 
     assert isinstance(result, RepairResult)
     # Best-effort audit: closure outcome is NOT degraded by audit failure.
@@ -4212,11 +3860,7 @@ class TestPR5IdempotencyAndBestEffort:
         mock_db.insert_audit_row = AsyncMock(side_effect=RuntimeError("audit down"))
 
         with caplog.at_level(logging.WARNING, logger="bot.services.ticket_service"):
-            result = await service.repair_ticket_from_evidence(
-                evidence,
-                preflight=_resolved_preflight(),
-                close_reason="zombie:channel_deleted",
-            )
+            result = await _repair_from_evidence(service, evidence)
 
         assert result.outcome == "already_closed"
         assert result.action == "no_op"
@@ -4240,8 +3884,7 @@ class TestPR5IdempotencyAndBestEffort:
         """
 
         evidence = _corroborated_evidence(ticket_row)
-        closed_row = {**ticket_row, "status": "closed", "closedAt": "2026-06-16T18:00:00+00:00"}
-        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+        _wire_transition(mock_db, ticket_row)
         # This is the SUCCESS audit path (success -> insert fails).
         mock_db.insert_audit_row = AsyncMock(side_effect=RuntimeError("audit down"))
 
@@ -4418,6 +4061,11 @@ class TestBackoffDelay:
 # repair_ticket_manual: explicit authority + fresh probe → shared path.
 
 
+def _wire_closed_transition(mock_db: AsyncMock, row: dict) -> None:
+    """Stub transition_ticket_to_closed to return the closed form of row."""
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value={**row, "status": "closed", "closedAt": "now"})
+
+
 class TestSweepIntegrity:
     """The integrity sweep reuses the shared evidence-gated repair path."""
 
@@ -4448,8 +4096,7 @@ class TestSweepIntegrity:
         """NotFound probe → corroborated evidence → repaired via coordinator."""
         mock_db.get_open_ticket_channel_ids = AsyncMock(return_value=["888888888"])
         mock_db.get_active_ticket_by_channel = AsyncMock(return_value=self._active_row("888888888"))
-        closed = {**self._active_row("888888888"), "status": "closed", "closedAt": "now"}
-        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed)
+        _wire_closed_transition(mock_db, self._active_row("888888888"))
 
         bot = self._sweep_bot()
         bot.get_guild().fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(), "gone"))
@@ -4624,8 +4271,7 @@ class TestRepairTicketManual:
             "status": "open",
         }
         mock_db.get_ticket = AsyncMock(return_value=row)
-        closed = {**row, "status": "closed", "closedAt": "now"}
-        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed)
+        _wire_closed_transition(mock_db, row)
 
         bot = self._manual_bot()
         bot.get_guild().fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(), "gone"))
@@ -4838,8 +4484,7 @@ class TestRepairTicketManualGrant:
             "status": "open",
         }
         mock_db.get_ticket = AsyncMock(return_value=row)
-        closed = {**row, "status": "closed", "closedAt": "now"}
-        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed)
+        _wire_closed_transition(mock_db, row)
 
         bot = self._manual_bot()
         bot.get_guild().fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(), "gone"))

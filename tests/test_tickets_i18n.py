@@ -351,7 +351,8 @@ def _make_interaction(
 class TestTicketConfigMissingI18n:
     """subticket_create with unconfigured category uses t()."""
 
-    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    pytestmark = pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX, scope="class")
+
     async def test_config_missing_is_localized(
         self,
         cog: TicketsCog,
@@ -378,7 +379,8 @@ class TestTicketConfigMissingI18n:
 class TestTicketOpenNoCategoriesI18n:
     """TicketPanelView.open_ticket_button uses t() for no-categories error."""
 
-    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    pytestmark = pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX, scope="class")
+
     async def test_no_categories_is_localized(
         self,
         ticket_bot: MagicMock,
@@ -402,7 +404,8 @@ class TestTicketOpenNoCategoriesI18n:
 class TestTicketClaimI18n:
     """claim button error messages use t()."""
 
-    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    pytestmark = pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX, scope="class")
+
     async def test_claim_not_ticket_is_localized(
         self,
         ticket_bot: MagicMock,
@@ -428,7 +431,8 @@ class TestTicketClaimI18n:
 class TestTicketCloseI18n:
     """close button error messages use t()."""
 
-    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    pytestmark = pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX, scope="class")
+
     async def test_close_not_ticket_is_localized(
         self,
         ticket_bot: MagicMock,
@@ -453,7 +457,6 @@ class TestTicketCloseI18n:
         assert f"CLOSE_FAIL_{suffix}" in embed.title
         assert f"CLOSE_NO_TICKET_{suffix}" in embed.description
 
-    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
     async def test_close_already_closed_is_localized(
         self,
         ticket_bot: MagicMock,
@@ -508,7 +511,8 @@ class TestSubticketHelpI18n:
 class TestReopenI18n:
     """/reopen error messages use t()."""
 
-    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    pytestmark = pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX, scope="class")
+
     async def test_reopen_not_ticket_is_localized(
         self,
         cog: TicketsCog,
@@ -559,7 +563,8 @@ class TestNoteHelpI18n:
 class TestListCategoriesI18n:
     """/list_categories uses t()."""
 
-    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    pytestmark = pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX, scope="class")
+
     async def test_list_categories_empty_is_localized(
         self,
         cog: TicketsCog,
@@ -582,7 +587,8 @@ class TestListCategoriesI18n:
 class TestCreateCategoryI18n:
     """/create_category uses t()."""
 
-    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    pytestmark = pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX, scope="class")
+
     async def test_create_category_duplicate_is_localized(
         self,
         cog: TicketsCog,
@@ -605,7 +611,8 @@ class TestCreateCategoryI18n:
 class TestDeleteCategoryI18n:
     """/delete_category uses t()."""
 
-    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    pytestmark = pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX, scope="class")
+
     async def test_delete_category_not_found_is_localized(
         self,
         cog: TicketsCog,
@@ -624,7 +631,6 @@ class TestDeleteCategoryI18n:
         assert embed is not None
         assert f"DEL_NOT_FOUND_{suffix}" in embed.title
 
-    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
     async def test_delete_category_in_use_is_localized(
         self,
         cog: TicketsCog,
@@ -649,7 +655,8 @@ class TestDeleteCategoryI18n:
 class TestTransferI18n:
     """/transfer uses t()."""
 
-    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    pytestmark = pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX, scope="class")
+
     async def test_transfer_not_ticket_is_localized(
         self,
         cog: TicketsCog,
@@ -674,7 +681,8 @@ class TestTransferI18n:
 class TestTicketEmbedI18n:
     """_build_ticket_embed uses t() for titles and descriptions."""
 
-    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    pytestmark = pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX, scope="class")
+
     def test_open_ticket_embed_is_localized(self, guild_id: str, suffix: str) -> None:
         """Open ticket embed uses localized strings."""
         ticket = Ticket.from_db_row(_ticket_row(status="open", guild_id=guild_id))
@@ -684,7 +692,6 @@ class TestTicketEmbedI18n:
         assert embed.description is not None
         assert f"OPEN_WELCOME_DESC_{suffix}" in embed.description
 
-    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
     def test_claimed_ticket_embed_is_localized(self, guild_id: str, suffix: str) -> None:
         """Claimed ticket embed uses localized strings."""
         ticket = Ticket.from_db_row(_ticket_row(status="claimed", guild_id=guild_id))
@@ -700,7 +707,8 @@ class TestTicketEmbedI18n:
 class TestTicketEmbedSubjectI18n:
     """build_ticket_embed subject handling uses localized keys."""
 
-    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    pytestmark = pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX, scope="class")
+
     def test_embed_title_with_subject(self, guild_id: str, suffix: str) -> None:
         """Ticket with subject → embed title uses title_with_subject key."""
         row = _ticket_row(status="open", guild_id=guild_id)
@@ -711,7 +719,6 @@ class TestTicketEmbedSubjectI18n:
         assert "OPEN_WELCOME_SUBJ_" in embed.title
         assert "Login broken" in embed.title
 
-    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
     def test_embed_title_fallback_when_no_subject(self, guild_id: str, suffix: str) -> None:
         """Ticket without subject → embed title uses welcome_title fallback."""
         row = _ticket_row(status="open", guild_id=guild_id)
@@ -723,7 +730,6 @@ class TestTicketEmbedSubjectI18n:
         assert f"_{suffix}" in embed.title
         assert "SUBJ" not in embed.title
 
-    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
     def test_embed_description_field_when_present(self, guild_id: str, suffix: str) -> None:
         """Ticket with description → embed includes details field."""
         row = _ticket_row(status="open", guild_id=guild_id)
@@ -733,7 +739,6 @@ class TestTicketEmbedSubjectI18n:
         field_names = [f.name for f in embed.fields]
         assert f"OPEN_DETAILS_{suffix}" in field_names
 
-    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
     def test_embed_no_description_field_when_absent(self, guild_id: str, suffix: str) -> None:
         """Ticket without description → embed has no details field."""
         row = _ticket_row(status="open", guild_id=guild_id)
@@ -747,7 +752,8 @@ class TestTicketEmbedSubjectI18n:
 class TestModalI18nKeys:
     """modal i18n keys resolve for both locales."""
 
-    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    pytestmark = pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX, scope="class")
+
     def test_modal_keys_resolve(self, guild_id: str, suffix: str) -> None:
         """Modal i18n keys resolve with the expected marker text."""
         assert t(guild_id, "tickets.modal.title", category="Support") == (f"MODAL_TITLE_Support_{suffix}")
@@ -806,7 +812,8 @@ class TestButtonLabelI18n:
 class TestDynamicLabelResolution:
     """button labels resolve via t() at INTERACTION time, not just construction."""
 
-    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    pytestmark = pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX, scope="class")
+
     async def test_panel_open_label_updates_at_interaction(
         self,
         guild_id: str,
@@ -827,7 +834,6 @@ class TestDynamicLabelResolution:
         # After callback, label should be updated to the guild language.
         assert open_button.label == f"OPEN_BTN_{suffix}"
 
-    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
     async def test_actions_claim_label_updates_at_interaction(
         self,
         guild_id: str,
@@ -849,7 +855,6 @@ class TestDynamicLabelResolution:
 
         assert claim_button.label == f"CLAIM_BTN_{suffix}"
 
-    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
     async def test_actions_close_label_updates_at_interaction(
         self,
         guild_id: str,
@@ -880,7 +885,8 @@ class TestDynamicLabelResolution:
 class TestReopenNotClosedI18n:
     """/reopen ValueError surfaces localized error, not service's raw text."""
 
-    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
+    pytestmark = pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX, scope="class")
+
     async def test_reopen_not_closed_is_localized(
         self,
         cog: TicketsCog,
