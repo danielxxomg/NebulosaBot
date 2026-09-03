@@ -121,6 +121,28 @@ _TIMER_STATIC_KEYS = (
     "tickets.timer.confirm_success_description",
 )
 
+# Greeting template picker chrome + code-owned catalogue (spec i18n-system,
+# change greeting-templates S3). The renderer stays t()-free; these keys are
+# resolved in the view layer (welcome/goodbye setup modules) only.
+_GREETING_TEMPLATE_KEYS = (
+    "setup.module.welcome.template_label",
+    "setup.module.welcome.template_placeholder",
+    "setup.module.welcome.template_select_title",
+    "setup.module.welcome.template_select_description",
+    "setup.module.goodbye.template_label",
+    "setup.module.goodbye.template_placeholder",
+    "setup.module.goodbye.template_select_title",
+    "setup.module.goodbye.template_select_description",
+    "templates.greeting.default.label",
+    "templates.greeting.default.description",
+    "templates.greeting.gaming_neon.label",
+    "templates.greeting.gaming_neon.description",
+    "templates.greeting.sunset_wave.label",
+    "templates.greeting.sunset_wave.description",
+    "templates.greeting.minimal_light.label",
+    "templates.greeting.minimal_light.description",
+)
+
 
 # ---------------------------------------------------------------------------
 # Scanner helpers
@@ -287,6 +309,28 @@ def test_timer_static_keys_resolve_in_both_locales(lang_guild: str) -> None:
         value = t(lang_guild, key)
         assert value != key, f"{key} must resolve in guild lang (raw key returned)"
         assert value.strip(), f"{key} must be non-empty"
+
+
+@pytest.mark.parametrize("lang_guild", [_ES_GUILD, _EN_GUILD])
+def test_greeting_template_keys_resolve_in_both_locales(lang_guild: str) -> None:
+    """All 16 greeting-template keys resolve to non-empty localized strings (spec i18n-system)."""
+    for key in _GREETING_TEMPLATE_KEYS:
+        value = t(lang_guild, key)
+        assert value != key, f"{key} must resolve in guild lang (raw key returned)"
+        assert value.strip(), f"{key} must be non-empty"
+
+
+def test_greeting_template_keys_exist_in_both_locales() -> None:
+    """Every declared greeting-template key exists in BOTH es.json and en.json."""
+    es_keys = load_locale_leaves("es")
+    en_keys = load_locale_leaves("en")
+    missing_es = [k for k in _GREETING_TEMPLATE_KEYS if k not in es_keys]
+    missing_en = [k for k in _GREETING_TEMPLATE_KEYS if k not in en_keys]
+    problems = [
+        *(f"  es.json is missing '{k}'" for k in missing_es),
+        *(f"  en.json is missing '{k}'" for k in missing_en),
+    ]
+    assert not problems, "Greeting-template locale coverage gaps:\n" + "\n".join(problems)
 
 
 def test_scheduled_description_interpolates_remaining_and_unix() -> None:

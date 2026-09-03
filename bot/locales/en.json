@@ -400,7 +400,11 @@
         "preview_no_channel_title": "No Channel Configured",
         "preview_no_channel_description": "Configure a welcome channel first.",
         "preview_success_title": "✅ Preview Sent",
-        "preview_success_description": "Preview delivered to {channel}."
+        "preview_success_description": "Preview delivered to {channel}.",
+        "template_label": "Card template",
+        "template_placeholder": "Pick a template...",
+        "template_select_title": "Welcome template",
+        "template_select_description": "Choose the visual template for the welcome card."
       },
       "goodbye": {
         "title": "Goodbye Configuration",
@@ -426,7 +430,11 @@
         "preview_no_channel_title": "No Channel Configured",
         "preview_no_channel_description": "Configure a goodbye channel first.",
         "preview_success_title": "✅ Preview Sent",
-        "preview_success_description": "Preview delivered to {channel}."
+        "preview_success_description": "Preview delivered to {channel}.",
+        "template_label": "Card template",
+        "template_placeholder": "Pick a template...",
+        "template_select_title": "Goodbye template",
+        "template_select_description": "Choose the visual template for the goodbye card."
       },
       "log": {
         "title": "Log Configuration",
@@ -1091,5 +1099,25 @@
     "tempban_confirm_title": "Confirm Tempban",
     "tempban_confirm_description": "Are you sure you want to tempban {mention} for {duration}?\n**Reason:** {reason}",
     "tempban_confirmed_description": "Tempban action confirmed for {mention}. The result has been posted to the channel."
+  },
+  "templates": {
+    "greeting": {
+      "default": {
+        "label": "Classic",
+        "description": "Classic card with the Nebulosa accent."
+      },
+      "gaming_neon": {
+        "label": "Gaming Neon",
+        "description": "Neon frame with hexagon diagonal glow."
+      },
+      "sunset_wave": {
+        "label": "Sunset Wave",
+        "description": "Warm sunset-style diagonal gradient."
+      },
+      "minimal_light": {
+        "label": "Minimal Light",
+        "description": "Minimalist accent hairline on subtle background."
+      }
+    }
   }
 }
