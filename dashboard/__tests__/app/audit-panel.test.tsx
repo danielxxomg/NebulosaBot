@@ -3,7 +3,6 @@ import {
   render,
   screen,
   fireEvent,
-  waitFor,
 } from "@testing-library/react";
 import type { TicketAudit } from "@/lib/types";
 import { AuditPanel } from "@/app/(authenticated)/guilds/[guildId]/tickets/_components/AuditPanel";
@@ -13,6 +12,11 @@ import { AuditPanel } from "@/app/(authenticated)/guilds/[guildId]/tickets/_comp
  * TI-038 / TI-021 / TI-028). Newest first, paginated, accessible outcome
  * badges (success=green, denied=amber, error=red) — the outcome is conveyed
  * by text, not color alone.
+ *
+ * Wait discipline: await rendered output ("Page N", row text, disabled
+ * buttons) before asserting on mock calls — "Page 1" is on the first paint,
+ * so page-1 assertions must wait for the rows to land. Never assert mock
+ * call counts before the UI shows the resulting state.
  */
 
 const mockGetTicketAudit = vi.fn();
@@ -51,19 +55,17 @@ describe("AuditPanel — load + list (TI-038)", () => {
 
     render(<AuditPanel guildId={GUILD_ID} />);
 
-    await waitFor(() => {
-      expect(mockGetTicketAudit).toHaveBeenCalledWith(GUILD_ID, undefined, 1);
-    });
+    // UI-first: wait for the rendered rows, then assert the fetch contract.
     expect(await screen.findByText("close")).toBeTruthy();
     expect(screen.getByText("claim")).toBeTruthy();
+    expect(mockGetTicketAudit).toHaveBeenCalledWith(GUILD_ID, undefined, 1);
   });
 
   it("passes the optional ticketId filter through to the action", async () => {
     mockGetTicketAudit.mockResolvedValue({ data: [], error: null });
     render(<AuditPanel guildId={GUILD_ID} ticketId="t-42" />);
-    await waitFor(() => {
-      expect(mockGetTicketAudit).toHaveBeenCalledWith(GUILD_ID, "t-42", 1);
-    });
+    expect(await screen.findByText(/No audit events yet/i)).toBeTruthy();
+    expect(mockGetTicketAudit).toHaveBeenCalledWith(GUILD_ID, "t-42", 1);
   });
 
   it("shows the empty state when there are no audit rows", async () => {
@@ -130,15 +132,18 @@ describe("AuditPanel — pagination (TI-038)", () => {
 
     render(<AuditPanel guildId={GUILD_ID} />);
 
-    await screen.findByText(/Page 1/i);
+    // UI-first: all 20 page-1 rows rendered proves the page fully landed
+    // (and is full) before we read the Next button — "Page 1" text alone
+    // is on the first paint.
+    const page1Rows = await screen.findAllByText("claim");
+    expect(page1Rows).toHaveLength(20);
     const next = screen.getByRole("button", { name: /Next/i });
     expect(next.hasAttribute("disabled")).toBe(false);
 
     fireEvent.click(next);
-    await waitFor(() => {
-      expect(mockGetTicketAudit).toHaveBeenNthCalledWith(2, GUILD_ID, undefined, 2);
-    });
+    // Same asserts as before, reordered after the UI settles (design.md).
     expect(await screen.findByText(/Page 2/i)).toBeTruthy();
+    expect(mockGetTicketAudit).toHaveBeenNthCalledWith(2, GUILD_ID, undefined, 2);
   });
 
   it("disables Next when the current page is not full", async () => {
@@ -148,7 +153,9 @@ describe("AuditPanel — pagination (TI-038)", () => {
       error: null,
     });
     render(<AuditPanel guildId={GUILD_ID} />);
-    await screen.findByText(/Page 1/i);
+    // Short page renders exactly 1 row → the page landed and Next is off.
+    const pageRows = await screen.findAllByText("claim");
+    expect(pageRows).toHaveLength(1);
     expect(screen.getByRole("button", { name: /Next/i }).hasAttribute("disabled")).toBe(true);
   });
 
@@ -160,11 +167,13 @@ describe("AuditPanel — pagination (TI-038)", () => {
     mockGetTicketAudit.mockResolvedValueOnce({ data: [], error: null });
 
     render(<AuditPanel guildId={GUILD_ID} />);
-    await screen.findByText(/Page 1/i);
+    // UI-first: all 20 page-1 rows rendered before reading the Previous button.
+    const page1Rows = await screen.findAllByText("claim");
+    expect(page1Rows).toHaveLength(20);
     expect(screen.getByRole("button", { name: /Previous/i }).hasAttribute("disabled")).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: /Next/i }));
-    await screen.findByText(/Page 2/i);
+    expect(await screen.findByText(/Page 2/i)).toBeTruthy();
     expect(screen.getByRole("button", { name: /Previous/i }).hasAttribute("disabled")).toBe(false);
   });
 });
