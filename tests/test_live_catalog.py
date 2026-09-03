@@ -34,6 +34,7 @@ from bot.services.schema_inventory import (
     SchemaInventory,
     fetch_live_metadata,
 )
+from tests.conftest import fake_db_with_token, mocked_fks_for_live
 
 # ---------------------------------------------------------------------------
 # Helpers — must mirror exact local migration identity (27 stems)
@@ -73,15 +74,8 @@ EXPECTED_LOCAL_MIGRATIONS = sorted([
 ])
 
 
-def _mocked_fks() -> list[dict[str, str]]:
-    return [
-        {"child": "economy_config", "parent": "guild", "on_delete": "CASCADE"},
-        {"child": "greeting_config", "parent": "guild", "on_delete": "CASCADE"},
-        {"child": "infraction", "parent": "guild", "on_delete": "CASCADE"},
-        {"child": "member", "parent": "guild", "on_delete": "CASCADE"},
-        {"child": "ticket", "parent": "guild", "on_delete": "CASCADE"},
-        {"child": "ticket_category", "parent": "guild", "on_delete": "CASCADE"},
-    ]
+def _mocked_fks() -> list[dict[str, str]]:  # noqa: PLR0913 -- thin alias over conftest helper
+    return mocked_fks_for_live()
 
 
 class TestRedLiveCatalogModuleExists:
@@ -276,37 +270,7 @@ def test_live_marker_asserts_db_path_used_when_creds_present() -> None:
     # Prove psycopg provenance by mocking a successful psycopg.connect for this live marker.
     # Without mock, placeholder URL fails DNS/connect and we stay on warning path.
     # With mock, we prove the gate + adapter path is live-ready without needing real staging.
-    executed: list[str] = []
-
-    class FakeCursor:
-        def __enter__(self) -> FakeCursor:
-            return self
-
-        def __exit__(self, *_: object) -> None:
-            pass
-
-        def execute(self, sql: str, *_: object, **__: object) -> None:
-            executed.append(sql)
-
-        def fetchall(self) -> list[tuple[str, ...]]:
-            if executed and "pg_constraint" in executed[-1]:
-                return [("ticket", "guild", "CASCADE")]
-            return []
-
-        def fetchone(self) -> tuple[int, ...] | None:
-            return (0,)
-
-    class FakeConn:
-        def __enter__(self) -> FakeConn:
-            return self
-
-        def __exit__(self, *_: object) -> None:
-            pass
-
-        def cursor(self) -> FakeCursor:
-            return FakeCursor()
-
-    fake_connect = MagicMock(return_value=FakeConn())
+    fake_connect, _executed = fake_db_with_token(db_url)
     with patch("psycopg.connect", fake_connect):
         _, _, _, _, tok = asyncio.run(fetch_catalog_via_db(db_url))
         assert fake_connect.called
@@ -330,39 +294,7 @@ class TestFetchCatalogViaDbProvenance:
     async def test_fetch_catalog_via_db_uses_psycopg_when_db_url_present(self) -> None:
         """Provenance: fetch_catalog_via_db must call psycopg.connect and execute queries."""
 
-        # Fake cursor that records execute calls and returns canned rows
-        executed: list[str] = []
-
-        class FakeCursor:
-            def __enter__(self) -> FakeCursor:
-                return self
-
-            def __exit__(self, *_: object) -> None:
-                pass
-
-            def execute(self, sql: str, *_: object, **__: object) -> None:
-                executed.append(sql)
-
-            def fetchall(self) -> list[tuple[str, ...]]:
-                # Return FK-like rows for first call, empty for others
-                if "pg_constraint" in executed[-1]:
-                    return [("ticket", "guild", "CASCADE")]
-                return []
-
-            def fetchone(self) -> tuple[int, ...] | None:
-                return (0,)
-
-        class FakeConn:
-            def __enter__(self) -> FakeConn:
-                return self
-
-            def __exit__(self, *_: object) -> None:
-                pass
-
-            def cursor(self) -> FakeCursor:
-                return FakeCursor()
-
-        fake_connect = MagicMock(return_value=FakeConn())
+        fake_connect, executed = fake_db_with_token("postgresql://user:pass@localhost/db")
         with patch("psycopg.connect", fake_connect):
             fks, _pols, _pubs, _migs, tok = await fetch_catalog_via_db("postgresql://user:pass@localhost/db")
             # Provenance: psycopg.connect was called — token proves query execution

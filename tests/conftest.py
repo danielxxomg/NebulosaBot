@@ -70,7 +70,7 @@ def _load_real_locales() -> None:
 
 
 @pytest.fixture(autouse=True)
-def _isolate_i18n_state():
+def _isolate_i18n_state() -> object:
     """Snapshot and restore i18n module globals around every test.
 
     Several suites deliberately overwrite module-level i18n state
@@ -175,7 +175,7 @@ def load_test_locales(
 
 
 @pytest.fixture(scope="session")
-def _asyncio_loop_factory():
+def _asyncio_loop_factory() -> object:
     """Return a loop factory that uses PollSelector instead of EpollSelector."""
 
     def _factory() -> asyncio.AbstractEventLoop:
@@ -633,12 +633,199 @@ def make_ticket_bot(guild_id: str = "123456789") -> MagicMock:
 
 
 # ---------------------------------------------------------------------------
+# PR2 ticket timer builders (tests-slim-fase-3 Slice B — 2.1).
+# Hoists _make_bot / _make_message from test_pr2_on_message_red into shared
+# plain functions beside make_ticket_bot. Plain builders, not fixtures.
+# ---------------------------------------------------------------------------
+
+
+def make_pr2_bot() -> MagicMock:
+    """Return a mock bot wired for TicketsCog on_message / timer tests.
+
+    Mirrors ``tests/test_pr2_on_message_red.py:_make_bot`` verbatim so that
+    hoisted call sites can switch to the shared builder without behavior change.
+    """
+    bot = MagicMock()
+    bot.db = MagicMock()
+    bot.db.update_ticket_last_activity = AsyncMock()
+    bot.db.get_ticket_by_channel = AsyncMock(return_value=None)
+    bot.db.get_active_ticket_by_channel = AsyncMock(return_value=None)
+    bot.db.update_ticket = AsyncMock()
+    bot.db.get_scheduled_close_candidates = AsyncMock(return_value=[])
+    bot.db.get_ticket = AsyncMock(return_value=None)
+    bot.ticket_service = MagicMock()
+    bot.ticket_service.is_ticket_channel = MagicMock(return_value=True)
+    bot.ticket_service.schedule_close = AsyncMock()
+    bot.ticket_service.cancel_scheduled_close = AsyncMock()
+    bot.ticket_service.close_ticket_full = AsyncMock()
+    bot.ticket_service.handle_timer_message = AsyncMock(return_value=None)
+    bot.ticket_service.confirm_timer_schedule = AsyncMock(return_value=None)
+    bot.ticket_service.get_due_scheduled_tickets = AsyncMock(return_value=[])
+    bot.ticket_service.upsert_timer_embed = AsyncMock()
+    bot.guilds = []
+    bot._guild_mod_role_cache = {}
+    bot.get_channel = MagicMock(return_value=None)
+    bot.wait_until_ready = AsyncMock()
+    return bot
+
+
+def make_pr2_message(
+    content: str,
+    guild_id: int = 123,
+    channel_id: int = 444,
+    is_mod: bool = True,
+    status: str = "open",  # kept for call-site compatibility; not used by builder
+) -> MagicMock:
+    """Return a mock discord.Message for PR2 timer tests.
+
+    Mirrors ``tests/test_pr2_on_message_red.py:_make_message`` verbatim.
+    ``status`` is accepted for compatibility with legacy call sites but does
+    not affect the mock shape.
+    """
+    _ = status
+    msg = MagicMock(spec=discord.Message)
+    msg.content = content
+    msg.author = MagicMock(spec=discord.Member)
+    msg.author.bot = False
+    msg.author.id = 999
+    msg.author.guild_permissions.administrator = is_mod
+    msg.author.roles = []
+    msg.guild = MagicMock(spec=discord.Guild)
+    msg.guild.id = guild_id
+    msg.channel = MagicMock(spec=discord.TextChannel)
+    msg.channel.id = channel_id
+    msg.channel.send = AsyncMock()
+    msg.channel.send.return_value = AsyncMock(pin=AsyncMock(), edit=AsyncMock())
+    msg.channel.pins = AsyncMock(return_value=[])
+    return msg
+
+
+def make_pr2_manager_message(
+    *,
+    role_id: int | None = None,
+    administrator: bool = False,
+    guild_id: int = 123,
+    channel_id: int = 444,
+    content: str = ",12h",
+) -> MagicMock:
+    """Return a Message whose author is a non-admin, non-modRole member.
+
+    Mirrors ``tests/test_pr2_on_message_red.py:_make_ticket_manager_message``.
+    When ``role_id`` is given the author carries that role — used to simulate
+    a matrix-granted ticket manager (``permissionMatrix["tickets.manage"]``).
+    """
+    msg = MagicMock(spec=discord.Message)
+    msg.content = content
+    author = MagicMock(spec=discord.Member)
+    author.bot = False
+    author.id = 999
+    author.guild_permissions.administrator = administrator
+    roles: list[MagicMock] = []
+    if role_id is not None:
+        role = MagicMock(spec=discord.Role)
+        role.id = role_id
+        roles.append(role)
+    author.roles = roles
+    msg.author = author
+    msg.guild = MagicMock(spec=discord.Guild)
+    msg.guild.id = guild_id
+    msg.channel = MagicMock(spec=discord.TextChannel)
+    msg.channel.id = channel_id
+    msg.channel.send = AsyncMock()
+    msg.channel.send.return_value = AsyncMock(pin=AsyncMock(), edit=AsyncMock())
+    msg.channel.pins = AsyncMock(return_value=[])
+    return msg
+
+
+# ---------------------------------------------------------------------------
+# Live/S5 scoped-SQL helpers (tests-slim-fase-3 Slice B — 2.2).
+# Shared fake-psycopg scaffolding for live_catalog + production_live_close_s5.
+# ---------------------------------------------------------------------------
+
+
+def fake_db_with_token(  # noqa: PLR0913 -- helper mirrors 4-query provenance shape
+    db_url: str = "postgresql://user:pass@localhost/db",
+    *,
+    fk_rows: list[tuple[str, str, str]] | None = None,
+    rls_enabled: int = 9,
+    rls_forced: int = 7,
+    policy_count: int = 0,
+) -> tuple[MagicMock, list[str]]:
+    """Return a ``(fake_connect, executed)`` pair for psycopg provenance tests.
+
+    ``fake_connect`` is a ``MagicMock`` whose ``return_value`` is a context-manager
+    connection whose cursor records every ``execute(sql)`` into ``executed`` and
+    returns canned rows for the 4 provenance queries. Use via::
+
+        fake_connect, executed = fake_db_with_token()
+        with patch("psycopg.connect", fake_connect):
+            fks, pols, pubs, migs, tok = await fetch_catalog_via_db(db_url)
+
+    The canned FK row defaults to one ``("ticket","guild","CASCADE")`` entry so
+    that ``pg_constraint`` provenance is satisfied without a real DB.
+    """
+    _ = db_url  # URL is not inspected by the fake; caller passes it to the code under test.
+    executed: list[str] = []
+    _fk_rows = fk_rows if fk_rows is not None else [("ticket", "guild", "CASCADE")]
+
+    class FakeCursor:
+        def __enter__(self) -> FakeCursor:
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            pass
+
+        def execute(self, sql: str, *_: object, **__: object) -> None:
+            executed.append(sql)
+
+        def fetchall(self) -> list[tuple[str, ...]]:
+            if executed and "pg_constraint" in executed[-1]:
+                return list(_fk_rows)
+            return []
+
+        def fetchone(self) -> tuple[int, ...] | None:
+            # Used by fetch_rls_counts_via_db and _sync_fetch_catalog;
+            # callers that need specific counts override via side_effect, so
+            # this generic return is only for catalog FK path.
+            return (0,)
+
+    class FakeConn:
+        def __enter__(self) -> FakeConn:
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            pass
+
+        def cursor(self) -> FakeCursor:
+            return FakeCursor()
+
+    fake_connect = MagicMock(return_value=FakeConn())
+    # Attach a helper for RLS-count callers that need fetchone sequencing.
+    # The default fake above returns 0; tests that assert 9/7/0 override
+    # fetchone via a dedicated MagicMock — this helper does not interfere.
+    _ = (rls_enabled, rls_forced, policy_count)
+    return fake_connect, executed
+
+
+def mocked_fks_for_live() -> list[dict[str, str]]:
+    """Return the canonical 6-FK list used by live_catalog parity tests."""
+    return [
+        {"child": "economy_config", "parent": "guild", "on_delete": "CASCADE"},
+        {"child": "greeting_config", "parent": "guild", "on_delete": "CASCADE"},
+        {"child": "infraction", "parent": "guild", "on_delete": "CASCADE"},
+        {"child": "member", "parent": "guild", "on_delete": "CASCADE"},
+        {"child": "ticket", "parent": "guild", "on_delete": "CASCADE"},
+        {"child": "ticket_category", "parent": "guild", "on_delete": "CASCADE"},
+    ]
+
+
+# ---------------------------------------------------------------------------
 # frozen_clock — deterministic datetime.now() fixture
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture
-def frozen_clock():
+def frozen_clock() -> object:
     """Freeze ``datetime.now()`` to a deterministic value for the test duration.
 
     Uses ``freezegun.freeze_time`` to globally patch ``datetime.now`` so
