@@ -217,17 +217,35 @@ async def test_create_ticket_retries_exhausted(
 
 
 @pytest.mark.asyncio
-async def test_create_ticket_with_subject_and_description(
+@pytest.mark.parametrize(
+    ("subject", "description", "expected_subject", "expected_description"),
+    [
+        ("Login broken", "Cannot access since Monday", "Login broken", "Cannot access since Monday"),
+        (None, None, None, None),
+    ],
+    ids=["with-subject-and-description", "without-subject-and-description"],
+)
+async def test_create_ticket_subject_description_passthrough(
+    subject: str | None,
+    description: str | None,
+    expected_subject: str | None,
+    expected_description: str | None,
     service: TicketService,
     mock_db: AsyncMock,
     ticket_row: dict,
 ) -> None:
-    """create_ticket(subject=..., description=...) MUST forward to insert_ticket."""
+    """create_ticket(subject=..., description=...) MUST forward to insert_ticket; omitted MUST pass None.
+
+    Parametrized (S1b cut): both variants assert the same two-sided contract
+    (insert_ticket kwargs + returned model) with the per-case expected value;
+    the only difference is whether subject/description are provided explicitly
+    or passed as None (explicit None == omitted None by production default).
+    """
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {
         **ticket_row,
-        "subject": "Login broken",
-        "description": "Cannot access since Monday",
+        "subject": expected_subject,
+        "description": expected_description,
     }
 
     ticket = await service.create_ticket(
@@ -235,34 +253,15 @@ async def test_create_ticket_with_subject_and_description(
         author_id="111111111",
         category_id=None,
         channel_id="888888888",
-        subject="Login broken",
-        description="Cannot access since Monday",
+        subject=subject,
+        description=description,
     )
 
     call_kwargs = mock_db.insert_ticket.call_args.kwargs
-    assert call_kwargs["subject"] == "Login broken"
-    assert call_kwargs["description"] == "Cannot access since Monday"
-    assert ticket.subject == "Login broken"
-    assert ticket.description == "Cannot access since Monday"
-
-
-@pytest.mark.asyncio
-async def test_create_ticket_without_subject_and_description(
-    service: TicketService,
-    mock_db: AsyncMock,
-    ticket_row: dict,
-) -> None:
-    """create_ticket() without subject/description MUST pass None to insert_ticket."""
-    mock_db.get_max_ticket_number.return_value = 0
-    mock_db.insert_ticket.return_value = {**ticket_row, "subject": None, "description": None}
-
-    ticket = await _create_ticket(service)
-
-    call_kwargs = mock_db.insert_ticket.call_args.kwargs
-    assert call_kwargs["subject"] is None
-    assert call_kwargs["description"] is None
-    assert ticket.subject is None
-    assert ticket.description is None
+    assert call_kwargs["subject"] == expected_subject
+    assert call_kwargs["description"] == expected_description
+    assert ticket.subject == expected_subject
+    assert ticket.description == expected_description
 
 
 # ---------------------------------------------------------------------------
