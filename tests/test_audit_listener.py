@@ -326,18 +326,33 @@ class TestOnMemberJoin:
     """Member join listener — delegates to log_member_join."""
 
     @pytest.mark.asyncio
-    async def test_skip_bot_members(
+    @pytest.mark.parametrize(
+        ("member_bot", "expected_awaited"),
+        [
+            pytest.param(True, False, id="skip-bot-member"),
+            pytest.param(False, True, id="valid-member"),
+        ],
+    )
+    async def test_member_join_bot_polarity(
         self,
+        member_bot: bool,
+        expected_awaited: bool,
         listener: commands.Cog,
         mock_logging: MagicMock,
     ) -> None:
-        """Bot member joins must be skipped."""
-        member = make_mock_member(member_id=888, name="BotUser")
-        member.bot = True
+        """Bot member joins are skipped; valid member joins delegate to log_member_join."""
+        member = make_mock_member(member_id=333, name="NewUser")
+        member.bot = member_bot
 
         await listener.on_member_join(member)  # type: ignore[union-attr]
 
-        mock_logging.log_member_join.assert_not_awaited()
+        if expected_awaited:
+            mock_logging.log_member_join.assert_awaited_once_with(
+                "123456789",
+                member,
+            )
+        else:
+            mock_logging.log_member_join.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_calls_log_member_join_on_valid_member(
@@ -366,18 +381,33 @@ class TestOnMemberRemove:
     """Member leave listener — delegates to log_member_leave."""
 
     @pytest.mark.asyncio
-    async def test_skip_bot_members(
+    @pytest.mark.parametrize(
+        ("member_bot", "expected_awaited"),
+        [
+            pytest.param(True, False, id="skip-bot-member"),
+            pytest.param(False, True, id="valid-member"),
+        ],
+    )
+    async def test_member_remove_bot_polarity(
         self,
+        member_bot: bool,
+        expected_awaited: bool,
         listener: commands.Cog,
         mock_logging: MagicMock,
     ) -> None:
-        """Bot member leaves must be skipped."""
-        member = make_mock_member(member_id=888, name="BotUser")
-        member.bot = True
+        """Bot member leaves are skipped; valid member leaves delegate to log_member_leave."""
+        member = make_mock_member(member_id=444, name="LeavingUser")
+        member.bot = member_bot
 
         await listener.on_member_remove(member)  # type: ignore[union-attr]
 
-        mock_logging.log_member_leave.assert_not_awaited()
+        if expected_awaited:
+            mock_logging.log_member_leave.assert_awaited_once_with(
+                "123456789",
+                member,
+            )
+        else:
+            mock_logging.log_member_leave.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_calls_log_member_leave_on_valid_member(
@@ -398,48 +428,33 @@ class TestOnMemberRemove:
 
 
 # ---------------------------------------------------------------------------
-# AuditListener: on_guild_channel_create / delete
+# AuditListener: on_guild_channel_create / delete (parametrized pair)
 # ---------------------------------------------------------------------------
 
 
-class TestOnGuildChannelCreate:
-    """Channel creation listener."""
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("event", "log_method"),
+    [
+        pytest.param("on_guild_channel_create", "log_channel_create", id="channel-create"),
+        pytest.param("on_guild_channel_delete", "log_channel_delete", id="channel-delete"),
+    ],
+)
+async def test_channel_event_delegates(
+    event: str,
+    log_method: str,
+    listener: commands.Cog,
+    mock_logging: MagicMock,
+) -> None:
+    """Channel create/delete events must delegate with guild id and channel."""
+    channel = make_mock_channel(name=f"{event}-channel")
 
-    @pytest.mark.asyncio
-    async def test_calls_log_channel_create(
-        self,
-        listener: commands.Cog,
-        mock_logging: MagicMock,
-    ) -> None:
-        """Channel creation must call log_channel_create with correct args."""
-        channel = make_mock_channel(name="new-channel")
+    await getattr(listener, event)(channel)  # type: ignore[union-attr]
 
-        await listener.on_guild_channel_create(channel)  # type: ignore[union-attr]
-
-        mock_logging.log_channel_create.assert_awaited_once_with(
-            "123456789",
-            channel,
-        )
-
-
-class TestOnGuildChannelDelete:
-    """Channel deletion listener."""
-
-    @pytest.mark.asyncio
-    async def test_calls_log_channel_delete(
-        self,
-        listener: commands.Cog,
-        mock_logging: MagicMock,
-    ) -> None:
-        """Channel deletion must call log_channel_delete with correct args."""
-        channel = make_mock_channel(name="deleted-channel")
-
-        await listener.on_guild_channel_delete(channel)  # type: ignore[union-attr]
-
-        mock_logging.log_channel_delete.assert_awaited_once_with(
-            "123456789",
-            channel,
-        )
+    getattr(mock_logging, log_method).assert_awaited_once_with(
+        "123456789",
+        channel,
+    )
 
 
 # ---------------------------------------------------------------------------
