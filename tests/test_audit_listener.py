@@ -354,23 +354,6 @@ class TestOnMemberJoin:
         else:
             mock_logging.log_member_join.assert_not_awaited()
 
-    @pytest.mark.asyncio
-    async def test_calls_log_member_join_on_valid_member(
-        self,
-        listener: commands.Cog,
-        mock_logging: MagicMock,
-    ) -> None:
-        """Valid member join must call log_member_join with correct args."""
-        member = make_mock_member(member_id=333, name="NewUser")
-        member.bot = False
-
-        await listener.on_member_join(member)  # type: ignore[union-attr]
-
-        mock_logging.log_member_join.assert_awaited_once_with(
-            "123456789",
-            member,
-        )
-
 
 # ---------------------------------------------------------------------------
 # AuditListener: on_member_remove
@@ -408,23 +391,6 @@ class TestOnMemberRemove:
             )
         else:
             mock_logging.log_member_leave.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_calls_log_member_leave_on_valid_member(
-        self,
-        listener: commands.Cog,
-        mock_logging: MagicMock,
-    ) -> None:
-        """Valid member leave must call log_member_leave with correct args."""
-        member = make_mock_member(member_id=444, name="LeavingUser")
-        member.bot = False
-
-        await listener.on_member_remove(member)  # type: ignore[union-attr]
-
-        mock_logging.log_member_leave.assert_awaited_once_with(
-            "123456789",
-            member,
-        )
 
 
 # ---------------------------------------------------------------------------
