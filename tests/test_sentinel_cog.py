@@ -520,104 +520,86 @@ class TestAuditReasonLocalization:
     """
 
     @pytest.mark.asyncio
-    async def test_unwarn_audit_reason_localized(
+    @pytest.mark.parametrize(
+        ("command_name", "expected_reason"),
+        [
+            pytest.param("unwarn", None, id="unwarn"),
+            pytest.param("unmute", None, id="unmute"),
+            pytest.param("lock", None, id="lock"),
+            pytest.param("unlock", None, id="unlock"),
+            pytest.param("unban", "424242", id="unban"),
+        ],
+    )
+    async def test_audit_reason_localized(
         self,
         sentinel_cog: SentinelCog,
         sentinel_bot: MagicMock,
         sentinel_ctx: MagicMock,
         target_member: MagicMock,
         mock_db,
-        warn_row: dict,
-    ) -> None:
-        """unwarn → audit reason resolves sentinel.unwarn.audit_reason."""
-        mock_db.get_active_warnings = AsyncMock(return_value=[warn_row])
-        mock_db.deactivate_infraction = AsyncMock()
-        mock_db.update_member_warnings = AsyncMock()
-
-        with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
-            await sentinel_cog.unwarn.callback(sentinel_cog, sentinel_ctx, target_member)
-
-        log_args = sentinel_bot.logging_service.log_moderation_action.await_args.args
-        assert log_args[4] == t("123456789", "sentinel.unwarn.audit_reason", id=warn_row["id"])
-
-    @pytest.mark.asyncio
-    async def test_unmute_audit_reason_localized(
-        self,
-        sentinel_cog: SentinelCog,
-        sentinel_bot: MagicMock,
-        sentinel_ctx: MagicMock,
-        target_member: MagicMock,
-    ) -> None:
-        """unmute → audit reason resolves sentinel.unmute.audit_reason."""
-        target_member.timeout = AsyncMock()
-
-        with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
-            await sentinel_cog.unmute.callback(sentinel_cog, sentinel_ctx, target_member)
-
-        log_args = sentinel_bot.logging_service.log_moderation_action.await_args.args
-        assert log_args[4] == t("123456789", "sentinel.unmute.audit_reason")
-
-    @pytest.mark.asyncio
-    async def test_lock_audit_reason_localized(
-        self,
-        sentinel_cog: SentinelCog,
-        sentinel_bot: MagicMock,
-        sentinel_ctx: MagicMock,
-    ) -> None:
-        """lock → audit reason resolves sentinel.lock.audit_reason."""
-        sentinel_ctx.channel.set_permissions = AsyncMock()
-
-        await sentinel_cog.lock.callback(sentinel_cog, sentinel_ctx, None)
-
-        log_args = sentinel_bot.logging_service.log_moderation_action.await_args.args
-        assert log_args[4] == t("123456789", "sentinel.lock.audit_reason", channel=sentinel_ctx.channel.mention)
-
-    @pytest.mark.asyncio
-    async def test_unlock_audit_reason_localized(
-        self,
-        sentinel_cog: SentinelCog,
-        sentinel_bot: MagicMock,
-        sentinel_ctx: MagicMock,
-    ) -> None:
-        """unlock → audit reason resolves sentinel.unlock.audit_reason."""
-        sentinel_ctx.channel.set_permissions = AsyncMock()
-
-        await sentinel_cog.unlock.callback(sentinel_cog, sentinel_ctx, None)
-
-        log_args = sentinel_bot.logging_service.log_moderation_action.await_args.args
-        assert log_args[4] == t("123456789", "sentinel.unlock.audit_reason", channel=sentinel_ctx.channel.mention)
-
-    @pytest.mark.asyncio
-    async def test_unban_audit_reason_localized(
-        self,
-        sentinel_cog: SentinelCog,
-        sentinel_bot: MagicMock,
-        sentinel_ctx: MagicMock,
         mock_guild,
+        warn_row: dict,
+        command_name: str,
+        expected_reason: str | None,
     ) -> None:
-        """unban → audit reason resolves sentinel.unban.audit_reason."""
-        mock_guild.unban = AsyncMock()
-        service_unban = AsyncMock(return_value=None)
-        # Service returns None → command reports "no active ban" and stops.
-        # Drive the audited path instead: an active BAN row via the real service.
-        mock_db_row = {
-            "id": "inf-unban-001",
-            "guildId": "123456789",
-            "targetId": "424242",
-            "moderatorId": "111111111",
-            "type": "BAN",
-            "reason": "spam",
-            "active": True,
-            "createdAt": datetime.now(UTC),
-        }
-        sentinel_bot.db.get_infractions = AsyncMock(return_value=[mock_db_row])
-        sentinel_bot.db.deactivate_infraction = AsyncMock()
-        _ = service_unban  # unused; real service drives the flow
+        """Command audit reasons reaching log_moderation_action MUST resolve t() keys.
 
-        await sentinel_cog.unban.callback(sentinel_cog, sentinel_ctx, "424242")
+        Each branch mirrors its original dedicated test: unwarn deactivates
+        the warn_row, unmute clears a timeout, lock/unlock set channel perms
+        (no _validate_target patch — no member target), unban drives an
+        active BAN row through the real service with user_id "424242".
+        """
+        command = getattr(sentinel_cog, command_name)
+        if command_name == "unwarn":
+            mock_db.get_active_warnings = AsyncMock(return_value=[warn_row])
+            mock_db.deactivate_infraction = AsyncMock()
+            mock_db.update_member_warnings = AsyncMock()
+        elif command_name == "unmute":
+            target_member.timeout = AsyncMock()
+        elif command_name in ("lock", "unlock"):
+            sentinel_ctx.channel.set_permissions = AsyncMock()
+        elif command_name == "unban":
+            mock_guild.unban = AsyncMock()
+            mock_db_row = {
+                "id": "inf-unban-001",
+                "guildId": "123456789",
+                "targetId": "424242",
+                "moderatorId": "111111111",
+                "type": "BAN",
+                "reason": "spam",
+                "active": True,
+                "createdAt": datetime.now(UTC),
+            }
+            sentinel_bot.db.get_infractions = AsyncMock(return_value=[mock_db_row])
+            sentinel_bot.db.deactivate_infraction = AsyncMock()
+
+        expected_reason = ""
+        if command_name == "unwarn":
+            expected_reason = t("123456789", "sentinel.unwarn.audit_reason", id=warn_row["id"])
+        elif command_name == "unmute":
+            expected_reason = t("123456789", "sentinel.unmute.audit_reason")
+        elif command_name == "lock":
+            expected_reason = t("123456789", "sentinel.lock.audit_reason", channel=sentinel_ctx.channel.mention)
+        elif command_name == "unlock":
+            expected_reason = t("123456789", "sentinel.unlock.audit_reason", channel=sentinel_ctx.channel.mention)
+        elif command_name == "unban":
+            expected_reason = t("123456789", "sentinel.unban.audit_reason", user_id="424242")
+
+        if command_name in ("unwarn", "unmute"):
+            with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
+                if expected_reason is not None and command_name == "unban":
+                    await command.callback(sentinel_cog, sentinel_ctx, expected_reason)
+                elif command_name == "unban":
+                    await command.callback(sentinel_cog, sentinel_ctx, "424242")
+                else:
+                    await command.callback(sentinel_cog, sentinel_ctx, target_member)
+        elif command_name == "unban":
+            await command.callback(sentinel_cog, sentinel_ctx, "424242")
+        else:
+            await command.callback(sentinel_cog, sentinel_ctx, None)
 
         log_args = sentinel_bot.logging_service.log_moderation_action.await_args.args
-        assert log_args[4] == t("123456789", "sentinel.unban.audit_reason", user_id="424242")
+        assert log_args[4] == expected_reason
 
     def test_modlogs_unknown_date_localized(self, mock_guild) -> None:
         """modlog entries without created_at show the localized unknown label."""
@@ -783,29 +765,43 @@ class TestKickBanPermanentResult:
     """
 
     @pytest.mark.asyncio
-    async def test_kick_final_result_posted_permanently_to_channel(
+    @pytest.mark.parametrize(
+        ("command_name", "reason", "delete_days", "member_method", "success_key"),
+        [
+            pytest.param("kick", "trolling", None, "kick", "sentinel.kick.success_title", id="kick"),
+            pytest.param("ban", "harassment", 0, "ban", "sentinel.ban.success_title", id="ban"),
+        ],
+    )
+    async def test_final_result_posted_permanently_to_channel(
         self,
         sentinel_cog: SentinelCog,
-        sentinel_bot: MagicMock,
         sentinel_ctx: MagicMock,
         target_member: MagicMock,
+        command_name: str,
+        reason: str,
+        delete_days: int,
+        member_method: str,
+        success_key: str,
     ) -> None:
-        """kick confirm → ephemeral edit is a closed notice; success goes permanent."""
-        target_member.kick = AsyncMock()
+        """kick/ban confirm → ephemeral edit is a closed notice; success goes permanent."""
+        setattr(target_member, member_method, AsyncMock())
+        command = getattr(sentinel_cog, command_name)
+        kwargs: dict[str, object] = {"reason": reason}
+        if delete_days is not None:
+            kwargs["delete_days"] = delete_days
 
         with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
-            await sentinel_cog.kick.callback(sentinel_cog, sentinel_ctx, target_member, reason="trolling")
+            await command.callback(sentinel_cog, sentinel_ctx, target_member, **kwargs)
 
         interaction, confirm_button = _confirm_sent_view(sentinel_ctx)
         await confirm_button.callback(interaction)
 
-        # Ephemeral dialog must NOT carry the final success result.
         interaction.response.edit_message.assert_awaited_once()
         await_args = interaction.response.edit_message.await_args
         assert await_args is not None
         edited_embed = await_args.kwargs.get("embed")
         assert edited_embed is not None
-        assert edited_embed.title != t("123456789", "sentinel.kick.success_title"), (
+        assert edited_embed.title != t("123456789", success_key), (
             "ephemeral dialog must not double as the permanent record"
         )
 
@@ -815,42 +811,7 @@ class TestKickBanPermanentResult:
         assert channel_kwargs.get("ephemeral") is not True, "final result must be permanent"
         result_embed = channel_kwargs.get("embed")
         assert result_embed is not None
-        assert result_embed.title == t("123456789", "sentinel.kick.success_title")
-
-    @pytest.mark.asyncio
-    async def test_ban_final_result_posted_permanently_to_channel(
-        self,
-        sentinel_cog: SentinelCog,
-        sentinel_bot: MagicMock,
-        sentinel_ctx: MagicMock,
-        target_member: MagicMock,
-    ) -> None:
-        """ban confirm → ephemeral edit is a closed notice; success goes permanent."""
-        target_member.ban = AsyncMock()
-
-        with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
-            await sentinel_cog.ban.callback(
-                sentinel_cog, sentinel_ctx, target_member, reason="harassment", delete_days=0
-            )
-
-        interaction, confirm_button = _confirm_sent_view(sentinel_ctx)
-        await confirm_button.callback(interaction)
-
-        interaction.response.edit_message.assert_awaited_once()
-        await_args = interaction.response.edit_message.await_args
-        assert await_args is not None
-        edited_embed = await_args.kwargs.get("embed")
-        assert edited_embed is not None
-        assert edited_embed.title != t("123456789", "sentinel.ban.success_title"), (
-            "ephemeral dialog must not double as the permanent record"
-        )
-
-        sentinel_ctx.channel.send.assert_awaited_once()
-        channel_kwargs = sentinel_ctx.channel.send.await_args.kwargs
-        assert channel_kwargs.get("ephemeral") is not True, "final result must be permanent"
-        result_embed = channel_kwargs.get("embed")
-        assert result_embed is not None
-        assert result_embed.title == t("123456789", "sentinel.ban.success_title")
+        assert result_embed.title == t("123456789", success_key)
 
 
 class TestTempbanNoDrift:
@@ -1155,35 +1116,35 @@ class TestValidateTarget:
 class TestHandleModError:
     """Tests for _handle_mod_error helper."""
 
-    async def test_forbidden_maps_to_permission_error(
+    @pytest.mark.parametrize(
+        ("exc", "action", "expected_title_fragment"),
+        [
+            pytest.param(
+                discord.Forbidden(response=MagicMock(), message="no perm"), "mute", "Permission Denied", id="forbidden"
+            ),
+            pytest.param(
+                discord.HTTPException(response=MagicMock(), message="http error"),
+                "kick",
+                "Action Failed",
+                id="http-exception",
+            ),
+        ],
+    )
+    async def test_error_type_maps_to_expected_embed_title(
         self,
         sentinel_cog: SentinelCog,
         sentinel_ctx: MagicMock,
         target_member: MagicMock,
+        exc: Exception,
+        action: str,
+        expected_title_fragment: str,
     ) -> None:
-        """discord.Forbidden → permission error embed."""
-        await sentinel_cog._handle_mod_error(
-            sentinel_ctx, discord.Forbidden(response=MagicMock(), message="no perm"), "mute", target_member
-        )
+        """_handle_mod_error maps exception type to the matching error embed."""
+        await sentinel_cog._handle_mod_error(sentinel_ctx, exc, action, target_member)
 
         sentinel_ctx.send.assert_awaited_once()
         embed = sentinel_ctx.send.call_args.kwargs.get("embed")
-        assert "Permission Denied" in embed.title
-
-    async def test_http_exception_maps_to_action_failed(
-        self,
-        sentinel_cog: SentinelCog,
-        sentinel_ctx: MagicMock,
-        target_member: MagicMock,
-    ) -> None:
-        """discord.HTTPException → action failed embed."""
-        await sentinel_cog._handle_mod_error(
-            sentinel_ctx, discord.HTTPException(response=MagicMock(), message="http error"), "kick", target_member
-        )
-
-        sentinel_ctx.send.assert_awaited_once()
-        embed = sentinel_ctx.send.call_args.kwargs.get("embed")
-        assert "Action Failed" in embed.title
+        assert expected_title_fragment in embed.title
 
 
 # ---------------------------------------------------------------------------
