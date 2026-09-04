@@ -2591,38 +2591,35 @@ async def test_unclaim_ticket_resets_status_and_claimed_by(
 
 
 @pytest.mark.asyncio
-async def test_unclaim_ticket_unclaimed_raises(
+@pytest.mark.parametrize(
+    ("claimed_by", "caller", "match_pattern"),
+    [
+        (None, "userA", r"claimed"),
+        ("userA", "userB", r"claimer|mod|permission"),
+    ],
+    ids=["unclaimed-raises", "non-claimer-non-mod-denied"],
+)
+async def test_unclaim_ticket_denied(
+    claimed_by: str | None,
+    caller: str,
+    match_pattern: str,
     service: TicketService,
     mock_db: AsyncMock,
 ) -> None:
-    """unclaim_ticket on an unclaimed ticket MUST raise ValueError + audit denied."""
+    """unclaim_ticket MUST raise ValueError + audit denied for unclaimed or non-claimer-non-mod callers.
+
+    Parametrized (S1b cut): both variants assert the same denied contract
+    (ValueError + update_ticket not awaited + unclaim/denied audit row) with
+    the per-case match pattern; the only difference is which precondition is
+    violated: ticket not claimed, or caller is neither claimer nor mod.
+    """
     ticket_id = "ticket-uuid-unclaim"
 
-    open_row = _unclaim_row(status="open", claimed_by=None)
-    mock_db.get_ticket.return_value = open_row
+    row = _unclaim_row(status="open" if claimed_by is None else "claimed", claimed_by=claimed_by)
+    mock_db.get_ticket.return_value = row
 
-    with pytest.raises(ValueError, match=r"claimed"):
-        await service.unclaim_ticket(ticket_id, "userA", is_mod=False)
-
-    mock_db.update_ticket.assert_not_awaited()
-    kwargs = _assert_audit(mock_db)
-    assert kwargs["action"] == "unclaim"
-    assert kwargs["outcome"] == "denied"
-
-
-@pytest.mark.asyncio
-async def test_unclaim_ticket_non_claimer_non_mod_denied(
-    service: TicketService,
-    mock_db: AsyncMock,
-) -> None:
-    """unclaim_ticket by non-claimer non-mod MUST raise ValueError + audit denied."""
-    ticket_id = "ticket-uuid-unclaim"
-
-    claimed_row = _unclaim_row(status="claimed", claimed_by="userA")
-    mock_db.get_ticket.return_value = claimed_row
-
-    with pytest.raises(ValueError, match=r"claimer|mod|permission"):
-        await service.unclaim_ticket(ticket_id, "userB", is_mod=False)
+    with pytest.raises(ValueError, match=match_pattern):
+        await service.unclaim_ticket(ticket_id, caller, is_mod=False)
 
     mock_db.update_ticket.assert_not_awaited()
     kwargs = _assert_audit(mock_db)
