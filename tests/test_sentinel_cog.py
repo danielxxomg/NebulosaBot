@@ -55,6 +55,29 @@ def _make_ctx(
     return ctx
 
 
+def _confirm_sent_view(
+    ctx: MagicMock,
+) -> tuple[MagicMock, discord.ui.Button]:
+    """Return (confirm_interaction, confirm_button) for the posted ConfirmCancelView.
+
+    Superset of the seven former inline confirm-simulation blocks: the
+    interaction user is a Member mock carrying the invoker's id, and both
+    response.edit_message and response.send_message are AsyncMocks (the
+    execute-path call sites exercise rejection edits via send_message).
+    """
+    interaction = MagicMock(spec=discord.Interaction)
+    interaction.user = MagicMock(spec=discord.Member)
+    interaction.user.id = ctx.author.id
+    interaction.response = MagicMock()
+    interaction.response.send_message = AsyncMock()
+    interaction.response.edit_message = AsyncMock()
+    view = ctx.send.call_args.kwargs.get("view")
+    confirm_button = next(
+        c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
+    )
+    return interaction, confirm_button
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -185,22 +208,10 @@ class TestUnwarnCommand:
         sentinel_ctx: MagicMock,
         target_member: MagicMock,
         mock_db,
+        warn_row: dict,
     ) -> None:
         """unwarn → deactivate_infraction called + success embed."""
-        mock_db.get_active_warnings = AsyncMock(
-            return_value=[
-                {
-                    "id": "inf-001",
-                    "guildId": "123456789",
-                    "targetId": "555555555",
-                    "moderatorId": "111111111",
-                    "type": "WARN",
-                    "reason": "test",
-                    "active": True,
-                    "createdAt": datetime.now(UTC),
-                }
-            ]
-        )
+        mock_db.get_active_warnings = AsyncMock(return_value=[warn_row])
         mock_db.deactivate_infraction = AsyncMock()
         mock_db.update_member_warnings = AsyncMock()
 
@@ -330,20 +341,7 @@ class TestKickCommand:
         ):
             await sentinel_cog.kick.callback(sentinel_cog, sentinel_ctx, target_member, reason="rule violation")
 
-            # Get the ConfirmCancelView from the ephemeral send.
-            view = sentinel_ctx.send.call_args.kwargs.get("view")
-            assert view is not None
-
-            # Simulate the confirm callback.
-            confirm_button = next(
-                c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
-            )
-            interaction = MagicMock(spec=discord.Interaction)
-            interaction.user = MagicMock(spec=discord.Member)
-            interaction.user.id = sentinel_ctx.author.id  # Same user as invoker
-            interaction.response = MagicMock()
-            interaction.response.send_message = AsyncMock()
-            interaction.response.edit_message = AsyncMock()
+            interaction, confirm_button = _confirm_sent_view(sentinel_ctx)
 
             await confirm_button.callback(interaction)
 
@@ -451,20 +449,7 @@ class TestBanCommand:
                 delete_days=3,
             )
 
-            # Get the ConfirmCancelView from the ephemeral send.
-            view = sentinel_ctx.send.call_args.kwargs.get("view")
-            assert view is not None
-
-            # Simulate the confirm callback.
-            confirm_button = next(
-                c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
-            )
-            interaction = MagicMock(spec=discord.Interaction)
-            interaction.user = MagicMock(spec=discord.Member)
-            interaction.user.id = sentinel_ctx.author.id
-            interaction.response = MagicMock()
-            interaction.response.send_message = AsyncMock()
-            interaction.response.edit_message = AsyncMock()
+            interaction, confirm_button = _confirm_sent_view(sentinel_ctx)
 
             await confirm_button.callback(interaction)
 
@@ -754,15 +739,7 @@ class TestModerationServiceSwap:
         ):
             await sentinel_cog.kick.callback(sentinel_cog, sentinel_ctx, target_member, reason="rule violation")
 
-            view = sentinel_ctx.send.call_args.kwargs.get("view")
-            confirm_button = next(
-                c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
-            )
-            interaction = MagicMock(spec=discord.Interaction)
-            interaction.user = MagicMock(spec=discord.Member)
-            interaction.user.id = sentinel_ctx.author.id
-            interaction.response = MagicMock()
-            interaction.response.edit_message = AsyncMock()
+            interaction, confirm_button = _confirm_sent_view(sentinel_ctx)
 
             await confirm_button.callback(interaction)
 
@@ -790,15 +767,7 @@ class TestModerationServiceSwap:
                 sentinel_cog, sentinel_ctx, target_member, reason="severe violation", delete_days=3
             )
 
-            view = sentinel_ctx.send.call_args.kwargs.get("view")
-            confirm_button = next(
-                c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
-            )
-            interaction = MagicMock(spec=discord.Interaction)
-            interaction.user = MagicMock(spec=discord.Member)
-            interaction.user.id = sentinel_ctx.author.id
-            interaction.response = MagicMock()
-            interaction.response.edit_message = AsyncMock()
+            interaction, confirm_button = _confirm_sent_view(sentinel_ctx)
 
             await confirm_button.callback(interaction)
 
@@ -827,14 +796,7 @@ class TestKickBanPermanentResult:
         with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
             await sentinel_cog.kick.callback(sentinel_cog, sentinel_ctx, target_member, reason="trolling")
 
-        interaction = MagicMock(spec=discord.Interaction)
-        interaction.user = MagicMock(spec=discord.Member)
-        interaction.user.id = sentinel_ctx.author.id
-        interaction.response.edit_message = AsyncMock()
-        view = sentinel_ctx.send.call_args.kwargs.get("view")
-        confirm_button = next(
-            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
-        )
+        interaction, confirm_button = _confirm_sent_view(sentinel_ctx)
         await confirm_button.callback(interaction)
 
         # Ephemeral dialog must NOT carry the final success result.
@@ -871,14 +833,7 @@ class TestKickBanPermanentResult:
                 sentinel_cog, sentinel_ctx, target_member, reason="harassment", delete_days=0
             )
 
-        interaction = MagicMock(spec=discord.Interaction)
-        interaction.user = MagicMock(spec=discord.Member)
-        interaction.user.id = sentinel_ctx.author.id
-        interaction.response.edit_message = AsyncMock()
-        view = sentinel_ctx.send.call_args.kwargs.get("view")
-        confirm_button = next(
-            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
-        )
+        interaction, confirm_button = _confirm_sent_view(sentinel_ctx)
         await confirm_button.callback(interaction)
 
         interaction.response.edit_message.assert_awaited_once()
@@ -935,14 +890,7 @@ class TestTempbanNoDrift:
             # Moderator deliberates past the 30s dialog window.
             ft.tick(delta=timedelta(seconds=35))
 
-            interaction = MagicMock(spec=discord.Interaction)
-            interaction.user = MagicMock(spec=discord.Member)
-            interaction.user.id = sentinel_ctx.author.id
-            interaction.response.edit_message = AsyncMock()
-            view = sentinel_ctx.send.call_args.kwargs.get("view")
-            confirm_button = next(
-                c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
-            )
+            interaction, confirm_button = _confirm_sent_view(sentinel_ctx)
             await confirm_button.callback(interaction)
 
         insert_args = mock_db.insert_infraction.await_args
