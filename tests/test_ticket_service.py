@@ -1302,39 +1302,36 @@ async def test_create_note_cap_enforced(
 
 
 @pytest.mark.asyncio
-async def test_get_notes_returns_list(
+@pytest.mark.parametrize(
+    ("notes_count", "expect_models"),
+    [
+        pytest.param(3, True, id="get-notes-returns-models"),
+        pytest.param(0, False, id="get-notes-empty"),
+    ],
+)
+async def test_get_notes_delegation(
+    notes_count: int,
+    expect_models: bool,
     service: TicketService,
     mock_db: AsyncMock,
 ) -> None:
-    """get_notes MUST delegate to the DB and return TicketNote models."""
+    """get_notes MUST delegate to the DB: non-empty → TicketNote models,
+    no notes → empty list (both after the guild-scoped pre-read).
+    """
     mock_db.get_ticket.return_value = {
         "id": "ticket-uuid-003",
         "guildId": "123456789",
     }
-    mock_db.get_ticket_notes.return_value = [_note_row(note_id=f"n-{i}") for i in range(3)]
+    mock_db.get_ticket_notes.return_value = [_note_row(note_id=f"n-{i}") for i in range(notes_count)]
 
     notes = await service.get_notes("ticket-uuid-003")
 
     mock_db.get_ticket_notes.assert_awaited_once()
-    assert len(notes) == 3
-    assert all(isinstance(n, TicketNote) for n in notes)
-
-
-@pytest.mark.asyncio
-async def test_get_notes_empty(
-    service: TicketService,
-    mock_db: AsyncMock,
-) -> None:
-    """get_notes on a ticket with no notes MUST return an empty list."""
-    mock_db.get_ticket.return_value = {
-        "id": "ticket-uuid-003",
-        "guildId": "123456789",
-    }
-    mock_db.get_ticket_notes.return_value = []
-
-    notes = await service.get_notes("ticket-uuid-003")
-
-    assert notes == []
+    if expect_models:
+        assert len(notes) == 3
+        assert all(isinstance(n, TicketNote) for n in notes)
+    else:
+        assert notes == []
 
 
 @pytest.mark.asyncio
