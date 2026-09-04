@@ -1902,47 +1902,44 @@ class TestMemberEconomyOnWriteHooks:
     """
 
     @pytest.mark.asyncio
-    async def test_update_member_xp_marks_member_write(self, db: Database, fake_client: FakeSupabaseClient) -> None:
-        """update_member_xp() MUST call _on_write('member', guild_id) after the RPC."""
-        on_write = AsyncMock()
-        db._on_write = on_write
-        fake_client.set_rpc_result([{"xp": 50}])
-
-        await db.update_member_xp("g1", "u1", 50)
-
-        on_write.assert_awaited_once_with("member", "g1")
-
-    @pytest.mark.asyncio
-    async def test_update_member_coins_marks_member_write(self, db: Database, fake_client: FakeSupabaseClient) -> None:
-        """update_member_coins() MUST call _on_write('member', guild_id) after the RPC."""
-        on_write = AsyncMock()
-        db._on_write = on_write
-        fake_client.set_rpc_result([{"coins": 75}])
-
-        await db.update_member_coins("g1", "u1", 75)
-
-        on_write.assert_awaited_once_with("member", "g1")
-
-    @pytest.mark.asyncio
-    async def test_update_member_daily_marks_member_write(self, db: Database, fake_client: FakeSupabaseClient) -> None:
-        """update_member_daily() MUST call _on_write('member', guild_id) after the RPC."""
-        on_write = AsyncMock()
-        db._on_write = on_write
-        fake_client.set_rpc_result([{"coins": 100}])
-
-        await db.update_member_daily("g1", "u1", 100, streak=2, last_daily_reset=None, last_daily=None)
-
-        on_write.assert_awaited_once_with("member", "g1")
-
-    @pytest.mark.asyncio
-    async def test_update_member_warnings_marks_member_write(
-        self, db: Database, fake_client: FakeSupabaseClient
+    @pytest.mark.parametrize(
+        ("call_name", "invoke"),
+        [
+            pytest.param(
+                "update_member_xp",
+                lambda db: db.update_member_xp("g1", "u1", 50),
+                id="update_member_xp",
+            ),
+            pytest.param(
+                "update_member_coins",
+                lambda db: db.update_member_coins("g1", "u1", 75),
+                id="update_member_coins",
+            ),
+            pytest.param(
+                "update_member_daily",
+                lambda db: db.update_member_daily("g1", "u1", 100, streak=2, last_daily_reset=None, last_daily=None),
+                id="update_member_daily",
+            ),
+            pytest.param(
+                "update_member_warnings",
+                lambda db: db.update_member_warnings("g1", "u1", 1),
+                id="update_member_warnings",
+            ),
+        ],
+    )
+    async def test_member_mutator_marks_member_write(
+        self,
+        db: Database,
+        fake_client: FakeSupabaseClient,
+        call_name: str,
+        invoke,
     ) -> None:
-        """update_member_warnings() MUST call _on_write('member', guild_id) after the RPC."""
+        """Each member RPC mutator MUST call _on_write('member', guild_id) after the RPC."""
         on_write = AsyncMock()
         db._on_write = on_write
+        fake_client.set_rpc_result([{"xp": 50, "coins": 75}])
 
-        await db.update_member_warnings("g1", "u1", 1)
+        await invoke(db)
 
         on_write.assert_awaited_once_with("member", "g1")
 
