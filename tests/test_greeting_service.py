@@ -15,6 +15,7 @@ import asyncio
 import inspect
 import io
 from collections.abc import Generator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -347,7 +348,7 @@ class TestDispatchWelcome:
         service: GreetingService,
         mock_db: AsyncMock,
         greeting_config_row: dict,
-        config_override: dict | str | None,
+        config_override: dict[str, Any] | str | None,
         expect_resolve_assert: bool,
         case_id: str,
     ) -> None:
@@ -879,7 +880,7 @@ class TestDispatchGoodbye:
         service: GreetingService,
         mock_db: AsyncMock,
         greeting_config_row: dict,
-        config_override: dict | str | None,
+        config_override: dict[str, Any] | str | None,
         expect_resolve_assert: bool,
         case_id: str,
     ) -> None:
