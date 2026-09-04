@@ -2066,15 +2066,31 @@ async def test_create_ticket_channel_forwards_subject_and_description(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("cf", "expected_custom_fields"),
+    [
+        ({"player_nick": "DarkSlasher42", "evidence_url": "https://imgur.com/abc"}, None),
+        (None, None),
+    ],
+    ids=["with-custom-fields", "without-custom-fields"],
+)
 async def test_create_ticket_with_custom_fields(
+    cf: dict[str, str] | None,
+    expected_custom_fields: dict[str, str] | None,
     service: TicketService,
     mock_db: AsyncMock,
     ticket_row: dict,
 ) -> None:
-    """create_ticket(custom_fields=...) MUST forward to insert_ticket and persist on the model."""
-    cf = {"player_nick": "DarkSlayer42", "evidence_url": "https://imgur.com/abc"}
+    """create_ticket(custom_fields=...) MUST forward to insert_ticket and persist on the model; omitted MUST pass None.
+
+    Parametrized (S1a cut): both variants assert the same two-sided contract
+    (insert_ticket kwargs + returned model) with the per-case expected value;
+    the only difference is whether custom_fields is provided explicitly or
+    omitted (explicit None == omitted None by production default).
+    """
+    expected = cf if cf is not None else expected_custom_fields
     mock_db.get_max_ticket_number.return_value = 0
-    mock_db.insert_ticket.return_value = {**ticket_row, "customFields": cf}
+    mock_db.insert_ticket.return_value = {**ticket_row, "customFields": expected}
 
     ticket = await service.create_ticket(
         guild_id="123456789",
@@ -2085,25 +2101,8 @@ async def test_create_ticket_with_custom_fields(
     )
 
     insert_kwargs = mock_db.insert_ticket.call_args.kwargs
-    assert insert_kwargs["custom_fields"] == cf
-    assert ticket.custom_fields == cf
-
-
-@pytest.mark.asyncio
-async def test_create_ticket_without_custom_fields(
-    service: TicketService,
-    mock_db: AsyncMock,
-    ticket_row: dict,
-) -> None:
-    """create_ticket() without custom_fields MUST pass None to insert_ticket."""
-    mock_db.get_max_ticket_number.return_value = 0
-    mock_db.insert_ticket.return_value = {**ticket_row, "customFields": None}
-
-    ticket = await _create_ticket(service)
-
-    insert_kwargs = mock_db.insert_ticket.call_args.kwargs
-    assert insert_kwargs["custom_fields"] is None
-    assert ticket.custom_fields is None
+    assert insert_kwargs["custom_fields"] == expected
+    assert ticket.custom_fields == expected
 
 
 @pytest.mark.asyncio
