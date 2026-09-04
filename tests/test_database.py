@@ -17,6 +17,7 @@ from __future__ import annotations
 import base64
 import json
 from collections import defaultdict
+from collections.abc import Awaitable, Callable
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -231,6 +232,52 @@ def disconnected_db() -> Database:
 
 
 # ---------------------------------------------------------------------------
+# Fail-closed guard matrix — every method MUST raise RuntimeError("connect")
+# when connect() hasn't been called. One parametrized test replaces the
+# 23 identical raises_without_connect guards previously spread per class.
+# ---------------------------------------------------------------------------
+
+
+GUARD_CALLS: tuple[tuple[str, Callable[[Database], Awaitable[object]]], ...] = (
+    ("get-guild", lambda db: db.get_guild("123")),
+    ("upsert-guild", lambda db: db.upsert_guild(GuildConfig(id="123"))),
+    ("get-member", lambda db: db.get_member("g1", "u1")),
+    ("get-infractions", lambda db: db.get_infractions("g1", "u1")),
+    ("insert-ticket", lambda db: db.insert_ticket("g1", "u1", "ch1", None, 1)),
+    ("get-tickets-by-parent", lambda db: db.get_tickets_by_parent("p1")),
+    ("update-member-xp", lambda db: db.update_member_xp("g1", "u1", 10)),
+    ("get-economy-config", lambda db: db.get_economy_config("g1")),
+    ("get-greeting-config", lambda db: db.get_greeting_config("g1")),
+    ("insert-ticket-note", lambda db: db.insert_ticket_note("t-0001", "staff-001", "text")),
+    ("get-ticket-notes", lambda db: db.get_ticket_notes("t-0001")),
+    ("delete-ticket-note", lambda db: db.delete_ticket_note("n-uuid-1")),
+    ("get-ticket-by-number", lambda db: db.get_ticket_by_number("g1", 3)),
+    ("insert-audit-row", lambda db: db.insert_audit_row("g1", "t1", "claim", "u1", "success", None)),
+    ("get-audit-rows", lambda db: db.get_audit_rows("g1", limit=50, offset=0)),
+    ("get-recent-notes-for-dedup", lambda db: db.get_recent_notes_for_dedup("t1", "authorA")),
+    ("count-open-tickets-by-category", lambda db: db.count_open_tickets_by_category("g1", "cat-1")),
+    ("rpc-increment-member-xp", lambda db: db.update_member_xp("g1", "u1", 10)),
+    ("rpc-increment-member-coins", lambda db: db.update_member_coins("g1", "u1", 10)),
+    ("rpc-increment-member-warnings", lambda db: db.update_member_warnings("g1", "u1", 1)),
+    ("rpc-set-member-daily", lambda db: db.update_member_daily("g1", "u1", 50, 1, None, None)),
+    ("update-ticket-category-field-defs", lambda db: db.update_ticket_category_field_definitions("g1", "cat-1", [])),
+    ("update-guild-panel", lambda db: db.update_guild_panel("g1", "msg", "ch")),
+)
+
+
+class TestRaisesWithoutConnectMatrix:
+    """Every Database method MUST fail closed with RuntimeError before connect()."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("guard_call", GUARD_CALLS, ids=[g[0] for g in GUARD_CALLS])
+    async def test_raises_without_connect(self, disconnected_db: Database, guard_call) -> None:
+        """MUST raise RuntimeError(match='connect') when no client is wired."""
+        _name, call = guard_call
+        with pytest.raises(RuntimeError, match="connect"):
+            await call(disconnected_db)
+
+
+# ---------------------------------------------------------------------------
 # connect — happy path
 # ---------------------------------------------------------------------------
 
@@ -342,12 +389,6 @@ class TestGetGuild:
 
         assert result is None
 
-    @pytest.mark.asyncio
-    async def test_get_guild_raises_without_connect(self, disconnected_db: Database) -> None:
-        """get_guild() MUST raise RuntimeError if connect() wasn't called."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.get_guild("123")
-
 
 # ---------------------------------------------------------------------------
 # upsert_guild — idempotent
@@ -369,13 +410,6 @@ class TestUpsertGuild:
         assert upsert_calls[0][0] == "upsert"
         assert upsert_calls[0][1]["id"] == "123456789"
         assert upsert_calls[0][1]["prefix"] == "!"
-
-    @pytest.mark.asyncio
-    async def test_upsert_guild_raises_without_connect(self, disconnected_db: Database) -> None:
-        """upsert_guild() MUST raise RuntimeError if connect() wasn't called."""
-        config = GuildConfig(id="123")
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.upsert_guild(config)
 
 
 # ---------------------------------------------------------------------------
@@ -408,12 +442,6 @@ class TestGetMember:
 
         assert result is None
 
-    @pytest.mark.asyncio
-    async def test_get_member_raises_without_connect(self, disconnected_db: Database) -> None:
-        """get_member() MUST raise RuntimeError if connect() wasn't called."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.get_member("g1", "u1")
-
 
 # ---------------------------------------------------------------------------
 # get_infractions
@@ -445,12 +473,6 @@ class TestGetInfractions:
         result = await db.get_infractions("g1", "u1")
 
         assert result == []
-
-    @pytest.mark.asyncio
-    async def test_get_infractions_raises_without_connect(self, disconnected_db: Database) -> None:
-        """get_infractions() MUST raise RuntimeError if connect() wasn't called."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.get_infractions("g1", "u1")
 
 
 # ---------------------------------------------------------------------------
@@ -542,12 +564,6 @@ class TestInsertTicket:
         inserted_row = insert_calls[0][1]
         assert inserted_row["parentId"] is None
 
-    @pytest.mark.asyncio
-    async def test_insert_ticket_raises_without_connect(self, disconnected_db: Database) -> None:
-        """insert_ticket() MUST raise RuntimeError if connect() wasn't called."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.insert_ticket("g1", "u1", "ch1", None, 1)
-
 
 # ---------------------------------------------------------------------------
 # get_tickets_by_parent — children of a parent ticket
@@ -599,12 +615,6 @@ class TestGetTicketsByParent:
 
         orders = fake_client.get_table_orders("ticket")
         assert ("createdAt", True) in orders, f"Expected order('createdAt', desc=True), got: {orders}"
-
-    @pytest.mark.asyncio
-    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
-        """get_tickets_by_parent() MUST raise RuntimeError if connect() wasn't called."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.get_tickets_by_parent("p1")
 
 
 # ---------------------------------------------------------------------------
@@ -707,12 +717,6 @@ class TestUpdateMemberXp:
 
         assert result["xp"] == 600
         assert result["level"] == 6
-
-    @pytest.mark.asyncio
-    async def test_update_member_xp_raises_without_connect(self, disconnected_db: Database) -> None:
-        """update_member_xp() MUST raise RuntimeError if connect() wasn't called."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.update_member_xp("g1", "u1", 10)
 
 
 # ---------------------------------------------------------------------------
@@ -832,12 +836,6 @@ class TestGetEconomyConfig:
         result = await db.get_economy_config("g1")
 
         assert result is None
-
-    @pytest.mark.asyncio
-    async def test_get_economy_config_raises_without_connect(self, disconnected_db: Database) -> None:
-        """get_economy_config() MUST raise RuntimeError if connect() wasn't called."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.get_economy_config("g1")
 
 
 # ---------------------------------------------------------------------------
@@ -1051,12 +1049,6 @@ class TestGetGreetingConfig:
 
         assert result is None
 
-    @pytest.mark.asyncio
-    async def test_get_greeting_config_raises_without_connect(self, disconnected_db: Database) -> None:
-        """get_greeting_config() MUST raise RuntimeError if connect() wasn't called."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.get_greeting_config("g1")
-
 
 # ---------------------------------------------------------------------------
 # Guild-scoped filter assertions — prove guild_id is passed to Supabase
@@ -1205,12 +1197,6 @@ class TestInsertTicketNote:
         # createdAt is left to the DB default (NOW()) — not set client-side.
         assert "createdAt" not in row
 
-    @pytest.mark.asyncio
-    async def test_insert_ticket_note_raises_without_connect(self, disconnected_db: Database) -> None:
-        """insert_ticket_note() MUST raise RuntimeError if connect() wasn't called."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.insert_ticket_note("t-0001", "staff-001", "text")
-
 
 class TestGetTicketNotes:
     """Verify Database.get_ticket_notes() returns a ticket's notes, newest-first."""
@@ -1282,12 +1268,6 @@ class TestGetTicketNotes:
 
         assert result == []
 
-    @pytest.mark.asyncio
-    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
-        """get_ticket_notes() MUST raise RuntimeError if connect() wasn't called."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.get_ticket_notes("t-0001")
-
 
 class TestDeleteTicketNote:
     """Verify Database.delete_ticket_note() targets a single note by id."""
@@ -1301,12 +1281,6 @@ class TestDeleteTicketNote:
 
         filters = fake_client.get_table_filters("ticket_note")
         assert ("eq", "id", "n-uuid-1") in filters, f"delete_ticket_note MUST filter by id, got: {filters}"
-
-    @pytest.mark.asyncio
-    async def test_delete_raises_without_connect(self, disconnected_db: Database) -> None:
-        """delete_ticket_note() MUST raise RuntimeError if connect() wasn't called."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.delete_ticket_note("n-uuid-1")
 
 
 # ===========================================================================
@@ -1348,12 +1322,6 @@ class TestGetTicketByNumber:
         filters = fake_client.get_table_filters("ticket")
         assert ("eq", "guildId", "g1") in filters, f"Missing guildId filter for guild scope, got: {filters}"
         assert ("eq", "ticketNumber", 3) in filters, f"Missing ticketNumber filter, got: {filters}"
-
-    @pytest.mark.asyncio
-    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
-        """get_ticket_by_number() MUST raise RuntimeError if connect() wasn't called."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.get_ticket_by_number("g1", 3)
 
 
 # ===========================================================================
@@ -1422,12 +1390,6 @@ class TestInsertAuditRow:
         assert inserted["actorId"] is None
         assert inserted["reason"] is None
 
-    @pytest.mark.asyncio
-    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
-        """insert_audit_row() MUST raise RuntimeError if connect() wasn't called."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.insert_audit_row("g1", "t1", "claim", "u1", "success", None)
-
 
 # ===========================================================================
 # get_audit_rows — paginated guild-scoped audit read (B5)
@@ -1490,12 +1452,6 @@ class TestGetAuditRows:
         limits = fake_client.get_table_limits("ticket_audit")
         assert 25 in limits, f"Expected limit(25), got: {limits}"
 
-    @pytest.mark.asyncio
-    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
-        """get_audit_rows() MUST raise RuntimeError if connect() wasn't called."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.get_audit_rows("g1", limit=50, offset=0)
-
 
 # ===========================================================================
 # get_recent_notes_for_dedup — same-author notes in the dedup window (B5)
@@ -1557,12 +1513,6 @@ class TestGetRecentNotesForDedup:
         gte_filters = [f for f in filters if f[0] == "gte" and f[1] == "createdAt"]
         assert gte_filters[0][2] == "2024-06-15T11:59:55+00:00", f"Expected cutoff now()-5s, got: {gte_filters[0][2]}"
 
-    @pytest.mark.asyncio
-    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
-        """get_recent_notes_for_dedup() MUST raise RuntimeError if connect() wasn't called."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.get_recent_notes_for_dedup("t1", "authorA")
-
 
 # ===========================================================================
 # PR5: count_open_tickets_by_category — uses count="exact" (5.4)
@@ -1603,12 +1553,6 @@ class TestCountOpenTicketsByCategory:
         assert ("eq", "categoryId", "cat-1") in filters
         assert ("in_", "status", ["open", "claimed"]) in filters
 
-    @pytest.mark.asyncio
-    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
-        """count_open_tickets_by_category() MUST raise RuntimeError if connect() wasn't called."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.count_open_tickets_by_category("g1", "cat-1")
-
 
 # ===========================================================================
 # PR5: RPC member increment methods (5.7 — RED tests)
@@ -1632,12 +1576,6 @@ class TestRpcIncrementMemberXp:
         assert fake_client._rpc_calls[0][1]["p_amount"] == 50
         assert result["xp"] == 150
 
-    @pytest.mark.asyncio
-    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
-        """update_member_xp() MUST raise RuntimeError if connect() wasn't called."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.update_member_xp("g1", "u1", 10)
-
 
 class TestRpcIncrementMemberCoins:
     """Verify Database.update_member_coins() uses RPC for atomic increment."""
@@ -1656,12 +1594,6 @@ class TestRpcIncrementMemberCoins:
         assert fake_client._rpc_calls[0][1]["p_amount"] == 50
         assert result["coins"] == 250
 
-    @pytest.mark.asyncio
-    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
-        """update_member_coins() MUST raise RuntimeError if connect() wasn't called."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.update_member_coins("g1", "u1", 10)
-
 
 class TestRpcIncrementMemberWarnings:
     """Verify Database.update_member_warnings() uses RPC for atomic increment."""
@@ -1678,12 +1610,6 @@ class TestRpcIncrementMemberWarnings:
         assert fake_client._rpc_calls[0][1]["p_guild_id"] == "g1"
         assert fake_client._rpc_calls[0][1]["p_user_id"] == "u1"
         assert fake_client._rpc_calls[0][1]["p_amount"] == 1
-
-    @pytest.mark.asyncio
-    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
-        """update_member_warnings() MUST raise RuntimeError if connect() wasn't called."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.update_member_warnings("g1", "u1", 1)
 
 
 class TestRpcSetMemberDaily:
@@ -1719,12 +1645,6 @@ class TestRpcSetMemberDaily:
         assert params["p_streak"] == 3
         assert result["coins"] == 150
         assert result["dailyStreak"] == 3
-
-    @pytest.mark.asyncio
-    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
-        """update_member_daily() MUST raise RuntimeError if connect() wasn't called."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.update_member_daily("g1", "u1", 50, 1, None, None)
 
 
 # ===========================================================================
@@ -1865,12 +1785,6 @@ class TestUpdateTicketCategoryFieldDefinitions:
         assert ("eq", "id", "cat-1") in filters, f"Missing id filter, got: {filters}"
         assert ("eq", "guildId", "g1") in filters, f"Missing guildId filter, got: {filters}"
 
-    @pytest.mark.asyncio
-    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
-        """update_ticket_category_field_definitions() MUST raise RuntimeError if connect() wasn't called."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.update_ticket_category_field_definitions("g1", "cat-1", [])
-
 
 # ===========================================================================
 # PR1: insert_ticket with custom_fields
@@ -1967,12 +1881,6 @@ class TestUpdateGuildPanelOnWrite:
         assert update_calls[0][1]["ticketPanelMessageId"] is None
         assert update_calls[0][1]["ticketPanelChannelId"] is None
         on_write.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
-        """update_guild_panel() MUST raise RuntimeError if connect() wasn't called."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.update_guild_panel("g1", "msg", "ch")
 
 
 # ===========================================================================
