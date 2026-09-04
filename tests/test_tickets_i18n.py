@@ -481,24 +481,6 @@ class TestSubticketHelpI18n:
         assert isinstance(cog.subticket, _a.Group)
         assert not hasattr(cog.subticket, "callback")
 
-    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
-    async def _test_subticket_help_is_localized_skipped(
-        self,
-        cog: TicketsCog,
-        guild_id: str,
-        suffix: str,
-    ) -> None:
-        """/subticket help → localized embed."""
-        ctx = _make_ctx(int(guild_id))
-
-        cb_sub = getattr(cog.subticket, "callback", None)
-        assert callable(cb_sub)
-        await cb_sub(cog, ctx)
-
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert f"SUB_HELP_{suffix}" in embed.title
-
 
 class TestReopenI18n:
     """/reopen error messages use t()."""
@@ -530,24 +512,6 @@ class TestNoteHelpI18n:
     def test_note_is_group_without_callback(self, cog: TicketsCog) -> None:
         assert isinstance(cog.note, _a.Group)
         assert not hasattr(cog.note, "callback")
-
-    @pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX)
-    async def _test_note_help_is_localized_skipped(
-        self,
-        cog: TicketsCog,
-        guild_id: str,
-        suffix: str,
-    ) -> None:
-        """/note help → localized embed."""
-        ctx = _make_ctx(int(guild_id))
-
-        cb_note = getattr(cog.note, "callback", None)
-        assert callable(cb_note)
-        await cb_note(cog, ctx)
-
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert f"NOTE_HELP_{suffix}" in embed.title
 
 
 class TestListCategoriesI18n:
