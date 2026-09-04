@@ -167,15 +167,22 @@ class TestLoggingRoutingGuards:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "setup_kwargs",
+        ("log_channel_id", "log_enabled"),
         [
-            pytest.param({"log_enabled": False}, id="log-disabled"),
-            pytest.param({"log_channel_id": None}, id="log-channel-id-none"),
+            pytest.param("999999999", False, id="log-disabled"),
+            pytest.param(None, True, id="log-channel-id-none"),
         ],
     )
-    async def test_routing_guard_skips_send(self, setup_kwargs: dict[str, bool | None]) -> None:
+    async def test_routing_guard_skips_send(
+        self,
+        log_channel_id: str | None,
+        log_enabled: bool,
+    ) -> None:
         """When routing guard fails, no channel lookup or embed send occurs."""
-        service, mock_bot, _ = await _setup_service_and_config(**setup_kwargs)
+        service, mock_bot, _ = await _setup_service_and_config(
+            log_channel_id=log_channel_id,
+            log_enabled=log_enabled,
+        )
         msg = make_mock_message(content="edited", channel=make_mock_channel())
 
         await service.log_message_edit("123456789", msg, msg)
