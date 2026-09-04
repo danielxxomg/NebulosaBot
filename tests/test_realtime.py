@@ -29,6 +29,7 @@ import sys
 import types
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -588,87 +589,95 @@ class TestNormalizeCdcPayload:
     """_normalize_cdc_payload — handles nested SDK payloads from realtime-py 2.31.0."""
 
     @pytest.mark.asyncio
-    async def test_nested_sdk_payload_invalidates_guild(self, cache: TTLCache) -> None:
-        """SDK delivers payload as {data: {type, table, record}, ids: [...]}.
-        _handle_cdc MUST normalize to extract table and record from data."""
+    @pytest.mark.parametrize(
+        ("event_type", "table", "record_key", "record_val", "old_key", "old_val", "table_hint", "case_id"),
+        [
+            pytest.param(
+                "UPDATE",
+                "guild",
+                "id",
+                "G-nested",
+                {},
+                None,
+                None,
+                "nested-sdk-payload-invalidates-guild",
+            ),
+            pytest.param(
+                "INSERT",
+                None,
+                "guildId",
+                "G-hint",
+                {},
+                None,
+                "greeting_config",
+                "table-hint-fallback-when-data-table-missing",
+            ),
+            pytest.param(
+                "DELETE",
+                "guild",
+                None,
+                None,
+                "id",
+                "G-del-nested",
+                None,
+                "delete-nested-sdk-uses-old-record",
+            ),
+            pytest.param(
+                "INSERT",
+                "guild",
+                "id",
+                "G-legacy",
+                {},
+                None,
+                None,
+                "legacy-top-level-payload-still-works",
+            ),
+        ],
+    )
+    async def test_payload_shapes_invalidate_guild(
+        self,
+        cache: TTLCache,
+        event_type: str,
+        table: str | None,
+        record_key: str | None,
+        record_val: str | None,
+        old_key: str | None,
+        old_val: str | None,
+        table_hint: str | None,
+        case_id: str,
+    ) -> None:
+        """Nested SDK ({data: {type, table, record}}) and legacy top-level
+        payloads both normalize; DELETE reads old_record; missing data.table
+        falls back to the registration table_hint."""
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
-        cache.set("G-nested:config", "v")
+        guild_id = record_val or old_val
+        cache_key = f"{guild_id}:config"
+        cache.set(cache_key, "v")
 
-        sdk_payload = {
-            "data": {
-                "type": "UPDATE",
-                "table": "guild",
-                "schema": "public",
-                "record": {"id": "G-nested"},
-                "old_record": {},
-                "commit_timestamp": "2025-06-15T10:00:00Z",
-            },
-            "ids": [1],
-        }
-        await sub._handle_cdc(sdk_payload)
-
-        assert cache.get("G-nested:config") is None  # invalidated
-
-    @pytest.mark.asyncio
-    async def test_table_hint_fallback_when_data_table_missing(self, cache: TTLCache) -> None:
-        """When data.table is None/missing, table_hint from callback registration MUST be used."""
-        client = _make_client_mock()
-        sub = _make_subscriber(cache, client)
-        cache.set("G-hint:config", "v")
-
-        sdk_payload = {
-            "data": {
-                "type": "INSERT",
-                "table": None,
-                "schema": "public",
-                "record": {"guildId": "G-hint"},
-                "old_record": {},
-            },
-            "ids": [2],
-        }
-        await sub._handle_cdc(sdk_payload, table_hint="greeting_config")
-
-        assert cache.get("G-hint:config") is None  # invalidated via table_hint
-
-    @pytest.mark.asyncio
-    async def test_delete_nested_sdk_uses_old_record(self, cache: TTLCache) -> None:
-        """DELETE event in nested SDK format MUST read old_record from data."""
-        client = _make_client_mock()
-        sub = _make_subscriber(cache, client)
-        cache.set("G-del-nested:config", "v")
-
-        sdk_payload = {
-            "data": {
-                "type": "DELETE",
-                "table": "guild",
-                "schema": "public",
-                "record": {},
-                "old_record": {"id": "G-del-nested"},
-            },
-            "ids": [3],
-        }
-        await sub._handle_cdc(sdk_payload)
-
-        assert cache.get("G-del-nested:config") is None
-
-    @pytest.mark.asyncio
-    async def test_legacy_top_level_payload_still_works(self, cache: TTLCache) -> None:
-        """Legacy top-level payload format MUST still work for backward compatibility."""
-        client = _make_client_mock()
-        sub = _make_subscriber(cache, client)
-        cache.set("G-legacy:config", "v")
-
-        legacy_payload = {
-            "type": "INSERT",
-            "table": "guild",
+        data: dict[str, Any] = {
+            "type": event_type,
+            "table": table,
             "schema": "public",
-            "record": {"id": "G-legacy"},
-            "old_record": {},
+            "record": {record_key: record_val} if record_key else {},
+            "old_record": {old_key: old_val} if old_key else {},
         }
-        await sub._handle_cdc(legacy_payload)
+        if event_type == "INSERT" and table == "guild":
+            # Legacy top-level payload format MUST still work for backward
+            # compatibility (no data envelope).
+            payload: dict[str, Any] = {
+                "type": event_type,
+                "table": table,
+                "schema": "public",
+                "record": {record_key: record_val} if record_key else {},
+                "old_record": {},
+            }
+        else:
+            payload = {"data": data, "ids": [1]}
 
-        assert cache.get("G-legacy:config") is None  # still works
+        await sub._handle_cdc(payload, table_hint=table_hint)
+
+        assert cache.get(cache_key) is None  # invalidated
 
 
 # ===========================================================================
