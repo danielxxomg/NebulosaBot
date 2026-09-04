@@ -1055,7 +1055,9 @@ class TestGetGreetingConfig:
 # ---------------------------------------------------------------------------
 
 
-GUILD_SCOPED_FILTER_CASES: tuple[tuple[str, Callable[[Database], Awaitable[object]], str, tuple[tuple[str, str, object], ...]], ...] = (
+GUILD_SCOPED_FILTER_CASES: tuple[
+    tuple[str, Callable[[Database], Awaitable[object]], str, tuple[tuple[str, str, object], ...]], ...
+] = (
     (
         "get-guild-by-id",
         lambda db: db.get_guild("g1"),

@@ -38,11 +38,23 @@ def disconnected_db() -> Database:
 TICKET_GUARD_CALLS: tuple[tuple[str, Callable[[Database], Awaitable[object]]], ...] = (
     ("get-stale-tickets", lambda db: db.get_stale_tickets("g1")),
     ("get-open-ticket-channel-ids", lambda db: db.get_open_ticket_channel_ids("g1")),
-    ("update-ticket-last-activity", lambda db: db.update_ticket_last_activity("g1", "ch-001", "2024-06-15T12:00:00+00:00")),
+    (
+        "update-ticket-last-activity",
+        lambda db: db.update_ticket_last_activity("g1", "ch-001", "2024-06-15T12:00:00+00:00"),
+    ),
     ("get-active-ticket-by-channel", lambda db: db.get_active_ticket_by_channel("g1", "ch1")),
-    ("transition-ticket-to-closed", lambda db: db.transition_ticket_to_closed("g1", "t1", expected_statuses=("open", "claimed"))),
-    ("transition-ticket-to-closed-guild-scoped", lambda db: db.transition_ticket_to_closed("g1", "t1", expected_statuses=("open", "claimed"))),
-    ("count-user-open-tickets-in-category", lambda db: db.count_user_open_tickets_in_category("g1", "userA", "cat-Support")),
+    (
+        "transition-ticket-to-closed",
+        lambda db: db.transition_ticket_to_closed("g1", "t1", expected_statuses=("open", "claimed")),
+    ),
+    (
+        "transition-ticket-to-closed-guild-scoped",
+        lambda db: db.transition_ticket_to_closed("g1", "t1", expected_statuses=("open", "claimed")),
+    ),
+    (
+        "count-user-open-tickets-in-category",
+        lambda db: db.count_user_open_tickets_in_category("g1", "userA", "cat-Support"),
+    ),
 )
 
 
