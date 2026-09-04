@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
+from discord import app_commands as _a
 
 from bot.cogs.tickets import (
     TicketActionsView,
@@ -433,21 +434,36 @@ class TestTicketCloseI18n:
 
     pytestmark = pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX, scope="class")
 
-    async def test_close_not_ticket_is_localized(
+    @pytest.mark.parametrize(
+        ("scenario", "row_kwargs", "expected_desc_key"),
+        [
+            ("not-ticket", None, "CLOSE_NO_TICKET_"),  # get_ticket_by_channel → None
+            ("already-closed", "closed", "CLOSE_CLOSED_"),  # row with status=closed
+        ],
+    )
+    async def test_close_error_is_localized(
         self,
         ticket_bot: MagicMock,
         guild_id: str,
         suffix: str,
+        scenario: str,
+        row_kwargs: str | None,
+        expected_desc_key: str,
     ) -> None:
-        """Close on non-ticket channel → localized error."""
+        """Close error paths → localized embed (title CLOSE_FAIL_, per-scenario desc)."""
         interaction = _make_interaction(int(guild_id), client=ticket_bot)
-        interaction.response.defer = AsyncMock()
-        interaction.followup = MagicMock()
-        interaction.followup.send = AsyncMock()
+        if scenario == "not-ticket":
+            interaction.response.defer = AsyncMock()
+            interaction.followup = MagicMock()
+            interaction.followup.send = AsyncMock()
         interaction.channel_id = 444444444
         interaction.channel = MagicMock()
 
-        ticket_bot.db.get_ticket_by_channel = AsyncMock(return_value=None)
+        if row_kwargs is None:
+            ticket_bot.db.get_ticket_by_channel = AsyncMock(return_value=None)
+        else:
+            row = _ticket_row(status=row_kwargs, guild_id=guild_id)
+            ticket_bot.db.get_ticket_by_channel = AsyncMock(return_value=row)
 
         view = TicketActionsView()
         await view.close_button.callback(interaction)
@@ -455,37 +471,13 @@ class TestTicketCloseI18n:
         embed = interaction.response.send_message.call_args.kwargs.get("embed")
         assert embed is not None
         assert f"CLOSE_FAIL_{suffix}" in embed.title
-        assert f"CLOSE_NO_TICKET_{suffix}" in embed.description
-
-    async def test_close_already_closed_is_localized(
-        self,
-        ticket_bot: MagicMock,
-        guild_id: str,
-        suffix: str,
-    ) -> None:
-        """Close already-closed ticket → localized error."""
-        interaction = _make_interaction(int(guild_id), client=ticket_bot)
-        interaction.channel_id = 444444444
-        interaction.channel = MagicMock()
-
-        row = _ticket_row(status="closed", guild_id=guild_id)
-        ticket_bot.db.get_ticket_by_channel = AsyncMock(return_value=row)
-
-        view = TicketActionsView()
-        await view.close_button.callback(interaction)
-
-        embed = interaction.response.send_message.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert f"CLOSE_FAIL_{suffix}" in embed.title
-        assert f"CLOSE_CLOSED_{suffix}" in embed.description
+        assert f"{expected_desc_key}{suffix}" in embed.description
 
 
 class TestSubticketHelpI18n:
     """S6A slash-only: subticket group has no fallback help — covered by create subcommand."""
 
     def test_subticket_is_group_without_callback(self, cog: TicketsCog) -> None:
-        from discord import app_commands as _a
-
         assert isinstance(cog.subticket, _a.Group)
         assert not hasattr(cog.subticket, "callback")
 
@@ -536,8 +528,6 @@ class TestNoteHelpI18n:
     """S6A slash-only: note group has no fallback help — covered by subcommands."""
 
     def test_note_is_group_without_callback(self, cog: TicketsCog) -> None:
-        from discord import app_commands as _a
-
         assert isinstance(cog.note, _a.Group)
         assert not hasattr(cog.note, "callback")
 
@@ -613,43 +603,37 @@ class TestDeleteCategoryI18n:
 
     pytestmark = pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX, scope="class")
 
-    async def test_delete_category_not_found_is_localized(
+    @pytest.mark.parametrize(
+        ("scenario", "expected_key"),
+        [
+            ("not-found", "DEL_NOT_FOUND_"),  # get_ticket_category → None
+            ("in-use", "DEL_IN_USE_"),  # category has open tickets
+        ],
+    )
+    async def test_delete_category_error_is_localized(
         self,
         cog: TicketsCog,
         ticket_bot: MagicMock,
         guild_id: str,
         suffix: str,
+        scenario: str,
+        expected_key: str,
     ) -> None:
-        """/delete_category with invalid ID → localized error."""
+        """/delete_category error paths → localized error embed."""
         ctx = _make_ctx(int(guild_id))
 
-        ticket_bot.db.get_ticket_category = AsyncMock(return_value=None)
-
-        await cog.delete_category.callback(cog, ctx, category_id="nonexistent")
+        if scenario == "not-found":
+            ticket_bot.db.get_ticket_category = AsyncMock(return_value=None)
+            await cog.delete_category.callback(cog, ctx, category_id="nonexistent")
+        else:
+            row = _category_row(guild_id=guild_id)
+            ticket_bot.db.get_ticket_category = AsyncMock(return_value=row)
+            ticket_bot.db.count_open_tickets_by_category = AsyncMock(return_value=3)
+            await cog.delete_category.callback(cog, ctx, category_id="cat-uuid-001")
 
         embed = ctx.send.call_args.kwargs.get("embed")
         assert embed is not None
-        assert f"DEL_NOT_FOUND_{suffix}" in embed.title
-
-    async def test_delete_category_in_use_is_localized(
-        self,
-        cog: TicketsCog,
-        ticket_bot: MagicMock,
-        guild_id: str,
-        suffix: str,
-    ) -> None:
-        """/delete_category with open tickets → localized error."""
-        ctx = _make_ctx(int(guild_id))
-
-        row = _category_row(guild_id=guild_id)
-        ticket_bot.db.get_ticket_category = AsyncMock(return_value=row)
-        ticket_bot.db.count_open_tickets_by_category = AsyncMock(return_value=3)
-
-        await cog.delete_category.callback(cog, ctx, category_id="cat-uuid-001")
-
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert embed is not None
-        assert f"DEL_IN_USE_{suffix}" in embed.title
+        assert f"{expected_key}{suffix}" in embed.title
 
 
 class TestTransferI18n:
@@ -683,25 +667,33 @@ class TestTicketEmbedI18n:
 
     pytestmark = pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX, scope="class")
 
-    def test_open_ticket_embed_is_localized(self, guild_id: str, suffix: str) -> None:
-        """Open ticket embed uses localized strings."""
-        ticket = Ticket.from_db_row(_ticket_row(status="open", guild_id=guild_id))
-        embed = _build_ticket_embed(ticket, guild_id=guild_id)
+    @pytest.mark.parametrize(
+        ("status", "title_key", "desc_key"),
+        [
+            ("open", "OPEN_WELCOME_", "OPEN_WELCOME_DESC_"),
+            ("claimed", "OPEN_CLAIMED_", "OPEN_CLAIMED_DESC_"),
+        ],
+    )
+    def test_ticket_embed_is_localized(
+        self,
+        guild_id: str,
+        suffix: str,
+        status: str,
+        title_key: str,
+        desc_key: str,
+    ) -> None:
+        """Ticket embed uses localized title/description for its status."""
+        ticket = Ticket.from_db_row(_ticket_row(status=status, guild_id=guild_id))
+        if status == "claimed":
+            claimed_by = MagicMock()
+            claimed_by.mention = "<@999999>"
+            embed = _build_ticket_embed(ticket, claimed_by=claimed_by, guild_id=guild_id)
+        else:
+            embed = _build_ticket_embed(ticket, guild_id=guild_id)
         assert embed.title is not None
-        assert "OPEN_WELCOME_" in embed.title
+        assert title_key in embed.title
         assert embed.description is not None
-        assert f"OPEN_WELCOME_DESC_{suffix}" in embed.description
-
-    def test_claimed_ticket_embed_is_localized(self, guild_id: str, suffix: str) -> None:
-        """Claimed ticket embed uses localized strings."""
-        ticket = Ticket.from_db_row(_ticket_row(status="claimed", guild_id=guild_id))
-        claimed_by = MagicMock()
-        claimed_by.mention = "<@999999>"
-        embed = _build_ticket_embed(ticket, claimed_by=claimed_by, guild_id=guild_id)
-        assert embed.title is not None
-        assert "OPEN_CLAIMED_" in embed.title
-        assert embed.description is not None
-        assert f"OPEN_CLAIMED_DESC_{suffix}" in embed.description
+        assert f"{desc_key}{suffix}" in embed.description
 
 
 class TestTicketEmbedSubjectI18n:
@@ -814,67 +806,45 @@ class TestDynamicLabelResolution:
 
     pytestmark = pytest.mark.parametrize("guild_id,suffix", _LOCALE_MATRIX, scope="class")
 
-    async def test_panel_open_label_updates_at_interaction(
+    @pytest.mark.parametrize(
+        ("custom_id", "needs_admin", "needs_channel_mock", "expected_label"),
+        [
+            ("ticket:open", False, False, "OPEN_BTN_"),
+            ("ticket:claim", True, False, "CLAIM_BTN_"),
+            ("ticket:close", False, True, "CLOSE_BTN_"),
+        ],
+    )
+    async def test_button_label_updates_at_interaction(
         self,
         guild_id: str,
         suffix: str,
+        custom_id: str,
+        needs_admin: bool,
+        needs_channel_mock: bool,
+        expected_label: str,
     ) -> None:
-        """Panel open button label resolves at callback time."""
-        view = TicketPanelView()  # No guild_id → Spanish default "Abrir Ticket"
+        """Button label resolves via t() at callback time."""
+        if custom_id == "ticket:open":
+            view = TicketPanelView()  # No guild_id → Spanish default "Abrir Ticket"
+        else:
+            view = TicketActionsView()  # No guild_id → default labels
 
-        interaction = _make_interaction(int(guild_id))
+        interaction = _make_interaction(int(guild_id), admin=needs_admin)
         interaction.client.db = AsyncMock()
-        interaction.client.db.get_ticket_categories = AsyncMock(return_value=[])
-
-        open_button = next(
-            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:open"
-        )
-        await open_button.callback(interaction)
-
-        # After callback, label should be updated to the guild language.
-        assert open_button.label == f"OPEN_BTN_{suffix}"
-
-    async def test_actions_claim_label_updates_at_interaction(
-        self,
-        guild_id: str,
-        suffix: str,
-    ) -> None:
-        """Claim button label resolves at callback time."""
-        view = TicketActionsView()  # No guild_id → default labels
-
-        interaction = _make_interaction(int(guild_id), admin=True)
-        interaction.client.db = AsyncMock()
-        interaction.client.db.get_ticket_by_channel = AsyncMock(return_value=None)
+        if custom_id != "ticket:open":
+            interaction.client.db.get_ticket_by_channel = AsyncMock(return_value=None)
+        else:
+            interaction.client.db.get_ticket_categories = AsyncMock(return_value=[])
         interaction.channel_id = 444444444
-        interaction.response.edit_message = AsyncMock()
+        if needs_channel_mock:
+            interaction.channel = MagicMock()
+        if custom_id == "ticket:claim":
+            interaction.response.edit_message = AsyncMock()
 
-        claim_button = next(
-            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:claim"
-        )
-        await claim_button.callback(interaction)
+        button = next(c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == custom_id)
+        await button.callback(interaction)
 
-        assert claim_button.label == f"CLAIM_BTN_{suffix}"
-
-    async def test_actions_close_label_updates_at_interaction(
-        self,
-        guild_id: str,
-        suffix: str,
-    ) -> None:
-        """Close button label resolves at callback time."""
-        view = TicketActionsView()  # No guild_id → default labels
-
-        interaction = _make_interaction(int(guild_id))
-        interaction.client.db = AsyncMock()
-        interaction.client.db.get_ticket_by_channel = AsyncMock(return_value=None)
-        interaction.channel_id = 444444444
-        interaction.channel = MagicMock()
-
-        close_button = next(
-            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "ticket:close"
-        )
-        await close_button.callback(interaction)
-
-        assert close_button.label == f"CLOSE_BTN_{suffix}"
+        assert button.label == f"{expected_label}{suffix}"
 
 
 # ---------------------------------------------------------------------------
@@ -921,25 +891,22 @@ class TestReopenNotClosedI18n:
 class TestEsJsonTranslations:
     """Test that es.json has Spanish text, not English, for the fixed keys."""
 
-    def test_claim_generic_error_is_spanish(self) -> None:
-        """es.json claim_generic_error_description must be Spanish."""
+    @pytest.mark.parametrize(
+        ("locale_key", "banned_en", "spanish_words"),
+        [
+            ("claim_generic_error_description", "Could not claim", ["reclamar", "intent"]),
+            ("closed_channel_transcript", "Transcript", ["Transcripción", "transcripción"]),
+        ],
+    )
+    def test_es_json_value_is_spanish(self, locale_key: str, banned_en: str, spanish_words: list) -> None:
+        """es.json value must be Spanish, not English, for the fixed key."""
         es_path = Path("bot/locales/es.json")
         data = json.loads(es_path.read_text(encoding="utf-8"))
-        value = data["tickets"]["actions"]["claim_generic_error_description"]
+        value = data["tickets"]["actions"][locale_key]
         # Must NOT be the English text
-        assert "Could not claim" not in value
+        assert banned_en not in value
         # Must contain Spanish words
-        assert "reclamar" in value.lower() or "intent" in value.lower()
-
-    def test_closed_channel_transcript_is_spanish(self) -> None:
-        """es.json closed_channel_transcript must use Spanish 'Transcripción'."""
-        es_path = Path("bot/locales/es.json")
-        data = json.loads(es_path.read_text(encoding="utf-8"))
-        value = data["tickets"]["actions"]["closed_channel_transcript"]
-        # Must NOT use English "Transcript"
-        assert "Transcript" not in value
-        # Must use Spanish equivalent
-        assert "Transcripción" in value or "transcripción" in value
+        assert any(word in value for word in spanish_words)
 
 
 # ---------------------------------------------------------------------------
