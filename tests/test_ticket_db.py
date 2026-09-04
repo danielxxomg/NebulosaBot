@@ -291,37 +291,32 @@ class TestTransitionTicketToClosed:
     """transition_ticket_to_closed(ticket_id, expected_statuses, close_reason) — conditional close."""
 
     @pytest.mark.asyncio
-    async def test_closes_open_ticket(self, db: Database, fake_client: FakeSupabaseClient) -> None:
-        """Closes an open ticket and returns the closed row."""
-        open_row = {"id": "t1", "status": "open", "guildId": "g1"}
-        closed_row = {"id": "t1", "status": "closed", "guildId": "g1", "closeReason": None}
+    @pytest.mark.parametrize(
+        ("ticket_id", "initial_status"),
+        [
+            pytest.param("t1", "open", id="closes-open-ticket"),
+            pytest.param("t2", "claimed", id="closes-claimed-ticket"),
+        ],
+    )
+    async def test_closes_active_ticket(
+        self,
+        db: Database,
+        fake_client: FakeSupabaseClient,
+        ticket_id: str,
+        initial_status: str,
+    ) -> None:
+        """Closes an active (open or claimed) ticket and returns the closed row."""
+        active_row = {"id": ticket_id, "status": initial_status, "guildId": "g1"}
+        closed_row = {"id": ticket_id, "status": "closed", "guildId": "g1", "closeReason": None}
         fake_client.set_table_queue(
             "ticket",
             [
-                [open_row],  # select: found open ticket
+                [active_row],  # select: found active ticket
                 [closed_row],  # update: returns closed row
             ],
         )
 
-        result = await db.transition_ticket_to_closed("g1", "t1", expected_statuses=("open", "claimed"))
-
-        assert result is not None
-        assert result["status"] == "closed"
-
-    @pytest.mark.asyncio
-    async def test_closes_claimed_ticket(self, db: Database, fake_client: FakeSupabaseClient) -> None:
-        """Closes a claimed ticket."""
-        claimed_row = {"id": "t2", "status": "claimed", "guildId": "g1"}
-        closed_row = {"id": "t2", "status": "closed", "guildId": "g1", "closeReason": None}
-        fake_client.set_table_queue(
-            "ticket",
-            [
-                [claimed_row],
-                [closed_row],
-            ],
-        )
-
-        result = await db.transition_ticket_to_closed("g1", "t2", expected_statuses=("open", "claimed"))
+        result = await db.transition_ticket_to_closed("g1", ticket_id, expected_statuses=("open", "claimed"))
 
         assert result is not None
         assert result["status"] == "closed"
