@@ -57,25 +57,19 @@ class TestMigration008:
 class TestMigration009:
     """Structural tests for migration 009_member_increment_rpc.sql."""
 
-    def test_creates_increment_member_xp(self) -> None:
-        """Migration 009 MUST create increment_member_xp function."""
+    @pytest.mark.parametrize(
+        "function_name",
+        [
+            pytest.param("increment_member_xp", id="xp"),
+            pytest.param("increment_member_coins", id="coins"),
+            pytest.param("increment_member_warnings", id="warnings"),
+            pytest.param("set_member_daily", id="daily"),
+        ],
+    )
+    def test_creates_function(self, function_name: str) -> None:
+        """Migration 009 MUST create each RPC function."""
         sql = _read_migration("009_member_increment_rpc.sql")
-        assert "CREATE OR REPLACE FUNCTION public.increment_member_xp" in sql
-
-    def test_creates_increment_member_coins(self) -> None:
-        """Migration 009 MUST create increment_member_coins function."""
-        sql = _read_migration("009_member_increment_rpc.sql")
-        assert "CREATE OR REPLACE FUNCTION public.increment_member_coins" in sql
-
-    def test_creates_increment_member_warnings(self) -> None:
-        """Migration 009 MUST create increment_member_warnings function."""
-        sql = _read_migration("009_member_increment_rpc.sql")
-        assert "CREATE OR REPLACE FUNCTION public.increment_member_warnings" in sql
-
-    def test_creates_set_member_daily(self) -> None:
-        """Migration 009 MUST create set_member_daily function."""
-        sql = _read_migration("009_member_increment_rpc.sql")
-        assert "CREATE OR REPLACE FUNCTION public.set_member_daily" in sql
+        assert f"CREATE OR REPLACE FUNCTION public.{function_name}" in sql
 
     def test_all_functions_use_security_definer(self) -> None:
         """All 4 functions MUST use SECURITY DEFINER."""
@@ -136,25 +130,24 @@ class TestMigration010:
         """Migration 010 file MUST exist."""
         _read_migration("010_rpc_revoke_grants.sql")
 
-    def test_revokes_increment_member_xp(self) -> None:
-        """Migration 010 MUST revoke EXECUTE on increment_member_xp with exact signature."""
+    @pytest.mark.parametrize(
+        ("function_name", "signature"),
+        [
+            pytest.param("increment_member_xp", "increment_member_xp(TEXT, TEXT, INTEGER)", id="xp"),
+            pytest.param("increment_member_coins", "increment_member_coins(TEXT, TEXT, BIGINT)", id="coins"),
+            pytest.param("increment_member_warnings", "increment_member_warnings(TEXT, TEXT, INTEGER)", id="warnings"),
+            pytest.param(
+                "set_member_daily",
+                "set_member_daily(TEXT, TEXT, BIGINT, INTEGER, TIMESTAMPTZ, TIMESTAMPTZ)",
+                id="daily",
+            ),
+        ],
+    )
+    def test_revokes_function(self, function_name: str, signature: str) -> None:
+        """Migration 010 MUST revoke EXECUTE on each RPC function with exact signature."""
         sql = _read_migration("010_rpc_revoke_grants.sql")
-        assert "increment_member_xp(TEXT, TEXT, INTEGER)" in sql
-
-    def test_revokes_increment_member_coins(self) -> None:
-        """Migration 010 MUST revoke EXECUTE on increment_member_coins with exact signature."""
-        sql = _read_migration("010_rpc_revoke_grants.sql")
-        assert "increment_member_coins(TEXT, TEXT, BIGINT)" in sql
-
-    def test_revokes_increment_member_warnings(self) -> None:
-        """Migration 010 MUST revoke EXECUTE on increment_member_warnings with exact signature."""
-        sql = _read_migration("010_rpc_revoke_grants.sql")
-        assert "increment_member_warnings(TEXT, TEXT, INTEGER)" in sql
-
-    def test_revokes_set_member_daily(self) -> None:
-        """Migration 010 MUST revoke EXECUTE on set_member_daily with exact signature."""
-        sql = _read_migration("010_rpc_revoke_grants.sql")
-        assert "set_member_daily(TEXT, TEXT, BIGINT, INTEGER, TIMESTAMPTZ, TIMESTAMPTZ)" in sql
+        assert function_name in sql
+        assert signature in sql
 
     def test_targets_anon_role(self) -> None:
         """Migration 010 MUST target the anon role."""
