@@ -2106,46 +2106,41 @@ async def test_create_ticket_with_custom_fields(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("cf", "expected_custom_fields"),
+    [
+        ({"player_nick": "DarkSlayer42"}, None),
+        (None, None),
+    ],
+    ids=["forwards-custom-fields", "without-custom-fields"],
+)
 async def test_create_ticket_channel_forwards_custom_fields(
+    cf: dict[str, str] | None,
+    expected_custom_fields: dict[str, str] | None,
     service: TicketService,
     mock_db: AsyncMock,
     ticket_row: dict,
 ) -> None:
-    """create_ticket_channel(custom_fields=...) MUST forward to create_ticket."""
+    """create_ticket_channel(custom_fields=...) MUST forward to create_ticket; omitted MUST pass None.
+
+    Parametrized (S1a cut): both variants assert the same two-sided contract
+    (insert_ticket kwargs + returned model) with the per-case expected value;
+    the only difference is whether custom_fields is provided explicitly or
+    omitted (explicit None == omitted None by production default).
+    """
+    expected = cf if cf is not None else expected_custom_fields
     guild, category, author = _channel_triple()
-    cf = {"player_nick": "DarkSlayer42"}
 
     mock_db.get_max_ticket_number.return_value = 0
-    mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1, "customFields": cf}
+    mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1, "customFields": expected}
 
     _channel, ticket = await service.create_ticket_channel(
         guild, category, author, guild_id="123456789", category_name="Support", custom_fields=cf
     )
 
     insert_kwargs = mock_db.insert_ticket.call_args.kwargs
-    assert insert_kwargs["custom_fields"] == cf
-    assert ticket.custom_fields == cf
-
-
-@pytest.mark.asyncio
-async def test_create_ticket_channel_without_custom_fields(
-    service: TicketService,
-    mock_db: AsyncMock,
-    ticket_row: dict,
-) -> None:
-    """create_ticket_channel() without custom_fields MUST pass None to create_ticket."""
-    guild, category, author = _channel_triple()
-
-    mock_db.get_max_ticket_number.return_value = 0
-    mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1, "customFields": None}
-
-    _channel, ticket = await service.create_ticket_channel(
-        guild, category, author, guild_id="123456789", category_name="Support"
-    )
-
-    insert_kwargs = mock_db.insert_ticket.call_args.kwargs
-    assert insert_kwargs["custom_fields"] is None
-    assert ticket.custom_fields is None
+    assert insert_kwargs["custom_fields"] == expected
+    assert ticket.custom_fields == expected
 
 
 # ===========================================================================
