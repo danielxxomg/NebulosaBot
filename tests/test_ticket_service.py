@@ -1808,44 +1808,43 @@ async def test_audit_guild_scope_query(mock_db: AsyncMock) -> None:
 
 
 @pytest.mark.asyncio
-async def test_reopen_no_category_raises_typed_exception(
+@pytest.mark.parametrize(
+    ("case", "guild_config_kwargs", "get_channel_return"),
+    [
+        pytest.param(
+            "no_category_configured",
+            {"category_id": None},
+            "__SKIP__",
+            id="reopen-no-category-typed",
+        ),
+        pytest.param(
+            "deleted_category",
+            {},
+            None,
+            id="reopen-deleted-category-typed",
+        ),
+    ],
+)
+async def test_reopen_category_raises_typed_exception(
+    case: str,
+    guild_config_kwargs: dict,
+    get_channel_return: object,
     service: TicketService,
     mock_db: AsyncMock,
 ) -> None:
-    """reopen_ticket MUST raise TicketCategoryNotConfiguredError (not raw
-    ValueError) when no ticket category is configured for the guild.
+    """reopen_ticket MUST raise TicketCategoryNotConfiguredError (typed, not
+    raw ValueError) when no ticket category is configured for the guild OR
+    the configured Discord category channel no longer exists.
     """
 
     ticket_id = "ticket-uuid-003"
     closed_row = _closed_ticket_row()
     mock_db.get_ticket.return_value = closed_row
-    _wire_guild_config(mock_db, category_id=None)
+    _wire_guild_config(mock_db, **guild_config_kwargs)
 
     guild = _mock_guild_for_reopen(category_channel=None)
-
-    with pytest.raises(TicketCategoryNotConfiguredError):
-        await service.reopen_ticket(ticket_id, guild=guild)
-
-    guild.create_text_channel.assert_not_awaited()
-    mock_db.update_ticket.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_reopen_deleted_category_raises_typed_exception(
-    service: TicketService,
-    mock_db: AsyncMock,
-) -> None:
-    """reopen_ticket MUST raise TicketCategoryNotConfiguredError when the
-    configured Discord category channel no longer exists.
-    """
-
-    ticket_id = "ticket-uuid-003"
-    closed_row = _closed_ticket_row()
-    mock_db.get_ticket.return_value = closed_row
-    _wire_guild_config(mock_db)
-
-    guild = _mock_guild_for_reopen(category_channel=None)
-    guild.get_channel = MagicMock(return_value=None)
+    if get_channel_return != "__SKIP__":
+        guild.get_channel = MagicMock(return_value=get_channel_return)
 
     with pytest.raises(TicketCategoryNotConfiguredError):
         await service.reopen_ticket(ticket_id, guild=guild)
@@ -3131,53 +3130,44 @@ class TestCloseTicketConditional:
     """close_ticket with close_reason, zombie path, re-close ValueError."""
 
     @pytest.mark.asyncio
-    async def test_close_reason_persists_when_provided(
+    @pytest.mark.parametrize(
+        ("close_reason", "expect_status_assert"),
+        [
+            pytest.param("zombie:channel_missing", True, id="close-reason-provided"),
+            pytest.param(None, False, id="close-reason-none-not-forwarded"),
+        ],
+    )
+    async def test_close_reason_forwarding(
         self,
+        close_reason: str | None,
+        expect_status_assert: bool,
         service: TicketService,
         mock_db: AsyncMock,
         ticket_row: dict,
     ) -> None:
-        """When close_reason is provided, it MUST be forwarded to transition_ticket_to_closed."""
+        """close_ticket MUST forward close_reason verbatim (None included) to
+        transition_ticket_to_closed: provided values persist, None MUST NOT
+        overwrite an existing closeReason on the row.
+        """
         ticket_id = ticket_row["id"]
-        closed_row = _wire_transition(mock_db, ticket_row, close_reason="zombie:channel_missing")
+        closed_row = _wire_transition(mock_db, ticket_row, close_reason=close_reason)
         mock_db.get_ticket.return_value = closed_row
 
-        ticket = await service.close_ticket(
-            ticket_id,
-            closed_by="999999999",
-            close_reason="zombie:channel_missing",
-        )
+        kwargs: dict[str, str] = {"closed_by": "999999999"}
+        if close_reason is not None:
+            kwargs["close_reason"] = close_reason
+
+        ticket = await service.close_ticket(ticket_id, **kwargs)
 
         mock_db.transition_ticket_to_closed.assert_awaited_once_with(
             ticket_row["guildId"],
             ticket_id,
             expected_statuses=("open", "claimed"),
-            close_reason="zombie:channel_missing",
+            close_reason=close_reason,
             transcript_url=None,
         )
-        assert ticket.status == "closed"
-
-    @pytest.mark.asyncio
-    async def test_close_reason_none_does_not_overwrite(
-        self,
-        service: TicketService,
-        mock_db: AsyncMock,
-        ticket_row: dict,
-    ) -> None:
-        """When close_reason is None, it MUST NOT be forwarded."""
-        ticket_id = ticket_row["id"]
-        closed_row = _wire_transition(mock_db, ticket_row)
-        mock_db.get_ticket.return_value = closed_row
-
-        await service.close_ticket(ticket_id, closed_by="999999999")
-
-        mock_db.transition_ticket_to_closed.assert_awaited_once_with(
-            ticket_row["guildId"],
-            ticket_id,
-            expected_statuses=("open", "claimed"),
-            close_reason=None,
-            transcript_url=None,
-        )
+        if expect_status_assert:
+            assert ticket.status == "closed"
 
     @pytest.mark.asyncio
     async def test_zombie_path_skips_transcript_and_channel_deletion(
