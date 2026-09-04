@@ -1130,18 +1130,38 @@ def _mock_logging_service() -> AsyncMock:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("test_id", "explicit_new_staff"),
+    [
+        pytest.param(True, True, id="explicit-staff-arg"),
+        pytest.param(True, False, id="default-staff-same-constant"),
+    ],
+    ids=["explicit-staff-arg", "default-staff-same-constant"],
+)
 async def test_transfer_updates_claimed_by(
+    test_id: bool,
+    explicit_new_staff: bool,
     service: TicketService,
     mock_db: AsyncMock,
     ticket_row: dict,
 ) -> None:
-    """transfer_ticket MUST mutate claimedBy and (re)claim the ticket."""
+    """transfer_ticket MUST mutate claimedBy and (re)claim the ticket.
+
+    Parametrized (S1a cut): both variants call transfer with the same
+    constants and assert the same contract — DB updated with new claimedBy
+    and the returned ticket carries it. The only difference is whether
+    _transfer_preread wires the re-read with an explicit new_staff or relies
+    on its identical default constant.
+    """
     ticket_id = ticket_row["id"]
     new_staff = "222222222"
     actor = "999999999"
 
     # PR2 contract: pre-read open+unclaimed (invariant passes), re-read claimed.
-    _transfer_preread(mock_db, ticket_row, new_staff=new_staff)
+    if explicit_new_staff:
+        _transfer_preread(mock_db, ticket_row, new_staff=new_staff)
+    else:
+        _transfer_preread(mock_db, ticket_row)
 
     guild = MagicMock()
     guild.id = 123456789
@@ -1162,35 +1182,6 @@ async def test_transfer_updates_claimed_by(
     assert update_kwargs["claimedBy"] == new_staff
 
     assert ticket.claimed_by == new_staff
-
-
-@pytest.mark.asyncio
-async def test_transfer_unclaimed_implicit_claim(
-    service: TicketService,
-    mock_db: AsyncMock,
-    ticket_row: dict,
-) -> None:
-    """Transferring an unclaimed ticket MUST set claimedBy (implicit claim)."""
-    ticket_id = ticket_row["id"]
-    # PR2 contract: pre-read open+unclaimed, re-read claimed.
-    _transfer_preread(mock_db, ticket_row)
-
-    guild = MagicMock()
-    guild.id = 123456789
-    guild.get_member = MagicMock(return_value=MagicMock())
-    logging_service = _mock_logging_service()
-
-    ticket = await service.transfer_ticket(
-        ticket_id,
-        new_claimed_by="222222222",
-        actor_id="999999999",
-        guild=guild,
-        logging_service=logging_service,
-    )
-
-    update_kwargs = mock_db.update_ticket.call_args.kwargs
-    assert update_kwargs["claimedBy"] == "222222222"
-    assert ticket.claimed_by == "222222222"
 
 
 @pytest.mark.asyncio
