@@ -230,36 +230,40 @@ class TestRoundtrip:
 class TestThemeIdRoundTrip:
     """theme_id nullable round-trip via from_db_row / to_db_dict."""
 
-    def test_from_db_row_reads_theme_id(self) -> None:
-        row = {"guildId": "g1", "themeId": "gaming_neon"}
+    @pytest.mark.parametrize(
+        ("row", "expected"),
+        [
+            pytest.param({"guildId": "g1", "themeId": "gaming_neon"}, "gaming_neon", id="reads-theme-id"),
+            pytest.param({"guildId": "g1"}, None, id="null-when-absent"),
+        ],
+    )
+    def test_from_db_row_theme_id(self, row: dict[str, str], expected: str | None) -> None:
         cfg = GreetingConfig.from_db_row(row)
-        assert cfg.theme_id == "gaming_neon"
+        assert cfg.theme_id == expected
 
-    def test_from_db_row_null_theme_id(self) -> None:
-        row = {"guildId": "g1"}
-        cfg = GreetingConfig.from_db_row(row)
-        assert cfg.theme_id is None
-
-    def test_to_db_dict_includes_theme_id(self) -> None:
-        cfg = GreetingConfig(guild_id="g1", theme_id="gaming_neon")
+    @pytest.mark.parametrize(
+        ("theme_id", "expected"),
+        [
+            pytest.param("gaming_neon", "gaming_neon", id="includes-theme-id"),
+            pytest.param(None, None, id="null-theme-id-persists"),
+        ],
+    )
+    def test_to_db_dict_theme_id(self, theme_id: str | None, expected: str | None) -> None:
+        cfg = GreetingConfig(guild_id="g1", theme_id=theme_id)
         d = cfg.to_db_dict()
-        assert d["themeId"] == "gaming_neon"
+        assert d["themeId"] == expected
 
-    def test_to_db_dict_null_theme_id(self) -> None:
-        cfg = GreetingConfig(guild_id="g1", theme_id=None)
-        d = cfg.to_db_dict()
-        assert d["themeId"] is None
-
-    def test_roundtrip_preserves_neon_theme_id(self) -> None:
-        original = GreetingConfig(guild_id="g1", theme_id="gaming_neon", welcome_enabled=True)
+    @pytest.mark.parametrize(
+        "theme_id",
+        [
+            pytest.param("gaming_neon", id="preserves-neon-theme-id"),
+            pytest.param(None, id="preserves-null-theme-id"),
+        ],
+    )
+    def test_roundtrip_preserves_theme_id(self, theme_id: str | None) -> None:
+        original = GreetingConfig(guild_id="g1", theme_id=theme_id, welcome_enabled=True)
         restored = GreetingConfig.from_db_row(original.to_db_dict())
-        assert restored.theme_id == "gaming_neon"
-        assert restored == original
-
-    def test_roundtrip_preserves_null_theme_id(self) -> None:
-        original = GreetingConfig(guild_id="g1", theme_id=None)
-        restored = GreetingConfig.from_db_row(original.to_db_dict())
-        assert restored.theme_id is None
+        assert restored.theme_id == theme_id
         assert restored == original
 
 
@@ -298,48 +302,64 @@ class TestPerKindTemplateFields:
 class TestWelcomeWinsDualWrite:
     """to_db_dict dual-writes themeId; explicit templateId wins over themeId mapping."""
 
-    def test_welcome_template_wins_over_theme_id(self) -> None:
-        """welcome_template_id='minimal_light' → themeId dual-written as 'minimal_light'."""
-        cfg = GreetingConfig(guild_id="g1", theme_id="gaming_neon", welcome_template_id="minimal_light")
+    @pytest.mark.parametrize(
+        ("kwargs", "expected_theme", "expected_welcome", "expected_goodbye", "case_id"),
+        [
+            pytest.param(
+                {"theme_id": "gaming_neon", "welcome_template_id": "minimal_light"},
+                "minimal_light",
+                "minimal_light",
+                None,
+                "welcome-wins-over-theme-id",
+            ),
+            pytest.param(
+                {"theme_id": None, "goodbye_template_id": "sunset_wave"},
+                "sunset_wave",
+                None,
+                "sunset_wave",
+                "goodbye-mirrors-when-welcome-absent",
+            ),
+            pytest.param(
+                {
+                    "theme_id": "gaming_neon",
+                    "welcome_template_id": "sunset_wave",
+                    "goodbye_template_id": "minimal_light",
+                },
+                "sunset_wave",
+                "sunset_wave",
+                "minimal_light",
+                "welcome-wins-tie-between-kinds",
+            ),
+            pytest.param(
+                {"theme_id": "gaming_neon"},
+                "gaming_neon",
+                None,
+                None,
+                "legacy-theme-id-preserved-when-no-per-kind-set",
+            ),
+            pytest.param(
+                {},
+                None,
+                None,
+                None,
+                "all-null-stay-null",
+            ),
+        ],
+    )
+    def test_to_db_dict_dual_write(
+        self,
+        kwargs: dict[str, str | None],
+        expected_theme: str | None,
+        expected_welcome: str | None,
+        expected_goodbye: str | None,
+        case_id: str,
+    ) -> None:
+        """Dual-write mapping per case: welcome > goodbye > legacy theme_id pass-through."""
+        cfg = GreetingConfig(guild_id="g1", **kwargs)
         d = cfg.to_db_dict()
-        assert d["welcomeTemplateId"] == "minimal_light"
-        assert d["themeId"] == "minimal_light"
-
-    def test_goodbye_template_wins_when_welcome_absent(self) -> None:
-        """Only goodbye set → legacy themeId mirrors goodbye."""
-        cfg = GreetingConfig(guild_id="g1", theme_id=None, goodbye_template_id="sunset_wave")
-        d = cfg.to_db_dict()
-        assert d["goodbyeTemplateId"] == "sunset_wave"
-        assert d["themeId"] == "sunset_wave"
-
-    def test_welcome_wins_tie_between_kinds(self) -> None:
-        """Both kinds set and theme_id present → welcome wins the legacy mirror."""
-        cfg = GreetingConfig(
-            guild_id="g1",
-            theme_id="gaming_neon",
-            welcome_template_id="sunset_wave",
-            goodbye_template_id="minimal_light",
-        )
-        d = cfg.to_db_dict()
-        assert d["themeId"] == "sunset_wave"
-        assert d["welcomeTemplateId"] == "sunset_wave"
-        assert d["goodbyeTemplateId"] == "minimal_light"
-
-    def test_legacy_theme_id_preserved_when_no_per_kind_set(self) -> None:
-        """Neither per-kind id set → themeId passes through unchanged."""
-        cfg = GreetingConfig(guild_id="g1", theme_id="gaming_neon")
-        d = cfg.to_db_dict()
-        assert d["themeId"] == "gaming_neon"
-        assert d["welcomeTemplateId"] is None
-        assert d["goodbyeTemplateId"] is None
-
-    def test_all_null_stay_null(self) -> None:
-        """All template ids null → themeId stays null (new guild, default render)."""
-        cfg = GreetingConfig(guild_id="g1")
-        d = cfg.to_db_dict()
-        assert d["themeId"] is None
-        assert d["welcomeTemplateId"] is None
-        assert d["goodbyeTemplateId"] is None
+        assert d["themeId"] == expected_theme
+        assert d["welcomeTemplateId"] == expected_welcome
+        assert d["goodbyeTemplateId"] == expected_goodbye
 
 
 class TestPerKindRoundtrip:
