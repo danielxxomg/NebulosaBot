@@ -303,59 +303,55 @@ class TestWelcomeWinsDualWrite:
     """to_db_dict dual-writes themeId; explicit templateId wins over themeId mapping."""
 
     @pytest.mark.parametrize(
-        ("kwargs", "expected_theme", "expected_welcome", "expected_goodbye", "case_id"),
+        ("theme_id", "welcome_id", "goodbye_id", "expected_theme", "expected_welcome", "expected_goodbye"),
         [
+            # (theme, welcome, goodbye) -> (mirrored themeId, welcomeTemplateId, goodbyeTemplateId)
             pytest.param(
-                {"theme_id": "gaming_neon", "welcome_template_id": "minimal_light"},
+                "gaming_neon",
+                "minimal_light",
+                None,
                 "minimal_light",
                 "minimal_light",
                 None,
-                "welcome-wins-over-theme-id",
+                id="welcome-wins-over-theme-id",
             ),
             pytest.param(
-                {"theme_id": None, "goodbye_template_id": "sunset_wave"},
-                "sunset_wave",
-                None,
-                "sunset_wave",
-                "goodbye-mirrors-when-welcome-absent",
+                None, None, "sunset_wave", "sunset_wave", None, "sunset_wave", id="goodbye-mirrors-when-welcome-absent"
             ),
             pytest.param(
-                {
-                    "theme_id": "gaming_neon",
-                    "welcome_template_id": "sunset_wave",
-                    "goodbye_template_id": "minimal_light",
-                },
+                "gaming_neon",
+                "sunset_wave",
+                "minimal_light",
                 "sunset_wave",
                 "sunset_wave",
                 "minimal_light",
-                "welcome-wins-tie-between-kinds",
+                id="welcome-wins-tie-between-kinds",
             ),
             pytest.param(
-                {"theme_id": "gaming_neon"},
                 "gaming_neon",
                 None,
                 None,
-                "legacy-theme-id-preserved-when-no-per-kind-set",
+                "gaming_neon",
+                None,
+                None,
+                id="legacy-theme-id-preserved-when-no-per-kind-set",
             ),
-            pytest.param(
-                {},
-                None,
-                None,
-                None,
-                "all-null-stay-null",
-            ),
+            pytest.param(None, None, None, None, None, None, id="all-null-stay-null"),
         ],
     )
     def test_to_db_dict_dual_write(
         self,
-        kwargs: dict[str, str | None],
+        theme_id: str | None,
+        welcome_id: str | None,
+        goodbye_id: str | None,
         expected_theme: str | None,
         expected_welcome: str | None,
         expected_goodbye: str | None,
-        case_id: str,
     ) -> None:
         """Dual-write mapping per case: welcome > goodbye > legacy theme_id pass-through."""
-        cfg = GreetingConfig(guild_id="g1", **kwargs)
+        cfg = GreetingConfig(
+            guild_id="g1", theme_id=theme_id, welcome_template_id=welcome_id, goodbye_template_id=goodbye_id
+        )
         d = cfg.to_db_dict()
         assert d["themeId"] == expected_theme
         assert d["welcomeTemplateId"] == expected_welcome
