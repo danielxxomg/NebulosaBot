@@ -301,202 +301,152 @@ class TestUnmuteCommand:
 
 
 class TestKickCommand:
-    """Tests for the kick command with confirmation dialog."""
+    """Tests for the kick/ban confirmation dialog flows (cross-pair matrices).
 
-    async def test_kick_shows_confirmation_before_executing(
+    kick and ban share the same confirm-dialog lifecycle (ephemeral view →
+    confirm executes → timeout edit); rows branch on the Discord method and
+    per-command kwargs rather than duplicating the flow per action.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("command_name", "member_method", "reason"),
+        [
+            pytest.param("kick", "kick", "rule violation", id="kick"),
+            pytest.param("ban", "ban", "severe violation", id="ban"),
+        ],
+    )
+    async def test_shows_confirmation_before_executing(
         self,
         sentinel_cog: SentinelCog,
-        sentinel_bot: MagicMock,
         sentinel_ctx: MagicMock,
         target_member: MagicMock,
+        command_name: str,
+        member_method: str,
+        reason: str,
     ) -> None:
-        """kick → sends ephemeral ConfirmCancelView, does NOT kick immediately."""
-        target_member.kick = AsyncMock()
+        """kick/ban → sends ephemeral ConfirmCancelView, does NOT execute immediately."""
+        setattr(target_member, member_method, AsyncMock())
+        command = getattr(sentinel_cog, command_name)
 
         with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
-            await sentinel_cog.kick.callback(sentinel_cog, sentinel_ctx, target_member, reason="rule violation")
+            await command.callback(sentinel_cog, sentinel_ctx, target_member, reason=reason)
 
-        # Should send ephemeral confirmation, NOT kick directly.
-        target_member.kick.assert_not_awaited()
+        # Should send ephemeral confirmation, NOT execute directly.
+        getattr(target_member, member_method).assert_not_awaited()
         sentinel_ctx.send.assert_awaited_once()
         call_kwargs = sentinel_ctx.send.call_args.kwargs
         assert call_kwargs.get("ephemeral") is True
         # Should include a view (ConfirmCancelView).
         assert call_kwargs.get("view") is not None
 
-    async def test_kick_confirm_executes_kick(
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("command_name", "service_method", "member_method", "reason", "delete_days"),
+        [
+            pytest.param("kick", "kick", "kick", "rule violation", None, id="kick"),
+            pytest.param("ban", "ban", "ban", "severe violation", 3, id="ban"),
+        ],
+    )
+    async def test_confirm_executes_action(
         self,
         sentinel_cog: SentinelCog,
         sentinel_bot: MagicMock,
         sentinel_ctx: MagicMock,
         target_member: MagicMock,
+        command_name: str,
+        service_method: str,
+        member_method: str,
+        reason: str,
+        delete_days: int | None,
     ) -> None:
-        """kick confirm → member.kick called + infraction inserted + log embed."""
-        target_member.kick = AsyncMock()
-        service_kick = AsyncMock()
+        """kick/ban confirm → member method called + infraction inserted + log embed."""
+        setattr(target_member, member_method, AsyncMock())
+        service_mock = AsyncMock()
+        command = getattr(sentinel_cog, command_name)
+        kwargs: dict[str, object] = {"reason": reason}
+        if delete_days is not None:
+            kwargs["delete_days"] = delete_days
 
         with (
             patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)),
-            patch.object(InfractionService, "kick", service_kick),
+            patch.object(InfractionService, service_method, service_mock),
         ):
-            await sentinel_cog.kick.callback(sentinel_cog, sentinel_ctx, target_member, reason="rule violation")
+            await command.callback(sentinel_cog, sentinel_ctx, target_member, **kwargs)
 
             interaction, confirm_button = _confirm_sent_view(sentinel_ctx)
 
             await confirm_button.callback(interaction)
 
-        target_member.kick.assert_awaited_once_with(reason="rule violation")
+        if command_name == "kick":
+            target_member.kick.assert_awaited_once_with(reason=reason)
+        else:
+            target_member.ban.assert_awaited_once()
         sentinel_bot.logging_service.log_moderation_action.assert_awaited_once()
 
-    async def test_kick_wires_message_for_timeout(
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("command_name", "member_method", "reason"),
+        [
+            pytest.param("kick", "kick", "rule violation", id="kick"),
+            pytest.param("ban", "ban", "severe violation", id="ban"),
+        ],
+    )
+    async def test_wires_message_for_timeout(
         self,
         sentinel_cog: SentinelCog,
-        sentinel_bot: MagicMock,
         sentinel_ctx: MagicMock,
         target_member: MagicMock,
+        command_name: str,
+        member_method: str,
+        reason: str,
     ) -> None:
-        """kick → view.message is the Message returned by ctx.send().
+        """kick/ban → view.message is the Message returned by ctx.send().
 
         Production wiring: ctx.send() returns a Message, and the view must
         store it so on_timeout can edit it. No private attribute injection.
         """
         mock_message = AsyncMock()
         sentinel_ctx.send = AsyncMock(return_value=mock_message)
-        target_member.kick = AsyncMock()
+        setattr(target_member, member_method, AsyncMock())
+        command = getattr(sentinel_cog, command_name)
 
         with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
-            await sentinel_cog.kick.callback(sentinel_cog, sentinel_ctx, target_member, reason="rule violation")
+            await command.callback(sentinel_cog, sentinel_ctx, target_member, reason=reason)
 
         view = sentinel_ctx.send.call_args.kwargs.get("view")
         assert view is not None
         assert view.message is mock_message
 
-    async def test_kick_timeout_edits_wired_message(
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("command_name", "member_method", "reason"),
+        [
+            pytest.param("kick", "kick", "rule violation", id="kick"),
+            pytest.param("ban", "ban", "severe violation", id="ban"),
+        ],
+    )
+    async def test_timeout_edits_wired_message(
         self,
         sentinel_cog: SentinelCog,
-        sentinel_bot: MagicMock,
         sentinel_ctx: MagicMock,
         target_member: MagicMock,
+        command_name: str,
+        member_method: str,
+        reason: str,
     ) -> None:
-        """kick → on_timeout edits the message wired by production code.
+        """kick/ban → on_timeout edits the message wired by production code.
 
-        Full production flow: kick sends confirmation, ctx.send returns a
+        Full production flow: command sends confirmation, ctx.send returns a
         message which is wired to view.message, then on_timeout edits it.
         """
         mock_message = AsyncMock()
         sentinel_ctx.send = AsyncMock(return_value=mock_message)
-        target_member.kick = AsyncMock()
+        setattr(target_member, member_method, AsyncMock())
+        command = getattr(sentinel_cog, command_name)
 
         with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
-            await sentinel_cog.kick.callback(sentinel_cog, sentinel_ctx, target_member, reason="rule violation")
-
-        view = sentinel_ctx.send.call_args.kwargs.get("view")
-        assert view is not None
-
-        # Simulate timeout — should edit the wired message.
-        await view.on_timeout()
-
-        mock_message.edit.assert_awaited_once()
-        call_kwargs = mock_message.edit.call_args
-        embed = call_kwargs.kwargs.get("embed") or call_kwargs[1].get("embed")
-        assert embed is not None
-        assert "Timed Out" in embed.title
-
-
-class TestBanCommand:
-    """Tests for the ban command with confirmation dialog."""
-
-    async def test_ban_shows_confirmation_before_executing(
-        self,
-        sentinel_cog: SentinelCog,
-        sentinel_bot: MagicMock,
-        sentinel_ctx: MagicMock,
-        target_member: MagicMock,
-    ) -> None:
-        """ban → sends ephemeral ConfirmCancelView, does NOT ban immediately."""
-        target_member.ban = AsyncMock()
-
-        with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
-            await sentinel_cog.ban.callback(sentinel_cog, sentinel_ctx, target_member, reason="severe violation")
-
-        # Should send ephemeral confirmation, NOT ban directly.
-        target_member.ban.assert_not_awaited()
-        sentinel_ctx.send.assert_awaited_once()
-        call_kwargs = sentinel_ctx.send.call_args.kwargs
-        assert call_kwargs.get("ephemeral") is True
-        assert call_kwargs.get("view") is not None
-
-    async def test_ban_confirm_executes_ban(
-        self,
-        sentinel_cog: SentinelCog,
-        sentinel_bot: MagicMock,
-        sentinel_ctx: MagicMock,
-        target_member: MagicMock,
-    ) -> None:
-        """ban confirm → member.ban called + infraction inserted + log embed."""
-        target_member.ban = AsyncMock()
-        service_ban = AsyncMock()
-
-        with (
-            patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)),
-            patch.object(InfractionService, "ban", service_ban),
-        ):
-            await sentinel_cog.ban.callback(
-                sentinel_cog,
-                sentinel_ctx,
-                target_member,
-                reason="severe violation",
-                delete_days=3,
-            )
-
-            interaction, confirm_button = _confirm_sent_view(sentinel_ctx)
-
-            await confirm_button.callback(interaction)
-
-        target_member.ban.assert_awaited_once()
-        sentinel_bot.logging_service.log_moderation_action.assert_awaited_once()
-
-    async def test_ban_wires_message_for_timeout(
-        self,
-        sentinel_cog: SentinelCog,
-        sentinel_bot: MagicMock,
-        sentinel_ctx: MagicMock,
-        target_member: MagicMock,
-    ) -> None:
-        """ban → view.message is the Message returned by ctx.send().
-
-        Production wiring: ctx.send() returns a Message, and the view must
-        store it so on_timeout can edit it. No private attribute injection.
-        """
-        mock_message = AsyncMock()
-        sentinel_ctx.send = AsyncMock(return_value=mock_message)
-        target_member.ban = AsyncMock()
-
-        with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
-            await sentinel_cog.ban.callback(sentinel_cog, sentinel_ctx, target_member, reason="severe violation")
-
-        view = sentinel_ctx.send.call_args.kwargs.get("view")
-        assert view is not None
-        assert view.message is mock_message
-
-    async def test_ban_timeout_edits_wired_message(
-        self,
-        sentinel_cog: SentinelCog,
-        sentinel_bot: MagicMock,
-        sentinel_ctx: MagicMock,
-        target_member: MagicMock,
-    ) -> None:
-        """ban → on_timeout edits the message wired by production code.
-
-        Full production flow: ban sends confirmation, ctx.send returns a
-        message which is wired to view.message, then on_timeout edits it.
-        """
-        mock_message = AsyncMock()
-        sentinel_ctx.send = AsyncMock(return_value=mock_message)
-        target_member.ban = AsyncMock()
-
-        with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
-            await sentinel_cog.ban.callback(sentinel_cog, sentinel_ctx, target_member, reason="severe violation")
+            await command.callback(sentinel_cog, sentinel_ctx, target_member, reason=reason)
 
         view = sentinel_ctx.send.call_args.kwargs.get("view")
         assert view is not None
@@ -703,57 +653,46 @@ class TestModerationServiceSwap:
         mock_db.insert_infraction.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_kick_persists_via_service_on_confirm(
-        self,
-        sentinel_cog: SentinelCog,
-        sentinel_bot: MagicMock,
-        sentinel_ctx: MagicMock,
-        target_member: MagicMock,
-    ) -> None:
-        """kick confirm → infraction_service.kick called; no direct insert."""
-        target_member.kick = AsyncMock()
-        service_kick = AsyncMock()
-        sentinel_bot.db.insert_infraction = AsyncMock()
-
-        with (
-            patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)),
-            patch.object(InfractionService, "kick", service_kick),
-        ):
-            await sentinel_cog.kick.callback(sentinel_cog, sentinel_ctx, target_member, reason="rule violation")
-
-            interaction, confirm_button = _confirm_sent_view(sentinel_ctx)
-
-            await confirm_button.callback(interaction)
-
-        service_kick.assert_awaited_once_with("123456789", "555555555", "111111111", "rule violation")
-        sentinel_bot.db.insert_infraction.assert_not_awaited()
-
     @pytest.mark.asyncio
-    async def test_ban_persists_via_service_on_confirm(
+    @pytest.mark.parametrize(
+        ("command_name", "service_method", "member_method", "reason", "delete_days"),
+        [
+            pytest.param("kick", "kick", "kick", "rule violation", None, id="kick"),
+            pytest.param("ban", "ban", "ban", "severe violation", 3, id="ban"),
+        ],
+    )
+    async def test_persists_via_service_on_confirm(
         self,
         sentinel_cog: SentinelCog,
         sentinel_bot: MagicMock,
         sentinel_ctx: MagicMock,
         target_member: MagicMock,
+        command_name: str,
+        service_method: str,
+        member_method: str,
+        reason: str,
+        delete_days: int | None,
     ) -> None:
-        """ban confirm → infraction_service.ban called; no direct insert."""
-        target_member.ban = AsyncMock()
-        service_ban = AsyncMock()
+        """kick/ban confirm → infraction_service action called; no direct insert."""
+        setattr(target_member, member_method, AsyncMock())
+        service_mock = AsyncMock()
         sentinel_bot.db.insert_infraction = AsyncMock()
+        command = getattr(sentinel_cog, command_name)
+        kwargs: dict[str, object] = {"reason": reason}
+        if delete_days is not None:
+            kwargs["delete_days"] = delete_days
 
         with (
             patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)),
-            patch.object(InfractionService, "ban", service_ban),
+            patch.object(InfractionService, service_method, service_mock),
         ):
-            await sentinel_cog.ban.callback(
-                sentinel_cog, sentinel_ctx, target_member, reason="severe violation", delete_days=3
-            )
+            await command.callback(sentinel_cog, sentinel_ctx, target_member, **kwargs)
 
             interaction, confirm_button = _confirm_sent_view(sentinel_ctx)
 
             await confirm_button.callback(interaction)
 
-        service_ban.assert_awaited_once_with("123456789", "555555555", "111111111", "severe violation")
+        service_mock.assert_awaited_once_with("123456789", "555555555", "111111111", reason)
         sentinel_bot.db.insert_infraction.assert_not_awaited()
 
 
