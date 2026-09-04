@@ -139,11 +139,11 @@ Weak `is not None` asserts MUST be replaced with exact-equality or isinstance wh
 
 ### Requirement: Apply Staging Discipline
 
-Apply commits MUST stage only intentional paths. The GGA hook is read-only (behavioral repro 2026-09-04: exit 0, index untouched; mechanism refuted, no upstream report).
+Apply commits MUST stage only intentional paths. The GGA hook MAY restore stale index snapshot entries (extended repro 2026-09-04: commit-time `invalid object` index poisoning; the isolated clean-index repro was degenerate). Every commit MUST be verified with `git show --stat HEAD` immediately after creation; a poisoned index MUST be repaired before further operations. Upstream defect report: decision pending via consent envelope (provider-defect discipline).
 
 #### Scenario: Intentional staging only
 
 - GIVEN apply commit prepared
-- WHEN staged paths listed
-- THEN only intentional paths appear, hook leaves index untouched
+- WHEN staged paths and post-commit `git show --stat HEAD` are inspected
+- THEN only intentional paths appear; any hook-restored planning files are detected and reset before push
 <!-- END DELTA: unified-pending-close (test-suite-governance) -->
