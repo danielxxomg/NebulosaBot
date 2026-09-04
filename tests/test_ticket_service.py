@@ -2170,18 +2170,35 @@ async def test_create_ticket_channel_without_custom_fields(
 
 
 @pytest.mark.asyncio
-async def test_create_ticket_channel_uses_sanitized_name(
+@pytest.mark.parametrize(
+    ("ticket_number", "expected_channel_name"),
+    [
+        (1, "soporte-testuser-0001"),
+        (42, "soporte-testuser-0042"),
+    ],
+    ids=["uses-sanitized-tentative-name", "renames-with-sanitized-actual"],
+)
+async def test_create_ticket_channel_sanitized_name(
+    ticket_number: int,
+    expected_channel_name: str,
     service: TicketService,
     mock_db: AsyncMock,
     ticket_row: dict,
 ) -> None:
-    """create_ticket_channel MUST use sanitize_channel_name for the channel name."""
+    """create_ticket_channel MUST use sanitize_channel_name; when tentative != actual, rename MUST use sanitized format.
+
+    Parametrized (S1b cut): both variants assert the same sanitize_channel_name
+    contract (create name == f"{category}-{username}-{number:04d}" pattern via
+    production sanitize) with the per-case expected channel name; the only
+    difference is whether the created name matches the actual ticket number
+    (no rename) or not (rename via sanitized edit).
+    """
     guild, category, author = _channel_triple("soporte-testuser-0001")
 
     mock_db.get_max_ticket_number.return_value = 0
-    mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1}
+    mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": ticket_number}
 
-    _, __ = await service.create_ticket_channel(
+    _, ticket = await service.create_ticket_channel(
         guild,
         category,
         author,
@@ -2189,34 +2206,14 @@ async def test_create_ticket_channel_uses_sanitized_name(
         category_name="Soporte",
     )
 
-    # Channel created with sanitized name.
+    # Channel created with sanitized name; renamed to sanitized actual name when number differs.
     create_kwargs = guild.create_text_channel.call_args.kwargs
-    assert create_kwargs["name"] == "soporte-testuser-0001"
-
-
-@pytest.mark.asyncio
-async def test_create_ticket_channel_renames_with_sanitized_actual(
-    service: TicketService,
-    mock_db: AsyncMock,
-    ticket_row: dict,
-) -> None:
-    """When tentative != actual, rename MUST use sanitized format."""
-    guild, category, author = _channel_triple("soporte-testuser-0001")
-
-    mock_db.get_max_ticket_number.return_value = 0
-    mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 42}
-
-    _channel, ticket = await service.create_ticket_channel(
-        guild,
-        category,
-        author,
-        guild_id="123456789",
-        category_name="Soporte",
-    )
-
-    # Channel renamed to sanitized actual name.
-    guild.create_text_channel.return_value.edit.assert_awaited_once_with(name="soporte-testuser-0042")
-    assert ticket.ticket_number == 42
+    if ticket_number == 1:
+        assert create_kwargs["name"] == expected_channel_name
+        guild.create_text_channel.return_value.edit.assert_not_awaited()
+    else:
+        guild.create_text_channel.return_value.edit.assert_awaited_once_with(name=expected_channel_name)
+    assert ticket.ticket_number == ticket_number
 
 
 @pytest.mark.asyncio
