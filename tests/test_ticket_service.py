@@ -2280,40 +2280,40 @@ async def test_reopen_uses_sanitized_channel_name(
 
 
 @pytest.mark.asyncio
-async def test_reopen_fallback_when_category_not_found(
+@pytest.mark.parametrize(
+    ("wire_category", "get_member_return", "expected_channel_name"),
+    [
+        (None, None, "ticket-user-0003"),
+        ({"name": "Soporte", "id": "cat-uuid-001"}, None, "soporte-user-0003"),
+    ],
+    ids=["fallback-when-category-not-found", "fallback-when-author-not-in-guild"],
+)
+async def test_reopen_fallback_name_resolution(
+    wire_category: dict | None,
+    get_member_return: MagicMock | None,
+    expected_channel_name: str,
     service: TicketService,
     mock_db: AsyncMock,
 ) -> None:
-    """When category lookup fails, reopen MUST fall back to 'ticket' prefix."""
+    """reopen_ticket MUST fall back when category lookup fails or author member is absent.
+
+    Parametrized (S1b cut): both variants assert the same fallback contract
+    (create_text_channel called once with the fallback-resolved sanitized
+    name) with the per-case expected name; the only difference is which input
+    degrades: category lookup returns None → 'ticket' prefix, author member
+    not found → 'user' username slot.
+    """
     ticket_id = "ticket-uuid-003"
-    # Category lookup returns None (not found).
-    guild = _wire_reopen_success(mock_db, category=None)
-    guild.get_member = MagicMock(return_value=None)
+    # Per-case degrade: category lookup failure or author not in guild.
+    guild = _wire_reopen_success(mock_db, category=wire_category)
+    guild.get_member = MagicMock(return_value=get_member_return)
 
     await service.reopen_ticket(ticket_id, guild=guild)
 
     guild.create_text_channel.assert_awaited_once()
     create_kwargs = guild.create_text_channel.call_args.kwargs
-    # Fallback: ticket-user-0003
-    assert create_kwargs["name"] == "ticket-user-0003"
-
-
-@pytest.mark.asyncio
-async def test_reopen_fallback_when_author_not_in_guild(
-    service: TicketService,
-    mock_db: AsyncMock,
-) -> None:
-    """When author member is not found, reopen MUST fall back to 'user'."""
-    ticket_id = "ticket-uuid-003"
-    guild = _wire_reopen_success(mock_db, category={"name": "Soporte", "id": "cat-uuid-001"})
-    # Author not found in guild.
-    guild.get_member = MagicMock(return_value=None)
-
-    await service.reopen_ticket(ticket_id, guild=guild)
-
-    guild.create_text_channel.assert_awaited_once()
-    create_kwargs = guild.create_text_channel.call_args.kwargs
-    assert create_kwargs["name"] == "soporte-user-0003"
+    # Fallback: ticket-user-0003 / soporte-user-0003.
+    assert create_kwargs["name"] == expected_channel_name
 
 
 # ===========================================================================
