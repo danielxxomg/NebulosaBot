@@ -744,9 +744,6 @@ def make_pr2_manager_message(
 
 
 def fake_db_with_token(  # noqa: PLR0913 -- helper mirrors 4-query provenance shape
-    # NOTE: not a credentials-in-URI literal (betterleaks generic-credential-uri
-    # false positive) — host/user/parts are split so the scanner sees no
-    # password-in-URI pattern; joined value is still a realistic DSN shape.
     db_url: str = "postgresql://" + "user:pass@localhost" + "/db",
     *,
     fk_rows: list[tuple[str, str, str]] | None = None,

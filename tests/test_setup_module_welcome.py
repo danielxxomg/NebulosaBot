@@ -12,7 +12,7 @@ from __future__ import annotations
 import io
 import json
 import pathlib
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
@@ -330,8 +330,6 @@ class TestWelcomeTemplatePicker:
     @pytest.mark.asyncio
     async def test_missing_greeting_manage_denied_ephemeral_no_mutation(self) -> None:
         """Without greeting.manage grant, picker must deny ephemerally and never mutate config."""
-        from unittest.mock import patch
-
         from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
 
         guild_id = "123456789"
