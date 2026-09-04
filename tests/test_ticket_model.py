@@ -11,11 +11,13 @@ Covers the ``ticket-model`` spec scenarios for the tickets-subsidiados change:
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from bot.models.ticket import IntegrityEvidence, RepairResult, Ticket
+from bot.models.ticket import CloseResult, IntegrityEvidence, RepairResult, Ticket
+from bot.models.ticket_note import TicketNote
 
 # ---------------------------------------------------------------------------
 # Shared row builder — a valid camelCase Supabase ticket row
@@ -46,393 +48,236 @@ def _ticket_row(**overrides: object) -> dict:
 
 
 # ===========================================================================
-# Ticket — parent_id serialization
+# Ticket — field serialization triplets (flat parametrization)
+#
+# The 21 per-field triplet functions (parent_id / subject+description /
+# custom_fields x from_db_row / to_db_dict / round-trip) are consolidated
+# into 3 flat parametrized tests. Each pytest.param reproduces its original
+# case 1:1 — same construction data, asserts verbatim — with an explicit id;
+# the collected count is unchanged (48 → 48).
 # ===========================================================================
 
 
-# ---------------------------------------------------------------------------
-# from_db_row — parentId -> parent_id
-# ---------------------------------------------------------------------------
+def _ticket(**overrides: object) -> Ticket:
+    """Return a base valid Ticket matching ``_ticket_row`` defaults, with overrides."""
+    kwargs: dict = {
+        "id": "t-0001",
+        "ticket_number": 7,
+        "guild_id": "123456789",
+        "author_id": "111111111",
+        "channel_id": "888888888",
+        "status": "open",
+        "created_at": datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
+        "last_activity": datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
+    }
+    kwargs.update(overrides)
+    return Ticket(**kwargs)
 
 
-def test_from_db_row_maps_populated_parent_id() -> None:
-    """from_db_row MUST map row['parentId'] -> ticket.parent_id when populated."""
-    row = _ticket_row(parentId="parent-uuid-123")
-
-    ticket = Ticket.from_db_row(row)
-
-    assert ticket.parent_id == "parent-uuid-123"
-
-
-def test_from_db_row_maps_null_parent_id() -> None:
-    """from_db_row MUST set parent_id=None when the row's parentId is null."""
-    row = _ticket_row(parentId=None)
-
-    ticket = Ticket.from_db_row(row)
-
-    assert ticket.parent_id is None
-
-
-def test_from_db_row_parent_id_defaults_none_when_missing() -> None:
-    """from_db_row MUST set parent_id=None when the row omits parentId entirely."""
-    row = _ticket_row()
-    row.pop("parentId")  # simulate an older row written before Migration 003
-
-    ticket = Ticket.from_db_row(row)
-
-    assert ticket.parent_id is None
-
-
-# ---------------------------------------------------------------------------
-# to_db_dict — parent_id -> "parentId"
-# ---------------------------------------------------------------------------
-
-
-def test_to_db_dict_includes_populated_parent_id() -> None:
-    """to_db_dict MUST emit 'parentId' with the parent_id value when set."""
-    ticket = Ticket(
-        id="t-0001",
-        ticket_number=7,
-        guild_id="123456789",
-        author_id="111111111",
-        channel_id="888888888",
-        status="open",
-        created_at=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
-        last_activity=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
-        parent_id="parent-uuid-123",
-    )
-
-    result = ticket.to_db_dict()
-
-    assert result["parentId"] == "parent-uuid-123"
+# from_db_row: populated rows map camelCase keys; null and missing keys both
+# yield None ("missing" = an older row written before Migration 003).
+_FROM_DB_ROW_CASES = [
+    pytest.param("parent_id", "populated", {"parentId": "parent-uuid-123"}, (), id="parent_id-populated"),
+    pytest.param("parent_id", "null", {"parentId": None}, (), id="parent_id-null"),
+    pytest.param("parent_id", "missing", {}, ("parentId",), id="parent_id-missing"),
+    pytest.param(
+        "subject_description",
+        "populated",
+        {"subject": "Login broken", "description": "Cannot access since Monday"},
+        (),
+        id="subject_description-populated",
+    ),
+    pytest.param(
+        "subject_description",
+        "null",
+        {"subject": None, "description": None},
+        (),
+        id="subject_description-null",
+    ),
+    pytest.param(
+        "subject_description",
+        "missing",
+        {},
+        ("subject", "description"),
+        id="subject_description-missing",
+    ),
+    pytest.param(
+        "custom_fields",
+        "populated",
+        {"customFields": {"player_nick": "DarkSlayer42", "evidence_url": "https://imgur.com/abc"}},
+        (),
+        id="custom_fields-populated",
+    ),
+    pytest.param("custom_fields", "null", {"customFields": None}, (), id="custom_fields-null"),
+    pytest.param("custom_fields", "missing", {}, ("customFields",), id="custom_fields-missing"),
+]
 
 
-def test_to_db_dict_includes_null_parent_id() -> None:
-    """to_db_dict MUST emit 'parentId': None when parent_id is unset."""
-    ticket = Ticket(
-        id="t-0002",
-        ticket_number=8,
-        guild_id="123456789",
-        author_id="111111111",
-        channel_id="888888889",
-        status="open",
-        created_at=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
-        last_activity=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
-        parent_id=None,
-    )
-
-    result = ticket.to_db_dict()
-
-    assert "parentId" in result
-    assert result["parentId"] is None
-
-
-# ---------------------------------------------------------------------------
-# Round-trip — parent_id survives from_db_row(to_db_dict(x))
-# ---------------------------------------------------------------------------
-
-
-def test_ticket_parent_id_round_trip_populated() -> None:
-    """A populated parent_id MUST survive a to_db_dict -> from_db_row round-trip."""
-    ticket = Ticket(
-        id="t-rt",
-        ticket_number=9,
-        guild_id="g1",
-        author_id="a1",
-        channel_id="c1",
-        status="open",
-        created_at=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
-        last_activity=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
-        parent_id="parent-rt-uuid",
-    )
-
-    rebuilt = Ticket.from_db_row(ticket.to_db_dict())
-
-    assert rebuilt.parent_id == "parent-rt-uuid"
-    assert rebuilt.id == ticket.id
-
-
-def test_ticket_parent_id_round_trip_none() -> None:
-    """A null parent_id MUST survive a to_db_dict -> from_db_row round-trip."""
-    ticket = Ticket(
-        id="t-rt-none",
-        ticket_number=10,
-        guild_id="g1",
-        author_id="a1",
-        channel_id="c1",
-        status="open",
-        created_at=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
-        last_activity=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
-        parent_id=None,
-    )
-
-    rebuilt = Ticket.from_db_row(ticket.to_db_dict())
-
-    assert rebuilt.parent_id is None
-
-
-# ===========================================================================
-# Ticket — subject / description serialization
-# ===========================================================================
-
-
-# ---------------------------------------------------------------------------
-# from_db_row — subject / description
-# ---------------------------------------------------------------------------
-
-
-def test_from_db_row_maps_populated_subject_and_description() -> None:
-    """from_db_row MUST map row['subject'] and row['description'] when populated."""
-    row = _ticket_row(subject="Login broken", description="Cannot access since Monday")
+@pytest.mark.parametrize(("field", "case", "overrides", "missing_keys"), _FROM_DB_ROW_CASES)
+def test_from_db_row_serialization_cases(field: str, case: str, overrides: dict, missing_keys: tuple) -> None:
+    """from_db_row MUST map camelCase fields for populated/null/missing rows (asserts verbatim per case)."""
+    row = _ticket_row(**overrides)
+    for key in missing_keys:
+        row.pop(key, None)
 
     ticket = Ticket.from_db_row(row)
 
-    assert ticket.subject == "Login broken"
-    assert ticket.description == "Cannot access since Monday"
-
-
-def test_from_db_row_maps_null_subject_and_description() -> None:
-    """from_db_row MUST set subject=None and description=None when null."""
-    row = _ticket_row(subject=None, description=None)
-
-    ticket = Ticket.from_db_row(row)
-
-    assert ticket.subject is None
-    assert ticket.description is None
-
-
-def test_from_db_row_subject_description_defaults_none_when_missing() -> None:
-    """from_db_row MUST default subject/description to None when keys absent."""
-    row = _ticket_row()
-    row.pop("subject")
-    row.pop("description")
-
-    ticket = Ticket.from_db_row(row)
-
-    assert ticket.subject is None
-    assert ticket.description is None
-
-
-# ---------------------------------------------------------------------------
-# to_db_dict — subject / description
-# ---------------------------------------------------------------------------
-
-
-def test_to_db_dict_includes_populated_subject_and_description() -> None:
-    """to_db_dict MUST emit 'subject' and 'description' when set."""
-    ticket = Ticket(
-        id="t-subject",
-        ticket_number=11,
-        guild_id="g1",
-        author_id="a1",
-        channel_id="c1",
-        status="open",
-        created_at=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
-        last_activity=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
-        subject="Bug",
-        description="Details",
-    )
-
-    result = ticket.to_db_dict()
-
-    assert result["subject"] == "Bug"
-    assert result["description"] == "Details"
-
-
-def test_to_db_dict_includes_null_subject_and_description() -> None:
-    """to_db_dict MUST emit subject=None and description=None when unset."""
-    ticket = Ticket(
-        id="t-subject-null",
-        ticket_number=12,
-        guild_id="g1",
-        author_id="a1",
-        channel_id="c1",
-        status="open",
-        created_at=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
-        last_activity=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
-        subject=None,
-        description=None,
-    )
-
-    result = ticket.to_db_dict()
-
-    assert "subject" in result
-    assert result["subject"] is None
-    assert "description" in result
-    assert result["description"] is None
-
-
-# ---------------------------------------------------------------------------
-# Round-trip — subject / description survive from_db_row(to_db_dict(x))
-# ---------------------------------------------------------------------------
-
-
-def test_ticket_subject_description_round_trip_populated() -> None:
-    """Populated subject/description MUST survive a to_db_dict -> from_db_row round-trip."""
-    ticket = Ticket(
-        id="t-rt-subj",
-        ticket_number=13,
-        guild_id="g1",
-        author_id="a1",
-        channel_id="c1",
-        status="open",
-        created_at=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
-        last_activity=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
-        subject="Login broken",
-        description="Cannot access since Monday",
-    )
-
-    rebuilt = Ticket.from_db_row(ticket.to_db_dict())
-
-    assert rebuilt.subject == "Login broken"
-    assert rebuilt.description == "Cannot access since Monday"
-
-
-def test_ticket_subject_description_round_trip_none() -> None:
-    """Null subject/description MUST survive a to_db_dict -> from_db_row round-trip."""
-    ticket = Ticket(
-        id="t-rt-subj-none",
-        ticket_number=14,
-        guild_id="g1",
-        author_id="a1",
-        channel_id="c1",
-        status="open",
-        created_at=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
-        last_activity=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
-        subject=None,
-        description=None,
-    )
-
-    rebuilt = Ticket.from_db_row(ticket.to_db_dict())
-
-    assert rebuilt.subject is None
-    assert rebuilt.description is None
-
-
-# ===========================================================================
-# Ticket — custom_fields serialization (JSONB object)
-# ===========================================================================
-
-
-# ---------------------------------------------------------------------------
-# from_db_row — customFields -> custom_fields
-# ---------------------------------------------------------------------------
-
-
-def test_from_db_row_maps_populated_custom_fields() -> None:
-    """from_db_row MUST map row['customFields'] -> ticket.custom_fields when populated."""
-    row = _ticket_row(customFields={"player_nick": "DarkSlayer42", "evidence_url": "https://imgur.com/abc"})
-
-    ticket = Ticket.from_db_row(row)
-
-    assert ticket.custom_fields == {"player_nick": "DarkSlayer42", "evidence_url": "https://imgur.com/abc"}
-
-
-def test_from_db_row_maps_null_custom_fields_to_none() -> None:
-    """from_db_row MUST set custom_fields=None when the row's customFields is null."""
-    row = _ticket_row(customFields=None)
-
-    ticket = Ticket.from_db_row(row)
-
-    assert ticket.custom_fields is None
-
-
-def test_from_db_row_custom_fields_defaults_none_when_missing() -> None:
-    """from_db_row MUST set custom_fields=None when the row omits customFields entirely."""
-    row = _ticket_row()
-    row.pop("customFields", None)
-
-    ticket = Ticket.from_db_row(row)
-
-    assert ticket.custom_fields is None
-
-
-# ---------------------------------------------------------------------------
-# to_db_dict — custom_fields -> "customFields"
-# ---------------------------------------------------------------------------
-
-
-def test_to_db_dict_includes_populated_custom_fields() -> None:
-    """to_db_dict MUST emit 'customFields' with the custom_fields value when set."""
-    ticket = Ticket(
-        id="t-cf-01",
-        ticket_number=20,
-        guild_id="g1",
-        author_id="a1",
-        channel_id="c1",
-        status="open",
-        created_at=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
-        last_activity=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
-        custom_fields={"player_nick": "DarkSlayer42"},
-    )
-
-    result = ticket.to_db_dict()
-
-    assert result["customFields"] == {"player_nick": "DarkSlayer42"}
-
-
-def test_to_db_dict_includes_null_custom_fields() -> None:
-    """to_db_dict MUST emit 'customFields': None when custom_fields is unset."""
-    ticket = Ticket(
-        id="t-cf-02",
-        ticket_number=21,
-        guild_id="g1",
-        author_id="a1",
-        channel_id="c1",
-        status="open",
-        created_at=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
-        last_activity=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
-        custom_fields=None,
-    )
-
-    result = ticket.to_db_dict()
-
-    assert "customFields" in result
-    assert result["customFields"] is None
-
-
-# ---------------------------------------------------------------------------
-# Round-trip — custom_fields survives from_db_row(to_db_dict(x))
-# ---------------------------------------------------------------------------
-
-
-def test_ticket_custom_fields_round_trip_populated() -> None:
-    """A populated custom_fields MUST survive a to_db_dict -> from_db_row round-trip."""
-    fields = {"player_nick": "DarkSlayer42", "evidence_url": "https://imgur.com/abc"}
-    ticket = Ticket(
-        id="t-rt-cf",
-        ticket_number=22,
-        guild_id="g1",
-        author_id="a1",
-        channel_id="c1",
-        status="open",
-        created_at=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
-        last_activity=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
-        custom_fields=fields,
-    )
-
-    rebuilt = Ticket.from_db_row(ticket.to_db_dict())
-
-    assert rebuilt.custom_fields == fields
-
-
-def test_ticket_custom_fields_round_trip_none() -> None:
-    """A null custom_fields MUST survive a to_db_dict -> from_db_row round-trip."""
-    ticket = Ticket(
-        id="t-rt-cf-none",
-        ticket_number=23,
-        guild_id="g1",
-        author_id="a1",
-        channel_id="c1",
-        status="open",
-        created_at=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
-        last_activity=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
-        custom_fields=None,
-    )
-
-    rebuilt = Ticket.from_db_row(ticket.to_db_dict())
-
-    assert rebuilt.custom_fields is None
+    match field, case:
+        case "parent_id", "populated":
+            assert ticket.parent_id == "parent-uuid-123"
+        case "parent_id", _:
+            assert ticket.parent_id is None
+        case "subject_description", "populated":
+            assert ticket.subject == "Login broken"
+            assert ticket.description == "Cannot access since Monday"
+        case "subject_description", _:
+            assert ticket.subject is None
+            assert ticket.description is None
+        case "custom_fields", "populated":
+            assert ticket.custom_fields == {"player_nick": "DarkSlayer42", "evidence_url": "https://imgur.com/abc"}
+        case _:
+            assert ticket.custom_fields is None
+
+
+# to_db_dict: populated values serialize to camelCase; None survives as None.
+_TO_DB_DICT_CASES = [
+    pytest.param("parent_id", "populated", id="parent_id-populated"),
+    pytest.param("parent_id", "null", id="parent_id-null"),
+    pytest.param("subject_description", "populated", id="subject_description-populated"),
+    pytest.param("subject_description", "null", id="subject_description-null"),
+    pytest.param("custom_fields", "populated", id="custom_fields-populated"),
+    pytest.param("custom_fields", "null", id="custom_fields-null"),
+]
+
+
+@pytest.mark.parametrize(("field", "case"), _TO_DB_DICT_CASES)
+def test_to_db_dict_cases(field: str, case: str) -> None:
+    """to_db_dict MUST emit camelCase keys with correct values (asserts verbatim per case)."""
+    match field, case:
+        case "parent_id", "populated":
+            ticket = _ticket(id="t-0001", ticket_number=7, channel_id="888888888", parent_id="parent-uuid-123")
+            result = ticket.to_db_dict()
+            assert result["parentId"] == "parent-uuid-123"
+        case "parent_id", _:
+            ticket = _ticket(id="t-0002", ticket_number=8, channel_id="888888889", parent_id=None)
+            result = ticket.to_db_dict()
+            assert "parentId" in result
+            assert result["parentId"] is None
+        case "subject_description", "populated":
+            ticket = _ticket(
+                id="t-subject",
+                ticket_number=11,
+                guild_id="g1",
+                author_id="a1",
+                channel_id="c1",
+                subject="Bug",
+                description="Details",
+            )
+            result = ticket.to_db_dict()
+            assert result["subject"] == "Bug"
+            assert result["description"] == "Details"
+        case "subject_description", _:
+            ticket = _ticket(
+                id="t-subject-null",
+                ticket_number=12,
+                guild_id="g1",
+                author_id="a1",
+                channel_id="c1",
+                subject=None,
+                description=None,
+            )
+            result = ticket.to_db_dict()
+            assert "subject" in result
+            assert result["subject"] is None
+            assert "description" in result
+            assert result["description"] is None
+        case "custom_fields", "populated":
+            ticket = _ticket(
+                id="t-cf-01",
+                ticket_number=20,
+                guild_id="g1",
+                author_id="a1",
+                channel_id="c1",
+                custom_fields={"player_nick": "DarkSlayer42"},
+            )
+            result = ticket.to_db_dict()
+            assert result["customFields"] == {"player_nick": "DarkSlayer42"}
+        case _:
+            ticket = _ticket(
+                id="t-cf-02", ticket_number=21, guild_id="g1", author_id="a1", channel_id="c1", custom_fields=None
+            )
+            result = ticket.to_db_dict()
+            assert "customFields" in result
+            assert result["customFields"] is None
+
+
+# Round-trip: values survive from_db_row(to_db_dict(x)); None stays None.
+_ROUND_TRIP_CASES = [
+    pytest.param("parent_id", "populated", id="parent_id-populated"),
+    pytest.param("parent_id", "none", id="parent_id-none"),
+    pytest.param("subject_description", "populated", id="subject_description-populated"),
+    pytest.param("subject_description", "none", id="subject_description-none"),
+    pytest.param("custom_fields", "populated", id="custom_fields-populated"),
+    pytest.param("custom_fields", "none", id="custom_fields-none"),
+]
+
+
+@pytest.mark.parametrize(("field", "case"), _ROUND_TRIP_CASES)
+def test_ticket_round_trip_cases(field: str, case: str) -> None:
+    """Values MUST survive a to_db_dict -> from_db_row round-trip (asserts verbatim per case)."""
+    match field, case:
+        case "parent_id", "populated":
+            ticket = _ticket(
+                id="t-rt", ticket_number=9, guild_id="g1", author_id="a1", channel_id="c1", parent_id="parent-rt-uuid"
+            )
+            rebuilt = Ticket.from_db_row(ticket.to_db_dict())
+            assert rebuilt.parent_id == "parent-rt-uuid"
+            assert rebuilt.id == ticket.id
+        case "parent_id", _:
+            ticket = _ticket(
+                id="t-rt-none", ticket_number=10, guild_id="g1", author_id="a1", channel_id="c1", parent_id=None
+            )
+            rebuilt = Ticket.from_db_row(ticket.to_db_dict())
+            assert rebuilt.parent_id is None
+        case "subject_description", "populated":
+            ticket = _ticket(
+                id="t-rt-subj",
+                ticket_number=13,
+                guild_id="g1",
+                author_id="a1",
+                channel_id="c1",
+                subject="Login broken",
+                description="Cannot access since Monday",
+            )
+            rebuilt = Ticket.from_db_row(ticket.to_db_dict())
+            assert rebuilt.subject == "Login broken"
+            assert rebuilt.description == "Cannot access since Monday"
+        case "subject_description", _:
+            ticket = _ticket(
+                id="t-rt-subj-none",
+                ticket_number=14,
+                guild_id="g1",
+                author_id="a1",
+                channel_id="c1",
+                subject=None,
+                description=None,
+            )
+            rebuilt = Ticket.from_db_row(ticket.to_db_dict())
+            assert rebuilt.subject is None
+            assert rebuilt.description is None
+        case "custom_fields", "populated":
+            fields = {"player_nick": "DarkSlayer42", "evidence_url": "https://imgur.com/abc"}
+            ticket = _ticket(
+                id="t-rt-cf", ticket_number=22, guild_id="g1", author_id="a1", channel_id="c1", custom_fields=fields
+            )
+            rebuilt = Ticket.from_db_row(ticket.to_db_dict())
+            assert rebuilt.custom_fields == fields
+        case _:
+            ticket = _ticket(
+                id="t-rt-cf-none", ticket_number=23, guild_id="g1", author_id="a1", channel_id="c1", custom_fields=None
+            )
+            rebuilt = Ticket.from_db_row(ticket.to_db_dict())
+            assert rebuilt.custom_fields is None
 
 
 # ===========================================================================
@@ -463,8 +308,6 @@ def _note_row(**overrides: object) -> dict:
 
 def test_ticket_note_from_db_row_maps_camelcase() -> None:
     """TicketNote.from_db_row MUST map camelCase DB keys to snake_case attrs."""
-    from bot.models.ticket_note import TicketNote
-
     note = TicketNote.from_db_row(_note_row())
 
     assert note.id == "n-0001"
@@ -479,8 +322,6 @@ def test_ticket_note_from_db_row_preserves_created_at() -> None:
     Mirrors the project convention (Ticket/TicketCategory keep the raw DB
     timestamp value rather than parsing it back to a datetime).
     """
-    from bot.models.ticket_note import TicketNote
-
     note = TicketNote.from_db_row(_note_row(createdAt="2026-07-04T09:15:00+00:00"))
 
     assert note.created_at == "2026-07-04T09:15:00+00:00"
@@ -488,8 +329,6 @@ def test_ticket_note_from_db_row_preserves_created_at() -> None:
 
 def test_ticket_note_from_db_row_handles_missing_created_at() -> None:
     """TicketNote.from_db_row MUST default created_at to None when absent."""
-    from bot.models.ticket_note import TicketNote
-
     row = _note_row()
     row.pop("createdAt")
 
@@ -506,8 +345,6 @@ def test_ticket_note_from_db_row_handles_missing_created_at() -> None:
 
 def test_ticket_note_to_db_dict_uses_camelcase_keys() -> None:
     """TicketNote.to_db_dict MUST emit camelCase keys with correct values."""
-    from bot.models.ticket_note import TicketNote
-
     note = TicketNote(
         id="n-0002",
         ticket_id="t-0001",
@@ -527,8 +364,6 @@ def test_ticket_note_to_db_dict_uses_camelcase_keys() -> None:
 
 def test_ticket_note_to_db_dict_none_created_at() -> None:
     """TicketNote.to_db_dict MUST emit 'createdAt': None when created_at is unset."""
-    from bot.models.ticket_note import TicketNote
-
     note = TicketNote(
         id="n-0003",
         ticket_id="t-0001",
@@ -555,8 +390,6 @@ def test_ticket_note_round_trip() -> None:
     (from_db_row does not parse ISO strings back to datetime), matching the
     TicketCategory round-trip convention.
     """
-    from bot.models.ticket_note import TicketNote
-
     original = TicketNote(
         id="n-rt",
         ticket_id="t-rt",
@@ -858,8 +691,6 @@ def test_integrity_evidence_source_defaults_none() -> None:
 
 def test_close_result_success_contract() -> None:
     """A successful close result carries reason, transcript URL, and evidence."""
-    from bot.models.ticket import CloseResult
-
     result = CloseResult(
         ticket_id="t1",
         outcome="success",
@@ -876,8 +707,6 @@ def test_close_result_success_contract() -> None:
 
 def test_close_result_denied_and_error_are_distinct() -> None:
     """Denied and error outcomes MUST be distinguishable from success."""
-    from bot.models.ticket import CloseResult
-
     denied = CloseResult("t2", "denied", "already_closed", None, None)
     errored = CloseResult("t3", "error", "HTTPException", None, None)
 
@@ -891,12 +720,6 @@ def test_close_result_denied_and_error_are_distinct() -> None:
 
 def test_close_result_is_immutable_and_serializable() -> None:
     """CloseResult MUST be frozen and round-trip its fields."""
-    from dataclasses import FrozenInstanceError
-
-    import pytest
-
-    from bot.models.ticket import CloseResult
-
     result = CloseResult(
         ticket_id="t1",
         outcome="success",

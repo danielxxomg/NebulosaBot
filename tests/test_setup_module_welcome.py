@@ -17,71 +17,12 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
+from tests.conftest import make_greeting_bot as _make_bot_with_greeting
+from tests.conftest import make_greeting_interaction as _make_interaction
+
 # Locale snapshots read once at import (sync context — ASYNC240 forbids blocking
 # pathlib reads inside async tests). Read-only; tests never mutate locale files.
 _ES_LOCALE = json.loads(pathlib.Path("bot/locales/es.json").read_text(encoding="utf-8"))
-
-
-def _make_bot_with_greeting(guild_id: str = "123456789", config: MagicMock | None = None) -> MagicMock:
-    bot = MagicMock()
-    bot.greeting_service = MagicMock()
-    cfg = config or MagicMock(
-        guild_id=guild_id,
-        welcome_channel_id="111222333",
-        welcome_enabled=True,
-        welcome_message="Welcome {mention}",
-        welcome_card_enabled=True,
-        theme_id=None,
-        goodbye_channel_id=None,
-        goodbye_enabled=False,
-        goodbye_message=None,
-        goodbye_card_enabled=False,
-        onboarding_channel_id=None,
-        card_enabled=True,
-        updated_at=None,
-    )
-    cfg.guild_id = guild_id
-    bot.greeting_service.get_config = AsyncMock(return_value=cfg)
-    bot.greeting_service.save_config = AsyncMock(return_value=None)
-    bot.greeting_service.resolve_renderer = MagicMock(return_value=lambda **_: io.BytesIO(b"fake-card"))
-    bot.greeting_service.dispatch_greeting = AsyncMock()
-    # For dispatch_welcome preview path we also mock GreetingService internals indirectly via real render path
-    bot.guild_service = MagicMock()
-    bot.guild_service.get_config = AsyncMock(return_value=MagicMock(language="es"))
-    return bot
-
-
-def _make_interaction(guild_id: int = 123456789, user_id: int = 111, client: MagicMock | None = None) -> MagicMock:
-    inter = MagicMock(spec=discord.Interaction)
-    inter.guild = MagicMock(spec=discord.Guild)
-    inter.guild.id = guild_id
-    inter.guild_id = guild_id
-    inter.guild.name = "TestGuild"
-    # guild.get_channel for preview delivery
-    chan = MagicMock(spec=discord.TextChannel)
-    chan.send = AsyncMock()
-    inter.guild.get_channel = MagicMock(return_value=chan)
-    inter.guild.member_count = 42
-    inter.guild.icon = None
-    inter.user = MagicMock(spec=discord.Member)
-    inter.user.id = user_id
-    inter.user.display_name = "Tester"
-    inter.user.display_avatar = MagicMock()
-    inter.user.display_avatar.url = "https://cdn.example/ava.png"
-    inter.user.guild_permissions.administrator = True
-    inter.response = MagicMock()
-    inter.response.send_message = AsyncMock()
-    inter.response.send_modal = AsyncMock()
-    inter.response.defer = AsyncMock()
-    inter.response.edit_message = AsyncMock()
-    inter.response.is_done.return_value = False
-    inter.followup = MagicMock()
-    inter.followup.send = AsyncMock()
-    inter.message = MagicMock()
-    inter.message.edit = AsyncMock()
-    inter.client = client or _make_bot_with_greeting(str(guild_id))
-    inter.data = {"custom_id": "setup:welcome:test"}
-    return inter
 
 
 class TestWelcomeModuleRegistration:
@@ -132,7 +73,7 @@ class TestWelcomeModuleParity:
             onboarding_channel_id=None,
         )
         cfg.guild_id = guild_id
-        bot = _make_bot_with_greeting(guild_id, cfg)
+        bot = _make_bot_with_greeting("welcome", guild_id=guild_id, config=cfg)
         mod = WelcomeSetupModule(bot=bot)
 
         # Welcome module handle for saving channel: we simulate a modal submit path
@@ -160,7 +101,7 @@ class TestWelcomeModuleParity:
     async def test_save_invalidates_cache_like_legacy(self) -> None:
         """Cache invalidation must be delegated to GreetingService.save_config (same as legacy /welcome channel)."""
         guild_id = "123456789"
-        bot = _make_bot_with_greeting(guild_id)
+        bot = _make_bot_with_greeting("welcome", guild_id=guild_id)
         from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
 
         mod = WelcomeSetupModule(bot=bot)
@@ -213,7 +154,7 @@ class TestWelcomePreviewRealArtifact:
             onboarding_channel_id=None,
         )
         cfg.guild_id = guild_id
-        bot = _make_bot_with_greeting(guild_id, cfg)
+        bot = _make_bot_with_greeting("welcome", guild_id=guild_id, config=cfg)
         # Make resolve_renderer return a callable that records it was the REAL renderer (not a fake)
         render_calls: list[dict] = []
 
@@ -256,7 +197,7 @@ class TestWelcomePreviewRealArtifact:
             onboarding_channel_id=None,
         )
         cfg.guild_id = guild_id
-        bot = _make_bot_with_greeting(guild_id, cfg)
+        bot = _make_bot_with_greeting("welcome", guild_id=guild_id, config=cfg)
         bot.greeting_service.resolve_renderer = MagicMock(return_value=lambda **_: io.BytesIO(b"x"))
 
         from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
@@ -300,7 +241,7 @@ class TestWelcomeComponents:
     def test_components_include_test_button(self) -> None:
         from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
 
-        mod = WelcomeSetupModule(bot=_make_bot_with_greeting())
+        mod = WelcomeSetupModule(bot=_make_bot_with_greeting("welcome"))
         items = mod.components("123456789")
         cids = {getattr(i, "custom_id", None) for i in items}
         assert "setup:welcome:test" in cids
@@ -314,7 +255,7 @@ class TestWelcomeTemplatePicker:
     def test_components_include_template_select(self) -> None:
         from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
 
-        mod = WelcomeSetupModule(bot=_make_bot_with_greeting())
+        mod = WelcomeSetupModule(bot=_make_bot_with_greeting("welcome"))
         items = mod.components("123456789")
         select = next(
             (i for i in items if getattr(i, "custom_id", None) == "setup:welcome:select_template"),
@@ -326,7 +267,7 @@ class TestWelcomeTemplatePicker:
     def test_template_select_offers_exactly_four_options(self) -> None:
         from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
 
-        mod = WelcomeSetupModule(bot=_make_bot_with_greeting())
+        mod = WelcomeSetupModule(bot=_make_bot_with_greeting("welcome"))
         items = mod.components("123456789")
         select = next(i for i in items if getattr(i, "custom_id", None) == "setup:welcome:select_template")
         assert isinstance(select, discord.ui.Select)
@@ -340,7 +281,7 @@ class TestWelcomeTemplatePicker:
 
         es = _ES_LOCALE
         set_guild_language("123456789", "es")
-        mod = WelcomeSetupModule(bot=_make_bot_with_greeting())
+        mod = WelcomeSetupModule(bot=_make_bot_with_greeting("welcome"))
         items = mod.components("123456789")
         select = next(i for i in items if getattr(i, "custom_id", None) == "setup:welcome:select_template")
         assert isinstance(select, discord.ui.Select)
@@ -357,7 +298,7 @@ class TestWelcomeTemplatePicker:
         from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
 
         guild_id = "123456789"
-        bot = _make_bot_with_greeting(guild_id)
+        bot = _make_bot_with_greeting("welcome", guild_id=guild_id)
         bot.greeting_service.get_config = AsyncMock(
             return_value=MagicMock(
                 guild_id=guild_id,
@@ -394,7 +335,7 @@ class TestWelcomeTemplatePicker:
         from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
 
         guild_id = "123456789"
-        bot = _make_bot_with_greeting(guild_id)
+        bot = _make_bot_with_greeting("welcome", guild_id=guild_id)
         mod = WelcomeSetupModule(bot=bot)
         interaction = _make_interaction(guild_id=int(guild_id), client=bot)
         interaction.user.guild_permissions.administrator = False
@@ -419,7 +360,7 @@ class TestWelcomeTemplatePicker:
         es = _ES_LOCALE
         set_guild_language("123456789", "es")
         guild_id = "123456789"
-        bot = _make_bot_with_greeting(guild_id)
+        bot = _make_bot_with_greeting("welcome", guild_id=guild_id)
         bot.greeting_service.get_config = AsyncMock(
             return_value=MagicMock(
                 guild_id=guild_id,
