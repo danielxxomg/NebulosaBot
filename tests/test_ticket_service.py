@@ -1958,17 +1958,32 @@ async def test_create_ticket_channel_creates_channel_and_inserts(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("ticket_number", "renamed"),
+    [
+        (42, True),
+        (1, False),
+    ],
+    ids=["number-differs-renames", "number-matches-no-rename"],
+)
 async def test_create_ticket_channel_renames_if_number_differs(
+    ticket_number: int,
+    renamed: bool,
     service: TicketService,
     mock_db: AsyncMock,
     ticket_row: dict,
 ) -> None:
-    """When tentative name differs from actual ticket number, channel MUST be renamed."""
-    # Channel created with tentative name "support-testuser-0001" but DB returns ticketNumber=42.
+    """When tentative name differs from actual ticket number, channel MUST be renamed; matching number MUST NOT rename.
+
+    Parametrized (S1a cut): both variants create the channel with tentative
+    name "support-testuser-0001" and assert the rename contract against the
+    DB-returned ticketNumber.
+    """
+    # Channel created with tentative name "support-testuser-0001" but DB returns ticketNumber=ticket_number.
     guild, category, author = _channel_triple("support-testuser-0001")
 
     mock_db.get_max_ticket_number.return_value = 0
-    mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 42}
+    mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": ticket_number}
 
     _channel, ticket = await service.create_ticket_channel(
         guild,
@@ -1978,34 +1993,12 @@ async def test_create_ticket_channel_renames_if_number_differs(
         category_name="Support",
     )
 
-    # Channel renamed to match actual ticket number.
-    guild.create_text_channel.return_value.edit.assert_awaited_once_with(name="support-testuser-0042")
-    assert ticket.ticket_number == 42
-
-
-@pytest.mark.asyncio
-async def test_create_ticket_channel_no_rename_if_name_matches(
-    service: TicketService,
-    mock_db: AsyncMock,
-    ticket_row: dict,
-) -> None:
-    """When tentative name matches actual ticket number, no rename is needed."""
-    guild, category, author = _channel_triple("support-testuser-0001")
-
-    mock_db.get_max_ticket_number.return_value = 0
-    mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1}
-
-    _channel, ticket = await service.create_ticket_channel(
-        guild,
-        category,
-        author,
-        guild_id="123456789",
-        category_name="Support",
-    )
-
-    # No rename needed.
-    guild.create_text_channel.return_value.edit.assert_not_awaited()
-    assert ticket.ticket_number == 1
+    # Channel renamed iff actual ticket number differs from the tentative name.
+    if renamed:
+        guild.create_text_channel.return_value.edit.assert_awaited_once_with(name="support-testuser-0042")
+    else:
+        guild.create_text_channel.return_value.edit.assert_not_awaited()
+    assert ticket.ticket_number == ticket_number
 
 
 @pytest.mark.asyncio
