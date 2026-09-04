@@ -18,7 +18,11 @@ import pytest
 from bot.cogs.tickets import (
     TicketActionsView,
 )
-from bot.models.ticket import Ticket
+from bot.core.cache import TTLCache
+from bot.models.ticket import IntegrityEvidence, Ticket
+from bot.services.integrity_report import evaluate_live_preflight
+from bot.services.ticket_service import TicketService
+from bot.views.tickets import TicketIntakeModal
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -54,6 +58,154 @@ def _make_category_row() -> dict:
         "position": 1,
         "active": True,
     }
+
+
+_TWO_FIELD_DEFS = [
+    {"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True, "max_length": 100},
+    {"key": "evidence_url", "label": "Evidence URL", "style": "short", "required": False, "max_length": 200},
+]
+
+
+def _make_ticket_service(db: AsyncMock, cache: Any = None) -> TicketService:
+    """Return a real TicketService wired to a mock DB (shared by repair/PR5 flows)."""
+    return TicketService(db=db, cache=cache or TTLCache())
+
+
+def _make_bot_with_missing_channel() -> MagicMock:
+    """Return a mock bot whose guild resolves to a NotFound fetch_channel probe."""
+    guild = MagicMock(spec=discord.Guild)
+    guild.id = 123456789
+    guild.fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(), "gone"))
+    bot = MagicMock()
+    bot.get_guild = MagicMock(return_value=guild)
+    return bot
+
+
+def _resolved_preflight() -> Any:
+    """Return a resolved (ACTIVE_HEALTHY) live preflight for the shared repair path."""
+    return evaluate_live_preflight(
+        project_status="ACTIVE_HEALTHY",
+        migration_015_applied=True,
+        close_reason_nullable=True,
+        required_indexes_present=True,
+        realtime_publication_covers=["guild", "greeting_config", "ticket", "ticket_note"],
+        active_rows_channel_id_non_null=3,
+        observed_at=datetime.now(UTC).isoformat(),
+    )
+
+
+def _wire_closed_transition(mock_db: AsyncMock, row: dict) -> dict:
+    """Stub the close transition + audit rows; return the closed row shape."""
+    closed_row = {**row, "status": "closed", "closedAt": "2026-01-15T10:00:00+00:00"}
+    mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
+    mock_db.insert_audit_row = AsyncMock(return_value={})
+    return closed_row
+
+
+def _make_evidence(row: dict) -> IntegrityEvidence:
+    """Return corroborated evidence that the ticket's channel no longer exists."""
+    return IntegrityEvidence(
+        ticket_id=row["id"],
+        guild_id=row["guildId"],
+        channel_id=row["channelId"],
+        status="open",
+        channel_exists=False,
+    )
+
+
+async def _call_manual_repair(
+    service: TicketService,
+    row: dict,
+    operator: Any,
+    bot: MagicMock,
+    preflight: Any,
+    *,
+    global_grant: Any = None,
+) -> Any:
+    """Shared repair_ticket_manual call shape for the operator grant test."""
+    return await service.repair_ticket_manual(
+        row["id"],
+        guild_id="123456789",
+        actor_id="owner-1",
+        authority=operator,
+        bot=bot,
+        preflight=preflight,
+        global_grant=global_grant,
+    )
+
+
+def _wire_create_flow(
+    ticket_bot: MagicMock,
+    mock_ticket_guild: MagicMock,
+    mock_ticket_channel: MagicMock,
+    *,
+    with_create_ticket: bool = False,
+) -> Ticket:
+    """Shared open-flow scaffold: config, category channel, ticket + create mocks."""
+    config = MagicMock()
+    config.ticket_category_id = "100000000"
+    config.mod_role_id = None
+    ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
+    ticket_bot.db.get_max_ticket_number = AsyncMock(return_value=0)
+
+    category_channel = MagicMock(spec=discord.CategoryChannel)
+    mock_ticket_guild.get_channel = MagicMock(return_value=category_channel)
+
+    ticket_row = _make_ticket_row(ticket_number=1)
+    ticket = Ticket.from_db_row(ticket_row)
+    if with_create_ticket:
+        ticket_bot.ticket_service.create_ticket = AsyncMock(return_value=ticket)
+    ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, ticket))
+    return ticket
+
+
+def _make_modal_interaction(ticket_bot: MagicMock, mock_ticket_guild: MagicMock) -> MagicMock:
+    """Return a mock interaction for TicketIntakeModal.on_submit."""
+    modal_interaction = MagicMock(spec=discord.Interaction)
+    modal_interaction.guild = mock_ticket_guild
+    modal_interaction.user = MagicMock(spec=discord.Member)
+    modal_interaction.user.id = 111111111
+    modal_interaction.user.mention = "<@111111111>"
+    modal_interaction.client = ticket_bot
+    modal_interaction.guild_id = mock_ticket_guild.id
+    modal_interaction.response = MagicMock()
+    modal_interaction.response.defer = AsyncMock()
+    modal_interaction.followup = MagicMock()
+    modal_interaction.followup.send = AsyncMock()
+    return modal_interaction
+
+
+def _make_intake_modal(
+    mock_ticket_guild: MagicMock,
+    *,
+    category_name: str = "Support",
+    title: str = "Help me",
+    description: str | None = None,
+    field_definitions: list[dict[str, Any]] | None = None,
+) -> TicketIntakeModal:
+    """Build a TicketIntakeModal with mock text inputs wired for on_submit."""
+    modal = TicketIntakeModal(
+        guild=mock_ticket_guild,
+        category_id="cat-uuid-001",
+        category_name=category_name,
+        field_definitions=field_definitions,
+    )
+    modal.title_input = MagicMock(value=title)
+    modal.description_input = MagicMock(value=description)
+    return modal
+
+
+async def _submit_intake_modal(
+    modal: TicketIntakeModal,
+    modal_interaction: MagicMock,
+    mock_ticket_channel: MagicMock,
+) -> None:
+    """Wire the channel send and submit the modal under the TicketActionsView patch."""
+    sent_message = AsyncMock()
+    mock_ticket_channel.send = AsyncMock(return_value=sent_message)
+
+    with patch("bot.views.tickets.TicketActionsView"):
+        await modal.on_submit(modal_interaction)
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +296,6 @@ class TestTicketFlow:
         ticket_bot: MagicMock,
         mock_ticket_guild: MagicMock,
         mock_ticket_channel: MagicMock,
-        ticket_interaction: MagicMock,
         mock_db: AsyncMock,
     ) -> None:
         """Panel button click → modal shown → submit → channel created via service.
@@ -152,53 +303,13 @@ class TestTicketFlow:
         Scenario: user clicks panel button → modal shown → user submits →
         ticket_service.create_ticket_channel called → channel returned.
         """
-        ticket_interaction.client = ticket_bot
+        _wire_create_flow(ticket_bot, mock_ticket_guild, mock_ticket_channel, with_create_ticket=True)
 
-        # Setup mocks for the modal submit flow.
-        config = MagicMock()
-        config.ticket_category_id = "100000000"
-        config.mod_role_id = None
-        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
-        ticket_bot.db.get_max_ticket_number = AsyncMock(return_value=0)
+        modal_interaction = _make_modal_interaction(ticket_bot, mock_ticket_guild)
 
-        # Category channel mock.
-        category_channel = MagicMock(spec=discord.CategoryChannel)
-        mock_ticket_guild.get_channel = MagicMock(return_value=category_channel)
+        modal = _make_intake_modal(mock_ticket_guild)
 
-        # Ticket service returns a ticket model.
-        ticket_row = _make_ticket_row(ticket_number=1)
-        ticket = Ticket.from_db_row(ticket_row)
-        ticket_bot.ticket_service.create_ticket = AsyncMock(return_value=ticket)
-        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, ticket))
-
-        # Build a modal interaction and submit.
-        modal_interaction = MagicMock(spec=discord.Interaction)
-        modal_interaction.guild = mock_ticket_guild
-        modal_interaction.user = MagicMock(spec=discord.Member)
-        modal_interaction.user.id = 111111111
-        modal_interaction.user.mention = "<@111111111>"
-        modal_interaction.client = ticket_bot
-        modal_interaction.guild_id = mock_ticket_guild.id
-        modal_interaction.response = MagicMock()
-        modal_interaction.response.defer = AsyncMock()
-        modal_interaction.followup = MagicMock()
-        modal_interaction.followup.send = AsyncMock()
-
-        from bot.views.tickets import TicketIntakeModal
-
-        modal = TicketIntakeModal(
-            guild=mock_ticket_guild,
-            category_id="cat-uuid-001",
-            category_name="Support",
-        )
-        modal.title_input = MagicMock(value="Help me")
-        modal.description_input = MagicMock(value=None)
-
-        sent_message = AsyncMock()
-        mock_ticket_channel.send = AsyncMock(return_value=sent_message)
-
-        with patch("bot.views.tickets.TicketActionsView"):
-            await modal.on_submit(modal_interaction)
+        await _submit_intake_modal(modal, modal_interaction, mock_ticket_channel)
 
         # 1. ticket_service.create_ticket_channel was called.
         ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
@@ -283,37 +394,11 @@ class TestCustomFieldsFlow:
         mock_db: AsyncMock,
     ) -> None:
         """Modal with field_definitions → submit → custom_fields passed to create_ticket_channel."""
-        config = MagicMock()
-        config.ticket_category_id = "100000000"
-        config.mod_role_id = None
-        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
-        ticket_bot.db.get_max_ticket_number = AsyncMock(return_value=0)
+        _wire_create_flow(ticket_bot, mock_ticket_guild, mock_ticket_channel)
 
-        category_channel = MagicMock(spec=discord.CategoryChannel)
-        mock_ticket_guild.get_channel = MagicMock(return_value=category_channel)
+        modal_interaction = _make_modal_interaction(ticket_bot, mock_ticket_guild)
 
-        ticket_row = _make_ticket_row(ticket_number=1)
-        ticket = Ticket.from_db_row(ticket_row)
-        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, ticket))
-
-        modal_interaction = MagicMock(spec=discord.Interaction)
-        modal_interaction.guild = mock_ticket_guild
-        modal_interaction.user = MagicMock(spec=discord.Member)
-        modal_interaction.user.id = 111111111
-        modal_interaction.user.mention = "<@111111111>"
-        modal_interaction.client = ticket_bot
-        modal_interaction.guild_id = mock_ticket_guild.id
-        modal_interaction.response = MagicMock()
-        modal_interaction.response.defer = AsyncMock()
-        modal_interaction.followup = MagicMock()
-        modal_interaction.followup.send = AsyncMock()
-
-        from bot.views.tickets import TicketIntakeModal
-
-        field_defs = [
-            {"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True, "max_length": 100},
-            {"key": "evidence_url", "label": "Evidence URL", "style": "short", "required": False, "max_length": 200},
-        ]
+        field_defs = _TWO_FIELD_DEFS
 
         modal = TicketIntakeModal(
             guild=mock_ticket_guild,
@@ -332,11 +417,7 @@ class TestCustomFieldsFlow:
         mock_evidence_input.value = "https://imgur.com/proof"
         modal._custom_inputs = [mock_nick_input, mock_evidence_input]
 
-        sent_message = AsyncMock()
-        mock_ticket_channel.send = AsyncMock(return_value=sent_message)
-
-        with patch("bot.views.tickets.TicketActionsView"):
-            await modal.on_submit(modal_interaction)
+        await _submit_intake_modal(modal, modal_interaction, mock_ticket_channel)
 
         # 1. create_ticket_channel was called with custom_fields.
         ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
@@ -354,46 +435,13 @@ class TestCustomFieldsFlow:
         mock_db: AsyncMock,
     ) -> None:
         """Modal without field_definitions → no custom_fields in service call."""
-        config = MagicMock()
-        config.ticket_category_id = "100000000"
-        config.mod_role_id = None
-        ticket_bot.guild_service.get_config = AsyncMock(return_value=config)
-        ticket_bot.db.get_max_ticket_number = AsyncMock(return_value=0)
+        _wire_create_flow(ticket_bot, mock_ticket_guild, mock_ticket_channel)
 
-        category_channel = MagicMock(spec=discord.CategoryChannel)
-        mock_ticket_guild.get_channel = MagicMock(return_value=category_channel)
+        modal_interaction = _make_modal_interaction(ticket_bot, mock_ticket_guild)
 
-        ticket_row = _make_ticket_row(ticket_number=1)
-        ticket = Ticket.from_db_row(ticket_row)
-        ticket_bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_ticket_channel, ticket))
+        modal = _make_intake_modal(mock_ticket_guild)
 
-        modal_interaction = MagicMock(spec=discord.Interaction)
-        modal_interaction.guild = mock_ticket_guild
-        modal_interaction.user = MagicMock(spec=discord.Member)
-        modal_interaction.user.id = 111111111
-        modal_interaction.user.mention = "<@111111111>"
-        modal_interaction.client = ticket_bot
-        modal_interaction.guild_id = mock_ticket_guild.id
-        modal_interaction.response = MagicMock()
-        modal_interaction.response.defer = AsyncMock()
-        modal_interaction.followup = MagicMock()
-        modal_interaction.followup.send = AsyncMock()
-
-        from bot.views.tickets import TicketIntakeModal
-
-        modal = TicketIntakeModal(
-            guild=mock_ticket_guild,
-            category_id="cat-uuid-001",
-            category_name="Support",
-        )
-        modal.title_input = MagicMock(value="Help me")
-        modal.description_input = MagicMock(value=None)
-
-        sent_message = AsyncMock()
-        mock_ticket_channel.send = AsyncMock(return_value=sent_message)
-
-        with patch("bot.views.tickets.TicketActionsView"):
-            await modal.on_submit(modal_interaction)
+        await _submit_intake_modal(modal, modal_interaction, mock_ticket_channel)
 
         ticket_bot.ticket_service.create_ticket_channel.assert_awaited_once()
         call_kwargs = ticket_bot.ticket_service.create_ticket_channel.call_args.kwargs
@@ -410,10 +458,7 @@ class TestCustomFieldsFlow:
         """Welcome embed includes custom fields as inline fields."""
         from bot.utils.embeds import build_ticket_embed
 
-        field_defs = [
-            {"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True, "max_length": 100},
-            {"key": "evidence_url", "label": "Evidence URL", "style": "short", "required": False, "max_length": 200},
-        ]
+        field_defs = _TWO_FIELD_DEFS
 
         ticket_row = {
             **_make_ticket_row(ticket_number=1),
@@ -446,9 +491,7 @@ class TestCustomFieldsFlow:
         from bot.utils.embeds import build_ticket_embed
 
         # Category had 2 fields, now only 1.
-        current_defs = [
-            {"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True, "max_length": 100},
-        ]
+        current_defs = _TWO_FIELD_DEFS[:1]
 
         # Ticket was submitted with both fields.
         ticket_row = {
@@ -494,13 +537,6 @@ class TestCustomFieldsFlow:
 class TestIntegrityRepairFlow:
     """End-to-end evidence-gated repair across entry points (disabled by default)."""
 
-    @staticmethod
-    def _service_with(db: AsyncMock, cache: Any = None) -> Any:
-        from bot.core.cache import TTLCache
-        from bot.services.ticket_service import TicketService
-
-        return TicketService(db=db, cache=cache or TTLCache())
-
     async def test_delete_event_to_evidence_to_repair_to_close(
         self,
         mock_db: AsyncMock,
@@ -510,12 +546,10 @@ class TestIntegrityRepairFlow:
 
         from bot.listeners.audit_listener import AuditListener
 
-        service = self._service_with(mock_db)
+        service = _make_ticket_service(mock_db)
         row = _make_ticket_row(ticket_number=1, status="open")
         mock_db.get_active_ticket_by_channel = AsyncMock(return_value=row)
-        closed_row = {**row, "status": "closed", "closedAt": "2026-01-15T10:00:00+00:00"}
-        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
-        mock_db.insert_audit_row = AsyncMock(return_value={})
+        _wire_closed_transition(mock_db, row)
 
         bot = MagicMock()
         bot.ticket_service = service
@@ -545,22 +579,14 @@ class TestIntegrityRepairFlow:
         mock_db: AsyncMock,
     ) -> None:
         """Manual repair: authority -> fresh probe -> shared evidence path."""
-        import discord
-
         from bot.services.ticket_invariants import RepairAuthority
 
-        service = self._service_with(mock_db)
+        service = _make_ticket_service(mock_db)
         row = _make_ticket_row(ticket_number=1, status="open")
         mock_db.get_ticket = AsyncMock(return_value=row)
-        closed_row = {**row, "status": "closed", "closedAt": "2026-01-15T10:00:00+00:00"}
-        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
-        mock_db.insert_audit_row = AsyncMock(return_value={})
+        _wire_closed_transition(mock_db, row)
 
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = 123456789
-        guild.fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(), "gone"))
-        bot = MagicMock()
-        bot.get_guild = MagicMock(return_value=guild)
+        bot = _make_bot_with_missing_channel()
 
         authority = RepairAuthority(
             actor_id="111111111",
@@ -588,7 +614,7 @@ class TestIntegrityRepairFlow:
         """A cross-guild manual repair is denied before any probe or mutation."""
         from bot.services.ticket_invariants import RepairAuthority
 
-        service = self._service_with(mock_db)
+        service = _make_ticket_service(mock_db)
         authority = RepairAuthority(
             actor_id="111111111",
             guild_id="123456789",
@@ -614,32 +640,12 @@ class TestIntegrityRepairFlow:
         mock_db: AsyncMock,
     ) -> None:
         """Resolved preflight + corroborated absence → close + audit across the shared path."""
-
-        from bot.models.ticket import IntegrityEvidence
-        from bot.services.integrity_report import evaluate_live_preflight
-
-        service = self._service_with(mock_db)
+        service = _make_ticket_service(mock_db)
         row = _make_ticket_row(ticket_number=1, status="open")
-        closed_row = {**row, "status": "closed", "closedAt": "2026-01-15T10:00:00+00:00"}
-        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
-        mock_db.insert_audit_row = AsyncMock(return_value={})
+        _wire_closed_transition(mock_db, row)
 
-        preflight = evaluate_live_preflight(
-            project_status="ACTIVE_HEALTHY",
-            migration_015_applied=True,
-            close_reason_nullable=True,
-            required_indexes_present=True,
-            realtime_publication_covers=["guild", "greeting_config", "ticket", "ticket_note"],
-            active_rows_channel_id_non_null=3,
-            observed_at=datetime.now(UTC).isoformat(),
-        )
-        evidence = IntegrityEvidence(
-            ticket_id=row["id"],
-            guild_id=row["guildId"],
-            channel_id=row["channelId"],
-            status="open",
-            channel_exists=False,
-        )
+        preflight = _resolved_preflight()
+        evidence = _make_evidence(row)
         assert evidence.corroborated is True
 
         result = await service.repair_ticket_from_evidence(
@@ -663,23 +669,15 @@ class TestIntegrityRepairFlow:
         mock_db: AsyncMock,
     ) -> None:
         """End-to-end: an operator is read-only without a grant, mutating with a grant."""
-        import discord
 
-        from bot.services.integrity_report import evaluate_live_preflight
         from bot.services.ticket_invariants import GlobalMutationGrant, RepairAuthority
 
-        service = self._service_with(mock_db)
+        service = _make_ticket_service(mock_db)
         row = _make_ticket_row(ticket_number=1, status="open")
-        closed_row = {**row, "status": "closed", "closedAt": "2026-01-15T10:00:00+00:00"}
         mock_db.get_ticket = AsyncMock(return_value=row)
-        mock_db.transition_ticket_to_closed = AsyncMock(return_value=closed_row)
-        mock_db.insert_audit_row = AsyncMock(return_value={})
+        _wire_closed_transition(mock_db, row)
 
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = 123456789
-        guild.fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(), "gone"))
-        bot = MagicMock()
-        bot.get_guild = MagicMock(return_value=guild)
+        bot = _make_bot_with_missing_channel()
 
         operator = RepairAuthority(
             actor_id="owner-1",
@@ -689,22 +687,7 @@ class TestIntegrityRepairFlow:
         )
 
         # No grant: read-only diagnosis, mutation denied.
-        no_grant = await service.repair_ticket_manual(
-            row["id"],
-            guild_id="123456789",
-            actor_id="owner-1",
-            authority=operator,
-            bot=bot,
-            preflight=evaluate_live_preflight(
-                project_status="ACTIVE_HEALTHY",
-                migration_015_applied=True,
-                close_reason_nullable=True,
-                required_indexes_present=True,
-                realtime_publication_covers=["guild", "greeting_config", "ticket", "ticket_note"],
-                active_rows_channel_id_non_null=3,
-                observed_at=datetime.now(UTC).isoformat(),
-            ),
-        )
+        no_grant = await _call_manual_repair(service, row, operator, bot, _resolved_preflight())
         assert no_grant.outcome == "skipped"
         assert no_grant.reason == "operator_mutation_requires_grant"
         assert mock_db.transition_ticket_to_closed.await_count == 0
@@ -717,23 +700,7 @@ class TestIntegrityRepairFlow:
             reason="maintenance: channel delete sweep",
             confirmed=True,
         )
-        with_grant = await service.repair_ticket_manual(
-            row["id"],
-            guild_id="123456789",
-            actor_id="owner-1",
-            authority=operator,
-            bot=bot,
-            preflight=evaluate_live_preflight(
-                project_status="ACTIVE_HEALTHY",
-                migration_015_applied=True,
-                close_reason_nullable=True,
-                required_indexes_present=True,
-                realtime_publication_covers=["guild", "greeting_config", "ticket", "ticket_note"],
-                active_rows_channel_id_non_null=3,
-                observed_at=datetime.now(UTC).isoformat(),
-            ),
-            global_grant=grant,
-        )
+        with_grant = await _call_manual_repair(service, row, operator, bot, _resolved_preflight(), global_grant=grant)
         assert with_grant.outcome == "repaired"
         mock_db.transition_ticket_to_closed.assert_awaited_once()
 
@@ -752,13 +719,6 @@ class TestIntegrityRepairFlow:
 class TestPR5DisabledSliceAndAuditDeterminism:
     """Disabled slice and audit best-effort integration cases."""
 
-    @staticmethod
-    def _service_with(db, cache=None):
-        from bot.core.cache import TTLCache
-        from bot.services.ticket_service import TicketService
-
-        return TicketService(db=db, cache=cache or TTLCache())
-
     async def test_disabled_slice_leaves_tickets_untouched(self, mock_db: AsyncMock) -> None:
         """Disabled/gate-off slice MUST NOT mutate tickets; deletion auditing continues.
 
@@ -771,20 +731,11 @@ class TestPR5DisabledSliceAndAuditDeterminism:
         # WITHOUT a resolved preflight (the default disabled state).
         row = _make_ticket_row(ticket_number=9, status="open")
         mock_db.get_active_ticket_by_channel = AsyncMock(return_value=row)
-        mock_db.transition_ticket_to_closed = AsyncMock(return_value={**row, "status": "closed"})
-        mock_db.insert_audit_row = AsyncMock(return_value={})
+        _wire_closed_transition(mock_db, row)
 
         # The service path itself is also disabled without a resolved preflight.
-        from bot.models.ticket import IntegrityEvidence
-
-        svc = self._service_with(mock_db)
-        evidence = IntegrityEvidence(
-            ticket_id=row["id"],
-            guild_id=row["guildId"],
-            channel_id=row["channelId"],
-            status="open",
-            channel_exists=False,
-        )
+        svc = _make_ticket_service(mock_db)
+        evidence = _make_evidence(row)
         # No preflight supplied -> gate_unresolved -> no mutation.
         result = await svc.repair_ticket_from_evidence(evidence)
         assert result.outcome == "skipped"
@@ -819,7 +770,7 @@ class TestPR5DisabledSliceAndAuditDeterminism:
         Threat: Rollback/no-op — a run that finds no corroborated zombies must
         not claim completion or side effects.
         """
-        svc = self._service_with(mock_db)
+        svc = _make_ticket_service(mock_db)
 
         # The sweep discovers one live ticket whose channel still exists.
         mock_db.get_open_ticket_channel_ids = AsyncMock(return_value=[_make_ticket_row(ticket_number=7)["channelId"]])
@@ -834,17 +785,7 @@ class TestPR5DisabledSliceAndAuditDeterminism:
         bot = MagicMock()
         bot.get_guild = MagicMock(return_value=guild)
 
-        from bot.services.integrity_report import evaluate_live_preflight
-
-        preflight = evaluate_live_preflight(
-            project_status="ACTIVE_HEALTHY",
-            migration_015_applied=True,
-            close_reason_nullable=True,
-            required_indexes_present=True,
-            realtime_publication_covers=["guild", "greeting_config", "ticket", "ticket_note"],
-            active_rows_channel_id_non_null=3,
-            observed_at=datetime.now(UTC).isoformat(),
-        )
+        preflight = _resolved_preflight()
 
         results = await svc.sweep_integrity("123456789", bot, preflight=preflight)
 

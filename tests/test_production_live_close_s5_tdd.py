@@ -27,6 +27,7 @@ from scripts.apply_staging_migration import (
     check_live_gate,
     run_psql_migration,
 )
+from tests.conftest import fake_db_with_token
 
 # ---------------------------------------------------------------------------
 # 1.1 RED: pg_policy JOIN pg_class/pg_namespace nspname='public' binding 9/7/0
@@ -37,59 +38,29 @@ class TestS5ScopingRed:
     def _read_catalog(self) -> str:
         return pathlib.Path("bot/services/live_catalog.py").read_text(encoding="utf-8")
 
-    def test_policy_query_is_scoped_to_public_via_join(self) -> None:
+    @pytest.mark.parametrize(
+        ("fragment", "must_contain"),
+        [
+            pytest.param(
+                "policy_scoped",
+                ["pg_policy", "pg_class", "pg_namespace", "JOIN pg_class", "nspname"],
+                id="policy_scoped",
+            ),
+            pytest.param("fk_scoped", ["pg_constraint", "conrelid", "relnamespace", "nspname"], id="fk_scoped"),
+        ],
+    )
+    def test_scoped_catalog_queries(self, fragment: str, must_contain: list[str]) -> None:
         text = self._read_catalog()
-        # Spec live-schema-verifier S5: MUST scope pg_policy to public via JOIN
-        # Unscoped SELECT count(*) FROM pg_policy fails 9/7/0 -> 9/7/2 (cron)
-        assert "nspname='public'" in text or 'nspname="public"' in text or "nspname" in text
-        # Must join through pg_class/polrelid for policy scope
-        assert "pg_policy" in text
-        assert "pg_class" in text
-        assert "pg_namespace" in text
-        # The fetch_rls_counts_via_db body must contain the scoped JOIN, not a bare count
-        assert "JOIN pg_class" in text
-
-    def test_fk_query_is_scoped_to_public_via_join(self) -> None:
-        text = self._read_catalog()
-        assert "pg_constraint" in text
-        assert "n.nspname='public'" in text or "nspname='public'" in text or "nspname" in text
-        # Must join conrelid -> pg_class -> pg_namespace
-        assert "conrelid" in text
-        assert "relnamespace" in text
+        if fragment == "policy_scoped":
+            # Spec live-schema-verifier S5: MUST scope pg_policy to public via JOIN
+            # Unscoped SELECT count(*) FROM pg_policy fails 9/7/0 -> 9/7/2 (cron)
+            assert "nspname='public'" in text or 'nspname="public"' in text or "nspname" in text
+        for needle in must_contain:
+            assert needle in text, f"scoped catalog live_catalog must contain {needle!r} for {fragment}"
 
     def test_fk_sync_fetch_catalog_uses_scoped_sql(self) -> None:
         """_sync_fetch_catalog must execute scoped SQL (29->6)."""
-        executed: list[str] = []
-
-        class FakeCursor:
-            def __enter__(self) -> FakeCursor:
-                return self
-
-            def __exit__(self, *_: object) -> None:
-                pass
-
-            def execute(self, sql: str, *_: object, **__: object) -> None:
-                executed.append(sql)
-
-            def fetchall(self) -> list[tuple[str, ...]]:
-                if executed and "pg_constraint" in executed[-1]:
-                    return [("ticket", "guild", "CASCADE")]
-                return []
-
-            def fetchone(self) -> tuple[int, ...] | None:
-                return (0,)
-
-        class FakeConn:
-            def __enter__(self) -> FakeConn:
-                return self
-
-            def __exit__(self, *_: object) -> None:
-                pass
-
-            def cursor(self) -> FakeCursor:
-                return FakeCursor()
-
-        fake_connect = MagicMock(return_value=FakeConn())
+        fake_connect, executed = fake_db_with_token("postgresql://u:p@h/db")
         with patch("psycopg.connect", fake_connect):
             _sync_fetch_catalog("postgresql://u:p@h/db")
         assert fake_connect.called
