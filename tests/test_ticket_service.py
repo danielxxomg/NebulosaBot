@@ -1364,33 +1364,37 @@ async def test_get_notes_audits_success(
 
 
 @pytest.mark.asyncio
-async def test_delete_note_own(
+@pytest.mark.parametrize(
+    ("caller_id", "expect_deleted"),
+    [
+        pytest.param("999999999", True, id="delete-note-own-allowed"),
+        pytest.param("888888888", False, id="delete-note-other-rejected"),
+    ],
+)
+async def test_delete_note_author_gate(
+    caller_id: str,
+    expect_deleted: bool,
     service: TicketService,
     mock_db: AsyncMock,
 ) -> None:
-    """The note author MUST be able to delete their own note."""
+    """delete_note MUST allow the note author and reject non-authors: the
+    author's call reaches the guild-scoped DB delete; any other caller
+    raises ValueError (author mismatch) with no DB mutation.
+    """
     mock_db.get_ticket.return_value = _ticket_guild_row("ticket-uuid-003")
     mock_db.get_ticket_notes.return_value = [_note_row(author_id="999999999")]
 
-    await service.delete_note("note-uuid-001", author_id="999999999", ticket_id="ticket-uuid-003")
+    if expect_deleted:
+        await service.delete_note("note-uuid-001", author_id=caller_id, ticket_id="ticket-uuid-003")
 
-    mock_db.delete_ticket_note.assert_awaited_once_with(
-        "note-uuid-001", guild_id="123456789", ticket_id="ticket-uuid-003"
-    )
+        mock_db.delete_ticket_note.assert_awaited_once_with(
+            "note-uuid-001", guild_id="123456789", ticket_id="ticket-uuid-003"
+        )
+    else:
+        with pytest.raises(ValueError, match=r"[Aa]uthor"):
+            await service.delete_note("note-uuid-001", author_id=caller_id, ticket_id="ticket-uuid-003")
 
-
-@pytest.mark.asyncio
-async def test_delete_note_other_rejected(
-    service: TicketService,
-    mock_db: AsyncMock,
-) -> None:
-    """A non-author MUST NOT delete someone else's note."""
-    mock_db.get_ticket_notes.return_value = [_note_row(author_id="999999999")]
-
-    with pytest.raises(ValueError, match=r"[Aa]uthor"):
-        await service.delete_note("note-uuid-001", author_id="888888888", ticket_id="ticket-uuid-003")
-
-    mock_db.delete_ticket_note.assert_not_awaited()
+        mock_db.delete_ticket_note.assert_not_awaited()
 
 
 @pytest.mark.asyncio
