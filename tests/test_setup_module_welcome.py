@@ -12,7 +12,7 @@ from __future__ import annotations
 import io
 import json
 import pathlib
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
@@ -29,12 +29,12 @@ class TestWelcomeModuleRegistration:
     """MODULES must contain welcome module implementing SetupModule protocol without framework edits."""
 
     def test_module_exists(self) -> None:
-        from bot.views.setup_panel import MODULES  # noqa: PLC0415 -- facade indirection
+        from bot.views.setup_panel import MODULES  # documented-exception: facade indirection
 
         assert "welcome" in MODULES, f"MODULES must contain welcome, got {list(MODULES.keys())}"
 
     def test_module_protocol(self) -> None:
-        from bot.views.setup_panel import MODULES  # noqa: PLC0415 -- facade indirection
+        from bot.views.setup_panel import MODULES  # documented-exception: facade indirection
 
         mod = MODULES["welcome"]
         assert hasattr(mod, "key") and mod.key == "welcome"
@@ -45,7 +45,7 @@ class TestWelcomeModuleRegistration:
 
     def test_registered_without_framework_edits(self) -> None:
         """Welcome module must be registered via MODULES dict, not by editing setup_panel framework to hardcode welcome."""
-        import pathlib  # noqa: PLC0415 -- facade indirection
+        import pathlib  # documented-exception: facade indirection
 
         src = pathlib.Path("bot/views/setup_panel.py").read_text(encoding="utf-8")
         # Framework does not hardcode Welcome-specific logic beyond generic MODULES routing
@@ -60,7 +60,7 @@ class TestWelcomeModuleParity:
 
     @pytest.mark.asyncio
     async def test_save_channel_matches_legacy_effect(self) -> None:
-        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
 
         guild_id = "123456789"
         cfg = MagicMock(
@@ -102,7 +102,7 @@ class TestWelcomeModuleParity:
         """Cache invalidation must be delegated to GreetingService.save_config (same as legacy /welcome channel)."""
         guild_id = "123456789"
         bot = _make_bot_with_greeting("welcome", guild_id=guild_id)
-        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
 
         mod = WelcomeSetupModule(bot=bot)
         if hasattr(mod, "set_welcome_channel"):
@@ -117,7 +117,7 @@ class TestWelcomeModuleParity:
 
     def test_orphan_columns_exposed_in_editors(self) -> None:
         """Orphan columns cardEnabled, themeId, onboardingChannelId must be exposed in Welcome module editors."""
-        import pathlib  # noqa: PLC0415 -- facade indirection
+        import pathlib  # documented-exception: facade indirection
 
         src = pathlib.Path("bot/views/setup_modules/welcome.py").read_text(encoding="utf-8")
         lower = src.lower()
@@ -164,7 +164,7 @@ class TestWelcomePreviewRealArtifact:
 
         bot.greeting_service.resolve_renderer = MagicMock(return_value=_real_renderer)
 
-        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
 
         mod = WelcomeSetupModule(bot=bot)
         interaction = _make_interaction(guild_id=int(guild_id), client=bot)
@@ -200,7 +200,7 @@ class TestWelcomePreviewRealArtifact:
         bot = _make_bot_with_greeting("welcome", guild_id=guild_id, config=cfg)
         bot.greeting_service.resolve_renderer = MagicMock(return_value=lambda **_: io.BytesIO(b"x"))
 
-        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
 
         mod = WelcomeSetupModule(bot=bot)
         interaction = _make_interaction(guild_id=int(guild_id), client=bot)
@@ -226,7 +226,7 @@ class TestWelcomePreviewRealArtifact:
 
     def test_caller_passes_translated_strings_no_hardcoded_copy(self) -> None:
         """Greeting card text must come from t() via caller; no hardcoded copy in module."""
-        import pathlib  # noqa: PLC0415 -- facade indirection
+        import pathlib  # documented-exception: facade indirection
 
         src = pathlib.Path("bot/views/setup_modules/welcome.py").read_text(encoding="utf-8")
         # Ensure t("greetings.card.*") or similar is used; and no hardcoded "Welcome to" literal as title
@@ -239,7 +239,7 @@ class TestWelcomeComponents:
     """Welcome module must expose components including test button setup:welcome:test."""
 
     def test_components_include_test_button(self) -> None:
-        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
 
         mod = WelcomeSetupModule(bot=_make_bot_with_greeting("welcome"))
         items = mod.components("123456789")
@@ -253,7 +253,7 @@ class TestWelcomeTemplatePicker:
     _TEMPLATE_IDS = ("default", "gaming_neon", "sunset_wave", "minimal_light")
 
     def test_components_include_template_select(self) -> None:
-        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
 
         mod = WelcomeSetupModule(bot=_make_bot_with_greeting("welcome"))
         items = mod.components("123456789")
@@ -265,7 +265,7 @@ class TestWelcomeTemplatePicker:
         assert isinstance(select, discord.ui.Select)
 
     def test_template_select_offers_exactly_four_options(self) -> None:
-        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
 
         mod = WelcomeSetupModule(bot=_make_bot_with_greeting("welcome"))
         items = mod.components("123456789")
@@ -276,8 +276,8 @@ class TestWelcomeTemplatePicker:
 
     def test_template_option_labels_resolve_via_t_not_hardcoded(self) -> None:
         """Option labels/descriptions must come from locale values (t()), not English literals."""
-        from bot.core.i18n import set_guild_language  # noqa: PLC0415 -- facade indirection
-        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+        from bot.core.i18n import set_guild_language  # documented-exception: facade indirection
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
 
         es = _ES_LOCALE
         set_guild_language("123456789", "es")
@@ -295,7 +295,7 @@ class TestWelcomeTemplatePicker:
     @pytest.mark.asyncio
     async def test_selecting_welcome_template_persists_per_kind(self) -> None:
         """Selection → set_welcome_template_id → save_config (welcome-wins dual-write); goodbye untouched."""
-        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
 
         guild_id = "123456789"
         bot = _make_bot_with_greeting("welcome", guild_id=guild_id)
@@ -330,8 +330,9 @@ class TestWelcomeTemplatePicker:
     @pytest.mark.asyncio
     async def test_missing_greeting_manage_denied_ephemeral_no_mutation(self) -> None:
         """Without greeting.manage grant, picker must deny ephemerally and never mutate config."""
+        from unittest.mock import patch
 
-        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
 
         guild_id = "123456789"
         bot = _make_bot_with_greeting("welcome", guild_id=guild_id)
@@ -353,8 +354,8 @@ class TestWelcomeTemplatePicker:
     @pytest.mark.asyncio
     async def test_render_async_shows_template_label(self) -> None:
         """Embed description includes the resolved template label via t() (spec render_async scenario)."""
-        from bot.core.i18n import set_guild_language  # noqa: PLC0415 -- facade indirection
-        from bot.views.setup_modules.welcome import WelcomeSetupModule  # noqa: PLC0415 -- facade indirection
+        from bot.core.i18n import set_guild_language  # documented-exception: facade indirection
+        from bot.views.setup_modules.welcome import WelcomeSetupModule  # documented-exception: facade indirection
 
         es = _ES_LOCALE
         set_guild_language("123456789", "es")
