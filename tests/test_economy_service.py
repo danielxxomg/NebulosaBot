@@ -175,25 +175,73 @@ class TestGainXp:
     """Tests for gain_xp: cooldown enforcement, XP gain, level-up."""
 
     @pytest.mark.asyncio
-    async def test_gain_xp_first_time(
-        self, service: EconomyService, mock_db: AsyncMock, default_config_row: dict
+    @pytest.mark.parametrize(
+        (
+            "last_gain_seconds",
+            "member_xp",
+            "member_level",
+            "no_config",
+            "update_xp",
+            "update_level",
+            "leveled_up",
+            "expected_call_level",
+            "assert_config_call",
+        ),
+        [
+            # first time: no member row; original asserts the config fetch
+            (None, 250, 2, False, 10, 0, False, 0, True),
+            # cooldown elapsed (60s): original asserts update call level
+            (120, 250, 2, False, 260, 2, False, 2, False),
+            # crosses level 3 threshold: original asserts outcome only
+            (120, 330, 2, False, 340, 3, True, None, False),
+            # no config → defaults: original asserts outcome only
+            (None, 250, 2, True, 10, 0, False, None, False),
+        ],
+        ids=["first-time", "cooldown-elapsed", "levels-up", "no-config-defaults"],
+    )
+    async def test_gain_xp_awards_xp(
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
+        default_config_row: dict,
+        member_row: dict,
+        frozen_clock,
+        last_gain_seconds: int | None,
+        member_xp: int,
+        member_level: int,
+        no_config: bool,
+        update_xp: int,
+        update_level: int,
+        leveled_up: bool,
+        expected_call_level: int | None,
+        assert_config_call: bool,
     ) -> None:
-        """First-time XP gain: no cooldown row, awards full XP."""
+        """gain_xp awards configured XP, detects level-ups, honors cooldown."""
         guild_id = "123456789"
         user_id = "111111111"
 
-        mock_db.get_economy_config.return_value = default_config_row
-        # No member row → no cooldown
-        mock_db.get_member.return_value = None
-        mock_db.update_member_xp.return_value = {"xp": 10, "level": 0}
+        mock_db.get_economy_config.return_value = None if no_config else default_config_row
+        if last_gain_seconds is None:
+            # No member row → no cooldown
+            mock_db.get_member.return_value = None
+        else:
+            mock_db.get_member.return_value = {
+                **member_row,
+                "lastXpGain": frozen_clock - timedelta(seconds=last_gain_seconds),
+                "xp": member_xp,
+                "level": member_level,
+            }
+        mock_db.update_member_xp.return_value = {"xp": update_xp, "level": update_level}
 
-        new_xp, new_level, leveled_up = await service.gain_xp(guild_id, user_id)
+        new_xp, new_level, got_leveled_up = await service.gain_xp(guild_id, user_id)
 
-        assert new_xp == 10
-        assert new_level == 0
-        assert leveled_up is False
-        mock_db.update_member_xp.assert_called_once_with(guild_id, user_id, 10, new_level=0)
-        mock_db.get_economy_config.assert_called_once_with(guild_id)
+        assert new_xp == update_xp
+        assert new_level == update_level
+        assert got_leveled_up is leveled_up
+        if expected_call_level is not None:
+            mock_db.update_member_xp.assert_called_once_with(guild_id, user_id, 10, new_level=expected_call_level)
+        if assert_config_call:
+            mock_db.get_economy_config.assert_called_once_with(guild_id)
 
     @pytest.mark.asyncio
     async def test_gain_xp_cooldown_active(
@@ -331,42 +379,85 @@ class TestGainXp:
 # ---------------------------------------------------------------------------
 
 
+def _member_with_daily(member_row: dict, daily_streak: int, last_daily: object, last_daily_reset: object) -> dict:
+    """Return a member row with daily-claim timestamps set (str or datetime)."""
+    return {
+        **member_row,
+        "dailyStreak": daily_streak,
+        "lastDailyReset": last_daily_reset,
+        "lastDaily": last_daily,
+    }
+
+
 class TestClaimDaily:
     """Tests for claim_daily: streak tracking, reward calculation, cooldown."""
 
     @pytest.mark.asyncio
-    async def test_claim_daily_first_time(
-        self,
-        service: EconomyService,
-        mock_db: AsyncMock,
-        default_config_row: dict,
-        member_row: dict,
-    ) -> None:
-        """First daily claim: streak=1, reward = dailyReward (base 100)."""
-        guild_id = "123456789"
-        user_id = "111111111"
-
-        mock_db.get_economy_config.return_value = default_config_row
-        mock_db.get_member.return_value = member_row  # No prior daily
-        mock_db.update_member_daily.return_value = {"coins": 600}
-
-        success, coins_awarded, streak, remaining = await service.claim_daily(guild_id, user_id)
-
-        assert success is True
-        assert coins_awarded == 100  # dailyReward * 1.0
-        assert streak == 1
-        assert remaining == 0  # success path: no cooldown
-
-    @pytest.mark.asyncio
-    async def test_claim_daily_consecutive(
+    @pytest.mark.parametrize(
+        ("streak", "days_ago_hours", "expected_coins", "scenario"),
+        [
+            (0, None, 100, "first-time"),  # no prior daily: base reward
+            (5, 48, 100, "broken-streak"),  # missed a day: reset to base
+        ],
+        ids=["first-time", "broken-streak"],
+    )
+    async def test_claim_daily_streak_resets_to_base(
         self,
         service: EconomyService,
         mock_db: AsyncMock,
         default_config_row: dict,
         member_row: dict,
         frozen_clock,
+        streak: int,
+        days_ago_hours: int | None,
+        expected_coins: int,
+        scenario: str,
     ) -> None:
-        """Consecutive claim: streak increments by 1, reward scales."""
+        """First claim or after a missed day: streak=1, base reward."""
+        guild_id = "123456789"
+        user_id = "111111111"
+
+        mock_db.get_economy_config.return_value = default_config_row
+        if days_ago_hours is None:
+            mock_db.get_member.return_value = member_row  # No prior daily
+        else:
+            two_days_ago = frozen_clock - timedelta(hours=days_ago_hours)
+            mock_db.get_member.return_value = _member_with_daily(member_row, streak, two_days_ago, two_days_ago)
+        mock_db.update_member_daily.return_value = {"coins": 600}
+
+        success, coins_awarded, streak, remaining = await service.claim_daily(guild_id, user_id)
+
+        assert success is True
+        assert coins_awarded == expected_coins
+        assert streak == 1
+        assert remaining == 0  # success path: no cooldown
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("streak", "update_coins", "expected_coins", "expected_streak", "string_timestamps"),
+        [
+            (3, 640, 130, 4, False),  # 100 * (1 + 0.1 * 3) = 130
+            (7, 660, 160, 7, False),  # capped: 100 * (1 + 0.1 * 6) = 160
+            # String lastDaily/lastDailyReset MUST parse via _to_datetime
+            # (no TypeError) and hit the same consecutive-day branch.
+            (3, 640, 130, 4, True),
+        ],
+        ids=["consecutive", "streak-capped-at-7", "string-timestamps"],
+    )
+    async def test_claim_daily_streak_scales_reward(
+        self,
+        service: EconomyService,
+        mock_db: AsyncMock,
+        default_config_row: dict,
+        member_row: dict,
+        frozen_clock,
+        streak: int,
+        update_coins: int,
+        expected_coins: int,
+        expected_streak: int,
+        string_timestamps: bool,
+    ) -> None:
+        """Consecutive claim: streak increments (capped at 7), reward scales."""
         guild_id = "123456789"
         user_id = "111111111"
 
@@ -378,152 +469,62 @@ class TestClaimDaily:
         # of day so the "consecutive day" branch fires deterministically.
         # timedelta(hours=20) only equals yesterday before 20:00 UTC; after
         # that, 20h ago is still today and the same-day branch fires
-        # (giving new_streak=old_streak instead of old_streak+1).
+        # (giving new_streak=old_streak instead of old_streak+1). Without
+        # this, the cap row passes via the same-day branch instead of
+        # actually exercising the consecutive-day cap path — masking the
+        # same latent flake.
         yesterday = frozen_clock - timedelta(days=1)
-        member_with_streak = {
-            **member_row,
-            "dailyStreak": 3,
-            "lastDailyReset": yesterday.isoformat(),
-            "lastDaily": yesterday_26h.isoformat(),
-        }
-        mock_db.get_member.return_value = member_with_streak
-        mock_db.update_member_daily.return_value = {"coins": 640}
+        if string_timestamps:
+            last_daily: str | object = yesterday_26h.isoformat()
+            last_reset: str | object = yesterday.isoformat()
+        else:
+            last_daily = yesterday_26h
+            last_reset = yesterday
+        mock_db.get_member.return_value = _member_with_daily(member_row, streak, last_daily, last_reset)
+        mock_db.update_member_daily.return_value = {"coins": update_coins}
 
-        success, coins_awarded, streak, remaining = await service.claim_daily(guild_id, user_id)
+        success, coins_awarded, streak_result, remaining = await service.claim_daily(guild_id, user_id)
 
         assert success is True
-        assert coins_awarded == 130  # 100 * (1 + 0.1 * 3) = 130
-        assert streak == 4
+        assert coins_awarded == expected_coins
+        assert streak_result == expected_streak
         assert remaining == 0  # success path: no cooldown
 
     @pytest.mark.asyncio
-    async def test_claim_daily_streak_capped_at_7(
+    @pytest.mark.parametrize(
+        ("ago_kwargs", "member_streak", "expected_remaining"),
+        [
+            ({"hours": 2}, 3, 22 * 3600),  # 24h cooldown - 2h elapsed
+            ({"hours": 23, "minutes": 50}, 1, 10 * 60),  # 600 seconds
+        ],
+        ids=["cooldown-active", "cooldown-near-expiry"],
+    )
+    async def test_claim_daily_cooldown_rejected(
         self,
         service: EconomyService,
         mock_db: AsyncMock,
         default_config_row: dict,
         member_row: dict,
         frozen_clock,
+        ago_kwargs: dict,
+        member_streak: int,
+        expected_remaining: int,
     ) -> None:
-        """Streak capped at 7: reward = 100 * (1 + 0.1 * 6) = 160."""
+        """Claim within cooldown window is rejected with exact remaining time."""
         guild_id = "123456789"
         user_id = "111111111"
 
         mock_db.get_economy_config.return_value = default_config_row
-        # Same deterministic "yesterday" construction as the consecutive
-        # test (see comment there). Without this, the cap test passes
-        # via the same-day branch after 20:00 UTC instead of actually
-        # exercising the consecutive-day cap path — masking the same
-        # latent flake.
-        yesterday_26h = frozen_clock - timedelta(hours=26)
-        yesterday = frozen_clock - timedelta(days=1)
-        member_max_streak = {
-            **member_row,
-            "dailyStreak": 7,
-            "lastDailyReset": yesterday.isoformat(),
-            "lastDaily": yesterday_26h.isoformat(),
-        }
-        mock_db.get_member.return_value = member_max_streak
-        mock_db.update_member_daily.return_value = {"coins": 660}
-
-        success, coins_awarded, streak, remaining = await service.claim_daily(guild_id, user_id)
-
-        assert success is True
-        assert coins_awarded == 160  # 100 * (1 + 0.1 * 6) = 160
-        assert streak == 7  # stays capped
-        assert remaining == 0  # success path: no cooldown
-
-    @pytest.mark.asyncio
-    async def test_claim_daily_broken_streak(
-        self,
-        service: EconomyService,
-        mock_db: AsyncMock,
-        default_config_row: dict,
-        member_row: dict,
-        frozen_clock,
-    ) -> None:
-        """Missed a day: streak resets to 1, base reward."""
-        guild_id = "123456789"
-        user_id = "111111111"
-
-        mock_db.get_economy_config.return_value = default_config_row
-        two_days_ago = frozen_clock - timedelta(hours=48)
-        member_broken = {
-            **member_row,
-            "dailyStreak": 5,
-            "lastDailyReset": two_days_ago.isoformat(),
-            "lastDaily": two_days_ago.isoformat(),
-        }
-        mock_db.get_member.return_value = member_broken
-        mock_db.update_member_daily.return_value = {"coins": 600}
-
-        success, coins_awarded, streak, remaining = await service.claim_daily(guild_id, user_id)
-
-        assert success is True
-        assert coins_awarded == 100  # Reset to base
-        assert streak == 1
-        assert remaining == 0  # success path: no cooldown
-
-    @pytest.mark.asyncio
-    async def test_claim_daily_cooldown_active(
-        self,
-        service: EconomyService,
-        mock_db: AsyncMock,
-        default_config_row: dict,
-        member_row: dict,
-        frozen_clock,
-    ) -> None:
-        """Claim within cooldown window should be rejected with exact remaining time."""
-        guild_id = "123456789"
-        user_id = "111111111"
-
-        mock_db.get_economy_config.return_value = default_config_row
-        two_hours_ago = frozen_clock - timedelta(hours=2)
-        member_recent = {
-            **member_row,
-            "dailyStreak": 3,
-            "lastDailyReset": two_hours_ago.isoformat(),
-            "lastDaily": two_hours_ago.isoformat(),
-        }
-        mock_db.get_member.return_value = member_recent
+        recent = frozen_clock - timedelta(**ago_kwargs)
+        mock_db.get_member.return_value = _member_with_daily(member_row, member_streak, recent, recent)
 
         success, coins_awarded, streak, remaining = await service.claim_daily(guild_id, user_id)
 
         assert success is False
         assert coins_awarded == 0
-        assert streak == 3  # unchanged
-        # 24h cooldown - 2h elapsed = 22h = 79200 seconds
-        assert remaining == 22 * 3600
-
-    @pytest.mark.asyncio
-    async def test_claim_daily_cooldown_near_expiry(
-        self,
-        service: EconomyService,
-        mock_db: AsyncMock,
-        default_config_row: dict,
-        member_row: dict,
-        frozen_clock,
-    ) -> None:
-        """Claim near cooldown expiry should show small remaining time."""
-        guild_id = "123456789"
-        user_id = "111111111"
-
-        mock_db.get_economy_config.return_value = default_config_row
-        # 23h 50m ago → remaining = 10 minutes = 600 seconds
-        near_expiry = frozen_clock - timedelta(hours=23, minutes=50)
-        member_near = {
-            **member_row,
-            "dailyStreak": 1,
-            "lastDailyReset": near_expiry.isoformat(),
-            "lastDaily": near_expiry.isoformat(),
-        }
-        mock_db.get_member.return_value = member_near
-
-        success, coins_awarded, _streak, remaining = await service.claim_daily(guild_id, user_id)
-
-        assert success is False
-        assert coins_awarded == 0
-        assert remaining == 10 * 60  # 600 seconds
+        if member_streak == 3:  # cooldown-active row asserts streak unchanged
+            assert streak == member_streak
+        assert remaining == expected_remaining
 
     @pytest.mark.asyncio
     async def test_claim_daily_custom_reward(
@@ -568,18 +569,28 @@ class TestGetBalance:
     """Tests for get_balance."""
 
     @pytest.mark.asyncio
-    async def test_get_balance_has_coins(
+    @pytest.mark.parametrize(
+        ("coins", "expected_balance"),
+        [
+            (500, 500),  # member with coins
+            (0, 0),  # member with 0 coins
+        ],
+        ids=["has-coins", "zero-coins"],
+    )
+    async def test_get_balance_returns_member_coins(
         self,
         service: EconomyService,
         mock_db: AsyncMock,
         member_row: dict,
+        coins: int,
+        expected_balance: int,
     ) -> None:
-        """Should return the member's coin balance."""
-        mock_db.get_member.return_value = member_row
+        """get_balance returns the member's coin balance."""
+        mock_db.get_member.return_value = {**member_row, "coins": coins}
 
         balance = await service.get_balance("123456789", "111111111")
 
-        assert balance == 500
+        assert balance == expected_balance
 
     @pytest.mark.asyncio
     async def test_get_balance_no_member(
@@ -589,21 +600,6 @@ class TestGetBalance:
     ) -> None:
         """New member with no row should have 0 balance."""
         mock_db.get_member.return_value = None
-
-        balance = await service.get_balance("123456789", "111111111")
-
-        assert balance == 0
-
-    @pytest.mark.asyncio
-    async def test_get_balance_zero_coins(
-        self,
-        service: EconomyService,
-        mock_db: AsyncMock,
-        member_row: dict,
-    ) -> None:
-        """Member with 0 coins should return 0."""
-        member_no_coins = {**member_row, "coins": 0}
-        mock_db.get_member.return_value = member_no_coins
 
         balance = await service.get_balance("123456789", "111111111")
 
@@ -801,27 +797,37 @@ class TestGainXpTimestampParsing:
     """gain_xp MUST safely parse string-type lastXpGain from DB."""
 
     @pytest.mark.asyncio
-    async def test_gain_xp_string_last_xp_gain_no_type_error(
+    @pytest.mark.parametrize(
+        ("as_iso_string", "doc"),
+        [
+            (True, "lastXpGain as ISO string MUST NOT raise TypeError on cooldown check"),
+            (False, "lastXpGain as datetime MUST still work (passthrough)"),
+        ],
+        ids=["string-parses", "datetime-passthrough"],
+    )
+    async def test_gain_xp_last_xp_gain_awards(
         self,
         service: EconomyService,
         mock_db: AsyncMock,
         default_config_row: dict,
         member_row: dict,
         frozen_clock,
+        as_iso_string: bool,
+        doc: str,
     ) -> None:
-        """lastXpGain as ISO string MUST NOT raise TypeError on cooldown check."""
+        """String lastXpGain parses via _to_datetime; datetime passes through."""
+        last_gain = frozen_clock - timedelta(seconds=120)
+        gain_value = last_gain.isoformat() if as_iso_string else last_gain
         guild_id = "123456789"
         user_id = "111111111"
 
         mock_db.get_economy_config.return_value = default_config_row
-        # DB returns lastXpGain as an ISO string (not datetime).
-        member_str = {
+        mock_db.get_member.return_value = {
             **member_row,
-            "lastXpGain": (frozen_clock - timedelta(seconds=120)).isoformat(),
+            "lastXpGain": gain_value,
             "xp": 250,
             "level": 2,
         }
-        mock_db.get_member.return_value = member_str
         mock_db.update_member_xp.return_value = {"xp": 260, "level": 2}
 
         # Must not raise TypeError — string is parsed via _to_datetime.
@@ -856,69 +862,6 @@ class TestGainXpTimestampParsing:
         assert new_xp == 0
         assert leveled_up is False
         mock_db.update_member_xp.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_gain_xp_datetime_last_xp_gain_still_works(
-        self,
-        service: EconomyService,
-        mock_db: AsyncMock,
-        default_config_row: dict,
-        member_row: dict,
-        frozen_clock,
-    ) -> None:
-        """lastXpGain as datetime MUST still work (passthrough)."""
-        guild_id = "123456789"
-        user_id = "111111111"
-
-        mock_db.get_economy_config.return_value = default_config_row
-        member_dt = {
-            **member_row,
-            "lastXpGain": frozen_clock - timedelta(seconds=120),
-            "xp": 250,
-            "level": 2,
-        }
-        mock_db.get_member.return_value = member_dt
-        mock_db.update_member_xp.return_value = {"xp": 260, "level": 2}
-
-        new_xp, _new_level, _leveled_up = await service.gain_xp(guild_id, user_id)
-
-        assert new_xp == 260
-
-
-class TestClaimDailyTimestampParsing:
-    """claim_daily MUST use shared _to_datetime helper for lastDaily/lastDailyReset."""
-
-    @pytest.mark.asyncio
-    async def test_claim_daily_string_last_daily_no_type_error(
-        self,
-        service: EconomyService,
-        mock_db: AsyncMock,
-        default_config_row: dict,
-        member_row: dict,
-        frozen_clock,
-    ) -> None:
-        """claim_daily with string lastDaily MUST NOT raise TypeError."""
-        guild_id = "123456789"
-        user_id = "111111111"
-
-        mock_db.get_economy_config.return_value = default_config_row
-        # lastDaily as ISO string — 26h ago (passes 24h cooldown).
-        yesterday_26h = frozen_clock - timedelta(hours=26)
-        yesterday = frozen_clock - timedelta(days=1)
-        member_str = {
-            **member_row,
-            "lastDaily": yesterday_26h.isoformat(),
-            "lastDailyReset": yesterday.isoformat(),
-            "dailyStreak": 3,
-        }
-        mock_db.get_member.return_value = member_str
-        mock_db.update_member_daily.return_value = {"coins": 640}
-
-        success, coins_awarded, streak, _remaining = await service.claim_daily(guild_id, user_id)
-
-        assert success is True
-        assert coins_awarded == 130
-        assert streak == 4
 
 
 # ---------------------------------------------------------------------------
