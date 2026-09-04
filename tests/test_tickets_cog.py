@@ -3243,43 +3243,39 @@ class TestIntegritySweepOrchestration:
         cog.integrity_sweep_loop = loop
         return cog
 
-    async def test_cog_load_starts_periodic_sweep_loop(
+    @pytest.mark.parametrize(
+        ("loop_already_running", "expect_start"),
+        [
+            pytest.param(False, True, id="cog-load-starts-idle-loop"),
+            pytest.param(True, False, id="cog-load-no-restart-running-loop"),
+        ],
+    )
+    async def test_cog_load_sweep_loop_idempotence(
         self,
         tickets_cog: TicketsCog,
         ticket_bot: MagicMock,
+        loop_already_running: bool,
+        expect_start: bool,
     ) -> None:
-        """cog_load MUST start the integrity sweep loop (idempotent) so a
-        periodic sweep converges on the shared service path without on_ready.
+        """cog_load MUST start the integrity sweep loop only when it is not
+        already running (idempotent): not-running → start once; running →
+        never restarted, so a periodic sweep converges on the shared service
+        path without on_ready.
         """
         ticket_bot.guilds = []
         ticket_bot.db.get_open_ticket_channel_ids = AsyncMock(return_value=[])
         loop = MagicMock()
-        loop.is_running = MagicMock(return_value=False)
+        loop.is_running = MagicMock(return_value=loop_already_running)
         loop.start = MagicMock()
         loop.cancel = MagicMock()
         tickets_cog.integrity_sweep_loop = loop
 
         await tickets_cog.cog_load()
 
-        loop.start.assert_called_once()
-
-    async def test_cog_load_does_not_restart_running_sweep_loop(
-        self,
-        tickets_cog: TicketsCog,
-        ticket_bot: MagicMock,
-    ) -> None:
-        """cog_load MUST NOT restart an already-running sweep loop (idempotent)."""
-        ticket_bot.guilds = []
-        ticket_bot.db.get_open_ticket_channel_ids = AsyncMock(return_value=[])
-        loop = MagicMock()
-        loop.is_running = MagicMock(return_value=True)
-        loop.start = MagicMock()
-        loop.cancel = MagicMock()
-        tickets_cog.integrity_sweep_loop = loop
-
-        await tickets_cog.cog_load()
-
-        loop.start.assert_not_called()
+        if expect_start:
+            loop.start.assert_called_once()
+        else:
+            loop.start.assert_not_called()
 
     async def test_cog_unload_cancels_sweep_loop(
         self,
