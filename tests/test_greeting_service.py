@@ -121,7 +121,7 @@ class TestProtocolOnlyConstructor:
 
 
 @pytest.fixture
-def greeting_config_row() -> dict:
+def greeting_config_row() -> dict[str, Any]:
     """Return a sample greeting_config DB row (camelCase keys)."""
     return {
         "guildId": "123456789",
@@ -357,7 +357,7 @@ class TestDispatchWelcome:
         guild_id = "123456789"
         if config_override == "NO_ROW":
             mock_db.get_greeting_config.return_value = None
-        elif config_override is not None:
+        elif isinstance(config_override, dict):
             mock_db.get_greeting_config.return_value = {**greeting_config_row, **config_override}
         else:
             mock_db.get_greeting_config.return_value = greeting_config_row
@@ -889,7 +889,7 @@ class TestDispatchGoodbye:
         guild_id = "123456789"
         if config_override == "NO_ROW":
             mock_db.get_greeting_config.return_value = None
-        elif config_override is not None:
+        elif isinstance(config_override, dict):
             mock_db.get_greeting_config.return_value = {**greeting_config_row, **config_override}
         else:
             mock_db.get_greeting_config.return_value = greeting_config_row
