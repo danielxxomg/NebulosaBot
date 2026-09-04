@@ -415,7 +415,7 @@ async def test_channel_event_delegates(
     """Channel create/delete events must delegate with guild id and channel."""
     channel = make_mock_channel(name=f"{event}-channel")
 
-    await getattr(listener, event)(channel)  # type: ignore[union-attr]
+    await getattr(listener, event)(channel)
 
     getattr(mock_logging, log_method).assert_awaited_once_with(
         "123456789",
