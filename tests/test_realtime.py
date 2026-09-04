@@ -59,61 +59,66 @@ GIT_BIN = shutil.which("git") or "/usr/bin/git"
 class TestRecordForEvent:
     """_record_for_event — INSERT/UPDATE use ``record``, DELETE uses ``old_record``."""
 
-    def test_insert_uses_record(self) -> None:
-        payload = {"type": "INSERT", "record": {"id": "G1"}, "old_record": {}}
-        assert _record_for_event(payload) == {"id": "G1"}
-
-    def test_update_uses_record(self) -> None:
-        payload = {"type": "UPDATE", "record": {"guildId": "G2"}, "old_record": {"guildId": "G0"}}
-        assert _record_for_event(payload) == {"guildId": "G2"}
-
-    def test_delete_uses_old_record(self) -> None:
-        """Spec: DELETE event with empty record MUST read from old_record."""
-        payload = {"type": "DELETE", "record": {}, "old_record": {"id": "G3"}}
-        assert _record_for_event(payload) == {"id": "G3"}
-
-    def test_delete_missing_old_record_returns_empty(self) -> None:
-        payload = {"type": "DELETE", "record": {}}
-        assert _record_for_event(payload) == {}
-
-    def test_missing_type_treats_as_record(self) -> None:
-        payload = {"record": {"id": "G4"}}
-        assert _record_for_event(payload) == {"id": "G4"}
+    @pytest.mark.parametrize(
+        ("payload", "expected", "case_id"),
+        [
+            pytest.param(
+                {"type": "INSERT", "record": {"id": "G1"}, "old_record": {}},
+                {"id": "G1"},
+                "insert-uses-record",
+            ),
+            pytest.param(
+                {"type": "UPDATE", "record": {"guildId": "G2"}, "old_record": {"guildId": "G0"}},
+                {"guildId": "G2"},
+                "update-uses-record",
+            ),
+            pytest.param(
+                {"type": "DELETE", "record": {}, "old_record": {"id": "G3"}},
+                {"id": "G3"},
+                "delete-uses-old-record",
+            ),
+            pytest.param(
+                {"type": "DELETE", "record": {}},
+                {},
+                "delete-missing-old-record-returns-empty",
+            ),
+            pytest.param(
+                {"record": {"id": "G4"}},
+                {"id": "G4"},
+                "missing-type-treats-as-record",
+            ),
+        ],
+    )
+    def test_record_selection_by_event_type(
+        self, payload: dict[str, Any], expected: dict[str, Any], case_id: str
+    ) -> None:
+        """INSERT/UPDATE (and missing-type) read ``record``; DELETE reads
+        ``old_record`` (empty dict when absent) — per spec."""
+        assert _record_for_event(payload) == expected
 
 
 class TestExtractGuildId:
     """_extract_guild_id — pure table -> guild_id mapping."""
 
-    def test_guild_table_uses_id(self) -> None:
-        assert _extract_guild_id("guild", {"id": "111222333"}) == "111222333"
-
-    def test_greeting_config_uses_guild_id(self) -> None:
-        assert _extract_guild_id("greeting_config", {"guildId": "444555666"}) == "444555666"
-
-    def test_ticket_uses_guild_id(self) -> None:
-        assert _extract_guild_id("ticket", {"guildId": "777888999"}) == "777888999"
-
-    def test_ticket_note_returns_none(self) -> None:
-        """ticket_note has no direct guildId — async resolver handles it."""
-        assert _extract_guild_id("ticket_note", {"ticketId": "T1"}) is None
-
-    def test_unknown_table_returns_none(self) -> None:
-        assert _extract_guild_id("other", {"id": "X"}) is None
-
-    def test_missing_field_returns_none(self) -> None:
-        assert _extract_guild_id("guild", {}) is None
-
-    def test_coerces_non_string_to_string(self) -> None:
-        """Numeric ids MUST be coerced to str for cache key consistency."""
-        assert _extract_guild_id("guild", {"id": 123456}) == "123456"
-
-    def test_member_uses_guild_id(self) -> None:
-        """S6: member CDC rows carry guildId — mapped like greeting_config/ticket."""
-        assert _extract_guild_id("member", {"guildId": "444555666"}) == "444555666"
-
-    def test_economy_config_uses_guild_id(self) -> None:
-        """S6: economy_config CDC rows carry guildId."""
-        assert _extract_guild_id("economy_config", {"guildId": "999000111"}) == "999000111"
+    @pytest.mark.parametrize(
+        ("table", "row", "expected", "case_id"),
+        [
+            pytest.param("guild", {"id": "111222333"}, "111222333", "guild-table-uses-id"),
+            pytest.param("greeting_config", {"guildId": "444555666"}, "444555666", "greeting-config-uses-guild-id"),
+            pytest.param("ticket", {"guildId": "777888999"}, "777888999", "ticket-uses-guild-id"),
+            pytest.param("ticket_note", {"ticketId": "T1"}, None, "ticket-note-returns-none"),
+            pytest.param("other", {"id": "X"}, None, "unknown-table-returns-none"),
+            pytest.param("guild", {}, None, "missing-field-returns-none"),
+            pytest.param("guild", {"id": 123456}, "123456", "coerces-non-string-to-string"),
+            pytest.param("member", {"guildId": "444555666"}, "444555666", "member-uses-guild-id"),
+            pytest.param("economy_config", {"guildId": "999000111"}, "999000111", "economy-config-uses-guild-id"),
+        ],
+    )
+    def test_guild_id_mapping(self, table: str, row: dict[str, Any], expected: str | None, case_id: str) -> None:
+        """Pure table -> guild_id extraction: guild reads ``id``; CDC tables
+        read ``guildId``; ticket_note/unknown/missing fields yield None;
+        numeric ids coerce to str for cache-key consistency."""
+        assert _extract_guild_id(table, row) == expected
 
     @pytest.mark.parametrize("table", ["member", "economy_config"])
     def test_new_tables_coerce_numeric_guild_id(self, table: str) -> None:
@@ -124,14 +129,18 @@ class TestExtractGuildId:
 class TestExtractTicketId:
     """_extract_ticket_id — ticket_note -> ticket_id for guild resolution."""
 
-    def test_returns_ticket_id(self) -> None:
-        assert _extract_ticket_id({"ticketId": "ticket-uuid-001"}) == "ticket-uuid-001"
-
-    def test_missing_returns_none(self) -> None:
-        assert _extract_ticket_id({}) is None
-
-    def test_coerces_to_string(self) -> None:
-        assert _extract_ticket_id({"ticketId": 99}) == "99"
+    @pytest.mark.parametrize(
+        ("row", "expected", "case_id"),
+        [
+            pytest.param({"ticketId": "ticket-uuid-001"}, "ticket-uuid-001", "returns-ticket-id"),
+            pytest.param({}, None, "missing-returns-none"),
+            pytest.param({"ticketId": 99}, "99", "coerces-to-string"),
+        ],
+    )
+    def test_ticket_id_extraction(self, row: dict[str, Any], expected: str | None, case_id: str) -> None:
+        """Reads ``ticketId`` from the note row; None when absent; numeric
+        values coerce to str."""
+        assert _extract_ticket_id(row) == expected
 
 
 # ===========================================================================
