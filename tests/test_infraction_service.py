@@ -40,6 +40,7 @@ REASON = "spamming in general"
 # Fixtures
 # ------------------------------------------------------------------
 
+
 @pytest.fixture
 def mock_db() -> AsyncMock:
     """Return an AsyncMock standing in for Database with infraction methods."""
@@ -52,10 +53,12 @@ def mock_db() -> AsyncMock:
     db.update_member_warnings = AsyncMock()
     return db
 
+
 @pytest.fixture
 def service(mock_db: AsyncMock) -> InfractionService:
     """Return an InfractionService backed by the mocked database."""
     return InfractionService(db=mock_db)
+
 
 @pytest.fixture
 def mock_logging() -> AsyncMock:
@@ -64,10 +67,12 @@ def mock_logging() -> AsyncMock:
     logging_mock.log_moderation_action = AsyncMock()
     return logging_mock
 
+
 @pytest.fixture
 def escalation_service(mock_db: AsyncMock, mock_logging: AsyncMock) -> InfractionService:
     """Return an InfractionService wired with mocked DB and LoggingService."""
     return InfractionService(db=mock_db, logging_service=mock_logging)
+
 
 @pytest.fixture
 def target_member() -> MagicMock:
@@ -79,12 +84,14 @@ def target_member() -> MagicMock:
     member.kick = AsyncMock()
     return member
 
+
 @pytest.fixture
 def moderator_member() -> MagicMock:
     """Return a mock moderator member."""
     moderator = MagicMock(spec=discord.Member)
     moderator.id = 777888999
     return moderator
+
 
 @pytest.fixture
 def sample_infraction_row() -> dict:
@@ -101,9 +108,11 @@ def sample_infraction_row() -> dict:
         "expiresAt": None,
     }
 
+
 # ------------------------------------------------------------------
 # warn
 # ------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_warn_persists_infraction_and_increments_warnings(
@@ -142,9 +151,11 @@ async def test_warn_persists_infraction_and_increments_warnings(
     # 1 warning is below escalation thresholds.
     assert escalation is None
 
+
 # ------------------------------------------------------------------
 # unwarn
 # ------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_unwarn_deactivates_last_active_warning(
@@ -162,6 +173,7 @@ async def test_unwarn_deactivates_last_active_warning(
     mock_db.deactivate_infraction.assert_awaited_once_with(GUILD_ID, sample_infraction_row["id"])
     mock_db.update_member_warnings.assert_awaited_once_with(GUILD_ID, TARGET_ID, delta=-1)
 
+
 @pytest.mark.asyncio
 async def test_unwarn_returns_none_when_no_active_warnings(
     service: InfractionService,
@@ -176,9 +188,11 @@ async def test_unwarn_returns_none_when_no_active_warnings(
     mock_db.deactivate_infraction.assert_not_called()
     mock_db.update_member_warnings.assert_not_called()
 
+
 # ------------------------------------------------------------------
 # get_modlogs
 # ------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_get_modlogs_returns_infractions(
@@ -194,6 +208,7 @@ async def test_get_modlogs_returns_infractions(
     assert len(results) == 1
     assert isinstance(results[0], Infraction)
     assert results[0].id == sample_infraction_row["id"]
+
 
 @pytest.mark.asyncio
 async def test_get_modlogs_passes_filters_to_db(
@@ -217,9 +232,11 @@ async def test_get_modlogs_passes_filters_to_db(
         after="2025-01-01T00:00:00Z",
     )
 
+
 # ------------------------------------------------------------------
 # check_escalation
 # ------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
@@ -256,6 +273,7 @@ async def test_check_escalation_thresholds(
         assert result.duration == expected_duration
         assert result.threshold == expected_threshold
 
+
 @pytest.mark.asyncio
 async def test_check_escalation_no_member_row_returns_none(
     service: InfractionService,
@@ -268,9 +286,11 @@ async def test_check_escalation_no_member_row_returns_none(
 
     assert result is None
 
+
 # ------------------------------------------------------------------
 # warn + escalation integration
 # ------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_warn_triggers_escalation_at_threshold(
@@ -301,17 +321,21 @@ async def test_warn_triggers_escalation_at_threshold(
     assert escalation.duration == 3600
     assert escalation.threshold == 3
 
+
 # ------------------------------------------------------------------
 # apply_escalation (cycle-4-debt-zero / infraction-service spec)
 # ------------------------------------------------------------------
+
 
 def _mute_escalation() -> EscalationAction:
     """Return the canonical MUTE escalation (1 hour at 3 warnings)."""
     return EscalationAction(action="MUTE", duration=3600, threshold=3)
 
+
 def _kick_escalation() -> EscalationAction:
     """Return the canonical KICK escalation (at 5 warnings)."""
     return EscalationAction(action="KICK", duration=0, threshold=5)
+
 
 @pytest.mark.asyncio
 async def test_apply_escalation_mute_times_out_inserts_and_logs(
@@ -356,6 +380,7 @@ async def test_apply_escalation_mute_times_out_inserts_and_logs(
     expected = t(GUILD_ID, "sentinel.warn.auto_mute_description", mention=target_member.mention, threshold=3)
     assert fragment == expected
 
+
 @pytest.mark.asyncio
 async def test_apply_escalation_kick_kicks_inserts_and_logs(
     escalation_service: InfractionService,
@@ -392,6 +417,7 @@ async def test_apply_escalation_kick_kicks_inserts_and_logs(
     expected = t(GUILD_ID, "sentinel.warn.auto_kick_description", mention=target_member.mention, threshold=5)
     assert fragment == expected
 
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "escalation", [pytest.param(_mute_escalation(), id="mute"), pytest.param(_kick_escalation(), id="kick")]
@@ -426,6 +452,7 @@ async def test_apply_escalation_forbidden_returns_failure_without_persisting(
     mock_db.insert_infraction.assert_not_called()
     mock_logging.log_moderation_action.assert_not_called()
 
+
 @pytest.mark.asyncio
 async def test_apply_escalation_unexpected_error_propagates(
     escalation_service: InfractionService,
@@ -447,6 +474,7 @@ async def test_apply_escalation_unexpected_error_propagates(
 
     mock_db.insert_infraction.assert_not_called()
     mock_logging.log_moderation_action.assert_not_called()
+
 
 @pytest.mark.asyncio
 async def test_apply_escalation_db_insert_failure_propagates(
@@ -470,9 +498,11 @@ async def test_apply_escalation_db_insert_failure_propagates(
     # The Discord action already ran; logging must NOT claim success.
     mock_logging.log_moderation_action.assert_not_called()
 
+
 # ------------------------------------------------------------------
 # expire_tempbans — C5 unban-first semantics (spec infraction-service)
 # ------------------------------------------------------------------
+
 
 def _expired_ban_row(row_id: str = "ban-exp-1", target_id: str = TARGET_ID) -> dict:
     """Return an active expired-BAN row as returned by get_expired_tempbans."""
@@ -488,12 +518,14 @@ def _expired_ban_row(row_id: str = "ban-exp-1", target_id: str = TARGET_ID) -> d
         "expiresAt": "2025-06-15T11:00:00+00:00",
     }
 
+
 @pytest.fixture
 def tempban_db(mock_db: AsyncMock) -> AsyncMock:
     """DB mock with the expired-tempban scan + deactivate methods wired."""
     mock_db.get_expired_tempbans = AsyncMock(return_value=[])
     mock_db.deactivate_infraction = AsyncMock()
     return mock_db
+
 
 @pytest.mark.asyncio
 async def test_expire_tempbans_unban_success_deactivates_and_counts(
@@ -509,6 +541,7 @@ async def test_expire_tempbans_unban_success_deactivates_and_counts(
     unban_fn.assert_awaited_once_with(TARGET_ID)
     tempban_db.deactivate_infraction.assert_awaited_once_with(GUILD_ID, "ban-exp-1")
     assert count == 1
+
 
 @pytest.mark.asyncio
 async def test_expire_tempbans_not_found_treated_as_success(
@@ -529,6 +562,7 @@ async def test_expire_tempbans_not_found_treated_as_success(
     assert count == 1
     logger_mock.warning.assert_not_called()
 
+
 @pytest.mark.asyncio
 async def test_expire_tempbans_failed_unban_keeps_row_active(
     tempban_db: AsyncMock,
@@ -547,6 +581,7 @@ async def test_expire_tempbans_failed_unban_keeps_row_active(
     tempban_db.deactivate_infraction.assert_not_awaited()
     assert count == 0
     logger_mock.warning.assert_called_once()
+
 
 @pytest.mark.asyncio
 async def test_expire_tempbans_next_scan_retries_failed_row(
@@ -576,6 +611,7 @@ async def test_expire_tempbans_next_scan_retries_failed_row(
     assert second == 1, "next scan must retry and succeed"
     tempban_db.deactivate_infraction.assert_awaited_once_with(GUILD_ID, "ban-exp-1")
 
+
 @pytest.mark.asyncio
 async def test_expire_tempbans_without_unban_fn_deactivates_directly(
     tempban_db: AsyncMock,
@@ -589,6 +625,7 @@ async def test_expire_tempbans_without_unban_fn_deactivates_directly(
     assert tempban_db.deactivate_infraction.await_count == 2
     assert count == 2
 
+
 @pytest.mark.asyncio
 async def test_expire_tempbans_empty_scan_returns_zero(tempban_db: AsyncMock) -> None:
     """No expired rows → zero processed, no deactivation attempted."""
@@ -600,9 +637,11 @@ async def test_expire_tempbans_empty_scan_returns_zero(tempban_db: AsyncMock) ->
     assert count == 0
     tempban_db.deactivate_infraction.assert_not_awaited()
 
+
 # ------------------------------------------------------------------
 # mute / kick / ban — spec infraction-service (cycle-5-quality-zero S3)
 # ------------------------------------------------------------------
+
 
 def _action_row(infraction_type: str) -> dict:
     """Return a raw camelCase row for the given infraction type."""
@@ -617,6 +656,7 @@ def _action_row(infraction_type: str) -> dict:
         "createdAt": "2025-06-15T12:00:00+00:00",
         "expiresAt": None,
     }
+
 
 class TestMuteKickBanServiceMethods:
     """mute/kick/ban mirror the tempban contract shape (spec scenarios)."""
