@@ -1055,6 +1055,52 @@ class TestGetGreetingConfig:
 # ---------------------------------------------------------------------------
 
 
+GUILD_SCOPED_FILTER_CASES: tuple[tuple[str, Callable[[Database], Awaitable[object]], str, tuple[tuple[str, str, object], ...]], ...] = (
+    (
+        "get-guild-by-id",
+        lambda db: db.get_guild("g1"),
+        "guild",
+        (("eq", "id", "g1"),),
+    ),
+    (
+        "get-member-by-guild-and-user",
+        lambda db: db.get_member("g1", "u1"),
+        "member",
+        (("eq", "guildId", "g1"), ("eq", "userId", "u1")),
+    ),
+    (
+        "get-infractions",
+        lambda db: db.get_infractions("g99", "u1"),
+        "infraction",
+        (("eq", "guildId", "g99"),),
+    ),
+    (
+        "get-active-warnings",
+        lambda db: db.get_active_warnings("g42", "u1"),
+        "infraction",
+        (("eq", "guildId", "g42"),),
+    ),
+    (
+        "get-leaderboard",
+        lambda db: db.get_leaderboard("g77"),
+        "member",
+        (("eq", "guildId", "g77"),),
+    ),
+    (
+        "get-economy-config",
+        lambda db: db.get_economy_config("g55"),
+        "economy_config",
+        (("eq", "guildId", "g55"),),
+    ),
+    (
+        "get-greeting-config",
+        lambda db: db.get_greeting_config("g33"),
+        "greeting_config",
+        (("eq", "guildId", "g33"),),
+    ),
+)
+
+
 class TestGuildScopedFilters:
     """Scenario: guild-scoped query filters correctly.
 
@@ -1064,68 +1110,25 @@ class TestGuildScopedFilters:
     """
 
     @pytest.mark.asyncio
-    async def test_get_guild_filters_by_id(self, db: Database, fake_client: FakeSupabaseClient) -> None:
-        """get_guild() MUST filter by 'id' (guild primary key)."""
-        fake_client.set_table_data("guild", [{"id": "g1"}])
-        await db.get_guild("g1")
+    @pytest.mark.parametrize(
+        "filter_case",
+        GUILD_SCOPED_FILTER_CASES,
+        ids=[c[0] for c in GUILD_SCOPED_FILTER_CASES],
+    )
+    async def test_query_applies_expected_filters(
+        self,
+        db: Database,
+        fake_client: FakeSupabaseClient,
+        filter_case,
+    ) -> None:
+        """The query MUST pass every expected eq() filter to the builder."""
+        _name, call, table, expected_filters = filter_case
+        fake_client.set_table_data(table, [])
+        await call(db)
 
-        filters = fake_client.get_table_filters("guild")
-        assert ("eq", "id", "g1") in filters
-
-    @pytest.mark.asyncio
-    async def test_get_member_filters_by_guild_and_user(self, db: Database, fake_client: FakeSupabaseClient) -> None:
-        """get_member() MUST filter by both guildId and userId."""
-        fake_client.set_table_data("member", [{"guildId": "g1", "userId": "u1"}])
-        await db.get_member("g1", "u1")
-
-        filters = fake_client.get_table_filters("member")
-        assert ("eq", "guildId", "g1") in filters, f"Missing guildId filter, got: {filters}"
-        assert ("eq", "userId", "u1") in filters
-
-    @pytest.mark.asyncio
-    async def test_get_infractions_filters_by_guild(self, db: Database, fake_client: FakeSupabaseClient) -> None:
-        """get_infractions() MUST filter by guildId."""
-        fake_client.set_table_data("infraction", [])
-        await db.get_infractions("g99", "u1")
-
-        filters = fake_client.get_table_filters("infraction")
-        assert ("eq", "guildId", "g99") in filters, f"Missing guildId filter, got: {filters}"
-
-    @pytest.mark.asyncio
-    async def test_get_active_warnings_filters_by_guild(self, db: Database, fake_client: FakeSupabaseClient) -> None:
-        """get_active_warnings() MUST filter by guildId."""
-        fake_client.set_table_data("infraction", [])
-        await db.get_active_warnings("g42", "u1")
-
-        filters = fake_client.get_table_filters("infraction")
-        assert ("eq", "guildId", "g42") in filters, f"Missing guildId filter, got: {filters}"
-
-    @pytest.mark.asyncio
-    async def test_get_leaderboard_filters_by_guild(self, db: Database, fake_client: FakeSupabaseClient) -> None:
-        """get_leaderboard() MUST filter by guildId."""
-        fake_client.set_table_data("member", [])
-        await db.get_leaderboard("g77")
-
-        filters = fake_client.get_table_filters("member")
-        assert ("eq", "guildId", "g77") in filters, f"Missing guildId filter, got: {filters}"
-
-    @pytest.mark.asyncio
-    async def test_get_economy_config_filters_by_guild(self, db: Database, fake_client: FakeSupabaseClient) -> None:
-        """get_economy_config() MUST filter by guildId."""
-        fake_client.set_table_data("economy_config", [])
-        await db.get_economy_config("g55")
-
-        filters = fake_client.get_table_filters("economy_config")
-        assert ("eq", "guildId", "g55") in filters, f"Missing guildId filter, got: {filters}"
-
-    @pytest.mark.asyncio
-    async def test_get_greeting_config_filters_by_guild(self, db: Database, fake_client: FakeSupabaseClient) -> None:
-        """get_greeting_config() MUST filter by guildId."""
-        fake_client.set_table_data("greeting_config", [])
-        await db.get_greeting_config("g33")
-
-        filters = fake_client.get_table_filters("greeting_config")
-        assert ("eq", "guildId", "g33") in filters, f"Missing guildId filter, got: {filters}"
+        filters = fake_client.get_table_filters(table)
+        for expected in expected_filters:
+            assert expected in filters, f"Missing {expected} filter, got: {filters}"
 
     @pytest.mark.asyncio
     async def test_wrong_guild_id_filter_would_fail(self, db: Database, fake_client: FakeSupabaseClient) -> None:
