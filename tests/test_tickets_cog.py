@@ -1474,14 +1474,7 @@ class TestNoteCommands:
     # the cog renders the same error-embed contract (Failed title or the
     # privacy-gate fragment) — cap for note_add, author-only for note_delete.
     _NOTE_ERROR_MATRIX: ClassVar[list[Any]] = [
-        pytest.param(
-            "note_add",
-            "Note limit reached",
-            "limit",
-            "one too many",
-            None,
-            id="note-add-cap-error",
-        ),
+        pytest.param("note_add", "Note limit reached", "limit", "one too many", None, id="note-add-cap-error"),
         pytest.param(
             "note_delete",
             "Only the note author may delete this note",
@@ -1490,7 +1483,7 @@ class TestNoteCommands:
             "note-uuid-001",
             id="note-delete-not-owner",
         ),
-    ]
+    ]  # noqa: E501 -- long exception strings kept verbatim per row
 
     @pytest.mark.parametrize(("command", "exc_text", "fragment", "note_content", "note_id"), _NOTE_ERROR_MATRIX)
     async def test_note_service_error_shows_error(
