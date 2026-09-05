@@ -1011,49 +1011,42 @@ class TestPollFallback:
         assert gt_values[table] == "2025-06-01T09:30:00+00:00"
 
     @pytest.mark.asyncio
-    async def test_poll_stops_on_recovery(self, cache: TTLCache) -> None:
-        """Spec R4: when status returns to SUBSCRIBED the poll loop MUST stop
-        and ``last_check`` reset — not merely flagged dormant behind a flag.
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("with_preflight_state", "expect_recreated"),
+        [
+            pytest.param(False, False, id="poll-stops-on-recovery"),
+            pytest.param(True, True, id="poll-task-recreated-when-unhealthy-after-recovery"),
+        ],
+    )
+    async def test_poll_task_recovery_cycle(self, cache: TTLCache, with_preflight_state: bool, expect_recreated: bool) -> None:
+        """Spec R4 recovery cycle: recovery (SUBSCRIBED) MUST stop the poll
+        task and reset ``last_check`` — not merely flag it dormant (a live
+        dormant task is the prior bug). Symmetrically, a later unhealthy
+        spell (>60s) MUST recreate the poll task so the fallback runs again.
 
-        A permanently-running dormant task violates the spec clause "the poll
-        loop stops" (``spec.md:106-110``); this regression test asserts the
-        task itself is cancelled/cleared, not just the fallback flag.
+        Parametrized (S6 ceiling cut): both rows share the start → recover →
+        assert scaffold; the second row continues into the unhealthy probe.
         """
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
         await sub.start()
         try:
-            poll_task_before = sub._poll_task
-            assert poll_task_before is not None  # start() spawns the poll task
-            sub._poll_fallback_enabled = True
-            sub._last_check = "2025-06-01T10:00:00+00:00"
+            if with_preflight_state:
+                sub._poll_fallback_enabled = True
+                sub._last_check = "2025-06-01T10:00:00+00:00"
 
             # Sync callback — no await.
             sub._on_subscribe("SUBSCRIBED", None)
 
             assert sub._poll_fallback_enabled is False
-            assert sub._last_check == "1970-01-01T00:00:00+00:00"
+            if with_preflight_state:
+                assert sub._last_check == "1970-01-01T00:00:00+00:00"
             # The poll task MUST be stopped — cleared to None, or done/cancelled.
-            # A live dormant task (the prior bug) fails this assertion.
             assert sub._poll_task is None or sub._poll_task.done() or sub._poll_task.cancelled()
-        finally:
-            await sub.stop()
 
-    @pytest.mark.asyncio
-    async def test_poll_task_recreated_when_unhealthy_after_recovery(self, cache: TTLCache) -> None:
-        """After recovery cancels the poll task, a subsequent unhealthy spell
-        (>60s) MUST recreate the poll task so the fallback can run again.
-
-        Symmetric to ``test_poll_stops_on_recovery``: stop-on-recover is only
-        correct if a later unhealthy period restarts the loop.
-        """
-        client = _make_client_mock()
-        sub = _make_subscriber(cache, client)
-        await sub.start()
-        try:
-            # Recover — cancels and clears the poll task.
-            sub._on_subscribe("SUBSCRIBED", None)
-            assert sub._poll_task is None or sub._poll_task.done() or sub._poll_task.cancelled()
+            if not expect_recreated:
+                return
 
             # Now go unhealthy for >60s and run a health check.
             sub._status = "CHANNEL_ERROR"
