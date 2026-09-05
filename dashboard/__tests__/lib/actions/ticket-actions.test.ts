@@ -148,17 +148,17 @@ function setupAuth({
       : { data: ticketNoteData, error: null },
     ticketNoteSingleResult: ticketNoteSingleError
       ? { data: null, error: ticketNoteSingleError }
-      : ticketNoteSingle
+      : (ticketNoteSingle
         ? { data: ticketNoteSingle, error: null }
-        : { data: null, error: null },
+        : { data: null, error: null }),
     ticketSelectResult: ticketError
       ? { data: null, error: ticketError }
       : { data: ticketData, error: null },
     ticketSingleResult: ticketSingleError
       ? { data: null, error: ticketSingleError }
-      : ticketSingle
+      : (ticketSingle
         ? { data: ticketSingle, error: null }
-        : { data: null, error: null },
+        : { data: null, error: null }),
     ticketUpdateResult: ticketUpdateError
       ? { data: null, error: ticketUpdateError }
       : { data: null, error: null },
@@ -404,7 +404,7 @@ describe("getTicketNotes — query shape & return", () => {
     ];
     setupAuth({
       ticketNoteData: notes,
-      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
+      ticketSingle: buildTicket({ guildId: GUILD_ID, id: TICKET_ID }),
     });
     const result = await getTicketNotes(TICKET_ID);
     expect(result.error).toBeNull();
@@ -433,9 +433,9 @@ describe("addTicketNote — note cap (TI-031 / TI-034)", () => {
   it("rejects adding when the ticket already has 50 notes (cap reached)", async () => {
     const svc = setupAuth({
       ticketNoteData: Array.from({ length: NOTE_CAP }, (_, i) =>
-        buildTicketNote({ id: `n${i}`, content: `note ${i}`, authorId: "999" })
+        buildTicketNote({ authorId: "999", content: `note ${i}`, id: `n${i}` })
       ),
-      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
+      ticketSingle: buildTicket({ guildId: GUILD_ID, id: TICKET_ID }),
     });
     const result = await addTicketNote(TICKET_ID, "one too many");
 
@@ -447,9 +447,9 @@ describe("addTicketNote — note cap (TI-031 / TI-034)", () => {
   it("persists the note when the ticket has fewer than 50 notes (TI-034)", async () => {
     const svc = setupAuth({
       ticketNoteData: Array.from({ length: 30 }, (_, i) =>
-        buildTicketNote({ id: `n${i}`, content: `note ${i}`, authorId: "999" })
+        buildTicketNote({ authorId: "999", content: `note ${i}`, id: `n${i}` })
       ),
-      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
+      ticketSingle: buildTicket({ guildId: GUILD_ID, id: TICKET_ID }),
     });
     const result = await addTicketNote(TICKET_ID, "new note under cap");
 
@@ -476,7 +476,7 @@ describe("addTicketNote — note dedup (TI-016 normalized hash)", () => {
     const svc = setupAuth({
       discordUserId: SESSION_USER_ID,
       ticketNoteData: recent,
-      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
+      ticketSingle: buildTicket({ guildId: GUILD_ID, id: TICKET_ID }),
     });
     // Cosmetic whitespace/case variant of an own note 1s ago → same hash.
     const result = await addTicketNote(TICKET_ID, "  hello   world  ");
@@ -492,13 +492,13 @@ describe("addTicketNote — note dedup (TI-016 normalized hash)", () => {
       discordUserId: SESSION_USER_ID,
       ticketNoteData: [
         buildTicketNote({
-          id: "other-author",
           authorId: "999999999999999999",
           content: "hello",
           createdAt: new Date(now.getTime() - 500).toISOString(),
+          id: "other-author",
         }),
       ],
-      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
+      ticketSingle: buildTicket({ guildId: GUILD_ID, id: TICKET_ID }),
     });
     const result = await addTicketNote(TICKET_ID, "hello");
 
@@ -516,7 +516,7 @@ describe("deleteTicketNote — author-only ownership (TI-032 / TI-035)", () => {
     const svc = setupAuth({
       discordUserId: SESSION_USER_ID,
       ticketNoteSingle: { authorId: SESSION_USER_ID, ticketId: TICKET_ID },
-      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
+      ticketSingle: buildTicket({ guildId: GUILD_ID, id: TICKET_ID }),
     });
     const result = await deleteTicketNote(NOTE_ID);
 
@@ -531,7 +531,7 @@ describe("deleteTicketNote — author-only ownership (TI-032 / TI-035)", () => {
     const svc = setupAuth({
       discordUserId: SESSION_USER_ID,
       ticketNoteSingle: { authorId: "999999999999999999", ticketId: TICKET_ID },
-      ticketSingle: buildTicket({ id: TICKET_ID, guildId: GUILD_ID }),
+      ticketSingle: buildTicket({ guildId: GUILD_ID, id: TICKET_ID }),
     });
     const result = await deleteTicketNote(NOTE_ID);
 
