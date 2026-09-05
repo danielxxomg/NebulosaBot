@@ -286,15 +286,9 @@ class TestSubscriberStart:
         client.channel.assert_called_once_with("cache-sync")
         assert channel.on_postgres_changes.call_count == 6
         channel.subscribe.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_start_subscribes_to_six_tables(self, cache: TTLCache) -> None:
-        channel = _make_channel_mock()
-        client = _make_client_mock(channel)
-        sub = _make_subscriber(cache, client)
-
-        await sub.start()
-
+        # The registered tables are exactly the six-table contract (this row
+        # also carries the old start_subscribes_to_six_tables literal-set
+        # assertion, deduped in the S6 ceiling cut).
         tables_called = {call.kwargs.get("table") for call in channel.on_postgres_changes.call_args_list}
         assert tables_called == {"guild", "greeting_config", "ticket", "ticket_note", "member", "economy_config"}
 
