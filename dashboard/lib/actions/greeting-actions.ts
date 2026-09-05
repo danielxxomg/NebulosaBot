@@ -5,6 +5,45 @@ import { verifyGuildAdmin } from "@/lib/guards";
 import { revalidatePath } from "next/cache";
 import type { ActionResult } from "@/lib/types";
 
+/** Discord snowflake: 17-20 digits. */
+const SNOWFLAKE_RE = /^\d{17,20}$/u;
+
+/** Field-level validation failure. */
+interface FieldError {
+  error: string;
+  field: string;
+  success: false;
+}
+
+/** Read a checkbox-style form field ("on" when checked). */
+const checkbox = (formData: FormData, name: string): boolean =>
+  formData.get(name) === "on";
+
+/** Read a text field, trimming to null when absent/blank. */
+const textField = (formData: FormData, name: string): string | null =>
+  (formData.get(name) as string)?.trim() || null;
+
+/** Required-when-enabled check for a channel selection. */
+const checkRequiredWhen = (
+  enabled: boolean,
+  value: string | null,
+  message: string,
+  field: string
+): FieldError | null =>
+  enabled && !value ? { error: message, field, success: false } : null;
+
+/** Snowflake check: null when unset or valid; the field error otherwise. */
+const checkSnowflake = (value: string | null, label: string, field: string): FieldError | null =>
+  value && !SNOWFLAKE_RE.test(value)
+    ? { error: `${label} must be a valid Discord snowflake.`, field, success: false }
+    : null;
+
+/** 2,000-character cap for greeting messages. */
+const checkMessageCap = (value: string | null, label: string, field: string): FieldError | null =>
+  value && value.length > 2000
+    ? { error: `${label} must be 2,000 characters or fewer.`, field, success: false }
+    : null;
+
 /**
  * Update the greeting (welcome/goodbye) configuration for a guild.
  *
@@ -20,43 +59,31 @@ export const updateGreetingConfig = async (guildId: string, formData: FormData):
   );
   if (authError) {return authError;}
 
-  // 2. Extract fields.
-  const welcomeEnabled = formData.get("welcomeEnabled") === "on";
-  const goodbyeEnabled = formData.get("goodbyeEnabled") === "on";
-  const welcomeChannelId = (formData.get("welcomeChannelId") as string)?.trim() || null;
-  const goodbyeChannelId = (formData.get("goodbyeChannelId") as string)?.trim() || null;
-  const onboardingChannelId = (formData.get("onboardingChannelId") as string)?.trim() || null;
-  const welcomeMessage = (formData.get("welcomeMessage") as string)?.trim() || null;
-  const goodbyeMessage = (formData.get("goodbyeMessage") as string)?.trim() || null;
-  const welcomeCardEnabled = formData.get("welcomeCardEnabled") === "on";
-  const goodbyeCardEnabled = formData.get("goodbyeCardEnabled") === "on";
-  const rawThemeId = (formData.get("themeId") as string)?.trim() || null;
-  const themeId = rawThemeId === "gaming_neon" ? "gaming_neon" : null;
+  // 2. Extract fields (checkbox -> boolean, text -> trimmed-or-null).
+  const welcomeEnabled = checkbox(formData, "welcomeEnabled");
+  const goodbyeEnabled = checkbox(formData, "goodbyeEnabled");
+  const welcomeChannelId = textField(formData, "welcomeChannelId");
+  const goodbyeChannelId = textField(formData, "goodbyeChannelId");
+  const onboardingChannelId = textField(formData, "onboardingChannelId");
+  const welcomeMessage = textField(formData, "welcomeMessage");
+  const goodbyeMessage = textField(formData, "goodbyeMessage");
+  const welcomeCardEnabled = checkbox(formData, "welcomeCardEnabled");
+  const goodbyeCardEnabled = checkbox(formData, "goodbyeCardEnabled");
+  // Theme whitelist: only the neon preset is selectable in v1.
+  const themeId = textField(formData, "themeId") === "gaming_neon" ? "gaming_neon" : null;
 
-  // 3. Validate.
-  if (welcomeEnabled && !welcomeChannelId) {
-    return { error: "Welcome channel is required when welcome messages are enabled.", field: "welcomeChannelId", success: false };
-  }
-  if (welcomeChannelId && !/^\d{17,20}$/u.test(welcomeChannelId)) {
-    return { error: "Welcome channel ID must be a valid Discord snowflake.", field: "welcomeChannelId", success: false };
-  }
-  if (onboardingChannelId && !/^\d{17,20}$/u.test(onboardingChannelId)) {
-    return { error: "Onboarding channel ID must be a valid Discord snowflake.", field: "onboardingChannelId", success: false };
-  }
-
-  if (goodbyeEnabled && !goodbyeChannelId) {
-    return { error: "Goodbye channel is required when goodbye messages are enabled.", field: "goodbyeChannelId", success: false };
-  }
-  if (goodbyeChannelId && !/^\d{17,20}$/u.test(goodbyeChannelId)) {
-    return { error: "Goodbye channel ID must be a valid Discord snowflake.", field: "goodbyeChannelId", success: false };
-  }
-
-  if (welcomeMessage && welcomeMessage.length > 2000) {
-    return { error: "Welcome message must be 2,000 characters or fewer.", field: "welcomeMessage", success: false };
-  }
-  if (goodbyeMessage && goodbyeMessage.length > 2000) {
-    return { error: "Goodbye message must be 2,000 characters or fewer.", field: "goodbyeMessage", success: false };
-  }
+  // 3. Validate (error strings preserved verbatim; order kept: welcome
+  // required -> welcome/onboarding snowflake -> goodbye required -> goodbye
+  // snowflake -> message caps).
+  const validationError: FieldError | null =
+    checkRequiredWhen(welcomeEnabled, welcomeChannelId, "Welcome channel is required when welcome messages are enabled.", "welcomeChannelId") ??
+    checkSnowflake(welcomeChannelId, "Welcome channel ID", "welcomeChannelId") ??
+    checkSnowflake(onboardingChannelId, "Onboarding channel ID", "onboardingChannelId") ??
+    checkRequiredWhen(goodbyeEnabled, goodbyeChannelId, "Goodbye channel is required when goodbye messages are enabled.", "goodbyeChannelId") ??
+    checkSnowflake(goodbyeChannelId, "Goodbye channel ID", "goodbyeChannelId") ??
+    checkMessageCap(welcomeMessage, "Welcome message", "welcomeMessage") ??
+    checkMessageCap(goodbyeMessage, "Goodbye message", "goodbyeMessage");
+  if (validationError) {return validationError;}
 
   // 4. Persist to Supabase (UPSERT).
   const serviceClient = await createServiceClient();

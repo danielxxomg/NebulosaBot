@@ -104,9 +104,7 @@ const resolveSessionUserId = async (): Promise<string> => {
  * Returns `"unknown"` when no session is available (the page layout guard
  * ensures a session exists before this is reachable in practice).
  */
-export const getCurrentUserId = async (): Promise<string> => 
-  resolveSessionUserId()
-;
+export const getCurrentUserId = (): Promise<string> => resolveSessionUserId();
 
 /**
  * Fetch up to {@link TICKET_PAGE_LIMIT} tickets for a guild, newest first.
@@ -448,7 +446,7 @@ export const deleteTicketNote = async (noteId: string): Promise<TicketMutationRe
  * @param ticketId Optional ticket id filter (narrows to one ticket's history).
  * @param page 1-indexed page number (defaults to 1).
  */
-export const getTicketAudit = async (guildId: string, ticketId?: string, page: number = 1): Promise<TicketAuditListResult> => {
+export const getTicketAudit = async (guildId: string, ticketId?: string, page = 1): Promise<TicketAuditListResult> => {
   const authError = await verifyGuildAdmin(
     guildId,
     "You must be a server administrator to view the ticket audit trail."

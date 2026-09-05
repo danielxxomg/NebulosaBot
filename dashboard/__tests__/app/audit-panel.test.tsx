@@ -5,7 +5,7 @@ import {
   fireEvent,
 } from "@testing-library/react";
 import type { TicketAudit } from "@/lib/types";
-import { AuditPanel } from "@/app/(authenticated)/guilds/[guildId]/tickets/_components/AuditPanel";
+import { AuditPanel } from "@/app/(authenticated)/guilds/[guildId]/tickets/_components/audit-panel";
 
 /**
  * AuditPanel — paginated, guild-scoped view of `ticket_audit` rows (PR3

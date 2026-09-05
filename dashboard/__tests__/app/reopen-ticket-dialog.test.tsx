@@ -1,10 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   render,
   screen,
   fireEvent,
 } from "@testing-library/react";
-import { ReopenTicketDialog } from "@/app/(authenticated)/guilds/[guildId]/tickets/_components/ReopenTicketDialog";
+import { ReopenTicketDialog } from "@/app/(authenticated)/guilds/[guildId]/tickets/_components/reopen-ticket-dialog";
 import type { ReopenGuidance } from "@/lib/actions/ticket-actions";
 
 /**

@@ -6,8 +6,6 @@
  * `@eslint/eslintrc` FlatCompat so no legacy file is required.
  */
 import { FlatCompat } from "@eslint/eslintrc";
-import { fileURLToPath } from "node:url";
-import { dirname } from "node:path";
 
 const __filename = import.meta.filename;
 const __dirname = import.meta.dirname;

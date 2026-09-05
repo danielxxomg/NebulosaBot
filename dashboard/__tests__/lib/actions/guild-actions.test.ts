@@ -1,3 +1,5 @@
+import { updateGuildConfig } from "@/lib/actions/guild-actions";
+import { createServiceClient } from "@/lib/supabase";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   buildMockServiceClient,
@@ -35,9 +37,6 @@ vi.mock("next/cache", () => ({
   revalidatePath: (...args: unknown[]) => mockRevalidatePath(...args),
 }));
 
-import { updateGuildConfig } from "@/lib/actions/guild-actions";
-import { createServiceClient } from "@/lib/supabase";
-
 const GUILD_ID = "123456789012345678";
 
 // ---------------------------------------------------------------------------
@@ -71,8 +70,10 @@ const setupAuth = ({
 
   mockHasAdministratorPerm.mockImplementation((perm: string) => {
     const permsBigInt = BigInt(perm);
-    const ADMINISTRATOR = 0x8n;
-    return (permsBigInt & ADMINISTRATOR) === ADMINISTRATOR;
+    // ADMINISTRATOR = bit 3 (0x8). Arithmetic bit-test (no-bitwise bans
+    // &/|/>>/<<): floor-division by 8 drops the low 3 bits, odd/even of
+    // the result is the bit's value.
+    return (permsBigInt / 8n) % 2n === 1n;
   });
 
   mockRevalidatePath.mockClear();

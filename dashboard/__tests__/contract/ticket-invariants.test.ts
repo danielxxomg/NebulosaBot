@@ -192,7 +192,8 @@ describe("Contract TI-011..TI-015 (parentId FK)", () => {
 describe("Contract TI-016..TI-018 (note dedup)", () => {
   it("ti016NoteDedupDenied — normalized duplicate from same author within window is denied", () => {
     const original = computeNoteHash("Hello World");
-    const incoming = computeNoteHash("  hello world  "); // cosmetic → same hash
+    // cosmetic variant → same normalized hash
+    const incoming = computeNoteHash("  hello world  ");
     expect(original).toBe(incoming);
     expect(isDuplicateNote(incoming, "authorA", [original], 2)).toBe(true);
   });
@@ -268,7 +269,7 @@ describe("Contract TI-019..TI-021 (audit logging — dashboard side)", () => {
     expect(deniedRow.reason).toBeTruthy();
   });
 
-  it("ti021AuditGuildScope — dashboard audit read is guild-scoped (.eq guildId)", async () => {
+  it("ti021AuditGuildScope — dashboard audit read is guild-scoped (.eq guildId)", () => {
     // The contract: getTicketAudit filters by guildId so other guilds'
     // audit rows never leak. The action unit test asserts the exact
     // .eq("guildId", ...) call; here we assert the contract the spec
@@ -345,7 +346,7 @@ describe("Contract TI-029..TI-030 (dashboard reopen drift)", () => {
     expect(guidance.command).toBe(`/reopen ticket:#${String(guidance.ticketNumber).padStart(4, "0")}`);
   });
 
-  it("ti030ReopenNoCategoryError — a missing ticketCategoryId yields an error and NO command", async () => {
+  it("ti030ReopenNoCategoryError — a missing ticketCategoryId yields an error and NO command", () => {
     // TI-030 (UNSKIPPED in PR3): the dashboard category gate rejects a guild
     // with no ticketCategoryId BEFORE showing any command, because the bot
     // /reopen would fail without it.

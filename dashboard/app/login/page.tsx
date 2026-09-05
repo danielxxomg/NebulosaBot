@@ -8,6 +8,29 @@ export const metadata = {
   title: "Login — NebulosaBot Dashboard",
 };
 
+/** Discord OAuth2 entry — form action. "use server" keeps it a Server Action. */
+const signInWithDiscord = async () => {
+  "use server";
+
+  const supabase = await createServerSupabaseClient();
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    options: {
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/api/auth/callback`,
+      scopes: "identify guilds",
+    },
+    provider: "discord",
+  });
+
+  if (error) {
+    throw new Error(`Discord OAuth2 failed: ${error.message}`);
+  }
+
+  if (data.url) {
+    redirect(data.url);
+  }
+};
+
 /**
  * Discord OAuth2 login page.
  *
@@ -19,28 +42,6 @@ export const metadata = {
  *   4. Callback exchanges the code for a Supabase session
  */
 export default function LoginPage() {
-  const signInWithDiscord = async () => {
-    "use server";
-
-    const supabase = await createServerSupabaseClient();
-
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      options: {
-        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/api/auth/callback`,
-        scopes: "identify guilds",
-      },
-      provider: "discord",
-    });
-
-    if (error) {
-      throw new Error(`Discord OAuth2 failed: ${error.message}`);
-    }
-
-    if (data.url) {
-      redirect(data.url);
-    }
-  };
-
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
       <Card className="w-full max-w-sm">

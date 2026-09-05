@@ -1,6 +1,5 @@
 import { createServerSupabaseClient, createServiceClient } from "@/lib/supabase";
 import { fetchUserGuilds, hasAdministratorPerm } from "@/lib/discord";
-import type { ActionResult } from "@/lib/types";
 
 /**
  * Shared guard: re-verify the current user has admin access to the target guild.
