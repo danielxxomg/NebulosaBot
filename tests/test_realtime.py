@@ -1124,39 +1124,39 @@ class TestReceivedCounter:
     """_received_count MUST increment for every CDC event, even skipped ones."""
 
     @pytest.mark.asyncio
-    async def test_received_count_increments_for_valid_event(self, cache: TTLCache) -> None:
-        """Valid CDC event increments both _received_count and _event_count."""
+    @pytest.mark.parametrize(
+        ("arrange", "expect_event_count"),
+        [
+            pytest.param("valid", 1, id="increments-for-valid-event"),
+            pytest.param("skipped", 0, id="increments-for-skipped-event"),
+            pytest.param("self_echo", 0, id="increments-for-self-echo"),
+        ],
+    )
+    async def test_received_count_increments(
+        self,
+        cache: TTLCache,
+        arrange: str,
+        expect_event_count: int,
+    ) -> None:
+        """Every CDC event increments _received_count; _event_count only on
+        valid (non-skipped, non-echo) events — per row: a valid guild event
+        counts both, a skipped ticket_note (no ids) counts received only, and
+        a self-echo counts received only.
+        """
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
 
-        await sub._handle_cdc(_cdc_payload(table="guild", record={"id": "G1"}))
+        if arrange == "valid":
+            await sub._handle_cdc(_cdc_payload(table="guild", record={"id": "G1"}))
+        elif arrange == "skipped":
+            # ticket_note with no ticketId and no guildId — will be skipped
+            await sub._handle_cdc(_cdc_payload(table="ticket_note", record={}))
+        else:  # self_echo
+            await sub.mark_recent_write("guild", "G-echo")
+            await sub._handle_cdc(_cdc_payload(table="guild", record={"id": "G-echo"}))
 
         assert sub._received_count == 1
-        assert sub._event_count == 1
-
-    @pytest.mark.asyncio
-    async def test_received_count_increments_for_skipped_event(self, cache: TTLCache) -> None:
-        """Skipped CDC event (no guild_id) increments _received_count but NOT _event_count."""
-        client = _make_client_mock()
-        sub = _make_subscriber(cache, client)
-
-        # ticket_note with no ticketId and no guildId — will be skipped
-        await sub._handle_cdc(_cdc_payload(table="ticket_note", record={}))
-
-        assert sub._received_count == 1
-        assert sub._event_count == 0  # NOT incremented (skipped)
-
-    @pytest.mark.asyncio
-    async def test_received_count_increments_for_self_echo(self, cache: TTLCache) -> None:
-        """Self-echo event increments _received_count but NOT _event_count."""
-        client = _make_client_mock()
-        sub = _make_subscriber(cache, client)
-        await sub.mark_recent_write("guild", "G-echo")
-
-        await sub._handle_cdc(_cdc_payload(table="guild", record={"id": "G-echo"}))
-
-        assert sub._received_count == 1
-        assert sub._event_count == 0  # NOT incremented (self-echo skipped)
+        assert sub._event_count == expect_event_count  # 0 = NOT incremented (skipped/echo)
 
     @pytest.mark.asyncio
     async def test_watchdog_uses_received_count(self, cache: TTLCache, caplog) -> None:
