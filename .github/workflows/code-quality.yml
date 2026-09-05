@@ -71,13 +71,12 @@ jobs:
       # History scan (expensive; schedule weekly, not per-PR):
       #   ./betterleaks git . --redact --log-opts="--all"
 
-  dashboard-lint-advisory:
-    # Oxlint (via Ultracite core preset) over dashboard/. Advisory phase:
-    # baseline 288 findings on 2026-08-23 (mostly style: sort-keys, func-style,
-    # unicorn). Triage → fix or rule-tune in the dedicated dashboard-QA SDD,
-    # then flip continue-on-error to false.
+  dashboard-lint:
+    # Oxlint (via Ultracite core preset) over dashboard/. BLOCKING since
+    # S4 of unified-pending-close: the full 321-finding baseline (2026-09-04:
+    # 317 errors + 4 warnings) was fixed to zero, so any new finding fails
+    # the workflow.
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -95,17 +94,12 @@ jobs:
         working-directory: dashboard
         run: npm ci
 
-      - name: Oxlint (Ultracite core) — advisory
-        # Advisory phase: ~300 baseline findings (mostly style: sort-keys,
-        # func-style, unicorn, toSorted) await triage in the dashboard-QA SDD.
-        # Node bump above fixed the config parse; findings are pre-existing
-        # baseline debt, not regressions from this PR.
-        continue-on-error: true
+      - name: Oxlint (Ultracite core) — blocking
+        # Baseline zeroed in S4 (2026-09-04): 0 findings. Blocking gate.
         working-directory: dashboard
         run: npm run lint:ox
 
-      - name: ESLint (existing flat config) — advisory parity check
-        continue-on-error: true
+      - name: ESLint (existing flat config) — blocking
         working-directory: dashboard
         run: npm run lint
 
@@ -116,4 +110,3 @@ jobs:
       #   npx next typegen && npx next build
       # Oxlint type-aware via tsgolint (experimental upstream):
       #   see oxc-project/tsgolint before enabling.
-      # Blocking variant: remove `continue-on-error: true` from this job.
