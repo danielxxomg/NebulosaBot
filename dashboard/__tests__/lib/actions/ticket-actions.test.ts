@@ -106,62 +106,63 @@ const mockSingleResult = (
 ): { data: unknown; error: null } | { data: null; error: Error } =>
   error ? { data: null, error } : { data: row, error: null };
 
-const setupAuth = ({
-  hasSession = true,
-  hasProviderToken = true,
-  guildActive = true,
-  guildTicketCategoryId = CATEGORY_ID as string | null,
-  isAdmin = true,
-  adminGuildId = GUILD_ID,
-  ticketData = [] as Ticket[],
-  ticketError = null as Error | null,
-  ticketSingle = null as Ticket | null,
-  ticketSingleError = null as Error | null,
-  ticketUpdateError = null as Error | null,
-  ticketNoteData = [] as TicketNote[],
-  ticketNoteError = null as Error | null,
-  ticketNoteSingle = null as { ticketId: string; authorId?: string } | null,
-  ticketNoteSingleError = null as Error | null,
-  ticketNoteInsertError = null as Error | null,
-  ticketNoteDeleteError = null as Error | null,
-  ticketAuditData = [] as TicketAudit[],
-  ticketAuditError = null as Error | null,
-  discordUserId = SESSION_USER_ID,
-} = {}) => {
+/** Either-override: the error, else the row payload. */
+const either = <T,>(
+  error: Error | null,
+  data: T
+): { data: T; error: null } | { data: null; error: Error } =>
+  error ? { data: null, error } : { data, error: null };
+
+/** Guild-row override: inactive guilds resolve the empty row. */
+const guildRow = (active: boolean, ticketCategoryId: string | null) =>
+  // The mock resolves every `from("guild").select().single()` to this row,
+  // so include both `active` (read by verifyGuildAdmin) and
+  // `ticketCategoryId` (read by getReopenGuidance) here.
+  active
+    ? { data: { active: true, ticketCategoryId }, error: null }
+    : { data: null, error: null };
+
+/** Default-value plumbing for {@link setupAuth}, kept out of the branch count. */
+const setupAuthDefaults = {
+  adminGuildId: GUILD_ID,
+  discordUserId: SESSION_USER_ID,
+  guildActive: true,
+  guildTicketCategoryId: CATEGORY_ID as string | null,
+  hasProviderToken: true,
+  hasSession: true,
+  isAdmin: true,
+  ticketAuditData: [] as TicketAudit[],
+  ticketAuditError: null as Error | null,
+  ticketData: [] as Ticket[],
+  ticketDeleteError: null as Error | null,
+  ticketError: null as Error | null,
+  ticketInsertError: null as Error | null,
+  ticketNoteData: [] as TicketNote[],
+  ticketNoteError: null as Error | null,
+  ticketNoteSingle: null as { ticketId: string; authorId?: string } | null,
+  ticketNoteSingleError: null as Error | null,
+  ticketSingle: null as Ticket | null,
+  ticketSingleError: null as Error | null,
+  ticketUpdateError: null as Error | null,
+};
+
+const setupAuth = (overrides: Partial<typeof setupAuthDefaults> = {}) => {
+  const o = { ...setupAuthDefaults, ...overrides };
+
   mockGetSession.mockResolvedValue(
-    buildAuthSession({ discordUserId, hasProviderToken, hasSession })
+    buildAuthSession({ discordUserId: o.discordUserId, hasProviderToken: o.hasProviderToken, hasSession: o.hasSession })
   );
 
   const svc = buildMockServiceClient({
-    guildSelectResult: guildActive
-      ? {
-          // The mock resolves every `from("guild").select().single()` to this
-          // row, so include both `active` (read by verifyGuildAdmin) and
-          // `ticketCategoryId` (read by getReopenGuidance) here.
-          data: { active: true, ticketCategoryId: guildTicketCategoryId },
-          error: null,
-        }
-      : { data: null, error: null },
-    ticketAuditSelectResult: ticketAuditError
-      ? { data: null, error: ticketAuditError }
-      : { data: ticketAuditData, error: null },
-    ticketNoteDeleteResult: ticketNoteDeleteError
-      ? { data: null, error: ticketNoteDeleteError }
-      : { data: null, error: null },
-    ticketNoteInsertResult: ticketNoteInsertError
-      ? { data: null, error: ticketNoteInsertError }
-      : { data: null, error: null },
-    ticketNoteSelectResult: ticketNoteError
-      ? { data: null, error: ticketNoteError }
-      : { data: ticketNoteData, error: null },
-    ticketNoteSingleResult: mockSingleResult(ticketNoteSingleError, ticketNoteSingle),
-    ticketSelectResult: ticketError
-      ? { data: null, error: ticketError }
-      : { data: ticketData, error: null },
-    ticketSingleResult: mockSingleResult(ticketSingleError, ticketSingle),
-    ticketUpdateResult: ticketUpdateError
-      ? { data: null, error: ticketUpdateError }
-      : { data: null, error: null },
+    guildSelectResult: guildRow(o.guildActive, o.guildTicketCategoryId),
+    ticketAuditSelectResult: either(o.ticketAuditError, o.ticketAuditData),
+    ticketNoteDeleteResult: either(o.ticketDeleteError, null),
+    ticketNoteInsertResult: either(o.ticketInsertError, null),
+    ticketNoteSelectResult: either(o.ticketNoteError, o.ticketNoteData),
+    ticketNoteSingleResult: mockSingleResult(o.ticketNoteSingleError, o.ticketNoteSingle),
+    ticketSelectResult: either(o.ticketError, o.ticketData),
+    ticketSingleResult: mockSingleResult(o.ticketSingleError, o.ticketSingle),
+    ticketUpdateResult: either(o.ticketUpdateError, null),
   });
 
   vi.mocked(createServiceClient).mockResolvedValue(
@@ -169,7 +170,7 @@ const setupAuth = ({
   );
 
   mockFetchUserGuilds.mockResolvedValue([
-    { id: adminGuildId, permissions: isAdmin ? "8" : "1024" },
+    { id: o.adminGuildId, permissions: o.isAdmin ? "8" : "1024" },
   ]);
 
   return svc;

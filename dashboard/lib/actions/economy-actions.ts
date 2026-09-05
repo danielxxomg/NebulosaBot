@@ -5,6 +5,24 @@ import { verifyGuildAdmin } from "@/lib/guards";
 import { revalidatePath } from "next/cache";
 import type { ActionResult } from "@/lib/types";
 
+/** Discord snowflake: 17-20 digits. */
+const SNOWFLAKE_RE = /^\d{17,20}$/u;
+
+/**
+ * Inclusive integer-bound check. Returns the field error when the value is
+ * NaN or outside [min, max]; null when valid.
+ */
+const checkIntBound = (
+  value: number,
+  min: number,
+  max: number,
+  message: string,
+  field: string
+): { error: string; field: string; success: false } | null =>
+  Number.isNaN(value) || value < min || value > max
+    ? { error: message, field, success: false }
+    : null;
+
 /**
  * Update the economy configuration for a guild.
  *
@@ -43,30 +61,18 @@ export const updateEconomyConfig = async (guildId: string, formData: FormData): 
     }
   }
 
-  // 3. Validate numeric bounds.
-  if (Number.isNaN(dailyReward) || dailyReward < 1 || dailyReward > 1_000_000) {
-    return { error: "Daily reward must be 1–1,000,000.", field: "dailyReward", success: false };
-  }
-  if (Number.isNaN(dailyCooldownHours) || dailyCooldownHours < 1 || dailyCooldownHours > 720) {
-    return { error: "Daily cooldown must be 1–720 hours.", field: "dailyCooldownHours", success: false };
-  }
-  if (Number.isNaN(xpPerMessage) || xpPerMessage < 1 || xpPerMessage > 1000) {
-    return { error: "XP per message must be 1–1,000.", field: "xpPerMessage", success: false };
-  }
-  if (Number.isNaN(xpCooldownSeconds) || xpCooldownSeconds < 1 || xpCooldownSeconds > 3600) {
-    return { error: "XP cooldown must be 1–3,600 seconds.", field: "xpCooldownSeconds", success: false };
-  }
-  if (Number.isNaN(levelBaseXp) || levelBaseXp < 1 || levelBaseXp > 1_000_000) {
-    return { error: "Level base XP must be 1–1,000,000.", field: "levelBaseXp", success: false };
-  }
-  if (Number.isNaN(levelMultiplier) || levelMultiplier < 1 || levelMultiplier > 10) {
-    return { error: "Level multiplier must be 1.0–10.0.", field: "levelMultiplier", success: false };
-  }
-
-  // Validate levelUpChannelId snowflake.
-  if (levelUpChannelId && !/^\d{17,20}$/u.test(levelUpChannelId)) {
-    return { error: "Level-up channel ID must be a valid Discord snowflake.", field: "levelUpChannelId", success: false };
-  }
+  // 3. Validate numeric bounds + snowflake (error strings preserved verbatim).
+  const boundError =
+    checkIntBound(dailyReward, 1, 1_000_000, "Daily reward must be 1–1,000,000.", "dailyReward") ??
+    checkIntBound(dailyCooldownHours, 1, 720, "Daily cooldown must be 1–720 hours.", "dailyCooldownHours") ??
+    checkIntBound(xpPerMessage, 1, 1000, "XP per message must be 1–1,000.", "xpPerMessage") ??
+    checkIntBound(xpCooldownSeconds, 1, 3600, "XP cooldown must be 1–3,600 seconds.", "xpCooldownSeconds") ??
+    checkIntBound(levelBaseXp, 1, 1_000_000, "Level base XP must be 1–1,000,000.", "levelBaseXp") ??
+    checkIntBound(levelMultiplier, 1, 10, "Level multiplier must be 1.0–10.0.", "levelMultiplier") ??
+    (levelUpChannelId && !SNOWFLAKE_RE.test(levelUpChannelId)
+      ? { error: "Level-up channel ID must be a valid Discord snowflake.", field: "levelUpChannelId", success: false }
+      : null);
+  if (boundError) {return boundError;}
 
   // 4. Persist to Supabase (UPSERT).
   const serviceClient = await createServiceClient();
