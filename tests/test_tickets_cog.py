@@ -23,7 +23,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
-from discord import app_commands
+from discord import app_commands as _app
 
 from bot.cogs.ticket_admin_flow import TicketAdminFlow
 from bot.cogs.ticket_integrity_flow import TicketIntegrityFlow
@@ -688,6 +688,28 @@ class TestBuildTicketEmbed:
 # ---------------------------------------------------------------------------
 
 
+class TestTicketPanelViewEdgeCases:
+    """Edge cases for TicketPanelView."""
+
+    async def test_open_ticket_no_guild_shows_error(
+        self,
+        ticket_bot: MagicMock,
+    ) -> None:
+        """open_ticket_button with no guild → error embed."""
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.guild = None
+        interaction.client = ticket_bot
+        interaction.response = MagicMock()
+        interaction.response.send_message = AsyncMock()
+
+        view = TicketPanelView()
+        await view.open_ticket_button.callback(interaction)
+
+        interaction.response.send_message.assert_awaited_once()
+        call_kwargs = interaction.response.send_message.call_args
+        assert call_kwargs.kwargs.get("ephemeral") is True
+
+
 class TestClaimEdgeCases:
     """Edge cases for claim button."""
 
@@ -1063,35 +1085,41 @@ class TestSlashCommands:
             description_text="Abre un ticket",
         )
 
-    async def test_list_categories_shows_categories(
+    async def test_ticket_panel_no_guild(
+        self,
+        tickets_cog: TicketsCog,
+    ) -> None:
+        """ticket_panel in DM → error embed."""
+        ctx = _guild_ctx(None)
+        await _assert_no_guild_error(tickets_cog, tickets_cog.ticket_panel, ctx)
+
+    @pytest.mark.parametrize(
+        ("categories", "title_hint", "case"),
+        [
+            pytest.param([_category_row()], "Categories", "list-categories-populated", id="list-categories-populated"),
+            pytest.param([], "No Categories", "list-categories-empty", id="list-categories-empty"),
+        ],
+    )
+    async def test_list_categories_embed_by_content(
         self,
         tickets_cog: TicketsCog,
         mock_db,
+        categories: list[Any],
+        title_hint: str,
+        case: str,
     ) -> None:
-        """list_categories shows configured categories."""
+        """list_categories renders a title keyed on configured categories:
+        populated → 'Categories', none configured → 'No Categories' info
+        embed.
+        """
         ctx = _guild_ctx(123456789)
 
-        mock_db.get_ticket_categories = AsyncMock(return_value=[_category_row()])
+        mock_db.get_ticket_categories = AsyncMock(return_value=categories)
 
         await tickets_cog.list_categories.callback(tickets_cog, ctx)
 
         embed = _sent_embed(ctx)
-        assert "Categories" in (embed.title or "")
-
-    async def test_list_categories_empty(
-        self,
-        tickets_cog: TicketsCog,
-        mock_db,
-    ) -> None:
-        """list_categories with no categories → info embed."""
-        ctx = _guild_ctx(123456789)
-
-        mock_db.get_ticket_categories = AsyncMock(return_value=[])
-
-        await tickets_cog.list_categories.callback(tickets_cog, ctx)
-
-        embed = _sent_embed(ctx)
-        assert "No Categories" in (embed.title or "")
+        assert title_hint in (embed.title or "")
 
     async def test_create_category_creates(
         self,
@@ -1263,6 +1291,15 @@ class TestSubticketCreate:
         assert call_kwargs["guild_id"] == "123456789"
         slash_ctx.send.assert_awaited()
 
+    async def test_subticket_create_no_guild(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+    ) -> None:
+        """/subticket create in DM → error embed."""
+        slash_ctx.guild = None
+        await _assert_no_guild_error(tickets_cog, tickets_cog.subticket_create, slash_ctx)
+
     async def test_subticket_create_not_a_ticket_channel(
         self,
         tickets_cog: TicketsCog,
@@ -1330,6 +1367,15 @@ class TestReopenCommand:
         assert call_args.kwargs["guild"] is slash_ctx.guild
         slash_ctx.send.assert_awaited()
 
+    async def test_reopen_no_guild(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+    ) -> None:
+        """/reopen in DM → error embed."""
+        slash_ctx.guild = None
+        await _assert_no_guild_error(tickets_cog, tickets_cog.reopen, slash_ctx)
+
     async def test_reopen_not_a_ticket_channel(
         self,
         tickets_cog: TicketsCog,
@@ -1388,6 +1434,16 @@ class TestTransferCommand:
         assert call_kwargs["actor_id"] == "111111111"
         assert call_kwargs["guild"] is slash_ctx.guild
         slash_ctx.send.assert_awaited()
+
+    async def test_transfer_no_guild(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+    ) -> None:
+        """/transfer in DM → error embed."""
+        slash_ctx.guild = None
+        target = MagicMock(spec=discord.Member)
+        await _assert_no_guild_error(tickets_cog, tickets_cog.transfer, slash_ctx, member=target)
 
 
 class TestNoteCommands:
@@ -1504,21 +1560,23 @@ class TestSubsidiadosPermissions:
     def _is_mod_gated(cmd) -> bool:
         return bool(cmd.checks) or (hasattr(cmd, "app_command") and bool(cmd.app_command.checks))
 
-    # Subsidiados commands that MUST carry the @is_mod() gate: (command
-    # attribute, human label used in the failure message).
-    _MOD_GATED: ClassVar[list[tuple[str, str]]] = [
-        ("subticket_create", "/subticket create"),
-        ("reopen", "/reopen"),
-        ("transfer", "/transfer"),
-        ("note_add", "/note add"),
-        ("note_list", "/note list"),
-        ("note_delete", "/note delete"),
-    ]
+    def test_subticket_create_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
+        assert self._is_mod_gated(tickets_cog.subticket_create), "/subticket create MUST be gated by @is_mod()"
 
-    @pytest.mark.parametrize(("command_name", "label"), _MOD_GATED)
-    def test_is_mod_gated(self, tickets_cog: TicketsCog, command_name: str, label: str) -> None:
-        cmd = getattr(tickets_cog, command_name)
-        assert self._is_mod_gated(cmd), f"{label} MUST be gated by @is_mod()"
+    def test_reopen_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
+        assert self._is_mod_gated(tickets_cog.reopen), "/reopen MUST be gated by @is_mod()"
+
+    def test_transfer_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
+        assert self._is_mod_gated(tickets_cog.transfer), "/transfer MUST be gated by @is_mod()"
+
+    def test_note_add_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
+        assert self._is_mod_gated(tickets_cog.note_add), "/note add MUST be gated by @is_mod()"
+
+    def test_note_list_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
+        assert self._is_mod_gated(tickets_cog.note_list), "/note list MUST be gated by @is_mod()"
+
+    def test_note_delete_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
+        assert self._is_mod_gated(tickets_cog.note_delete), "/note delete MUST be gated by @is_mod()"
 
 
 # ===========================================================================
@@ -1844,65 +1902,6 @@ async def _assert_no_guild_error(cog: TicketsCog, cmd, ctx: MagicMock, **kwargs)
     ctx.send.assert_awaited_once()
     embed = ctx.send.call_args.kwargs.get("embed")
     assert "Server Only" in (embed.title or "") or "Solo Servidores" in (embed.title or "")
-
-
-# No-guild guard scenarios: (case id, command attr or view callback name,
-# needs a Member kwarg, Discord surface the guard fires on). Each case runs
-# the DM-path guard against its own fresh ctx/interaction and asserts the
-# server-only error embed via the dispatch helper.
-NO_GUILD_MATRIX: list[Any] = [
-    pytest.param("open_ticket_button", False, "interaction", {}, id="panel_view_button"),
-    pytest.param("ticket_panel", False, "ctx", {}, id="ticket_panel"),
-    pytest.param("subticket_create", False, "ctx", {}, id="subticket_create"),
-    pytest.param("reopen", False, "ctx", {}, id="reopen"),
-    pytest.param("transfer", True, "ctx", {}, id="transfer"),
-    pytest.param("sweep_integrity", False, "ctx", {}, id="sweep_integrity"),
-    pytest.param("repair_ticket", False, "ctx", {"ticket_ref": "t-1"}, id="repair_ticket"),
-]
-
-
-class TestNoGuildGuards:
-    """DM-path guards across the ticket cog surface the server-only error.
-
-    ctx-surface commands funnel through the shared ``_assert_no_guild_error``
-    helper (fresh ``_guild_ctx(None)`` per case); the panel-view button runs
-    on a raw ``discord.Interaction`` and asserts its ephemeral
-    ``response.send_message`` embed instead.
-    """
-
-    @pytest.mark.parametrize(("command_name", "needs_member", "surface", "call_kwargs"), NO_GUILD_MATRIX)
-    async def test_no_guild_shows_server_only_error(
-        self,
-        tickets_cog: TicketsCog,
-        ticket_bot: MagicMock,
-        command_name: str,
-        needs_member: bool,
-        surface: str,
-        call_kwargs: dict[str, Any],
-    ) -> None:
-        """Invoking in a DM (guild=None) → server-only error embed."""
-        if surface == "interaction":
-            interaction = MagicMock(spec=discord.Interaction)
-            interaction.guild = None
-            interaction.client = ticket_bot
-            interaction.response = MagicMock()
-            interaction.response.send_message = AsyncMock()
-
-            await TicketPanelView().open_ticket_button.callback(interaction)
-
-            interaction.response.send_message.assert_awaited_once()
-            call_kwargs_obj = interaction.response.send_message.call_args
-            assert call_kwargs_obj.kwargs.get("ephemeral") is True
-            return
-        cmd = getattr(tickets_cog, command_name)
-        ctx = _guild_ctx(None)
-        kwargs: dict[str, Any] = dict(call_kwargs)
-        if needs_member:
-            kwargs["member"] = MagicMock(spec=discord.Member)
-        await cmd.callback(tickets_cog, ctx, **kwargs)
-        ctx.send.assert_awaited_once()
-        embed = ctx.send.call_args.kwargs.get("embed")
-        assert "Server Only" in (embed.title or "") or "Solo Servidores" in (embed.title or "")
 
 
 def _ticket_channel_row(mock_db) -> dict:
@@ -2662,7 +2661,7 @@ class TestConfigureFieldsGroup:
 
     def test_configure_fields_is_group_without_fallback(self, tickets_cog: TicketsCog) -> None:
         """S6A: configure_fields is a pure Group — no hybrid fallback callback."""
-        assert isinstance(tickets_cog.configure_fields, app_commands.Group)
+        assert isinstance(tickets_cog.configure_fields, _app.Group)
         assert not hasattr(tickets_cog.configure_fields, "callback")
 
 
@@ -2680,7 +2679,7 @@ class TestConfigureFieldsPermissions:
 
     def test_configure_fields_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
         """S6A: group itself has no checks — gate lives on subcommand."""
-        assert isinstance(tickets_cog.configure_fields, app_commands.Group)
+        assert isinstance(tickets_cog.configure_fields, _app.Group)
 
     def test_configure_fields_set_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
         assert self._is_mod_gated(tickets_cog.configure_fields_set), "/configure_fields set MUST be gated"
@@ -2758,84 +2757,80 @@ class TestUnclaimCommand:
             assert embed is not None
             assert "Unclaim" in (embed.title or "") or "✅" in (embed.title or "")
 
-    @pytest.mark.parametrize("denial", ["not_claimer", pytest.param("unclaimed_ticket", id="unclaimed_ticket")])
-    async def test_unclaim_denial_guards(
+    async def test_unclaim_by_non_claimer_non_mod_rejected(
         self,
         tickets_cog: TicketsCog,
         slash_ctx: MagicMock,
         ticket_bot: MagicMock,
         mock_db,
-        denial: str,
     ) -> None:
-        """Denied paths → service guarded, ephemeral error embed, no unclaim.
+        """Non-claimer non-mod → service raises ValueError → ephemeral error embed."""
+        slash_ctx.author.id = 333333333  # not claimer
+        slash_ctx.author.guild_permissions.administrator = False
+        slash_ctx.author.roles = []
+        ticket_bot._guild_mod_role_cache = {}
 
-        ``not_claimer`` = non-claimer non-mod (service raises the invariant
-        denial); ``unclaimed_ticket`` = ticket has no claimer (guard fires
-        before the service is touched).
-        """
-        ticket_bot.ticket_service.unclaim_ticket = AsyncMock()
-        if denial == "not_claimer":
-            slash_ctx.author.id = 333333333  # not claimer
-            slash_ctx.author.guild_permissions.administrator = False
-            slash_ctx.author.roles = []
-            ticket_bot._guild_mod_role_cache = {}
-            _claimed_by_channel_row(mock_db)
-            # Service raises the invariant denial.
-            ticket_bot.ticket_service.unclaim_ticket = AsyncMock(
-                side_effect=ValueError("Only the claimer or a moderator can unclaim this ticket")
-            )
-        else:  # unclaimed_ticket
-            slash_ctx.author.id = 111111111
-            open_row = _ticket_row(status="open")
-            open_row["claimedBy"] = None
-            mock_db.get_ticket_by_channel = AsyncMock(return_value=open_row)
+        _claimed_by_channel_row(mock_db)
+        # Service raises the invariant denial.
+        ticket_bot.ticket_service.unclaim_ticket = AsyncMock(
+            side_effect=ValueError("Only the claimer or a moderator can unclaim this ticket")
+        )
 
         await tickets_cog.unclaim.callback(tickets_cog, slash_ctx)
 
-        if denial == "not_claimer":
-            # Service IS called — the invariant is checked inside the service.
-            ticket_bot.ticket_service.unclaim_ticket.assert_called_once()
-            kwargs = _sent_ephemeral_kwargs(slash_ctx)
-            title = kwargs["embed"].title or ""
-            assert "Permission" in title or "Denied" in title
-        else:
-            ticket_bot.ticket_service.unclaim_ticket.assert_not_called()
-            _sent_ephemeral_kwargs(slash_ctx)
+        # Service IS called — the invariant is checked inside the service.
+        ticket_bot.ticket_service.unclaim_ticket.assert_called_once()
+        kwargs = _sent_ephemeral_kwargs(slash_ctx)
+        title = kwargs["embed"].title or ""
+        assert "Permission" in title or "Denied" in title
 
-    @pytest.mark.parametrize(
-        ("scenario", "expected_service_calls"),
-        [
-            pytest.param("no_guild", 0, id="no_guild"),
-            pytest.param("not_ticket_channel", 0, id="not_ticket_channel"),
-        ],
-    )
-    async def test_unclaim_error_guards(
+    async def test_unclaim_on_unclaimed_ticket_rejected(
         self,
         tickets_cog: TicketsCog,
         slash_ctx: MagicMock,
         ticket_bot: MagicMock,
         mock_db,
-        scenario: str,
-        expected_service_calls: int,
     ) -> None:
-        """Guard failures → no unclaim, error embed via ctx.send.
-
-        ``no_guild`` = DM invocation (bare ctx, no slash scaffold);
-        ``not_ticket_channel`` = lookup returns no ticket row.
-        """
+        """Unclaim on an unclaimed ticket → ephemeral error embed."""
+        slash_ctx.author.id = 111111111
+        open_row = _ticket_row(status="open")
+        open_row["claimedBy"] = None
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=open_row)
         ticket_bot.ticket_service.unclaim_ticket = AsyncMock()
-        if scenario == "no_guild":
-            ctx = MagicMock()
-            ctx.guild = None
-            ctx.send = AsyncMock()
-        else:
-            mock_db.get_ticket_by_channel = AsyncMock(return_value=None)
-            ctx = slash_ctx
+
+        await tickets_cog.unclaim.callback(tickets_cog, slash_ctx)
+
+        ticket_bot.ticket_service.unclaim_ticket.assert_not_called()
+        _sent_ephemeral_kwargs(slash_ctx)
+
+    async def test_unclaim_no_guild(
+        self,
+        tickets_cog: TicketsCog,
+    ) -> None:
+        """/unclaim in DM → error embed."""
+        ctx = MagicMock()
+        ctx.guild = None
+        ctx.send = AsyncMock()
 
         await tickets_cog.unclaim.callback(tickets_cog, ctx)
 
-        ticket_bot.ticket_service.unclaim_ticket.assert_not_called()
         _sent_embed(ctx)
+
+    async def test_unclaim_not_ticket_channel(
+        self,
+        tickets_cog: TicketsCog,
+        slash_ctx: MagicMock,
+        ticket_bot: MagicMock,
+        mock_db,
+    ) -> None:
+        """/unclaim in non-ticket channel → error embed."""
+        mock_db.get_ticket_by_channel = AsyncMock(return_value=None)
+        ticket_bot.ticket_service.unclaim_ticket = AsyncMock()
+
+        await tickets_cog.unclaim.callback(tickets_cog, slash_ctx)
+
+        ticket_bot.ticket_service.unclaim_ticket.assert_not_called()
+        _sent_embed(slash_ctx)
 
     async def test_unclaim_service_error(
         self,
@@ -3084,6 +3079,19 @@ class TestSweepIntegrityCommand:
         assert ticket_bot.ticket_service.sweep_integrity.call_args.args[1] is ticket_bot
         ctx.send.assert_awaited()
 
+    async def test_sweep_integrity_no_guild_shows_error(
+        self,
+        tickets_cog: TicketsCog,
+    ) -> None:
+        """A DM invocation surfaces the server-only error."""
+        ctx = MagicMock()
+        ctx.guild = None
+        ctx.send = AsyncMock()
+
+        await tickets_cog.sweep_integrity.callback(tickets_cog, ctx)
+
+        _sent_embed(ctx)
+
     async def test_sweep_integrity_reports_summary(
         self,
         tickets_cog: TicketsCog,
@@ -3214,6 +3222,19 @@ class TestRepairTicketCommand:
         # ticketId is uuid NOT NULL — without a canonical ticket the audit is
         # skipped and the failure is surfaced via warning log + RepairResult.
         mock_db.insert_audit_row.assert_not_awaited()
+        ctx.send.assert_awaited_once()
+
+    async def test_repair_ticket_no_guild_shows_error(
+        self,
+        tickets_cog: TicketsCog,
+    ) -> None:
+        """A DM invocation surfaces the server-only error."""
+        ctx = MagicMock()
+        ctx.guild = None
+        ctx.send = AsyncMock()
+
+        await tickets_cog.repair_ticket.callback(tickets_cog, ctx, ticket_ref="t-1")
+
         ctx.send.assert_awaited_once()
 
 
