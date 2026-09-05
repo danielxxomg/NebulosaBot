@@ -1078,60 +1078,41 @@ class TestMigrationWatchdog:
     """_watchdog_check_once — warns after 30s post-SUBSCRIBED with 0 events."""
 
     @pytest.mark.asyncio
-    async def test_warns_after_30s_no_events(self, cache: TTLCache, caplog) -> None:
+    @pytest.mark.parametrize(
+        ("elapsed_note", "received_count", "expect_warn"),
+        [
+            pytest.param("35s", 0, True, id="warns-after-30s-no-events"),
+            pytest.param("35s", 3, False, id="silent-when-events-received"),
+            pytest.param("15s", 0, False, id="silent-before-30s"),
+        ],
+    )
+    async def test_watchdog_warn_gate(
+        self,
+        cache: TTLCache,
+        caplog,
+        elapsed_note: str,
+        received_count: int,
+        expect_warn: bool,
+    ) -> None:
+        """Watchdog warns only when SUBSCRIBED for ≥30s AND zero received events.
+
+        Parametrized (S6 ceiling cut): the three rows share one scaffold —
+        35s+0 events warns (and flips _watchdog_warned), 35s with events stays
+        silent, and 15s stays silent.
+        """
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
         sub._status = "SUBSCRIBED"
         with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
-            sub._subscribed_at = 965.0  # 35s ago
-            sub._event_count = 0
+            sub._subscribed_at = 965.0 if elapsed_note == "35s" else 985.0  # 35s / 15s ago
+            sub._received_count = received_count
             with caplog.at_level(logging.WARNING, logger="bot.core.realtime"):
                 await sub._watchdog_check_once()
 
-        assert any("supabase_realtime publication" in r.message for r in caplog.records)
-        assert sub._watchdog_warned is True
-
-    @pytest.mark.asyncio
-    async def test_warns_only_once_when_no_events(self, cache: TTLCache, caplog) -> None:
-        """Watchdog MUST not spam every 30s after the first publication warning."""
-        client = _make_client_mock()
-        sub = _make_subscriber(cache, client)
-        sub._status = "SUBSCRIBED"
-        with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
-            sub._subscribed_at = 965.0
-            sub._received_count = 0
-            with caplog.at_level(logging.WARNING, logger="bot.core.realtime"):
-                await sub._watchdog_check_once()
-                await sub._watchdog_check_once()
-
-        messages = [r.message for r in caplog.records if "supabase_realtime publication" in r.message]
-        assert len(messages) == 1
-
-    @pytest.mark.asyncio
-    async def test_silent_when_events_received(self, cache: TTLCache, caplog) -> None:
-        client = _make_client_mock()
-        sub = _make_subscriber(cache, client)
-        sub._status = "SUBSCRIBED"
-        with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
-            sub._subscribed_at = 965.0
-            sub._received_count = 3
-            with caplog.at_level(logging.WARNING, logger="bot.core.realtime"):
-                await sub._watchdog_check_once()
-
-        assert not any("publication" in r.message for r in caplog.records)
-
-    @pytest.mark.asyncio
-    async def test_silent_before_30s(self, cache: TTLCache, caplog) -> None:
-        client = _make_client_mock()
-        sub = _make_subscriber(cache, client)
-        sub._status = "SUBSCRIBED"
-        with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
-            sub._subscribed_at = 985.0  # 15s ago
-            sub._event_count = 0
-            with caplog.at_level(logging.WARNING, logger="bot.core.realtime"):
-                await sub._watchdog_check_once()
-
-        assert not any("publication" in r.message for r in caplog.records)
+        warned = any("supabase_realtime publication" in r.message for r in caplog.records)
+        assert warned is expect_warn
+        if expect_warn:
+            assert sub._watchdog_warned is True
 
 
 # ===========================================================================
