@@ -14,6 +14,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
+import pytest
 
 from bot.core.i18n import load_locales, set_guild_language
 from bot.utils.paginator import EmbedPaginator
@@ -134,27 +135,24 @@ class TestEmbedPaginatorNavigation:
 
 
 class TestEmbedPaginatorStop:
-    """Tests for the stop button."""
+    """Tests for the stop button (matrix: disable-all + edit)."""
 
-    async def test_stop_disables_all_buttons(self) -> None:
-        """Stop button MUST disable prev, next, and itself."""
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("check_edit", [False, True], ids=["disables-all-buttons", "sends-edit"])
+    async def test_stop_button(self, check_edit: bool) -> None:
+        """Stop button MUST disable prev/next/itself; the edit row also
+        asserts edit_message fired once (stop renders the disabled view)."""
         view = EmbedPaginator(_make_pages(3))
         interaction = _make_interaction()
 
         await view.stop_button.callback(interaction)
 
-        for child in view.children:
-            if isinstance(child, discord.ui.Button):
-                assert child.disabled is True
-
-    async def test_stop_sends_edit(self) -> None:
-        """Stop button MUST call edit_message to update the view."""
-        view = EmbedPaginator(_make_pages(3))
-        interaction = _make_interaction()
-
-        await view.stop_button.callback(interaction)
-
-        interaction.response.edit_message.assert_awaited_once()
+        if not check_edit:
+            for child in view.children:
+                if isinstance(child, discord.ui.Button):
+                    assert child.disabled is True
+        else:
+            interaction.response.edit_message.assert_awaited_once()
 
 
 class TestEmbedPaginatorTimeout:
