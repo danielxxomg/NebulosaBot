@@ -8,6 +8,7 @@ Covers:
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -32,6 +33,41 @@ def db(fake_client: FakeSupabaseClient) -> Database:
 @pytest.fixture
 def disconnected_db() -> Database:
     return Database(url="https://test.supabase.co", key="test-key")
+
+
+TICKET_GUARD_CALLS: tuple[tuple[str, Callable[[Database], Awaitable[object]]], ...] = (
+    ("get-stale-tickets", lambda db: db.get_stale_tickets("g1")),
+    ("get-open-ticket-channel-ids", lambda db: db.get_open_ticket_channel_ids("g1")),
+    (
+        "update-ticket-last-activity",
+        lambda db: db.update_ticket_last_activity("g1", "ch-001", "2024-06-15T12:00:00+00:00"),
+    ),
+    ("get-active-ticket-by-channel", lambda db: db.get_active_ticket_by_channel("g1", "ch1")),
+    (
+        "transition-ticket-to-closed",
+        lambda db: db.transition_ticket_to_closed("g1", "t1", expected_statuses=("open", "claimed")),
+    ),
+    (
+        "transition-ticket-to-closed-guild-scoped",
+        lambda db: db.transition_ticket_to_closed("g1", "t1", expected_statuses=("open", "claimed")),
+    ),
+    (
+        "count-user-open-tickets-in-category",
+        lambda db: db.count_user_open_tickets_in_category("g1", "userA", "cat-Support"),
+    ),
+)
+
+
+class TestRaisesWithoutConnectMatrix:
+    """Every ticket_db facade method MUST fail closed with RuntimeError before connect()."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("guard_call", TICKET_GUARD_CALLS, ids=[g[0] for g in TICKET_GUARD_CALLS])
+    async def test_raises_without_connect(self, disconnected_db: Database, guard_call) -> None:
+        """MUST raise RuntimeError(match='connect') when no client is wired."""
+        _name, call = guard_call
+        with pytest.raises(RuntimeError, match="connect"):
+            await call(disconnected_db)
 
 
 class TestGetStaleTickets:
@@ -95,12 +131,6 @@ class TestGetStaleTickets:
         assert len(lt_filters) == 1
         assert lt_filters[0][2] == expected_cutoff
 
-    @pytest.mark.asyncio
-    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
-        """Raises RuntimeError when not connected."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.get_stale_tickets("g1")
-
 
 class TestGetOpenTicketChannelIds:
     """get_open_ticket_channel_ids(guild_id) — guild-scoped channel extraction."""
@@ -148,12 +178,6 @@ class TestGetOpenTicketChannelIds:
         filters = fake_client.get_table_filters("ticket")
         assert ("in_", "status", ["open", "claimed"]) in filters
 
-    @pytest.mark.asyncio
-    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
-        """Raises RuntimeError when not connected."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.get_open_ticket_channel_ids("g1")
-
 
 class TestUpdateTicketLastActivity:
     """update_ticket_last_activity(guild_id, channel_id, timestamp) — guild+channel scoped."""
@@ -189,12 +213,6 @@ class TestUpdateTicketLastActivity:
 
         filters = fake_client.get_table_filters("ticket")
         assert ("eq", "channelId", "ch-999") in filters
-
-    @pytest.mark.asyncio
-    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
-        """Raises RuntimeError when not connected."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.update_ticket_last_activity("g1", "ch-001", "2024-06-15T12:00:00+00:00")
 
 
 # ===========================================================================
@@ -275,12 +293,6 @@ class TestGetActiveTicketByChannel:
         filters = fake_client.get_table_filters("ticket")
         assert ("in_", "status", ["open", "claimed"]) in filters
 
-    @pytest.mark.asyncio
-    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
-        """Raises RuntimeError when not connected."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.get_active_ticket_by_channel("g1", "ch1")
-
 
 # ===========================================================================
 # transition_ticket_to_closed — conditional close with expected_statuses
@@ -291,37 +303,32 @@ class TestTransitionTicketToClosed:
     """transition_ticket_to_closed(ticket_id, expected_statuses, close_reason) — conditional close."""
 
     @pytest.mark.asyncio
-    async def test_closes_open_ticket(self, db: Database, fake_client: FakeSupabaseClient) -> None:
-        """Closes an open ticket and returns the closed row."""
-        open_row = {"id": "t1", "status": "open", "guildId": "g1"}
-        closed_row = {"id": "t1", "status": "closed", "guildId": "g1", "closeReason": None}
+    @pytest.mark.parametrize(
+        ("ticket_id", "initial_status"),
+        [
+            pytest.param("t1", "open", id="closes-open-ticket"),
+            pytest.param("t2", "claimed", id="closes-claimed-ticket"),
+        ],
+    )
+    async def test_closes_active_ticket(
+        self,
+        db: Database,
+        fake_client: FakeSupabaseClient,
+        ticket_id: str,
+        initial_status: str,
+    ) -> None:
+        """Closes an active (open or claimed) ticket and returns the closed row."""
+        active_row = {"id": ticket_id, "status": initial_status, "guildId": "g1"}
+        closed_row = {"id": ticket_id, "status": "closed", "guildId": "g1", "closeReason": None}
         fake_client.set_table_queue(
             "ticket",
             [
-                [open_row],  # select: found open ticket
+                [active_row],  # select: found active ticket
                 [closed_row],  # update: returns closed row
             ],
         )
 
-        result = await db.transition_ticket_to_closed("g1", "t1", expected_statuses=("open", "claimed"))
-
-        assert result is not None
-        assert result["status"] == "closed"
-
-    @pytest.mark.asyncio
-    async def test_closes_claimed_ticket(self, db: Database, fake_client: FakeSupabaseClient) -> None:
-        """Closes a claimed ticket."""
-        claimed_row = {"id": "t2", "status": "claimed", "guildId": "g1"}
-        closed_row = {"id": "t2", "status": "closed", "guildId": "g1", "closeReason": None}
-        fake_client.set_table_queue(
-            "ticket",
-            [
-                [claimed_row],
-                [closed_row],
-            ],
-        )
-
-        result = await db.transition_ticket_to_closed("g1", "t2", expected_statuses=("open", "claimed"))
+        result = await db.transition_ticket_to_closed("g1", ticket_id, expected_statuses=("open", "claimed"))
 
         assert result is not None
         assert result["status"] == "closed"
@@ -475,12 +482,6 @@ class TestTransitionTicketToClosed:
         assert update_calls[0][0] == "update"
         assert update_calls[0][1]["transcriptUrl"] == "https://t/x.html"
 
-    @pytest.mark.asyncio
-    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
-        """Raises RuntimeError when not connected."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.transition_ticket_to_closed("g1", "t1", expected_statuses=("open", "claimed"))
-
 
 # ===========================================================================
 # transition_ticket_to_closed — guild-scoped conditional close (task 2.2 RED)
@@ -587,12 +588,6 @@ class TestTransitionTicketToClosedGuildScoped:
         assert update_calls[0][0] == "update"
         assert "closeReason" not in update_calls[0][1]
 
-    @pytest.mark.asyncio
-    async def test_raises_without_connect_guild_scoped(self, disconnected_db: Database) -> None:
-        """Raises RuntimeError when not connected."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.transition_ticket_to_closed("g1", "t1", expected_statuses=("open", "claimed"))
-
 
 # ===========================================================================
 # count_user_open_tickets_in_category — per-author category count
@@ -684,9 +679,3 @@ class TestCountUserOpenTicketsInCategory:
         filters = fake_client.get_table_filters("ticket")
         neq_filters = [f for f in filters if f[0] in ("neq", "ne", "not.eq")]
         assert len(neq_filters) == 0, f"Unexpected neq filter, got: {filters}"
-
-    @pytest.mark.asyncio
-    async def test_raises_without_connect(self, disconnected_db: Database) -> None:
-        """Raises RuntimeError when not connected."""
-        with pytest.raises(RuntimeError, match="connect"):
-            await disconnected_db.count_user_open_tickets_in_category("g1", "userA", "cat-Support")
