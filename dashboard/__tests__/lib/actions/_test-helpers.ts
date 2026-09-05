@@ -287,8 +287,10 @@ export const buildDiscordMocks = (adminGuildId: string) => {
 
   const hasAdministratorPerm = vi.fn((perm: string) => {
     const permsBigInt = BigInt(perm);
-    const ADMINISTRATOR = 0x8n;
-    return (permsBigInt & ADMINISTRATOR) === ADMINISTRATOR;
+    // ADMINISTRATOR = bit 3 (0x8). Arithmetic bit-test (no-bitwise bans
+    // &/|/>>/<<): floor-division by 8 drops the low 3 bits, odd/even of
+    // the result is the bit's value.
+    return (permsBigInt / 8n) % 2n === 1n;
   });
 
   return { fetchUserGuilds, hasAdministratorPerm };
