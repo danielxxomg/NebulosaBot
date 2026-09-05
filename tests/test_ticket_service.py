@@ -2276,57 +2276,48 @@ async def test_reopen_fallback_name_resolution(
 
 
 @pytest.mark.asyncio
-async def test_claim_success_audit_failure_continues(
+@pytest.mark.parametrize(
+    ("op", "wire", "verify"),
+    [
+        # Claim: audit failure on success path → role-assignment action proceeds.
+        pytest.param(
+            "claim",
+            "claim",
+            lambda t, row: t.status == "claimed" and t.claimed_by == "999999999",
+            id="claim-audit-failure-continues",
+        ),
+        # Close: audit failure on success path → channel delete/transcript proceed.
+        pytest.param("close", "close", lambda t, row: t.status == "closed", id="close-audit-failure-continues"),
+    ],
+)
+async def test_success_audit_failure_continues(
+    op: str,
+    wire: str,
+    verify,
     service: TicketService,
     mock_db: AsyncMock,
     ticket_row: dict,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Spec: claim success audit failure MUST NOT abort the claim.
-
-    When insert_audit_row raises on the success path, the claim
-    UI action (role assignment) proceeds normally and a WARNING is logged.
+    """Spec: a success-path audit failure MUST NOT abort the UI action
+    (claim role assignment / close channel delete + transcript) — the op
+    proceeds normally and a WARNING is logged.
     """
 
-    ticket_id = ticket_row["id"]
-    staff_id = "999999999"
-
-    _claim_preread(mock_db, ticket_row, staff_id)
+    if wire == "claim":
+        _claim_preread(mock_db, ticket_row, "999999999")
+    else:
+        _wire_transition(mock_db, ticket_row)
+        mock_db.get_ticket.return_value = ticket_row
     mock_db.insert_audit_row.side_effect = Exception("audit table unavailable")
 
     with caplog.at_level(logging.WARNING, logger="bot.services.ticket_service"):
-        ticket = await service.claim_ticket(ticket_id, claimed_by=staff_id)
+        if op == "claim":
+            ticket = await service.claim_ticket(ticket_row["id"], claimed_by="999999999")
+        else:
+            ticket = await service.close_ticket(ticket_row["id"], closed_by="999999999")
 
-    # Claim succeeded — ticket is claimed despite audit failure.
-    assert ticket.status == "claimed"
-    assert ticket.claimed_by == staff_id
-    assert any("audit" in r.message.lower() for r in caplog.records)
-
-
-@pytest.mark.asyncio
-async def test_close_success_audit_failure_continues(
-    service: TicketService,
-    mock_db: AsyncMock,
-    ticket_row: dict,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Spec: close success audit failure MUST NOT abort the close.
-
-    When insert_audit_row raises on the success path, the close
-    UI action (channel delete, transcript) proceeds normally and a WARNING is logged.
-    """
-
-    ticket_id = ticket_row["id"]
-
-    _wire_transition(mock_db, ticket_row)
-    mock_db.get_ticket.return_value = ticket_row
-    mock_db.insert_audit_row.side_effect = Exception("audit table unavailable")
-
-    with caplog.at_level(logging.WARNING, logger="bot.services.ticket_service"):
-        ticket = await service.close_ticket(ticket_id, closed_by="999999999")
-
-    # Close succeeded — ticket is closed despite audit failure.
-    assert ticket.status == "closed"
+    assert verify(ticket, ticket_row)
     assert any("audit" in r.message.lower() for r in caplog.records)
 
 
