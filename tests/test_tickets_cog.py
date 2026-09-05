@@ -1469,19 +1469,54 @@ class TestNoteCommands:
         assert call_args[2] == "Customer escalated"
         slash_ctx.send.assert_awaited()
 
-    async def test_note_add_cap_error(
+    # /note error paths: (command, side_effect text, description fragment).
+    # Parametrized (S6 ceiling cut): both gates raise inside the service and
+    # the cog renders the same error-embed contract (Failed title or the
+    # privacy-gate fragment) — cap for note_add, author-only for note_delete.
+    _NOTE_ERROR_MATRIX: ClassVar[list[Any]] = [
+        pytest.param(
+            "note_add",
+            "Note limit reached",
+            "limit",
+            "one too many",
+            None,
+            id="note-add-cap-error",
+        ),
+        pytest.param(
+            "note_delete",
+            "Only the note author may delete this note",
+            "author",
+            None,
+            "note-uuid-001",
+            id="note-delete-not-owner",
+        ),
+    ]
+
+    @pytest.mark.parametrize(("command", "exc_text", "fragment", "note_content", "note_id"), _NOTE_ERROR_MATRIX)
+    async def test_note_service_error_shows_error(
         self,
         tickets_cog: TicketsCog,
         slash_ctx: MagicMock,
         ticket_bot: MagicMock,
         mock_db,
+        command: str,
+        exc_text: str,
+        fragment: str,
+        note_content: str | None,
+        note_id: str | None,
     ) -> None:
-        """create_note raises (cap) → error embed."""
+        """Service raises (cap / ownership) → error embed with the gate fragment."""
         _ticket_channel_row(mock_db)
-        ticket_bot.ticket_service.create_note = AsyncMock(side_effect=ValueError("Note limit reached"))
-        await tickets_cog.note_add.callback(tickets_cog, slash_ctx, content="one too many")
+        service_method = "create_note" if command == "note_add" else "delete_note"
+        setattr(ticket_bot.ticket_service, service_method, AsyncMock(side_effect=ValueError(exc_text)))
+
+        if command == "note_add":
+            await tickets_cog.note_add.callback(tickets_cog, slash_ctx, content=note_content or "")
+        else:
+            await tickets_cog.note_delete.callback(tickets_cog, slash_ctx, note_id=note_id or "")
+
         embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert "Failed" in embed.title or "limit" in (embed.description or "").lower()
+        assert "Failed" in embed.title or fragment in (embed.description or "").lower()
 
     async def test_note_list_shows_notes(
         self,
@@ -1529,22 +1564,6 @@ class TestNoteCommands:
         call_kwargs = ticket_bot.ticket_service.delete_note.call_args.kwargs
         assert call_kwargs["note_id"] == "note-uuid-001"
         assert call_kwargs["author_id"] == "111111111"
-
-    async def test_note_delete_not_owner(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db,
-    ) -> None:
-        """delete_note raises (ownership) → error embed."""
-        _ticket_channel_row(mock_db)
-        ticket_bot.ticket_service.delete_note = AsyncMock(
-            side_effect=ValueError("Only the note author may delete this note")
-        )
-        await tickets_cog.note_delete.callback(tickets_cog, slash_ctx, note_id="note-uuid-001")
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert "Failed" in embed.title or "author" in (embed.description or "").lower()
 
 
 class TestSubsidiadosPermissions:
