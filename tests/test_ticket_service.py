@@ -1631,35 +1631,47 @@ async def test_note_privacy_matrix(
 
 
 @pytest.mark.asyncio
-async def test_reopen_audits_success(service: TicketService, mock_db: AsyncMock) -> None:
-    """3.7/3.8: reopen success MUST write an audit success row after channel creation."""
+@pytest.mark.parametrize(
+    ("non_closed_row", "expect_outcome"),
+    [
+        pytest.param(None, "success", id="reopen-success-audited"),
+        pytest.param("open", "denied", id="reopen-denied-audited"),
+    ],
+)
+async def test_reopen_audit_outcome(
+    non_closed_row: str | None,
+    expect_outcome: str,
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """3.7/3.8: reopen MUST write an audit row whose outcome reflects the
+    invariant — success after channel creation on a closed ticket; denied +
+    re-raise on a non-closed ticket (no channel created).
+
+    Parametrized (S6 ceiling cut): both rows share the audit contract
+    (action=reopen, guild-scoped); only the wiring and outcome differ.
+    """
     ticket_id = "ticket-uuid-003"
-    guild = _wire_reopen_success(mock_db)
+    if non_closed_row is None:
+        guild = _wire_reopen_success(mock_db)
 
-    await service.reopen_ticket(ticket_id, guild=guild)
-
-    kwargs = _assert_audit(mock_db)
-    assert kwargs["action"] == "reopen"
-    assert kwargs["outcome"] == "success"
-    assert kwargs["guild_id"] == "123456789"
-
-
-@pytest.mark.asyncio
-async def test_reopen_denied_audited(service: TicketService, mock_db: AsyncMock) -> None:
-    """3.7/3.8: reopen on a non-closed ticket MUST audit denied + re-raise."""
-    ticket_id = "ticket-uuid-003"
-    open_row = {**_closed_ticket_row(), "status": "open"}
-    mock_db.get_ticket.return_value = open_row
-    guild = _mock_guild_for_reopen(category_channel=None)
-    set_guild_language("123456789", "es")  # denial text resolves via t()
-
-    with pytest.raises(ValueError, match=r"cerrados"):
         await service.reopen_ticket(ticket_id, guild=guild)
 
-    kwargs = _assert_audit(mock_db)
-    assert kwargs["action"] == "reopen"
-    assert kwargs["outcome"] == "denied"
-    guild.create_text_channel.assert_not_awaited()
+        kwargs = _assert_audit(mock_db)
+        assert kwargs["outcome"] == "success"
+        assert kwargs["guild_id"] == "123456789"
+    else:
+        open_row = {**_closed_ticket_row(), "status": non_closed_row}
+        mock_db.get_ticket.return_value = open_row
+        guild = _mock_guild_for_reopen(category_channel=None)
+        set_guild_language("123456789", "es")  # denial text resolves via t()
+
+        with pytest.raises(ValueError, match=r"cerrados"):
+            await service.reopen_ticket(ticket_id, guild=guild)
+
+        kwargs = _assert_audit(mock_db)
+        assert kwargs["outcome"] == "denied"
+        guild.create_text_channel.assert_not_awaited()
 
 
 @pytest.mark.asyncio
