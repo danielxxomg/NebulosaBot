@@ -1360,50 +1360,50 @@ async def test_get_notes_audits_success(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("caller_id", "expect_deleted"),
+    ("note_row", "caller_id", "requested_note", "expect_deleted", "match"),
     [
-        pytest.param("999999999", True, id="delete-note-own-allowed"),
-        pytest.param("888888888", False, id="delete-note-other-rejected"),
+        pytest.param("999999999", "999999999", "note-uuid-001", True, None, id="delete-note-own-allowed"),
+        pytest.param("999999999", "888888888", "note-uuid-001", False, r"[Aa]uthor", id="delete-note-other-rejected"),
+        pytest.param("other-note", "999999999", "missing-note", False, r"[Nn]ot found", id="delete-note-missing-row"),
     ],
 )
 async def test_delete_note_author_gate(
+    note_row: str,
     caller_id: str,
+    requested_note: str,
     expect_deleted: bool,
+    match: str | None,
     service: TicketService,
     mock_db: AsyncMock,
 ) -> None:
-    """delete_note MUST allow the note author and reject non-authors: the
-    author's call reaches the guild-scoped DB delete; any other caller
-    raises ValueError (author mismatch) with no DB mutation.
+    """delete_note MUST allow the note author and reject non-authors /
+    unknown note ids: the author's matching call reaches the guild-scoped
+    DB delete; any other caller raises ValueError (author mismatch) and a
+    note that does not belong to the ticket raises (not found) — both with
+    no DB mutation.
+
+    Parametrized (S6 ceiling cut): the not-found row folds the standalone
+    probe into the same gate matrix (same scaffold, same no-mutation
+    contract, distinct denial reason).
     """
     mock_db.get_ticket.return_value = _ticket_guild_row("ticket-uuid-003")
-    mock_db.get_ticket_notes.return_value = [_note_row(author_id="999999999")]
+    if match is not None and "[Nn]ot found" in match:
+        # Not-found row: the note id does not belong to the ticket at all.
+        mock_db.get_ticket_notes.return_value = [_note_row(note_id=note_row)]
+    else:
+        mock_db.get_ticket_notes.return_value = [_note_row(note_id="note-uuid-001", author_id=note_row)]
 
     if expect_deleted:
-        await service.delete_note("note-uuid-001", author_id=caller_id, ticket_id="ticket-uuid-003")
+        await service.delete_note(requested_note, author_id=caller_id, ticket_id="ticket-uuid-003")
 
         mock_db.delete_ticket_note.assert_awaited_once_with(
-            "note-uuid-001", guild_id="123456789", ticket_id="ticket-uuid-003"
+            requested_note, guild_id="123456789", ticket_id="ticket-uuid-003"
         )
     else:
-        with pytest.raises(ValueError, match=r"[Aa]uthor"):
-            await service.delete_note("note-uuid-001", author_id=caller_id, ticket_id="ticket-uuid-003")
+        with pytest.raises(ValueError, match=match):
+            await service.delete_note(requested_note, author_id=caller_id, ticket_id="ticket-uuid-003")
 
         mock_db.delete_ticket_note.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_delete_note_not_found(
-    service: TicketService,
-    mock_db: AsyncMock,
-) -> None:
-    """Deleting a note that does not belong to the ticket MUST raise ValueError."""
-    mock_db.get_ticket_notes.return_value = [_note_row(note_id="other-note")]
-
-    with pytest.raises(ValueError, match=r"[Nn]ot found"):
-        await service.delete_note("missing-note", author_id="999999999", ticket_id="ticket-uuid-003")
-
-    mock_db.delete_ticket_note.assert_not_awaited()
 
 
 # ===========================================================================
