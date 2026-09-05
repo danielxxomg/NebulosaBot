@@ -1074,37 +1074,34 @@ class TestValidateTarget:
 
 
 class TestHandleModError:
-    """Tests for _handle_mod_error helper."""
+    """Tests for _handle_mod_error helper (exception → embed mapping matrix)."""
 
-    async def test_forbidden_maps_to_permission_error(
+    @pytest.mark.parametrize(
+        ("error_name", "title_fragment"),
+        [
+            pytest.param("forbidden", "Permission Denied", id="forbidden-permission-error"),
+            pytest.param("http", "Action Failed", id="http-action-failed"),
+        ],
+    )
+    async def test_exception_maps_to_error_embed(
         self,
         sentinel_cog: SentinelCog,
         sentinel_ctx: MagicMock,
         target_member: MagicMock,
+        error_name: str,
+        title_fragment: str,
     ) -> None:
-        """discord.Forbidden → permission error embed."""
-        await sentinel_cog._handle_mod_error(
-            sentinel_ctx, discord.Forbidden(response=MagicMock(), message="no perm"), "mute", target_member
+        """discord.Forbidden → permission error embed; discord.HTTPException → action failed embed."""
+        error = (
+            discord.Forbidden(response=MagicMock(), message="no perm")
+            if error_name == "forbidden"
+            else discord.HTTPException(response=MagicMock(), message="http error")
         )
+        await sentinel_cog._handle_mod_error(sentinel_ctx, error, "mute", target_member)
 
         sentinel_ctx.send.assert_awaited_once()
         embed = sentinel_ctx.send.call_args.kwargs.get("embed")
-        assert "Permission Denied" in embed.title
-
-    async def test_http_exception_maps_to_action_failed(
-        self,
-        sentinel_cog: SentinelCog,
-        sentinel_ctx: MagicMock,
-        target_member: MagicMock,
-    ) -> None:
-        """discord.HTTPException → action failed embed."""
-        await sentinel_cog._handle_mod_error(
-            sentinel_ctx, discord.HTTPException(response=MagicMock(), message="http error"), "kick", target_member
-        )
-
-        sentinel_ctx.send.assert_awaited_once()
-        embed = sentinel_ctx.send.call_args.kwargs.get("embed")
-        assert "Action Failed" in embed.title
+        assert title_fragment in embed.title
 
 
 # ---------------------------------------------------------------------------
