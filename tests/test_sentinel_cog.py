@@ -459,7 +459,7 @@ class TestAuditReasonLocalization:
             pytest.param("unmute", "sentinel.unmute.audit_reason", id="unmute-audit-reason-localized"),
         ],
     )
-    async def test_audit_reason_localized(
+    async def test_command_audit_reason_localized(
         self,
         sentinel_cog: SentinelCog,
         sentinel_bot: MagicMock,
