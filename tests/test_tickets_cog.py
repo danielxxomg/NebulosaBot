@@ -325,16 +325,22 @@ class TestCategorySelect:
         ticket_interaction: MagicMock,
         ticket_guild: MagicMock,
     ) -> None:
-        """Category selection → modal sent as first response (no defer)."""
+        """Category selection → modal sent as first response (no defer).
+
+        Carries the assertions of the former test_category_select_sends_modal_
+        not_defer twin (deduped in the S6 ceiling cut — byte-identical setup
+        and asserts)."""
         ticket_interaction.client = ticket_bot
 
         select = _CategorySelect(options=[], guild=ticket_guild, categories=[])
         select._values = ["cat-uuid-001"]
 
+        # Patch send_modal so we can verify it was called instead of defer.
         ticket_interaction.response.send_modal = AsyncMock()
 
         await select.callback(ticket_interaction)
 
+        # send_modal called — NOT defer.
         ticket_interaction.response.send_modal.assert_awaited_once()
         ticket_interaction.response.defer.assert_not_awaited()
 
@@ -367,27 +373,6 @@ class TestCategorySelect:
 
 class TestTicketIntakeModal:
     """Tests for TicketIntakeModal — the intake form shown after category select."""
-
-    async def test_category_select_sends_modal_not_defer(
-        self,
-        ticket_bot: MagicMock,
-        ticket_interaction: MagicMock,
-        ticket_guild: MagicMock,
-    ) -> None:
-        """Category selection MUST send_modal as first response (no defer)."""
-        ticket_interaction.client = ticket_bot
-
-        select = _CategorySelect(options=[], guild=ticket_guild, categories=[])
-        select._values = ["cat-uuid-001"]
-
-        # Patch send_modal so we can verify it was called instead of defer.
-        ticket_interaction.response.send_modal = AsyncMock()
-
-        await select.callback(ticket_interaction)
-
-        # send_modal called — NOT defer.
-        ticket_interaction.response.send_modal.assert_awaited_once()
-        ticket_interaction.response.defer.assert_not_awaited()
 
     async def test_modal_submit_defers_then_creates_channel(
         self,
