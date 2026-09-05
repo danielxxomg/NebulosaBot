@@ -2720,69 +2720,72 @@ async def test_edit_ticket_category_writes_audit_on_success(
 
 
 @pytest.mark.asyncio
-async def test_edit_ticket_category_non_mod_denied(
+@pytest.mark.parametrize(
+    ("case", "row_kwargs", "count_return", "match", "audit_denied"),
+    [
+        pytest.param("non-mod", {}, None, r"[Mm]oderator", True, id="edit-category-non-mod-denied"),
+        pytest.param(
+            "closed",
+            {"status": "closed"},
+            None,
+            r"[Cc]losed",
+            False,
+            id="edit-category-closed-rejected",
+        ),
+        pytest.param(
+            "limit-violation",
+            {"author_id": "111111111"},
+            1,  # author already has an open ticket in the target category
+            r"already has an open ticket",
+            False,
+            id="edit-category-limit-violation",
+        ),
+        pytest.param("not-found", {}, None, r"[Nn]ot found", False, id="edit-category-not-found"),
+    ],
+)
+async def test_edit_ticket_category_denied_matrix(
+    case: str,
+    row_kwargs: dict,
+    count_return: int | None,
+    match: str,
+    audit_denied: bool,
     service: TicketService,
     mock_db: AsyncMock,
 ) -> None:
-    """Non-mod actor MUST be denied by check_can_edit_category."""
+    """edit_ticket_category denial gates (task 2.3 RED): non-mod actors are
+    denied by check_can_edit_category (with a denied audit row); closed
+    tickets and per-author open-ticket limit violations raise ValueError
+    before any DB mutation.
+    """
     ticket_id = "ticket-uuid-edit"
-    open_row = _open_ticket_row_for_edit()
     channel = _mock_channel_for_edit()
+    if case == "not-found":
+        mock_db.get_ticket.return_value = None
+    else:
+        open_row = _open_ticket_row_for_edit(**row_kwargs)
+        mock_db.get_ticket.return_value = open_row
+    if count_return is not None:
+        mock_db.count_user_open_tickets_in_category.return_value = count_return
 
-    mock_db.get_ticket.return_value = open_row
-
-    with pytest.raises(ValueError, match=r"[Mm]oderator"):
-        await service.edit_ticket_category(
-            ticket_id,
-            "cat-uuid-billing",
-            channel=channel,
-            actor_id="111111111",  # author, not mod
-            is_mod=False,
-        )
+    if case == "non-mod":
+        with pytest.raises(ValueError, match=match):
+            await service.edit_ticket_category(
+                ticket_id,
+                "cat-uuid-billing",
+                channel=channel,
+                actor_id="111111111",  # author, not mod
+                is_mod=False,
+            )
+    else:
+        with pytest.raises(ValueError, match=match):
+            await _edit_category(service, ticket_id, channel)
 
     # No DB mutation on denial.
     mock_db.update_ticket.assert_not_awaited()
-    # Audit denied written.
-    kwargs = _assert_audit(mock_db)
-    assert kwargs["action"] == "edit_category"
-    assert kwargs["outcome"] == "denied"
-
-
-@pytest.mark.asyncio
-async def test_edit_ticket_category_closed_rejected(
-    service: TicketService,
-    mock_db: AsyncMock,
-) -> None:
-    """Edit on a closed ticket MUST raise ValueError and not mutate DB."""
-    ticket_id = "ticket-uuid-edit"
-    closed_row = _open_ticket_row_for_edit(status="closed")
-    channel = _mock_channel_for_edit()
-
-    mock_db.get_ticket.return_value = closed_row
-
-    with pytest.raises(ValueError, match=r"[Cc]losed"):
-        await _edit_category(service, ticket_id, channel)
-
-    mock_db.update_ticket.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_edit_ticket_category_limit_violation(
-    service: TicketService,
-    mock_db: AsyncMock,
-) -> None:
-    """Edit into category where author already has open ticket MUST raise ValueError."""
-    ticket_id = "ticket-uuid-edit"
-    open_row = _open_ticket_row_for_edit(author_id="111111111")
-    channel = _mock_channel_for_edit()
-
-    mock_db.get_ticket.return_value = open_row
-    mock_db.count_user_open_tickets_in_category.return_value = 1  # already has one
-
-    with pytest.raises(ValueError, match=r"already has an open ticket"):
-        await _edit_category(service, ticket_id, channel)
-
-    mock_db.update_ticket.assert_not_awaited()
+    if audit_denied:
+        kwargs = _assert_audit(mock_db)
+        assert kwargs["action"] == "edit_category"
+        assert kwargs["outcome"] == "denied"
 
 
 @pytest.mark.asyncio
@@ -2845,21 +2848,6 @@ async def test_edit_ticket_category_same_category_noop(
     # DB updated (even though category didn't change — the method doesn't optimize for no-op).
     mock_db.update_ticket.assert_awaited_once()
     assert rename_ok is True
-
-
-@pytest.mark.asyncio
-async def test_edit_ticket_category_not_found(
-    service: TicketService,
-    mock_db: AsyncMock,
-) -> None:
-    """Editing a non-existent ticket MUST raise ValueError."""
-    mock_db.get_ticket.return_value = None
-    channel = _mock_channel_for_edit()
-
-    with pytest.raises(ValueError, match=r"[Nn]ot found"):
-        await _edit_category(service, "nonexistent", channel)
-
-    mock_db.update_ticket.assert_not_awaited()
 
 
 # ===========================================================================
