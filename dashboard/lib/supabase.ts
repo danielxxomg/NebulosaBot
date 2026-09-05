@@ -7,13 +7,13 @@ import { cookies } from "next/headers";
  * misconfigured deployment fails loudly instead of silently issuing
  * requests to an undefined URL.
  */
-function requireEnv(name: string): string {
+const requireEnv = (name: string): string => {
   const value = process.env[name];
   if (!value) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
-}
+};
 
 /**
  * Create a browser-side Supabase client using the anon public key.

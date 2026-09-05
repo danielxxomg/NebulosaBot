@@ -99,6 +99,13 @@ const buildAuditRow = (overrides: Partial<TicketAudit> = {}): TicketAudit => (
   }
 );
 
+/** Single-result row for a select().eq().single() mock: error wins, else row. */
+const mockSingleResult = (
+  error: Error | null,
+  row: unknown
+): { data: unknown; error: null } | { data: null; error: Error } =>
+  error ? { data: null, error } : { data: row, error: null };
+
 const setupAuth = ({
   hasSession = true,
   hasProviderToken = true,
@@ -147,19 +154,11 @@ const setupAuth = ({
     ticketNoteSelectResult: ticketNoteError
       ? { data: null, error: ticketNoteError }
       : { data: ticketNoteData, error: null },
-    ticketNoteSingleResult: ticketNoteSingleError
-      ? { data: null, error: ticketNoteSingleError }
-      : (ticketNoteSingle
-        ? { data: ticketNoteSingle, error: null }
-        : { data: null, error: null }),
+    ticketNoteSingleResult: mockSingleResult(ticketNoteSingleError, ticketNoteSingle),
     ticketSelectResult: ticketError
       ? { data: null, error: ticketError }
       : { data: ticketData, error: null },
-    ticketSingleResult: ticketSingleError
-      ? { data: null, error: ticketSingleError }
-      : (ticketSingle
-        ? { data: ticketSingle, error: null }
-        : { data: null, error: null }),
+    ticketSingleResult: mockSingleResult(ticketSingleError, ticketSingle),
     ticketUpdateResult: ticketUpdateError
       ? { data: null, error: ticketUpdateError }
       : { data: null, error: null },

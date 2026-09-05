@@ -7,13 +7,13 @@ import type { NextRequest } from 'next/server';
  * misconfigured deployment fails loudly instead of silently issuing
  * requests to an undefined URL.
  */
-function requireEnv(name: string): string {
+const requireEnv = (name: string): string => {
   const value = process.env[name];
   if (!value) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
-}
+};
 
 /**
  * Updates the Supabase session in middleware context.

@@ -192,7 +192,8 @@ describe("Contract TI-011..TI-015 (parentId FK)", () => {
 describe("Contract TI-016..TI-018 (note dedup)", () => {
   it("ti016NoteDedupDenied — normalized duplicate from same author within window is denied", () => {
     const original = computeNoteHash("Hello World");
-    const incoming = computeNoteHash("  hello world  "); // cosmetic → same hash
+    // cosmetic variant → same normalized hash
+    const incoming = computeNoteHash("  hello world  ");
     expect(original).toBe(incoming);
     expect(isDuplicateNote(incoming, "authorA", [original], 2)).toBe(true);
   });
