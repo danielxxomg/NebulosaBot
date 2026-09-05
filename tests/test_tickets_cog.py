@@ -1568,27 +1568,23 @@ class TestSubsidiadosPermissions:
     (verified empirically: ``checks=[]``, ``app_command.checks=[1]``).
     """
 
+    # (command attribute, human-readable command name).
+    _GATED_COMMANDS: ClassVar[list[Any]] = [
+        pytest.param("subticket_create", "/subticket create", id="subticket-create"),
+        pytest.param("reopen", "/reopen", id="reopen"),
+        pytest.param("transfer", "/transfer", id="transfer"),
+        pytest.param("note_add", "/note add", id="note-add"),
+        pytest.param("note_list", "/note list", id="note-list"),
+        pytest.param("note_delete", "/note delete", id="note-delete"),
+    ]
+
     @staticmethod
     def _is_mod_gated(cmd) -> bool:
         return bool(cmd.checks) or (hasattr(cmd, "app_command") and bool(cmd.app_command.checks))
 
-    def test_subticket_create_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
-        assert self._is_mod_gated(tickets_cog.subticket_create), "/subticket create MUST be gated by @is_mod()"
-
-    def test_reopen_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
-        assert self._is_mod_gated(tickets_cog.reopen), "/reopen MUST be gated by @is_mod()"
-
-    def test_transfer_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
-        assert self._is_mod_gated(tickets_cog.transfer), "/transfer MUST be gated by @is_mod()"
-
-    def test_note_add_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
-        assert self._is_mod_gated(tickets_cog.note_add), "/note add MUST be gated by @is_mod()"
-
-    def test_note_list_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
-        assert self._is_mod_gated(tickets_cog.note_list), "/note list MUST be gated by @is_mod()"
-
-    def test_note_delete_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
-        assert self._is_mod_gated(tickets_cog.note_delete), "/note delete MUST be gated by @is_mod()"
+    @pytest.mark.parametrize(("cmd_attr", "cmd_label"), _GATED_COMMANDS)
+    def test_is_mod_gated(self, tickets_cog: TicketsCog, cmd_attr: str, cmd_label: str) -> None:
+        assert self._is_mod_gated(getattr(tickets_cog, cmd_attr)), f"{cmd_label} MUST be gated by @is_mod()"
 
 
 # ===========================================================================
