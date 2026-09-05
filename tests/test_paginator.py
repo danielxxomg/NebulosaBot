@@ -45,15 +45,17 @@ class TestEmbedPaginatorInit:
         children = list(view.children)
         assert len(children) == 3
 
-    def test_default_timeout_is_120(self) -> None:
-        """Default timeout MUST be 120 seconds."""
-        view = EmbedPaginator(_make_pages())
-        assert view.timeout == 120.0
-
-    def test_custom_timeout(self) -> None:
-        """Timeout MUST be configurable."""
-        view = EmbedPaginator(_make_pages(), timeout=60)
-        assert view.timeout == 60
+    @pytest.mark.parametrize(
+        ("timeout", "expect_timeout"),
+        [
+            pytest.param(None, 120.0, id="default-timeout-is-120"),
+            pytest.param(60, 60, id="custom-timeout"),
+        ],
+    )
+    def test_timeout(self, timeout: float | None, expect_timeout: float) -> None:
+        """Default timeout MUST be 120s; an explicit timeout is configurable."""
+        view = EmbedPaginator(_make_pages()) if timeout is None else EmbedPaginator(_make_pages(), timeout=timeout)
+        assert view.timeout == expect_timeout
 
     def test_starts_on_page_zero(self) -> None:
         """Initial current_page MUST be 0."""
