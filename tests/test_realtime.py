@@ -385,25 +385,6 @@ class TestSubscriberStop:
         assert poll is not None and (poll.cancelled() or poll.done())
         assert watchdog is not None and (watchdog.cancelled() or watchdog.done())
 
-    @pytest.mark.asyncio
-    async def test_stop_idempotent_when_not_started(self, cache: TTLCache) -> None:
-        client = _make_client_mock()
-        sub = _make_subscriber(cache, client)
-        # stop() before start() MUST NOT raise.
-        await sub.stop()
-
-    @pytest.mark.asyncio
-    async def test_stop_is_idempotent_when_called_twice(self, cache: TTLCache) -> None:
-        client = _make_client_mock()
-        sub = _make_subscriber(cache, client)
-        await sub.start()
-
-        await sub.stop()
-        await sub.stop()  # second call MUST NOT raise
-
-        # remove_all_channels called on the first stop; second is a no-op.
-        assert client.remove_all_channels.await_count == 1
-
 
 # ===========================================================================
 # CDC handler dispatch (tasks 2.3, 2.4, 3.5)
@@ -779,6 +760,30 @@ class TestOnSubscribe:
         sub._on_subscribe("SUBSCRIBED", None)
 
         assert sub._last_check == "1970-01-01T00:00:00+00:00"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "start_first",
+        [
+            pytest.param(False, id="stop-before-start-must-not-raise"),
+            pytest.param(True, id="stop-twice-second-is-no-op"),
+        ],
+    )
+    async def test_stop_idempotent(self, cache: TTLCache, start_first: bool) -> None:
+        """stop() is idempotent: before start() or called twice it MUST NOT
+        raise, and the client teardown (remove_all_channels) runs exactly once.
+        """
+        client = _make_client_mock()
+        sub = _make_subscriber(cache, client)
+        if start_first:
+            await sub.start()
+
+        await sub.stop()
+        await sub.stop()  # second call MUST NOT raise in both rows
+
+        if start_first:
+            # remove_all_channels called on the first stop; second is a no-op.
+            assert client.remove_all_channels.await_count == 1
 
 
 # ===========================================================================
