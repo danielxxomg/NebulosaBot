@@ -35,12 +35,12 @@ interface ReopenTicketDialogProps {
   onClose: () => void;
 }
 
-export function ReopenTicketDialog({
+export const ReopenTicketDialog = ({
   open,
   guidance,
   error,
   onClose,
-}: ReopenTicketDialogProps) {
+}: ReopenTicketDialogProps) => {
   const ref = useRef<HTMLDialogElement>(null);
 
   // Close on Escape. Using the React `open` attribute (not `showModal()`) keeps
@@ -48,9 +48,9 @@ export function ReopenTicketDialog({
   // browser — ESC then isn't handled by the UA, so we do it here.
   useEffect(() => {
     if (!open) {return;}
-    function onKey(e: KeyboardEvent) {
+    const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {onClose();}
-    }
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
@@ -122,4 +122,4 @@ export function ReopenTicketDialog({
       )}
     </dialog>
   );
-}
+};

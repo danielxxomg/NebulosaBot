@@ -19,7 +19,7 @@ export const metadata = {
  *   4. Callback exchanges the code for a Supabase session
  */
 export default function LoginPage() {
-  async function signInWithDiscord() {
+  const signInWithDiscord = async () => {
     "use server";
 
     const supabase = await createServerSupabaseClient();
@@ -39,7 +39,7 @@ export default function LoginPage() {
     if (data.url) {
       redirect(data.url);
     }
-  }
+  };
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">

@@ -61,23 +61,23 @@ export interface ConfigFormProps {
  * handles submission via `useTransition`, and displays per-field
  * validation errors alongside a success banner.
  */
-export function ConfigForm({
+export const ConfigForm = ({
   guildId,
   action,
   fields,
   title,
   description,
-}: ConfigFormProps) {
+}: ConfigFormProps) => {
   const [isPending, startTransition] = useTransition();
   const [result, setResult] = useState<ActionResult | null>(null);
 
-  function handleSubmit(formData: FormData) {
+  const handleSubmit = (formData: FormData) => {
     setResult(null);
     startTransition(async () => {
       const res = await action(guildId, formData);
       setResult(res);
     });
-  }
+  };
 
   return (
     <Card>
@@ -190,4 +190,4 @@ export function ConfigForm({
       </CardContent>
     </Card>
   );
-}
+};

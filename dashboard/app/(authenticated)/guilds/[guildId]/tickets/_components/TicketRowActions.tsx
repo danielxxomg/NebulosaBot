@@ -30,7 +30,7 @@ import type { ReopenGuidance } from "@/lib/actions/ticket-actions";
  * by color or icon alone. Loading states disable the button and swap the
  * label to its progressive form ("Reopen" → "Reopening…").
  */
-export function TicketRowActions({ ticket }: { ticket: Ticket }) {
+export const TicketRowActions = ({ ticket }: { ticket: Ticket }) => {
   const router = useRouter();
   const [isReopening, startReopenTransition] = useTransition();
   const [isTransferring, startTransferTransition] = useTransition();
@@ -45,7 +45,7 @@ export function TicketRowActions({ ticket }: { ticket: Ticket }) {
   const canReopen = ticket.status === "closed";
   const canTransfer = ticket.status === "open" || ticket.status === "claimed";
 
-  function handleReopen() {
+  const handleReopen = () => {
     // Clear any inline (legacy) error state — the dialog owns the reopen UX now.
     setActionError(null);
     setReopenDialogError(null);
@@ -67,9 +67,9 @@ export function TicketRowActions({ ticket }: { ticket: Ticket }) {
         setReopenDialogError(null);
       }
     });
-  }
+  };
 
-  function handleTransfer(event: FormEvent<HTMLFormElement>) {
+  const handleTransfer = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const target = transferTarget.trim();
     if (!target) {return;}
@@ -84,7 +84,7 @@ export function TicketRowActions({ ticket }: { ticket: Ticket }) {
       setTransferTarget("");
       router.refresh();
     });
-  }
+  };
 
   return (
     <div className="flex flex-col gap-2">
@@ -180,4 +180,4 @@ export function TicketRowActions({ ticket }: { ticket: Ticket }) {
       {notesOpen && <NotesPanel ticketId={ticket.id} />}
     </div>
   );
-}
+};

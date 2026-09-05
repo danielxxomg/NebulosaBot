@@ -53,7 +53,7 @@ describe("Sidebar — Tickets nav link", () => {
     // Split into class tokens so the assertion is exact — the inactive
     // branch carries `hover:bg-sidebar-accent/50`, which would falsely
     // match a naive substring check for "bg-sidebar-accent".
-    const classes = link?.className.split(/\s+/) ?? [];
+    const classes = link?.className.split(/\s+/u) ?? [];
     expect(classes).toContain("bg-sidebar-accent");
     expect(classes).toContain("font-medium");
   });
@@ -65,7 +65,7 @@ describe("Sidebar — Tickets nav link", () => {
     render(<Sidebar guildId={GUILD_ID} />);
 
     const link = screen.getByText("Tickets").closest("a");
-    const classes = link?.className.split(/\s+/) ?? [];
+    const classes = link?.className.split(/\s+/u) ?? [];
     expect(classes).not.toContain("bg-sidebar-accent");
   });
 });

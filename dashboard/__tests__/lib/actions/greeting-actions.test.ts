@@ -47,7 +47,7 @@ const GUILD_ID = "123456789012345678";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function setupAuth({
+const setupAuth = ({
   hasSession = true,
   hasProviderToken = true,
   guildActive = true,
@@ -57,7 +57,7 @@ function setupAuth({
   hasProviderToken?: boolean;
   guildActive?: boolean;
   isAdmin?: boolean;
-} = {}) {
+} = {}) => {
   mockGetSession.mockResolvedValue(buildAuthSession({ hasProviderToken, hasSession }));
 
   const svc = buildMockServiceClient({
@@ -73,7 +73,7 @@ function setupAuth({
   ]);
 
   mockRevalidatePath.mockClear();
-}
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -96,7 +96,7 @@ describe("updateGreetingConfig — auth rejection", () => {
     const fd = buildFormData({ welcomeChannelId: "123456789012345678" });
     const result = await updateGreetingConfig(GUILD_ID, fd);
     if (!result.success) {
-      expect(result.error).toMatch(/administrator/i);
+      expect(result.error).toMatch(/administrator/iu);
     }
   });
 });

@@ -15,10 +15,10 @@ const VALID_LANGUAGES = new Set([
 /**
  * Validate that a string looks like a Discord snowflake (17-20 digit number).
  */
-function isValidSnowflake(value: string | null): boolean {
+const isValidSnowflake = (value: string | null): boolean => {
   if (!value) {return true;} // null/empty is valid (optional field)
-  return /^\d{17,20}$/.test(value);
-}
+  return /^\d{17,20}$/u.test(value);
+};
 
 /**
  * Update the guild-level configuration.
@@ -26,10 +26,7 @@ function isValidSnowflake(value: string | null): boolean {
  * Validates each field before persisting to Supabase, then revalidates
  * the guild-scoped pages so the UI reflects the latest data.
  */
-export async function updateGuildConfig(
-  guildId: string,
-  formData: FormData
-): Promise<ActionResult> {
+export const updateGuildConfig = async (guildId: string, formData: FormData): Promise<ActionResult> => {
   // 1. Auth re-check.
   const authError = await verifyGuildAdmin(
     guildId,
@@ -88,4 +85,4 @@ export async function updateGuildConfig(
   revalidatePath(`/guilds/${guildId}`, "layout");
 
   return { message: "Configuration saved.", success: true };
-}
+};

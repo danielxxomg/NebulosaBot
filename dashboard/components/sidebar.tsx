@@ -36,7 +36,7 @@ interface NavItem {
  * Mobile: hidden by default, toggled via hamburger button.
  * Desktop: always visible on the left edge.
  */
-export function Sidebar({ guildId }: SidebarProps) {
+export const Sidebar = ({ guildId }: SidebarProps) => {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -136,4 +136,4 @@ export function Sidebar({ guildId }: SidebarProps) {
       )}
     </>
   );
-}
+};

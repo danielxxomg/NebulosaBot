@@ -51,7 +51,7 @@ const OUTCOME_FALLBACK = {
   label: "Unknown",
 };
 
-function OutcomeBadge({ outcome }: { outcome: AuditOutcome }) {
+const OutcomeBadge = ({ outcome }: { outcome: AuditOutcome }) => {
   const tone = OUTCOME_BADGE[outcome] ?? OUTCOME_FALLBACK;
   return (
     <span
@@ -62,9 +62,9 @@ function OutcomeBadge({ outcome }: { outcome: AuditOutcome }) {
       <span className="sr-only">audit outcome</span>
     </span>
   );
-}
+};
 
-export function AuditPanel({ guildId, ticketId }: AuditPanelProps) {
+export const AuditPanel = ({ guildId, ticketId }: AuditPanelProps) => {
   const [rows, setRows] = useState<TicketAudit[] | null>(null);
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
@@ -72,7 +72,7 @@ export function AuditPanel({ guildId, ticketId }: AuditPanelProps) {
 
   useEffect(() => {
     let cancelled = false;
-    async function load() {
+    const load = async () => {
       setIsLoading(true);
       setLoadError(null);
       const result = await getTicketAudit(guildId, ticketId, page);
@@ -84,7 +84,7 @@ export function AuditPanel({ guildId, ticketId }: AuditPanelProps) {
         setRows(result.data);
       }
       setIsLoading(false);
-    }
+    };
     load();
     return () => {
       cancelled = true;
@@ -182,4 +182,4 @@ export function AuditPanel({ guildId, ticketId }: AuditPanelProps) {
       </div>
     </section>
   );
-}
+};

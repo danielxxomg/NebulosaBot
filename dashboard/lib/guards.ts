@@ -9,10 +9,7 @@ import type { ActionResult } from "@/lib/types";
  * The caller supplies its domain-specific admin error string so the guard
  * behavior is identical across domains except for the message.
  */
-export async function verifyGuildAdmin(
-  guildId: string,
-  adminError = "You must be a server administrator to change settings."
-): Promise<{ success: false; error: string } | null> {
+export const verifyGuildAdmin = async (guildId: string, adminError = "You must be a server administrator to change settings."): Promise<{ success: false; error: string } | null> => {
   const supabase = await createServerSupabaseClient();
   const {
     data: { session },
@@ -42,4 +39,4 @@ export async function verifyGuildAdmin(
   }
 
   return null;
-}
+};

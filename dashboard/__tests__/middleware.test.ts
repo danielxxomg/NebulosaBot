@@ -30,13 +30,13 @@ vi.mock("@/lib/supabase/middleware", () => ({
  * compiled matcher reduces to `^/<body>$` where `<body>` is the config entry
  * with its leading "/" dropped.
  */
-function compileMatcher(entry: string): RegExp {
+const compileMatcher = (entry: string): RegExp => {
   // Drop only the leading "/" (the entry is a path-style source; it contains
   // additional "/" inside `_next/static` and `_next/image`, so delimiter
   // slicing via lastIndexOf would be incorrect).
   const body = entry.slice(1);
-  return new RegExp(`^/${body}$`);
-}
+  return new RegExp(`^/${body}$`, "u");
+};
 
 describe("middleware config", () => {
   it("runs on the Node.js runtime to avoid the Edge process.version warning", () => {

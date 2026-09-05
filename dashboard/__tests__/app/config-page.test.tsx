@@ -28,8 +28,8 @@ import GuildConfigPage from "@/app/(authenticated)/guilds/[guildId]/config/page"
 
 const GUILD_ID = "123456789012345678";
 
-function buildGuildRow(overrides: Record<string, unknown> = {}) {
-  return {
+const buildGuildRow = (overrides: Record<string, unknown> = {}) => (
+  {
     id: GUILD_ID,
     language: "es",
     logChannelId: null,
@@ -38,15 +38,15 @@ function buildGuildRow(overrides: Record<string, unknown> = {}) {
     prefix: "nb!",
     ticketCategoryId: null,
     ...overrides,
-  };
-}
+  }
+);
 
-async function renderConfigPage() {
+const renderConfigPage = async () => {
   const ui = await GuildConfigPage({
     params: Promise.resolve({ guildId: GUILD_ID }),
   });
   return render(ui);
-}
+};
 
 beforeEach(() => {
   vi.clearAllMocks();

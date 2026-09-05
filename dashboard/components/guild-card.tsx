@@ -12,7 +12,7 @@ interface GuildCardProps {
  * Renders the guild icon (or a fallback initial) and name.
  * Links to `/guilds/{id}` for per-guild management.
  */
-export function GuildCard({ guild }: GuildCardProps) {
+export const GuildCard = ({ guild }: GuildCardProps) => {
   const iconUrl = guild.icon
     ? `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png?size=128`
     : null;
@@ -45,4 +45,4 @@ export function GuildCard({ guild }: GuildCardProps) {
       </Card>
     </Link>
   );
-}
+};

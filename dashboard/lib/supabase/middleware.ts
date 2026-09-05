@@ -13,7 +13,7 @@ import type { NextRequest } from 'next/server';
  *
  * @returns supabaseResponse (with refreshed cookies) and the current session.
  */
-export async function updateSession(request: NextRequest) {
+export const updateSession = async (request: NextRequest) => {
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -44,4 +44,4 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getSession();
 
   return { session, supabase, supabaseResponse };
-}
+};

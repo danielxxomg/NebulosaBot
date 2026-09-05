@@ -48,8 +48,8 @@ import { NotesPanel } from "@/app/(authenticated)/guilds/[guildId]/tickets/_comp
 
 const GUILD_ID = "123456789012345678";
 
-function buildTicket(overrides: Partial<Ticket> = {}): Ticket {
-  return {
+const buildTicket = (overrides: Partial<Ticket> = {}): Ticket => (
+  {
     authorId: "999999999999999999",
     categoryId: null,
     channelId: "888888888888888888",
@@ -64,30 +64,30 @@ function buildTicket(overrides: Partial<Ticket> = {}): Ticket {
     ticketNumber: 100,
     transcriptUrl: null,
     ...overrides,
-  };
-}
+  }
+);
 
-function buildNote(overrides: Partial<TicketNote> = {}): TicketNote {
-  return {
+const buildNote = (overrides: Partial<TicketNote> = {}): TicketNote => (
+  {
     authorId: "111",
     content: "Sample note",
     createdAt: "2025-03-01T12:00:00.000Z",
     id: crypto.randomUUID(),
     ticketId: "t1",
     ...overrides,
-  };
-}
+  }
+);
 
 /**
  * The page is an async server component: `await Page(...)` resolves to the
  * rendered React element, which we then hand to `render`.
  */
-async function renderPage() {
+const renderPage = async () => {
   const ui = await TicketsPage({
     params: Promise.resolve({ guildId: GUILD_ID }),
   });
   return render(ui);
-}
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -270,7 +270,7 @@ describe("TicketsPage — error state", () => {
     await renderPage();
 
     // Title (page.tsx:115) — `Couldn&apos;t` renders as "Couldn't".
-    expect(screen.getByText(/Couldn.t load tickets/)).toBeTruthy();
+    expect(screen.getByText(/Couldn.t load tickets/u)).toBeTruthy();
     // The action's error string surfaces in the description.
     expect(
       screen.getByText("Database error: relation does not exist")
@@ -389,7 +389,7 @@ describe("TicketsPage — sub-ticket tree rendering", () => {
     await renderPage();
 
     expect(screen.getByText("#9")).toBeTruthy();
-    expect(screen.queryAllByText(/Sub-ticket of/)).toHaveLength(0);
+    expect(screen.queryAllByText(/Sub-ticket of/u)).toHaveLength(0);
   });
 });
 
@@ -487,9 +487,9 @@ describe("TicketRowActions — visibility and action calls", () => {
       expect(mockGetReopenGuidance).toHaveBeenCalledWith("t1");
     });
     expect(
-      await screen.findByText(/Ticket category is not configured/i)
+      await screen.findByText(/Ticket category is not configured/iu)
     ).toBeTruthy();
-    expect(screen.queryByText(/\/reopen ticket:/)).toBeNull();
+    expect(screen.queryByText(/\/reopen ticket:/u)).toBeNull();
   });
 
   it("calls transferTicket with the ticket id and entered staff id", async () => {
@@ -529,12 +529,12 @@ describe("TicketRowActions — visibility and action calls", () => {
     render(<TicketRowActions ticket={ticket} />);
 
     // Panel is not mounted before the toggle.
-    expect(screen.queryByText(/No staff notes yet/)).toBeNull();
+    expect(screen.queryByText(/No staff notes yet/u)).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Notes" }));
 
     // Panel mounts → notes are fetched → empty state renders.
-    expect(await screen.findByText(/No staff notes yet/)).toBeTruthy();
+    expect(await screen.findByText(/No staff notes yet/u)).toBeTruthy();
     expect(mockGetTicketNotes).toHaveBeenCalledWith("t1");
   });
 });
@@ -549,7 +549,7 @@ describe("NotesPanel — empty / list / add / delete", () => {
 
     render(<NotesPanel ticketId="t1" />);
 
-    expect(await screen.findByText(/No staff notes yet/)).toBeTruthy();
+    expect(await screen.findByText(/No staff notes yet/u)).toBeTruthy();
     expect(mockGetTicketNotes).toHaveBeenCalledWith("t1");
   });
 
@@ -586,7 +586,7 @@ describe("NotesPanel — empty / list / add / delete", () => {
 
     render(<NotesPanel ticketId="t1" />);
 
-    await screen.findByText(/No staff notes yet/);
+    await screen.findByText(/No staff notes yet/u);
 
     fireEvent.change(screen.getByLabelText("Note content"), {
       target: { value: "Looks stale" },
@@ -623,12 +623,12 @@ describe("NotesPanel — empty / list / add / delete", () => {
     await screen.findByText("Old note");
 
     fireEvent.click(
-      screen.getByRole("button", { name: /Delete your note/i })
+      screen.getByRole("button", { name: /Delete your note/iu })
     );
 
     await waitFor(() => {
       expect(mockDeleteTicketNote).toHaveBeenCalledWith("n1");
     });
-    expect(await screen.findByText(/No staff notes yet/)).toBeTruthy();
+    expect(await screen.findByText(/No staff notes yet/u)).toBeTruthy();
   });
 });

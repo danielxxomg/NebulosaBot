@@ -12,10 +12,7 @@ import type { ActionResult } from "@/lib/types";
  * updates the existing row. All numeric fields are validated for
  * reasonable bounds before persisting.
  */
-export async function updateEconomyConfig(
-  guildId: string,
-  formData: FormData
-): Promise<ActionResult> {
+export const updateEconomyConfig = async (guildId: string, formData: FormData): Promise<ActionResult> => {
   // 1. Auth re-check.
   const authError = await verifyGuildAdmin(
     guildId,
@@ -67,7 +64,7 @@ export async function updateEconomyConfig(
   }
 
   // Validate levelUpChannelId snowflake.
-  if (levelUpChannelId && !/^\d{17,20}$/.test(levelUpChannelId)) {
+  if (levelUpChannelId && !/^\d{17,20}$/u.test(levelUpChannelId)) {
     return { error: "Level-up channel ID must be a valid Discord snowflake.", field: "levelUpChannelId", success: false };
   }
 
@@ -96,4 +93,4 @@ export async function updateEconomyConfig(
   revalidatePath(`/guilds/${guildId}`, "layout");
 
   return { message: "Economy configuration saved.", success: true };
-}
+};

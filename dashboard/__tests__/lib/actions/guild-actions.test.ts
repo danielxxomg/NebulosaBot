@@ -44,7 +44,7 @@ const GUILD_ID = "123456789012345678";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function setupAuth({
+const setupAuth = ({
   hasSession = true,
   hasProviderToken = true,
   guildActive = true,
@@ -54,7 +54,7 @@ function setupAuth({
   hasProviderToken?: boolean;
   guildActive?: boolean;
   isAdmin?: boolean;
-} = {}) {
+} = {}) => {
   mockGetSession.mockResolvedValue(buildAuthSession({ hasProviderToken, hasSession }));
 
   const svc = buildMockServiceClient({
@@ -76,7 +76,7 @@ function setupAuth({
   });
 
   mockRevalidatePath.mockClear();
-}
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -99,7 +99,7 @@ describe("updateGuildConfig — auth rejection", () => {
     const fd = buildFormData({ language: "en", prefix: "!" });
     const result = await updateGuildConfig(GUILD_ID, fd);
     if (!result.success) {
-      expect(result.error).toMatch(/re-login/i);
+      expect(result.error).toMatch(/re-login/iu);
     }
   });
 
@@ -108,7 +108,7 @@ describe("updateGuildConfig — auth rejection", () => {
     const fd = buildFormData({ language: "en", prefix: "!" });
     const result = await updateGuildConfig(GUILD_ID, fd);
     if (!result.success) {
-      expect(result.error).toMatch(/inactive|not found/i);
+      expect(result.error).toMatch(/inactive|not found/iu);
     }
   });
 
@@ -117,7 +117,7 @@ describe("updateGuildConfig — auth rejection", () => {
     const fd = buildFormData({ language: "en", prefix: "!" });
     const result = await updateGuildConfig(GUILD_ID, fd);
     if (!result.success) {
-      expect(result.error).toMatch(/administrator/i);
+      expect(result.error).toMatch(/administrator/iu);
     }
   });
 });

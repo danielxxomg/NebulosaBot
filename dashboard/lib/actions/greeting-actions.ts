@@ -12,10 +12,7 @@ import type { ActionResult } from "@/lib/types";
  * updates the existing row. Channel IDs are validated as Discord snowflakes,
  * and message lengths are capped to prevent abuse.
  */
-export async function updateGreetingConfig(
-  guildId: string,
-  formData: FormData
-): Promise<ActionResult> {
+export const updateGreetingConfig = async (guildId: string, formData: FormData): Promise<ActionResult> => {
   // 1. Auth re-check.
   const authError = await verifyGuildAdmin(
     guildId,
@@ -40,17 +37,17 @@ export async function updateGreetingConfig(
   if (welcomeEnabled && !welcomeChannelId) {
     return { error: "Welcome channel is required when welcome messages are enabled.", field: "welcomeChannelId", success: false };
   }
-  if (welcomeChannelId && !/^\d{17,20}$/.test(welcomeChannelId)) {
+  if (welcomeChannelId && !/^\d{17,20}$/u.test(welcomeChannelId)) {
     return { error: "Welcome channel ID must be a valid Discord snowflake.", field: "welcomeChannelId", success: false };
   }
-  if (onboardingChannelId && !/^\d{17,20}$/.test(onboardingChannelId)) {
+  if (onboardingChannelId && !/^\d{17,20}$/u.test(onboardingChannelId)) {
     return { error: "Onboarding channel ID must be a valid Discord snowflake.", field: "onboardingChannelId", success: false };
   }
 
   if (goodbyeEnabled && !goodbyeChannelId) {
     return { error: "Goodbye channel is required when goodbye messages are enabled.", field: "goodbyeChannelId", success: false };
   }
-  if (goodbyeChannelId && !/^\d{17,20}$/.test(goodbyeChannelId)) {
+  if (goodbyeChannelId && !/^\d{17,20}$/u.test(goodbyeChannelId)) {
     return { error: "Goodbye channel ID must be a valid Discord snowflake.", field: "goodbyeChannelId", success: false };
   }
 
@@ -88,4 +85,4 @@ export async function updateGreetingConfig(
   revalidatePath(`/guilds/${guildId}`, "layout");
 
   return { message: "Greeting configuration saved.", success: true };
-}
+};

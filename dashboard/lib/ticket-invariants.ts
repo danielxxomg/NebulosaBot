@@ -33,31 +33,31 @@ export const NOTE_DEDUP_WINDOW_SECONDS = 2;
 // ---------------------------------------------------------------------------
 
 /** Validate that a claim may proceed (open + unclaimed). Throws on violation. */
-export function checkCanClaim(ticketStatus: string, claimedBy: string | null): void {
+export const checkCanClaim = (ticketStatus: string, claimedBy: string | null): void => {
   if (ticketStatus !== "open") {
     throw new Error(`Cannot claim a ticket with status '${ticketStatus}' (must be open)`);
   }
   if (claimedBy !== null) {
     throw new Error("Cannot claim a ticket that is already claimed (use transfer)");
   }
-}
+};
 
 /** Validate that a close may proceed (open or claimed). Throws on closed. */
-export function checkCanClose(ticketStatus: string): void {
+export const checkCanClose = (ticketStatus: string): void => {
   if (ticketStatus === "closed") {
     throw new Error("Cannot close a ticket that is already closed");
   }
   if (ticketStatus !== "open" && ticketStatus !== "claimed") {
     throw new Error(`Cannot close a ticket with status '${ticketStatus}'`);
   }
-}
+};
 
 /** Validate that a reopen may proceed (closed only — status guard). Throws otherwise. */
-export function checkCanReopen(ticketStatus: string): void {
+export const checkCanReopen = (ticketStatus: string): void => {
   if (ticketStatus !== "closed") {
     throw new Error(`Cannot reopen a ticket with status '${ticketStatus}' (must be closed)`);
   }
-}
+};
 
 /**
  * Validate that a transfer may proceed. Transfer reassigns `claimedBy` AND
@@ -66,11 +66,7 @@ export function checkCanReopen(ticketStatus: string): void {
  * - The target MUST be specified.
  * - The target MUST differ from the current claimant (no-op transfer denied).
  */
-export function checkCanTransfer(
-  ticketStatus: string,
-  currentClaimedBy: string | null,
-  targetId: string | null
-): void {
+export const checkCanTransfer = (ticketStatus: string, currentClaimedBy: string | null, targetId: string | null): void => {
   if (ticketStatus === "closed") {
     throw new Error("Cannot transfer a closed ticket (reopen it first)");
   }
@@ -82,7 +78,7 @@ export function checkCanTransfer(
       "Cannot transfer a ticket to the same staff member who already claimed it"
     );
   }
-}
+};
 
 // ---------------------------------------------------------------------------
 // Notes — cap + ownership
@@ -92,23 +88,23 @@ export function checkCanTransfer(
  * Validate that a note may be added given the current `existingCount`.
  * Throws when the ticket has reached or exceeded `cap`.
  */
-export function checkCanAddNote(existingCount: number, cap: number = NOTE_CAP): void {
+export const checkCanAddNote = (existingCount: number, cap: number = NOTE_CAP): void => {
   if (existingCount >= cap) {
     throw new Error(
       `Cannot add a note: ticket has reached the ${cap}-note cap (${existingCount} notes)`
     );
   }
-}
+};
 
 /**
  * Validate that `actorId` may delete a note authored by `noteAuthorId`.
  * Only the note's author may delete it (author-only rule). Throws otherwise.
  */
-export function checkCanDeleteNote(noteAuthorId: string, actorId: string): void {
+export const checkCanDeleteNote = (noteAuthorId: string, actorId: string): void => {
   if (actorId !== noteAuthorId) {
     throw new Error("Only the note's author may delete a note");
   }
-}
+};
 
 // ---------------------------------------------------------------------------
 // Subticket parentId FK invariants (depth max 2, app-level FK)
@@ -130,12 +126,7 @@ export interface ParentTicketRow {
  * - The parent MUST NOT already have a `parentId` (depth cap = 2).
  * - The parent MUST belong to the same guild as the child.
  */
-export function checkSubticketParent(
-  parent: ParentTicketRow | null,
-  parentGuildId: string,
-  currentGuildId: string,
-  currentId?: string
-): void {
+export const checkSubticketParent = (parent: ParentTicketRow | null, parentGuildId: string, currentGuildId: string, currentId?: string): void => {
   if (parent === null) {
     throw new Error("Subticket parent not found");
   }
@@ -148,4 +139,4 @@ export function checkSubticketParent(
   if (parentGuildId !== currentGuildId) {
     throw new Error("Subticket parent must belong to the same guild as the child");
   }
-}
+};
