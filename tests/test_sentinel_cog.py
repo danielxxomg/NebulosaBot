@@ -893,71 +893,58 @@ class TestUnbanTypedTarget:
 # ---------------------------------------------------------------------------
 
 
-class TestLockCommand:
-    """Tests for the lock command."""
+class TestLockUnlockCommands:
+    """Tests for the lock/unlock commands (mirror matrix).
 
-    async def test_lock_sets_channel_permissions(
+    Both flip @everyone's send_messages overwrite; lock sets False, unlock
+    resets it to None. The initial overwrite state differs per command and
+    the embed title must reflect the action taken.
+    """
+
+    @pytest.mark.parametrize(
+        "action, initial_send_messages, expect_send_messages, title_fragment",
+        [
+            ("lock", discord.PermissionOverwrite(), False, "Locked"),
+            ("unlock", discord.PermissionOverwrite(send_messages=False), None, "Unlocked"),
+        ],
+        ids=["lock", "unlock"],
+    )
+    async def test_sets_channel_permissions(
         self,
         sentinel_cog: SentinelCog,
         sentinel_bot: MagicMock,
         sentinel_ctx: MagicMock,
         mock_guild,
+        action: str,
+        initial_send_messages: discord.PermissionOverwrite,
+        expect_send_messages: bool | None,
+        title_fragment: str,
     ) -> None:
-        """lock → channel.set_permissions called for @everyone."""
+        """lock/unlock → channel.set_permissions called for @everyone with
+        the action's overwrite value; audit logged; localized embed sent.
+        """
         channel = MagicMock(spec=discord.TextChannel)
         channel.mention = "<#111111>"
-        channel.overwrites_for = MagicMock(return_value=discord.PermissionOverwrite())
+        channel.overwrites_for = MagicMock(return_value=initial_send_messages)
         channel.set_permissions = AsyncMock()
         sentinel_ctx.channel = channel
 
         mock_guild.default_role = MagicMock()
         sentinel_ctx.guild = mock_guild
 
-        await sentinel_cog.lock.callback(sentinel_cog, sentinel_ctx, channel=None)
+        await getattr(sentinel_cog, action).callback(sentinel_cog, sentinel_ctx, channel=None)
 
         channel.set_permissions.assert_awaited_once()
         call_kwargs = channel.set_permissions.call_args
-        assert call_kwargs[0][0] == mock_guild.default_role
+        if action == "lock":
+            assert call_kwargs[0][0] == mock_guild.default_role
         overwrite = call_kwargs.kwargs.get("overwrite") or call_kwargs[1].get("overwrite")
-        assert overwrite.send_messages is False
+        assert overwrite.send_messages is expect_send_messages
 
         sentinel_bot.logging_service.log_moderation_action.assert_awaited_once()
         sentinel_ctx.send.assert_awaited_once()
         embed = sentinel_ctx.send.call_args.kwargs.get("embed")
-        assert "Locked" in embed.title
-
-
-class TestUnlockCommand:
-    """Tests for the unlock command."""
-
-    async def test_unlock_restores_channel_permissions(
-        self,
-        sentinel_cog: SentinelCog,
-        sentinel_bot: MagicMock,
-        sentinel_ctx: MagicMock,
-        mock_guild,
-    ) -> None:
-        """unlock → channel.set_permissions called with send_messages=None."""
-        channel = MagicMock(spec=discord.TextChannel)
-        channel.mention = "<#111111>"
-        channel.overwrites_for = MagicMock(return_value=discord.PermissionOverwrite(send_messages=False))
-        channel.set_permissions = AsyncMock()
-        sentinel_ctx.channel = channel
-
-        mock_guild.default_role = MagicMock()
-        sentinel_ctx.guild = mock_guild
-
-        await sentinel_cog.unlock.callback(sentinel_cog, sentinel_ctx, channel=None)
-
-        channel.set_permissions.assert_awaited_once()
-        call_kwargs = channel.set_permissions.call_args
-        overwrite = call_kwargs.kwargs.get("overwrite") or call_kwargs[1].get("overwrite")
-        assert overwrite.send_messages is None
-
-        sentinel_bot.logging_service.log_moderation_action.assert_awaited_once()
-        sentinel_ctx.send.assert_awaited_once()
-        embed = sentinel_ctx.send.call_args.kwargs.get("embed")
-        assert "Unlocked" in embed.title
+        assert title_fragment in embed.title
 
 
 class TestModlogsCommand:
