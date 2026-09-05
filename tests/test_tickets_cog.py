@@ -2762,24 +2762,44 @@ class TestUnclaimCommand:
         title = kwargs["embed"].title or ""
         assert "Permission" in title or "Denied" in title
 
-    async def test_unclaim_on_unclaimed_ticket_rejected(
+    # Not-claimable channel rows: (scenario, expect_ephemeral). Parametrized
+    # (S6 ceiling cut): an unclaimed ticket (claimedBy=None) and a non-ticket
+    # channel (no row) both leave the service unawaited with an error embed —
+    # ephemeral only in the unclaimed-ticket case.
+    _UNCLAIM_NOT_CLAIMABLE: ClassVar[list[Any]] = [
+        pytest.param("unclaimed", True, id="unclaimed-ticket-rejected"),
+        pytest.param("no_row", False, id="not-ticket-channel"),
+    ]
+
+    @pytest.mark.parametrize(("scenario", "expect_ephemeral"), _UNCLAIM_NOT_CLAIMABLE)
+    async def test_unclaim_not_claimable_shows_error(
         self,
         tickets_cog: TicketsCog,
         slash_ctx: MagicMock,
         ticket_bot: MagicMock,
         mock_db,
+        scenario: str,
+        expect_ephemeral: bool,
     ) -> None:
-        """Unclaim on an unclaimed ticket → ephemeral error embed."""
+        """Unclaim on an unclaimed ticket / non-ticket channel → error embed,
+        service never awaited (the ephemeral flag applies to the unclaimed
+        ticket; the plain channel error is a non-ephemeral embed)."""
         slash_ctx.author.id = 111111111
-        open_row = _ticket_row(status="open")
-        open_row["claimedBy"] = None
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=open_row)
         ticket_bot.ticket_service.unclaim_ticket = AsyncMock()
+        if scenario == "unclaimed":
+            open_row = _ticket_row(status="open")
+            open_row["claimedBy"] = None
+            mock_db.get_ticket_by_channel = AsyncMock(return_value=open_row)
+        else:
+            mock_db.get_ticket_by_channel = AsyncMock(return_value=None)
 
         await tickets_cog.unclaim.callback(tickets_cog, slash_ctx)
 
         ticket_bot.ticket_service.unclaim_ticket.assert_not_called()
-        _sent_ephemeral_kwargs(slash_ctx)
+        if expect_ephemeral:
+            _sent_ephemeral_kwargs(slash_ctx)
+        else:
+            _sent_embed(slash_ctx)
 
     async def test_unclaim_no_guild(
         self,
@@ -2793,22 +2813,6 @@ class TestUnclaimCommand:
         await tickets_cog.unclaim.callback(tickets_cog, ctx)
 
         _sent_embed(ctx)
-
-    async def test_unclaim_not_ticket_channel(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db,
-    ) -> None:
-        """/unclaim in non-ticket channel → error embed."""
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=None)
-        ticket_bot.ticket_service.unclaim_ticket = AsyncMock()
-
-        await tickets_cog.unclaim.callback(tickets_cog, slash_ctx)
-
-        ticket_bot.ticket_service.unclaim_ticket.assert_not_called()
-        _sent_embed(slash_ctx)
 
     async def test_unclaim_service_error(
         self,
