@@ -1483,31 +1483,30 @@ async def test_close_audits_success(service: TicketService, mock_db: AsyncMock, 
 
 
 @pytest.mark.asyncio
-async def test_close_denied_audits_and_reraises(service: TicketService, mock_db: AsyncMock, ticket_row: dict) -> None:
-    """Close on an already-closed ticket MUST raise ValueError (transition returns None)."""
-    mock_db.transition_ticket_to_closed = AsyncMock(return_value=None)
-    mock_db.get_ticket.return_value = {**ticket_row, "status": "closed"}
-
-    with pytest.raises(ValueError, match="already closed or not found"):
-        await service.close_ticket(ticket_row["id"], closed_by="999999999")
-
-    mock_db.update_ticket.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_close_denied_writes_audit(service: TicketService, mock_db: AsyncMock, ticket_row: dict) -> None:
-    """R1-003: denied-close MUST write a best-effort denied audit row before raising."""
+@pytest.mark.parametrize("audit_assert", [False, True], ids=["close-denied-reraise", "close-denied-writes-audit"])
+async def test_close_denied_contract(
+    audit_assert: bool,
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """Close on an already-closed ticket MUST raise ValueError (transition
+    returns None) without mutation; the guild-resolved best-effort denied
+    audit row MUST be written before raising (R1-003).
+    """
     mock_db.transition_ticket_to_closed = AsyncMock(return_value=None)
     mock_db.get_ticket.return_value = ticket_row  # resolve guild for audit scoping
 
     with pytest.raises(ValueError, match="already closed or not found"):
         await service.close_ticket(ticket_row["id"], closed_by="999999999")
 
-    kwargs = _assert_audit(mock_db)
-    assert kwargs["action"] == "close"
-    assert kwargs["outcome"] == "denied"
-    assert kwargs["guild_id"] == ticket_row["guildId"]
-    assert kwargs["actor_id"] == "999999999"
+    mock_db.update_ticket.assert_not_awaited()
+    if audit_assert:
+        kwargs = _assert_audit(mock_db)
+        assert kwargs["action"] == "close"
+        assert kwargs["outcome"] == "denied"
+        assert kwargs["guild_id"] == ticket_row["guildId"]
+        assert kwargs["actor_id"] == "999999999"
 
 
 @pytest.mark.asyncio
