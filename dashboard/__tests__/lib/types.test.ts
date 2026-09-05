@@ -41,8 +41,8 @@ describe("GuildConfig shape", () => {
       welcomeEnabled: true,
     };
 
-    const actualKeys = Object.keys(config).sort();
-    const expectedKeys = [...guildConfigKeys].sort();
+    const actualKeys = Object.keys(config).toSorted();
+    const expectedKeys = [...guildConfigKeys].toSorted();
 
     expect(actualKeys).toEqual(expectedKeys);
   });
@@ -74,8 +74,8 @@ describe("EconomyConfig shape", () => {
       xpPerMessage: 10,
     };
 
-    const actualKeys = Object.keys(config).sort();
-    const expectedKeys = [...economyConfigKeys].sort();
+    const actualKeys = Object.keys(config).toSorted();
+    const expectedKeys = [...economyConfigKeys].toSorted();
 
     expect(actualKeys).toEqual(expectedKeys);
   });
@@ -107,8 +107,8 @@ describe("GreetingConfig shape", () => {
       welcomeMessage: null,
     };
 
-    const actualKeys = Object.keys(config).sort();
-    const expectedKeys = [...greetingConfigKeys].sort();
+    const actualKeys = Object.keys(config).toSorted();
+    const expectedKeys = [...greetingConfigKeys].toSorted();
 
     expect(actualKeys).toEqual(expectedKeys);
   });
@@ -142,7 +142,7 @@ describe("Member shape", () => {
       xp: 0,
     };
 
-    expect(Object.keys(member).sort()).toEqual([...memberKeys].sort());
+    expect(Object.keys(member).toSorted()).toEqual([...memberKeys].toSorted());
   });
 });
 

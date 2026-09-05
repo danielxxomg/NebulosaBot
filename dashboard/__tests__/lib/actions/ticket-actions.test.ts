@@ -223,7 +223,7 @@ describe("getTicketsForGuild — query shape", () => {
 
 describe("getReopenGuidance — auth gating", () => {
   it("rejects a non-admin caller and never reads the guild config", async () => {
-    const svc = setupAuth({
+    setupAuth({
       isAdmin: false,
       ticketSingle: buildTicket({ guildId: GUILD_ID, id: TICKET_ID, status: "closed" }),
     });
