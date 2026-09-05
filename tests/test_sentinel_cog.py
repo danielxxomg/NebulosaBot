@@ -755,19 +755,29 @@ class TestKickBanPermanentResult:
     MUST be posted to the channel as a permanent message (tempban two-step).
     """
 
-    @pytest.mark.asyncio
-    async def test_kick_final_result_posted_permanently_to_channel(
+    @pytest.mark.parametrize(
+        "action, reason, success_title_key",
+        [
+            ("kick", "trolling", "sentinel.kick.success_title"),
+            ("ban", "harassment", "sentinel.ban.success_title"),
+        ],
+        ids=["kick", "ban"],
+    )
+    async def test_final_result_posted_permanently_to_channel(
         self,
         sentinel_cog: SentinelCog,
         sentinel_bot: MagicMock,
         sentinel_ctx: MagicMock,
         target_member: MagicMock,
+        action: str,
+        reason: str,
+        success_title_key: str,
     ) -> None:
-        """kick confirm → ephemeral edit is a closed notice; success goes permanent."""
-        target_member.kick = AsyncMock()
+        """kick/ban confirm → ephemeral edit is a closed notice; success goes permanent."""
+        setattr(target_member, action, AsyncMock())
 
         with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
-            await sentinel_cog.kick.callback(sentinel_cog, sentinel_ctx, target_member, reason="trolling")
+            await getattr(sentinel_cog, action).callback(sentinel_cog, sentinel_ctx, target_member, reason=reason)
 
         interaction = MagicMock(spec=discord.Interaction)
         interaction.user = MagicMock(spec=discord.Member)
@@ -785,7 +795,7 @@ class TestKickBanPermanentResult:
         assert await_args is not None
         edited_embed = await_args.kwargs.get("embed")
         assert edited_embed is not None
-        assert edited_embed.title != t("123456789", "sentinel.kick.success_title"), (
+        assert edited_embed.title != t("123456789", success_title_key), (
             "ephemeral dialog must not double as the permanent record"
         )
 
@@ -795,49 +805,7 @@ class TestKickBanPermanentResult:
         assert channel_kwargs.get("ephemeral") is not True, "final result must be permanent"
         result_embed = channel_kwargs.get("embed")
         assert result_embed is not None
-        assert result_embed.title == t("123456789", "sentinel.kick.success_title")
-
-    @pytest.mark.asyncio
-    async def test_ban_final_result_posted_permanently_to_channel(
-        self,
-        sentinel_cog: SentinelCog,
-        sentinel_bot: MagicMock,
-        sentinel_ctx: MagicMock,
-        target_member: MagicMock,
-    ) -> None:
-        """ban confirm → ephemeral edit is a closed notice; success goes permanent."""
-        target_member.ban = AsyncMock()
-
-        with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
-            await sentinel_cog.ban.callback(
-                sentinel_cog, sentinel_ctx, target_member, reason="harassment", delete_days=0
-            )
-
-        interaction = MagicMock(spec=discord.Interaction)
-        interaction.user = MagicMock(spec=discord.Member)
-        interaction.user.id = sentinel_ctx.author.id
-        interaction.response.edit_message = AsyncMock()
-        view = sentinel_ctx.send.call_args.kwargs.get("view")
-        confirm_button = next(
-            c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
-        )
-        await confirm_button.callback(interaction)
-
-        interaction.response.edit_message.assert_awaited_once()
-        await_args = interaction.response.edit_message.await_args
-        assert await_args is not None
-        edited_embed = await_args.kwargs.get("embed")
-        assert edited_embed is not None
-        assert edited_embed.title != t("123456789", "sentinel.ban.success_title"), (
-            "ephemeral dialog must not double as the permanent record"
-        )
-
-        sentinel_ctx.channel.send.assert_awaited_once()
-        channel_kwargs = sentinel_ctx.channel.send.await_args.kwargs
-        assert channel_kwargs.get("ephemeral") is not True, "final result must be permanent"
-        result_embed = channel_kwargs.get("embed")
-        assert result_embed is not None
-        assert result_embed.title == t("123456789", "sentinel.ban.success_title")
+        assert result_embed.title == t("123456789", success_title_key)
 
 
 class TestTempbanNoDrift:
