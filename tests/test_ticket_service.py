@@ -1042,43 +1042,43 @@ async def test_reopen_no_category_configured_raises(
 
 
 @pytest.mark.asyncio
-async def test_reopen_ticket_not_found(
-    service: TicketService,
-    mock_db: AsyncMock,
-) -> None:
-    """Reopening a non-existent ticket MUST raise ValueError."""
-    mock_db.get_ticket.return_value = None
-    guild = _mock_guild_for_reopen(category_channel=None)
-
-    with pytest.raises(ValueError, match=r"Ticket .* not found"):
-        await service.reopen_ticket("nope", guild=guild)
-
-    guild.create_text_channel.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("status", ["open", "claimed"])
+@pytest.mark.parametrize(
+    ("missing_row", "status", "ticket_ref", "match"),
+    [
+        pytest.param(True, None, "nope", r"Ticket .* not found", id="reopen-not-found"),
+        pytest.param(False, "open", "ticket-uuid-003", r"Solo se pueden reabrir tickets cerrados", id="reopen-rejects-open"),
+        pytest.param(False, "claimed", "ticket-uuid-003", r"Solo se pueden reabrir tickets cerrados", id="reopen-rejects-claimed"),
+    ],
+)
 async def test_reopen_rejects_non_closed_ticket(
+    missing_row: bool,
+    status: str | None,
+    ticket_ref: str,
+    match: str,
     service: TicketService,
     mock_db: AsyncMock,
-    status: str,
 ) -> None:
-    """B2: reopen_ticket MUST raise ValueError when status is not 'closed'.
+    """reopen_ticket MUST raise ValueError before creating any channel: for a
+    non-existent ticket ("not found") and for a non-closed ticket (B2
+    defense-in-depth — even if a caller bypasses the cog guard, the service
+    refuses a duplicate channel for an open/claimed ticket).
 
-    Defense-in-depth: even if a caller bypasses the cog guard, the service
-    refuses to create a duplicate channel for an open/claimed ticket.
+    Parametrized (S6 ceiling cut): the not-found row folds into the same
+    rejection matrix (same scaffold, same no-channel contract, distinct
+    denial reason).
     """
-    ticket_id = "ticket-uuid-003"
-    non_closed_row = {**_closed_ticket_row(), "status": status}
-    mock_db.get_ticket.return_value = non_closed_row
+    if missing_row:
+        mock_db.get_ticket.return_value = None
+    else:
+        non_closed_row = {**_closed_ticket_row(), "status": status}
+        mock_db.get_ticket.return_value = non_closed_row
+        # The denial text resolves via t() — pin the expected language so the
+        # assertion is independent of module-level poisoning (test isolation).
+        set_guild_language("123456789", "es")
     guild = _mock_guild_for_reopen(category_channel=None)
-    # The denial text now resolves via t() — pin the expected language for
-    # this guild so the assertion is independent of module-level poisoning
-    # from other test files (test isolation).
-    set_guild_language("123456789", "es")
 
-    with pytest.raises(ValueError, match=r"Solo se pueden reabrir tickets cerrados"):
-        await service.reopen_ticket(ticket_id, guild=guild)
+    with pytest.raises(ValueError, match=match):
+        await service.reopen_ticket(ticket_ref, guild=guild)
 
     # No duplicate channel created; no DB mutation.
     guild.create_text_channel.assert_not_awaited()
