@@ -36,7 +36,6 @@ TARGET_ID = "444555666"
 MODERATOR_ID = "777888999"
 REASON = "spamming in general"
 
-
 # ------------------------------------------------------------------
 # Fixtures
 # ------------------------------------------------------------------
@@ -663,24 +662,38 @@ class TestMuteKickBanServiceMethods:
     """mute/kick/ban mirror the tempban contract shape (spec scenarios)."""
 
     @pytest.mark.asyncio
-    async def test_mute_persists_and_returns_infraction(
+    @pytest.mark.parametrize(
+        ("action", "method_name", "case_id"),
+        [
+            pytest.param("MUTE", "mute", "mute-persists-and-returns-infraction"),
+            pytest.param("KICK", "kick", "kick-persists-and-returns-infraction"),
+            pytest.param("BAN", "ban", "ban-persists-with-null-expiry"),
+        ],
+    )
+    async def test_persists_action_and_returns_infraction(
         self,
         service: InfractionService,
         mock_db: AsyncMock,
+        action: str,
+        method_name: str,
+        case_id: str,
     ) -> None:
-        """mute → MUTE row inserted, persisted Infraction returned."""
-        row = _action_row("MUTE")
+        """<action> → <ACTION> row inserted (expires_at=None, permanent),
+        persisted Infraction returned with the matching type."""
+        row = _action_row(action)
         mock_db.insert_infraction.return_value = row
 
-        result = await service.mute(GUILD_ID, TARGET_ID, MODERATOR_ID, REASON)
+        method = getattr(service, method_name)
+        result = await method(GUILD_ID, TARGET_ID, MODERATOR_ID, REASON)
 
         assert isinstance(result, Infraction)
-        assert result.type == "MUTE"
+        assert result.type == action
+        assert result.expires_at is None
         mock_db.insert_infraction.assert_awaited_once_with(
             guild_id=GUILD_ID,
             target_id=TARGET_ID,
             moderator_id=MODERATOR_ID,
-            type="MUTE",
+            type=action,
             reason=REASON,
             expires_at=None,
         )
@@ -699,53 +712,6 @@ class TestMuteKickBanServiceMethods:
 
         kwargs = mock_db.insert_infraction.await_args.kwargs
         assert kwargs["expires_at"] == expiry
-
-    @pytest.mark.asyncio
-    async def test_kick_persists_and_returns_infraction(
-        self,
-        service: InfractionService,
-        mock_db: AsyncMock,
-    ) -> None:
-        """kick → KICK row inserted, persisted Infraction returned."""
-        row = _action_row("KICK")
-        mock_db.insert_infraction.return_value = row
-
-        result = await service.kick(GUILD_ID, TARGET_ID, MODERATOR_ID, REASON)
-
-        assert isinstance(result, Infraction)
-        assert result.type == "KICK"
-        mock_db.insert_infraction.assert_awaited_once_with(
-            guild_id=GUILD_ID,
-            target_id=TARGET_ID,
-            moderator_id=MODERATOR_ID,
-            type="KICK",
-            reason=REASON,
-            expires_at=None,
-        )
-
-    @pytest.mark.asyncio
-    async def test_ban_persists_and_returns_infraction_with_null_expiry(
-        self,
-        service: InfractionService,
-        mock_db: AsyncMock,
-    ) -> None:
-        """ban → BAN row inserted with expires_at=None (permanent)."""
-        row = _action_row("BAN")
-        mock_db.insert_infraction.return_value = row
-
-        result = await service.ban(GUILD_ID, TARGET_ID, MODERATOR_ID, REASON)
-
-        assert isinstance(result, Infraction)
-        assert result.type == "BAN"
-        assert result.expires_at is None
-        mock_db.insert_infraction.assert_awaited_once_with(
-            guild_id=GUILD_ID,
-            target_id=TARGET_ID,
-            moderator_id=MODERATOR_ID,
-            type="BAN",
-            reason=REASON,
-            expires_at=None,
-        )
 
     def test_service_performs_no_discord_action(self) -> None:
         """Signatures carry identifiers only — no discord objects to mutate.

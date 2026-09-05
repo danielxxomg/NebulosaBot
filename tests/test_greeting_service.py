@@ -11,9 +11,11 @@ Strict TDD: tests written BEFORE implementation (RED phase).
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import io
 from collections.abc import Generator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -24,7 +26,7 @@ from bot.core.cache import TTLCache
 from bot.core.i18n import set_guild_language
 from bot.models.greeting_config import GreetingConfig
 from bot.services.greeting_renderer import PillowGreetingRenderer
-from bot.services.greeting_service import GreetingService
+from bot.services.greeting_service import GreetingService, select_template
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -119,7 +121,7 @@ class TestProtocolOnlyConstructor:
 
 
 @pytest.fixture
-def greeting_config_row() -> dict:
+def greeting_config_row() -> dict[str, Any]:
     """Return a sample greeting_config DB row (camelCase keys)."""
     return {
         "guildId": "123456789",
@@ -331,65 +333,41 @@ class TestDispatchWelcome:
     that the guard logic correctly skips when conditions are not met.
     """
 
+    @pytest.mark.parametrize(
+        ("config_override", "expect_resolve_assert", "case_id"),
+        [
+            pytest.param(None, True, "enabled-and-channel-set-resolves-config"),
+            pytest.param({"welcomeEnabled": False}, False, "disabled-skips-entirely"),
+            pytest.param({"welcomeChannelId": None}, False, "missing-channel-skips"),
+            pytest.param("NO_ROW", False, "no-config-row-skips"),
+        ],
+    )
     @pytest.mark.asyncio
-    async def test_enabled_and_channel_set_resolves_config(
+    async def test_welcome_config_resolution_and_guards(
         self,
         service: GreetingService,
         mock_db: AsyncMock,
         greeting_config_row: dict,
+        config_override: dict[str, Any] | str | None,
+        expect_resolve_assert: bool,
+        case_id: str,
     ) -> None:
-        """When welcome is enabled and channel is set, config must be resolved."""
+        """Welcome dispatch resolves config first; guard failures (disabled /
+        missing channel / no row) return early with no further action."""
         guild_id = "123456789"
-        mock_db.get_greeting_config.return_value = greeting_config_row
+        if config_override == "NO_ROW":
+            mock_db.get_greeting_config.return_value = None
+        elif isinstance(config_override, dict):
+            mock_db.get_greeting_config.return_value = {**greeting_config_row, **config_override}
+        else:
+            mock_db.get_greeting_config.return_value = greeting_config_row
         member = make_mock_member(member_id=333, name="NewUser")
 
         await service.dispatch_welcome(member)
 
-        # Config was resolved (no-op for now — Phase 2 sends the card).
-        mock_db.get_greeting_config.assert_called_once_with(guild_id)
-
-    @pytest.mark.asyncio
-    async def test_disabled_skips_entirely(
-        self,
-        service: GreetingService,
-        mock_db: AsyncMock,
-        greeting_config_row: dict,
-    ) -> None:
-        """When welcome_enabled is False, resolver returns early."""
-        disabled = {**greeting_config_row, "welcomeEnabled": False}
-        mock_db.get_greeting_config.return_value = disabled
-        member = make_mock_member(member_id=333, name="NewUser")
-
-        await service.dispatch_welcome(member)
-        # Service resolves config but takes no further action — no error expected.
-
-    @pytest.mark.asyncio
-    async def test_missing_channel_skips(
-        self,
-        service: GreetingService,
-        mock_db: AsyncMock,
-        greeting_config_row: dict,
-    ) -> None:
-        """When welcomeChannelId is None, resolver returns early."""
-        no_channel = {**greeting_config_row, "welcomeChannelId": None}
-        mock_db.get_greeting_config.return_value = no_channel
-        member = make_mock_member(member_id=333, name="NewUser")
-
-        await service.dispatch_welcome(member)
-        # Service resolves config but takes no further action — no error expected.
-
-    @pytest.mark.asyncio
-    async def test_no_config_row_skips(
-        self,
-        service: GreetingService,
-        mock_db: AsyncMock,
-    ) -> None:
-        """When no config row exists (returns defaults), welcome is disabled."""
-        mock_db.get_greeting_config.return_value = None
-        member = make_mock_member(member_id=333, name="NewUser")
-
-        await service.dispatch_welcome(member)
-        # Defaults have welcome_enabled=False — no action taken.
+        if expect_resolve_assert:
+            # Config was resolved (no-op for now — Phase 2 sends the card).
+            mock_db.get_greeting_config.assert_called_once_with(guild_id)
 
     @pytest.mark.asyncio
     async def test_card_enabled_sends_welcome_card(
@@ -887,64 +865,40 @@ class TestDispatchGoodbye:
     that the guard logic correctly skips when conditions are not met.
     """
 
+    @pytest.mark.parametrize(
+        ("config_override", "expect_resolve_assert", "case_id"),
+        [
+            pytest.param(None, True, "enabled-and-channel-set-resolves-config"),
+            pytest.param({"goodbyeEnabled": False}, False, "disabled-skips-entirely"),
+            pytest.param({"goodbyeChannelId": None}, False, "missing-channel-skips"),
+            pytest.param("NO_ROW", False, "no-config-row-skips"),
+        ],
+    )
     @pytest.mark.asyncio
-    async def test_enabled_and_channel_set_resolves_config(
+    async def test_goodbye_config_resolution_and_guards(
         self,
         service: GreetingService,
         mock_db: AsyncMock,
         greeting_config_row: dict,
+        config_override: dict[str, Any] | str | None,
+        expect_resolve_assert: bool,
+        case_id: str,
     ) -> None:
-        """When goodbye is enabled and channel is set, config must be resolved."""
+        """Goodbye dispatch resolves config first; guard failures (disabled /
+        missing channel / no row) return early with no further action."""
         guild_id = "123456789"
-        mock_db.get_greeting_config.return_value = greeting_config_row
+        if config_override == "NO_ROW":
+            mock_db.get_greeting_config.return_value = None
+        elif isinstance(config_override, dict):
+            mock_db.get_greeting_config.return_value = {**greeting_config_row, **config_override}
+        else:
+            mock_db.get_greeting_config.return_value = greeting_config_row
         member = make_mock_member(member_id=444, name="LeavingUser")
 
         await service.dispatch_goodbye(member)
 
-        mock_db.get_greeting_config.assert_called_once_with(guild_id)
-
-    @pytest.mark.asyncio
-    async def test_disabled_skips_entirely(
-        self,
-        service: GreetingService,
-        mock_db: AsyncMock,
-        greeting_config_row: dict,
-    ) -> None:
-        """When goodbye_enabled is False, resolver returns early."""
-        disabled = {**greeting_config_row, "goodbyeEnabled": False}
-        mock_db.get_greeting_config.return_value = disabled
-        member = make_mock_member(member_id=444, name="LeavingUser")
-
-        await service.dispatch_goodbye(member)
-        # Service resolves config but takes no further action — no error expected.
-
-    @pytest.mark.asyncio
-    async def test_missing_channel_skips(
-        self,
-        service: GreetingService,
-        mock_db: AsyncMock,
-        greeting_config_row: dict,
-    ) -> None:
-        """When goodbyeChannelId is None, resolver returns early."""
-        no_channel = {**greeting_config_row, "goodbyeChannelId": None}
-        mock_db.get_greeting_config.return_value = no_channel
-        member = make_mock_member(member_id=444, name="LeavingUser")
-
-        await service.dispatch_goodbye(member)
-        # Service resolves config but takes no further action — no error expected.
-
-    @pytest.mark.asyncio
-    async def test_no_config_row_skips(
-        self,
-        service: GreetingService,
-        mock_db: AsyncMock,
-    ) -> None:
-        """When no config row exists (returns defaults), goodbye is disabled."""
-        mock_db.get_greeting_config.return_value = None
-        member = make_mock_member(member_id=444, name="LeavingUser")
-
-        await service.dispatch_goodbye(member)
-        # Defaults have goodbye_enabled=False — no action taken.
+        if expect_resolve_assert:
+            mock_db.get_greeting_config.assert_called_once_with(guild_id)
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -1077,37 +1031,24 @@ class TestSelectTemplateS1:
     """S1.1 — select_template(config, kind) → theme_id or default."""
 
     def test_welcome_resolves_theme_id(self) -> None:
-        from bot.services.greeting_service import select_template
-
         cfg = GreetingConfig(guild_id="123", theme_id="gaming_neon")
         assert select_template(cfg, "welcome") == "gaming_neon"
 
     def test_goodbye_resolves_theme_id(self) -> None:
-        from bot.services.greeting_service import select_template
-
         cfg = GreetingConfig(guild_id="123", theme_id="gaming_neon")
         assert select_template(cfg, "goodbye") == "gaming_neon"
 
     def test_fallback_to_default_when_both_absent(self) -> None:
-        from bot.services.greeting_service import select_template
-
         cfg = GreetingConfig(guild_id="123", theme_id=None)
         assert select_template(cfg, "welcome") == "default"
         assert select_template(cfg, "goodbye") == "default"
 
     def test_unknown_theme_falls_back_to_default(self) -> None:
-        from bot.services.greeting_service import select_template
-
         cfg = GreetingConfig(guild_id="123", theme_id="unknown_xyz")
         assert select_template(cfg, "welcome") == "default"
 
     def test_dispatch_forwards_template_id_and_theme_id_via_to_thread(self) -> None:
         """dispatch_greeting must forward template_id AND theme_id via to_thread."""
-        import asyncio
-        from unittest.mock import patch
-
-        from bot.core.cache import TTLCache
-        from bot.services.greeting_renderer import PillowGreetingRenderer
 
         async def _run() -> None:
             db = AsyncMock()
@@ -1140,6 +1081,4 @@ class TestSelectTemplateS1:
             assert kw.get("template_id") == "gaming_neon"
             assert kw.get("theme_id") == "gaming_neon"
 
-        import asyncio as _asyncio
-
-        _asyncio.run(_run())
+        asyncio.run(_run())

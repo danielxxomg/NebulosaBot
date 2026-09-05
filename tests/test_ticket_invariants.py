@@ -27,7 +27,9 @@ from bot.services.ticket_invariants import (
     check_one_ticket_per_user_per_category,
     check_subticket_parent,
     compute_note_hash,
+    evaluate_repair_authority,
     is_duplicate_note,
+    parse_ticket_ref,
 )
 
 # ===========================================================================
@@ -38,25 +40,21 @@ from bot.services.ticket_invariants import (
 class TestComputeNoteHash:
     """Verify compute_note_hash() normalizes then SHA256-hashes content."""
 
-    def test_hashes_normalized_content(self) -> None:
-        """compute_note_hash('Hello World') MUST equal sha256('hello world')."""
+    @pytest.mark.parametrize(
+        ("content", "case_id"),
+        [
+            pytest.param("Hello World", "normalizes-case"),
+            pytest.param("  hello world  ", "strips-leading-trailing-whitespace"),
+            pytest.param("HELLO WORLD", "lowercases-content"),
+            pytest.param("hello   world\t", "collapses-internal-whitespace"),
+            pytest.param("hello\nworld", "collapses-newline-whitespace"),
+        ],
+    )
+    def test_normalizes_to_canonical_hash(self, content: str, case_id: str) -> None:
+        """Case/whitespace variants of 'hello world' MUST all hash to
+        sha256(b'hello world') — normalization precedes hashing."""
         expected = hashlib.sha256(b"hello world").hexdigest()
-        assert compute_note_hash("Hello World") == expected
-
-    def test_strips_leading_trailing_whitespace(self) -> None:
-        """Leading/trailing whitespace MUST be stripped before hashing."""
-        expected = hashlib.sha256(b"hello world").hexdigest()
-        assert compute_note_hash("  hello world  ") == expected
-
-    def test_lowercases_content(self) -> None:
-        """Uppercase and lowercase of the same content MUST hash equally."""
-        assert compute_note_hash("HELLO WORLD") == compute_note_hash("hello world")
-
-    def test_collapses_internal_whitespace(self) -> None:
-        """Runs of whitespace inside content MUST collapse to a single space."""
-        expected = hashlib.sha256(b"hello world").hexdigest()
-        assert compute_note_hash("hello   world\t") == expected
-        assert compute_note_hash("hello\nworld") == expected
+        assert compute_note_hash(content) == expected
 
     def test_different_content_yields_different_hash(self) -> None:
         """Distinct content MUST produce distinct hashes."""
@@ -82,28 +80,45 @@ class TestComputeNoteHash:
 class TestIsDuplicateNote:
     """Verify is_duplicate_note() detects a duplicate hash among recent notes."""
 
-    def test_duplicate_hash_present_is_true(self) -> None:
-        """A hash already in the recent set MUST be flagged duplicate."""
+    @pytest.mark.parametrize(
+        ("recent", "expected", "case_id"),
+        [
+            pytest.param(lambda h: [h], True, "duplicate-hash-present-is-true"),
+            pytest.param(
+                lambda h: [compute_note_hash("goodbye world")],
+                False,
+                "hash-not-in-set-is-false",
+            ),
+            pytest.param(lambda h: [], False, "empty-recent-set-is-false"),
+            pytest.param(
+                lambda h: [
+                    compute_note_hash("note one"),
+                    compute_note_hash("note two"),
+                    h,
+                ],
+                True,
+                "multiple-recent-hashes-scan",
+            ),
+            pytest.param(
+                lambda h: [
+                    compute_note_hash("note one"),
+                    compute_note_hash("note two"),
+                ],
+                False,
+                "multiple-recent-hashes-absent-passes",
+            ),
+        ],
+    )
+    def test_duplicate_detection(
+        self,
+        recent: Any,
+        expected: bool,
+        case_id: str,
+    ) -> None:
+        """is_duplicate_note() flags a hash present in the recent set and
+        passes one absent (incl. empty set / multi-hash set)."""
         h = compute_note_hash("hello world")
-        assert is_duplicate_note(h, "authorA", [h], 2.0) is True
-
-    def test_hash_not_in_set_is_false(self) -> None:
-        """A hash absent from the recent set MUST NOT be flagged."""
-        h = compute_note_hash("hello world")
-        other = compute_note_hash("goodbye world")
-        assert is_duplicate_note(h, "authorA", [other], 2.0) is False
-
-    def test_empty_recent_set_is_false(self) -> None:
-        """No recent notes in the window MUST mean no duplicate."""
-        h = compute_note_hash("hello world")
-        assert is_duplicate_note(h, "authorA", [], 2.0) is False
-
-    def test_multiple_recent_hashes(self) -> None:
-        """The check MUST scan a multi-hash recent set correctly."""
-        target = compute_note_hash("note three")
-        recent = [compute_note_hash("note one"), compute_note_hash("note two"), target]
-        assert is_duplicate_note(target, "authorA", recent, 2.0) is True
-        assert is_duplicate_note(compute_note_hash("note four"), "authorA", recent, 2.0) is False
+        assert is_duplicate_note(h, "authorA", recent(h), 2.0) is expected
 
 
 # ===========================================================================
@@ -400,7 +415,6 @@ class TestCheckCanEditCategory:
 
 def test_parse_ticket_ref_strip_ticket_prefix_hash() -> None:
     """'ticket:#0003' parses to ticket number 3."""
-    from bot.services.ticket_invariants import parse_ticket_ref
 
     ref = parse_ticket_ref("ticket:#0003")
     assert ref is not None
@@ -410,7 +424,6 @@ def test_parse_ticket_ref_strip_ticket_prefix_hash() -> None:
 
 def test_parse_ticket_ref_hash_number() -> None:
     """'#0003' parses to ticket number 3."""
-    from bot.services.ticket_invariants import parse_ticket_ref
 
     ref = parse_ticket_ref("#0003")
     assert ref is not None
@@ -419,7 +432,6 @@ def test_parse_ticket_ref_hash_number() -> None:
 
 def test_parse_ticket_ref_bare_number() -> None:
     """'0003' parses to ticket number 3."""
-    from bot.services.ticket_invariants import parse_ticket_ref
 
     ref = parse_ticket_ref("0003")
     assert ref is not None
@@ -428,7 +440,6 @@ def test_parse_ticket_ref_bare_number() -> None:
 
 def test_parse_ticket_ref_uuid() -> None:
     """A UUID parses to ref.uuid set, number None."""
-    from bot.services.ticket_invariants import parse_ticket_ref
 
     uuid_str = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
     ref = parse_ticket_ref(uuid_str)
@@ -439,7 +450,6 @@ def test_parse_ticket_ref_uuid() -> None:
 
 def test_parse_ticket_ref_uuid_with_ticket_prefix() -> None:
     """'ticket:<uuid>' strips prefix and parses as UUID."""
-    from bot.services.ticket_invariants import parse_ticket_ref
 
     uuid_str = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
     ref = parse_ticket_ref(f"ticket:{uuid_str}")
@@ -449,7 +459,6 @@ def test_parse_ticket_ref_uuid_with_ticket_prefix() -> None:
 
 def test_parse_ticket_ref_empty_returns_none() -> None:
     """Empty / whitespace string returns None (caller falls back to channel)."""
-    from bot.services.ticket_invariants import parse_ticket_ref
 
     assert parse_ticket_ref("") is None
     assert parse_ticket_ref("   ") is None
@@ -457,7 +466,6 @@ def test_parse_ticket_ref_empty_returns_none() -> None:
 
 def test_parse_ticket_ref_garbage_returns_none() -> None:
     """Non-number, non-UUID strings return None (caller surfaces bad-ref error)."""
-    from bot.services.ticket_invariants import parse_ticket_ref
 
     assert parse_ticket_ref("not-a-ticket") is None
     assert parse_ticket_ref("ticket:hello") is None
@@ -472,7 +480,6 @@ def test_parse_ticket_ref_garbage_returns_none() -> None:
 
 def _authority(**overrides: Any) -> RepairAuthority:
     """Build a :class:`RepairAuthority` with sane same-guild defaults."""
-    from bot.services.ticket_invariants import RepairAuthority
 
     defaults: dict[str, Any] = {
         "actor_id": "actor-1",
@@ -490,7 +497,6 @@ def _authority(**overrides: Any) -> RepairAuthority:
 
 def _grant(**overrides: Any) -> GlobalMutationGrant:
     """Build a :class:`GlobalMutationGrant` matching the default authority."""
-    from bot.services.ticket_invariants import GlobalMutationGrant
 
     defaults: dict[str, Any] = {
         "actor_id": "actor-1",
@@ -504,7 +510,6 @@ def _grant(**overrides: Any) -> GlobalMutationGrant:
 
 
 def _evaluate(authority: RepairAuthority, grant: GlobalMutationGrant | None = None) -> AuthorityDecision:
-    from bot.services.ticket_invariants import evaluate_repair_authority
 
     return evaluate_repair_authority(authority, global_grant=grant)
 
@@ -512,37 +517,33 @@ def _evaluate(authority: RepairAuthority, grant: GlobalMutationGrant | None = No
 class TestRepairAuthorityGuildScope:
     """Verify guild-scoped authority: one mod role; owner/Admin same-guild bypass only."""
 
-    def test_mod_role_same_guild_allowed(self) -> None:
-        """The canonical configured mod role authorizes its own guild only."""
-        decision = _evaluate(_authority(has_mod_role=True))
+    @pytest.mark.parametrize(
+        ("authority_kwargs", "case_id"),
+        [
+            pytest.param({"has_mod_role": True}, "mod-role-same-guild-allowed"),
+            pytest.param({"is_guild_owner": True}, "guild-owner-same-guild-bypass"),
+            pytest.param({"is_administrator": True}, "administrator-same-guild-bypass"),
+        ],
+    )
+    def test_same_guild_authority_allowed(self, authority_kwargs: dict[str, Any], case_id: str) -> None:
+        """A guild-scoped authority (mod role / owner / Administrator) targeting
+        its own guild is allowed with guild scope."""
+        decision = _evaluate(_authority(**authority_kwargs))
         assert decision.allowed is True
         assert decision.scope == "guild"
 
-    def test_guild_owner_same_guild_bypass(self) -> None:
-        """Guild owner bypasses the mod-role check inside their own guild."""
-        decision = _evaluate(_authority(is_guild_owner=True))
-        assert decision.allowed is True
-
-    def test_administrator_same_guild_bypass(self) -> None:
-        """Discord Administrator bypasses the mod-role check inside their own guild."""
-        decision = _evaluate(_authority(is_administrator=True))
-        assert decision.allowed is True
-
-    def test_mod_role_cross_guild_denied(self) -> None:
-        """A mod of guild A targeting guild B is denied."""
-        decision = _evaluate(_authority(has_mod_role=True, target_guild_id="guildB"))
-        assert decision.allowed is False
-        assert decision.reason == "cross_guild_denied"
-
-    def test_owner_cross_guild_denied(self) -> None:
-        """A guild owner targeting another guild is denied (no silent global bypass)."""
-        decision = _evaluate(_authority(is_guild_owner=True, target_guild_id="guildB"))
-        assert decision.allowed is False
-        assert decision.reason == "cross_guild_denied"
-
-    def test_admin_cross_guild_denied(self) -> None:
-        """An administrator targeting another guild is denied."""
-        decision = _evaluate(_authority(is_administrator=True, target_guild_id="guildB"))
+    @pytest.mark.parametrize(
+        ("authority_kwargs", "case_id"),
+        [
+            pytest.param({"has_mod_role": True}, "mod-role"),
+            pytest.param({"is_guild_owner": True}, "owner"),
+            pytest.param({"is_administrator": True}, "admin"),
+        ],
+    )
+    def test_cross_guild_authority_denied(self, authority_kwargs: dict[str, Any], case_id: str) -> None:
+        """Any guild-scoped authority targeting another guild is denied
+        (cross_guild_denied) — no silent global bypass."""
+        decision = _evaluate(_authority(**authority_kwargs, target_guild_id="guildB"))
         assert decision.allowed is False
         assert decision.reason == "cross_guild_denied"
 
@@ -556,16 +557,23 @@ class TestRepairAuthorityGuildScope:
 class TestRepairAuthorityDeletionActor:
     """Verify the channel-deletion actor is informational only and never authorizes."""
 
-    def test_deletion_actor_alone_denied(self) -> None:
-        """A deletion actor with no other authority is denied."""
-        decision = _evaluate(_authority(deletion_actor=True))
+    @pytest.mark.parametrize(
+        ("authority_kwargs", "expected_reason"),
+        [
+            pytest.param({"deletion_actor": True}, "insufficient_authority", id="alone-denied"),
+            pytest.param(
+                {"deletion_actor": True, "has_mod_role": False},
+                "insufficient_authority",
+                id="does-not-upgrade-authority",
+            ),
+        ],
+    )
+    def test_deletion_actor_denied(self, authority_kwargs: dict[str, Any], expected_reason: str) -> None:
+        """The deletion-actor flag is informational only — with no other
+        authority the decision is denied (insufficient_authority)."""
+        decision = _evaluate(_authority(**authority_kwargs))
         assert decision.allowed is False
-
-    def test_deletion_actor_does_not_upgrade_authority(self) -> None:
-        """Being the deletion actor adds nothing to an otherwise plain user."""
-        decision = _evaluate(_authority(deletion_actor=True, has_mod_role=False))
-        assert decision.allowed is False
-        assert decision.reason == "insufficient_authority"
+        assert decision.reason == expected_reason
 
     def test_deletion_actor_mod_still_guild_scoped(self) -> None:
         """A deletion actor who is also a mod is authorized only in their guild."""
@@ -594,39 +602,42 @@ class TestRepairAuthorityOperator:
         assert decision.scope == "global"
         assert decision.reason  # the auditable reason is carried through
 
-    def test_grant_requires_confirmation(self) -> None:
-        """An unconfirmed grant never authorizes mutation."""
-        decision = _evaluate(
-            _authority(is_bot_owner=True, guild_id=None),
-            _grant(confirmed=False),
-        )
-        assert decision.allowed is False
-
-    def test_grant_requires_non_empty_reason(self) -> None:
-        """A grant with an empty/blank reason never authorizes mutation."""
-        decision = _evaluate(
-            _authority(is_bot_owner=True, guild_id=None),
-            _grant(reason=""),
-        )
-        assert decision.allowed is False
-
-    def test_grant_requires_matching_actor(self) -> None:
-        """A grant naming a different actor never authorizes this actor."""
-        decision = _evaluate(
-            _authority(is_bot_owner=True, guild_id=None, actor_id="actor-2"),
-            _grant(actor_id="actor-1"),
-        )
-        assert decision.allowed is False
-
-    def test_grant_requires_matching_target(self) -> None:
-        """A grant targeting a different guild never authorizes this target."""
-        decision = _evaluate(
-            _authority(is_bot_owner=True, guild_id=None, target_guild_id="guildB"),
-            _grant(target_guild_id="guildA"),
-        )
-        assert decision.allowed is False
-
-    def test_grant_ignored_for_non_operator(self) -> None:
-        """A grant cannot upgrade a plain non-operator actor."""
-        decision = _evaluate(_authority(), _grant())
+    @pytest.mark.parametrize(
+        ("authority_kwargs", "grant_kwargs"),
+        [
+            pytest.param(
+                {"is_bot_owner": True, "guild_id": None},
+                {"confirmed": False},
+                id="grant-requires-confirmation",
+            ),
+            pytest.param(
+                {"is_bot_owner": True, "guild_id": None},
+                {"reason": ""},
+                id="grant-requires-non-empty-reason",
+            ),
+            pytest.param(
+                {"is_bot_owner": True, "guild_id": None, "actor_id": "actor-2"},
+                {"actor_id": "actor-1"},
+                id="grant-requires-matching-actor",
+            ),
+            pytest.param(
+                {"is_bot_owner": True, "guild_id": None, "target_guild_id": "guildB"},
+                {"target_guild_id": "guildA"},
+                id="grant-requires-matching-target",
+            ),
+            pytest.param(
+                {},
+                {},
+                id="grant-ignored-for-non-operator",
+            ),
+        ],
+    )
+    def test_grant_defect_denies_mutation(
+        self,
+        authority_kwargs: dict[str, Any],
+        grant_kwargs: dict[str, Any],
+    ) -> None:
+        """A defective grant (unconfirmed/blank reason/actor or target mismatch)
+        or a non-operator caller is never authorized to mutate."""
+        decision = _evaluate(_authority(**authority_kwargs), _grant(**grant_kwargs))
         assert decision.allowed is False

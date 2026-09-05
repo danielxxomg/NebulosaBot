@@ -29,6 +29,7 @@ import sys
 import types
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -58,61 +59,66 @@ GIT_BIN = shutil.which("git") or "/usr/bin/git"
 class TestRecordForEvent:
     """_record_for_event — INSERT/UPDATE use ``record``, DELETE uses ``old_record``."""
 
-    def test_insert_uses_record(self) -> None:
-        payload = {"type": "INSERT", "record": {"id": "G1"}, "old_record": {}}
-        assert _record_for_event(payload) == {"id": "G1"}
-
-    def test_update_uses_record(self) -> None:
-        payload = {"type": "UPDATE", "record": {"guildId": "G2"}, "old_record": {"guildId": "G0"}}
-        assert _record_for_event(payload) == {"guildId": "G2"}
-
-    def test_delete_uses_old_record(self) -> None:
-        """Spec: DELETE event with empty record MUST read from old_record."""
-        payload = {"type": "DELETE", "record": {}, "old_record": {"id": "G3"}}
-        assert _record_for_event(payload) == {"id": "G3"}
-
-    def test_delete_missing_old_record_returns_empty(self) -> None:
-        payload = {"type": "DELETE", "record": {}}
-        assert _record_for_event(payload) == {}
-
-    def test_missing_type_treats_as_record(self) -> None:
-        payload = {"record": {"id": "G4"}}
-        assert _record_for_event(payload) == {"id": "G4"}
+    @pytest.mark.parametrize(
+        ("payload", "expected", "case_id"),
+        [
+            pytest.param(
+                {"type": "INSERT", "record": {"id": "G1"}, "old_record": {}},
+                {"id": "G1"},
+                "insert-uses-record",
+            ),
+            pytest.param(
+                {"type": "UPDATE", "record": {"guildId": "G2"}, "old_record": {"guildId": "G0"}},
+                {"guildId": "G2"},
+                "update-uses-record",
+            ),
+            pytest.param(
+                {"type": "DELETE", "record": {}, "old_record": {"id": "G3"}},
+                {"id": "G3"},
+                "delete-uses-old-record",
+            ),
+            pytest.param(
+                {"type": "DELETE", "record": {}},
+                {},
+                "delete-missing-old-record-returns-empty",
+            ),
+            pytest.param(
+                {"record": {"id": "G4"}},
+                {"id": "G4"},
+                "missing-type-treats-as-record",
+            ),
+        ],
+    )
+    def test_record_selection_by_event_type(
+        self, payload: dict[str, Any], expected: dict[str, Any], case_id: str
+    ) -> None:
+        """INSERT/UPDATE (and missing-type) read ``record``; DELETE reads
+        ``old_record`` (empty dict when absent) — per spec."""
+        assert _record_for_event(payload) == expected
 
 
 class TestExtractGuildId:
     """_extract_guild_id — pure table -> guild_id mapping."""
 
-    def test_guild_table_uses_id(self) -> None:
-        assert _extract_guild_id("guild", {"id": "111222333"}) == "111222333"
-
-    def test_greeting_config_uses_guild_id(self) -> None:
-        assert _extract_guild_id("greeting_config", {"guildId": "444555666"}) == "444555666"
-
-    def test_ticket_uses_guild_id(self) -> None:
-        assert _extract_guild_id("ticket", {"guildId": "777888999"}) == "777888999"
-
-    def test_ticket_note_returns_none(self) -> None:
-        """ticket_note has no direct guildId — async resolver handles it."""
-        assert _extract_guild_id("ticket_note", {"ticketId": "T1"}) is None
-
-    def test_unknown_table_returns_none(self) -> None:
-        assert _extract_guild_id("other", {"id": "X"}) is None
-
-    def test_missing_field_returns_none(self) -> None:
-        assert _extract_guild_id("guild", {}) is None
-
-    def test_coerces_non_string_to_string(self) -> None:
-        """Numeric ids MUST be coerced to str for cache key consistency."""
-        assert _extract_guild_id("guild", {"id": 123456}) == "123456"
-
-    def test_member_uses_guild_id(self) -> None:
-        """S6: member CDC rows carry guildId — mapped like greeting_config/ticket."""
-        assert _extract_guild_id("member", {"guildId": "444555666"}) == "444555666"
-
-    def test_economy_config_uses_guild_id(self) -> None:
-        """S6: economy_config CDC rows carry guildId."""
-        assert _extract_guild_id("economy_config", {"guildId": "999000111"}) == "999000111"
+    @pytest.mark.parametrize(
+        ("table", "row", "expected", "case_id"),
+        [
+            pytest.param("guild", {"id": "111222333"}, "111222333", "guild-table-uses-id"),
+            pytest.param("greeting_config", {"guildId": "444555666"}, "444555666", "greeting-config-uses-guild-id"),
+            pytest.param("ticket", {"guildId": "777888999"}, "777888999", "ticket-uses-guild-id"),
+            pytest.param("ticket_note", {"ticketId": "T1"}, None, "ticket-note-returns-none"),
+            pytest.param("other", {"id": "X"}, None, "unknown-table-returns-none"),
+            pytest.param("guild", {}, None, "missing-field-returns-none"),
+            pytest.param("guild", {"id": 123456}, "123456", "coerces-non-string-to-string"),
+            pytest.param("member", {"guildId": "444555666"}, "444555666", "member-uses-guild-id"),
+            pytest.param("economy_config", {"guildId": "999000111"}, "999000111", "economy-config-uses-guild-id"),
+        ],
+    )
+    def test_guild_id_mapping(self, table: str, row: dict[str, Any], expected: str | None, case_id: str) -> None:
+        """Pure table -> guild_id extraction: guild reads ``id``; CDC tables
+        read ``guildId``; ticket_note/unknown/missing fields yield None;
+        numeric ids coerce to str for cache-key consistency."""
+        assert _extract_guild_id(table, row) == expected
 
     @pytest.mark.parametrize("table", ["member", "economy_config"])
     def test_new_tables_coerce_numeric_guild_id(self, table: str) -> None:
@@ -123,14 +129,18 @@ class TestExtractGuildId:
 class TestExtractTicketId:
     """_extract_ticket_id — ticket_note -> ticket_id for guild resolution."""
 
-    def test_returns_ticket_id(self) -> None:
-        assert _extract_ticket_id({"ticketId": "ticket-uuid-001"}) == "ticket-uuid-001"
-
-    def test_missing_returns_none(self) -> None:
-        assert _extract_ticket_id({}) is None
-
-    def test_coerces_to_string(self) -> None:
-        assert _extract_ticket_id({"ticketId": 99}) == "99"
+    @pytest.mark.parametrize(
+        ("row", "expected", "case_id"),
+        [
+            pytest.param({"ticketId": "ticket-uuid-001"}, "ticket-uuid-001", "returns-ticket-id"),
+            pytest.param({}, None, "missing-returns-none"),
+            pytest.param({"ticketId": 99}, "99", "coerces-to-string"),
+        ],
+    )
+    def test_ticket_id_extraction(self, row: dict[str, Any], expected: str | None, case_id: str) -> None:
+        """Reads ``ticketId`` from the note row; None when absent; numeric
+        values coerce to str."""
+        assert _extract_ticket_id(row) == expected
 
 
 # ===========================================================================
@@ -588,87 +598,95 @@ class TestNormalizeCdcPayload:
     """_normalize_cdc_payload — handles nested SDK payloads from realtime-py 2.31.0."""
 
     @pytest.mark.asyncio
-    async def test_nested_sdk_payload_invalidates_guild(self, cache: TTLCache) -> None:
-        """SDK delivers payload as {data: {type, table, record}, ids: [...]}.
-        _handle_cdc MUST normalize to extract table and record from data."""
+    @pytest.mark.parametrize(
+        ("event_type", "table", "record_key", "record_val", "old_key", "old_val", "table_hint", "case_id"),
+        [
+            pytest.param(
+                "UPDATE",
+                "guild",
+                "id",
+                "G-nested",
+                {},
+                None,
+                None,
+                "nested-sdk-payload-invalidates-guild",
+            ),
+            pytest.param(
+                "INSERT",
+                None,
+                "guildId",
+                "G-hint",
+                {},
+                None,
+                "greeting_config",
+                "table-hint-fallback-when-data-table-missing",
+            ),
+            pytest.param(
+                "DELETE",
+                "guild",
+                None,
+                None,
+                "id",
+                "G-del-nested",
+                None,
+                "delete-nested-sdk-uses-old-record",
+            ),
+            pytest.param(
+                "INSERT",
+                "guild",
+                "id",
+                "G-legacy",
+                {},
+                None,
+                None,
+                "legacy-top-level-payload-still-works",
+            ),
+        ],
+    )
+    async def test_payload_shapes_invalidate_guild(
+        self,
+        cache: TTLCache,
+        event_type: str,
+        table: str | None,
+        record_key: str | None,
+        record_val: str | None,
+        old_key: str | None,
+        old_val: str | None,
+        table_hint: str | None,
+        case_id: str,
+    ) -> None:
+        """Nested SDK ({data: {type, table, record}}) and legacy top-level
+        payloads both normalize; DELETE reads old_record; missing data.table
+        falls back to the registration table_hint."""
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
-        cache.set("G-nested:config", "v")
+        guild_id = record_val or old_val
+        cache_key = f"{guild_id}:config"
+        cache.set(cache_key, "v")
 
-        sdk_payload = {
-            "data": {
-                "type": "UPDATE",
-                "table": "guild",
-                "schema": "public",
-                "record": {"id": "G-nested"},
-                "old_record": {},
-                "commit_timestamp": "2025-06-15T10:00:00Z",
-            },
-            "ids": [1],
-        }
-        await sub._handle_cdc(sdk_payload)
-
-        assert cache.get("G-nested:config") is None  # invalidated
-
-    @pytest.mark.asyncio
-    async def test_table_hint_fallback_when_data_table_missing(self, cache: TTLCache) -> None:
-        """When data.table is None/missing, table_hint from callback registration MUST be used."""
-        client = _make_client_mock()
-        sub = _make_subscriber(cache, client)
-        cache.set("G-hint:config", "v")
-
-        sdk_payload = {
-            "data": {
-                "type": "INSERT",
-                "table": None,
-                "schema": "public",
-                "record": {"guildId": "G-hint"},
-                "old_record": {},
-            },
-            "ids": [2],
-        }
-        await sub._handle_cdc(sdk_payload, table_hint="greeting_config")
-
-        assert cache.get("G-hint:config") is None  # invalidated via table_hint
-
-    @pytest.mark.asyncio
-    async def test_delete_nested_sdk_uses_old_record(self, cache: TTLCache) -> None:
-        """DELETE event in nested SDK format MUST read old_record from data."""
-        client = _make_client_mock()
-        sub = _make_subscriber(cache, client)
-        cache.set("G-del-nested:config", "v")
-
-        sdk_payload = {
-            "data": {
-                "type": "DELETE",
-                "table": "guild",
-                "schema": "public",
-                "record": {},
-                "old_record": {"id": "G-del-nested"},
-            },
-            "ids": [3],
-        }
-        await sub._handle_cdc(sdk_payload)
-
-        assert cache.get("G-del-nested:config") is None
-
-    @pytest.mark.asyncio
-    async def test_legacy_top_level_payload_still_works(self, cache: TTLCache) -> None:
-        """Legacy top-level payload format MUST still work for backward compatibility."""
-        client = _make_client_mock()
-        sub = _make_subscriber(cache, client)
-        cache.set("G-legacy:config", "v")
-
-        legacy_payload = {
-            "type": "INSERT",
-            "table": "guild",
+        data: dict[str, Any] = {
+            "type": event_type,
+            "table": table,
             "schema": "public",
-            "record": {"id": "G-legacy"},
-            "old_record": {},
+            "record": {record_key: record_val} if record_key else {},
+            "old_record": {old_key: old_val} if old_key else {},
         }
-        await sub._handle_cdc(legacy_payload)
+        if event_type == "INSERT" and table == "guild":
+            # Legacy top-level payload format MUST still work for backward
+            # compatibility (no data envelope).
+            payload: dict[str, Any] = {
+                "type": event_type,
+                "table": table,
+                "schema": "public",
+                "record": {record_key: record_val} if record_key else {},
+                "old_record": {},
+            }
+        else:
+            payload = {"data": data, "ids": [1]}
 
-        assert cache.get("G-legacy:config") is None  # still works
+        await sub._handle_cdc(payload, table_hint=table_hint)
+
+        assert cache.get(cache_key) is None  # invalidated
 
 
 # ===========================================================================

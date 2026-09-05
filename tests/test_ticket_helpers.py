@@ -277,53 +277,48 @@ class TestBuildTicketOverwrites:
         perm = overwrites[guild.default_role]
         assert perm.read_messages is False
 
-    def test_bot_gets_read_and_send(self) -> None:
-        """Bot member gets read_messages=True, send_messages=True."""
-        guild = _make_guild()
-        overwrites = build_ticket_overwrites(guild, _make_member(), _make_role())
-        perm = overwrites[guild.me]
-        assert perm.read_messages is True
-        assert perm.send_messages is True
-
-    def test_author_gets_read_and_send(self) -> None:
-        """Author gets read_messages=True, send_messages=True."""
+    @pytest.mark.parametrize(
+        ("principal_key", "case_id"),
+        [
+            pytest.param("bot", "bot-gets-read-and-send"),
+            pytest.param("author", "author-gets-read-and-send"),
+            pytest.param("mod", "mod-gets-read-and-send"),
+        ],
+    )
+    def test_principal_gets_read_and_send(self, principal_key: str, case_id: str) -> None:
+        """Bot member, author, and mod role each get read_messages=True,
+        send_messages=True in the returned overwrite dict."""
         guild = _make_guild()
         author = _make_member()
-        overwrites = build_ticket_overwrites(guild, author, _make_role())
-        perm = overwrites[author]
-        assert perm.read_messages is True
-        assert perm.send_messages is True
-
-    def test_mod_gets_read_and_send(self) -> None:
-        """Mod role gets read_messages=True, send_messages=True."""
-        guild = _make_guild()
         mod = _make_role()
-        overwrites = build_ticket_overwrites(guild, _make_member(), mod)
-        perm = overwrites[mod]
+        overwrites = build_ticket_overwrites(guild, author, mod)
+        principal = {"bot": guild.me, "author": author, "mod": mod}[principal_key]
+        perm = overwrites[principal]
         assert perm.read_messages is True
         assert perm.send_messages is True
 
-    def test_missing_author_returns_3_principals(self) -> None:
-        """With author=None, returns 3 principals (no author entry)."""
+    @pytest.mark.parametrize(
+        ("with_author", "with_mod", "expected_len", "case_id"),
+        [
+            pytest.param(False, True, 3, "missing-author-returns-3-principals"),
+            pytest.param(True, False, 3, "missing-mod-returns-3-principals"),
+            pytest.param(False, False, 2, "both-none-returns-2-principals"),
+        ],
+    )
+    def test_missing_principals_shrink_overwrites(
+        self,
+        with_author: bool,
+        with_mod: bool,
+        expected_len: int,
+        case_id: str,
+    ) -> None:
+        """Omitted author/mod drop their principal entry; default_role and
+        bot are always present (2 principals when both omitted)."""
         guild = _make_guild()
-        overwrites = build_ticket_overwrites(guild, None, _make_role())
-        assert len(overwrites) == 3
-        assert guild.default_role in overwrites
-        assert guild.me in overwrites
-
-    def test_missing_mod_returns_3_principals(self) -> None:
-        """With mod_role=None, returns 3 principals (no mod entry)."""
-        guild = _make_guild()
-        overwrites = build_ticket_overwrites(guild, _make_member(), None)
-        assert len(overwrites) == 3
-        assert guild.default_role in overwrites
-        assert guild.me in overwrites
-
-    def test_both_none_returns_2_principals(self) -> None:
-        """With both None, returns 2 principals (default_role + bot)."""
-        guild = _make_guild()
-        overwrites = build_ticket_overwrites(guild, None, None)
-        assert len(overwrites) == 2
+        author = _make_member() if with_author else None
+        mod = _make_role() if with_mod else None
+        overwrites = build_ticket_overwrites(guild, author, mod)
+        assert len(overwrites) == expected_len
         assert guild.default_role in overwrites
         assert guild.me in overwrites
 
@@ -336,21 +331,19 @@ class TestBuildTicketOverwrites:
 class TestResolveModRole:
     """Characterization: resolve_mod_role with valid/invalid/missing role."""
 
-    def test_valid_role_id_found(self) -> None:
-        """Valid int role_id that resolves → returns the role."""
+    @pytest.mark.parametrize(
+        ("role_id", "case_id"),
+        [
+            pytest.param(123456, "valid-role-id-found"),
+            pytest.param("123456", "valid-string-role-id"),
+        ],
+    )
+    def test_valid_role_id_found(self, role_id: int | str, case_id: str) -> None:
+        """Valid int or string-digit role_id resolves to the role via get_role."""
         guild = MagicMock()
         expected_role = _make_role()
         guild.get_role.return_value = expected_role
-        result = resolve_mod_role(guild, 123456)
-        assert result is expected_role
-        guild.get_role.assert_called_once_with(123456)
-
-    def test_valid_string_role_id(self) -> None:
-        """String digit role_id → converts to int and resolves."""
-        guild = MagicMock()
-        expected_role = _make_role()
-        guild.get_role.return_value = expected_role
-        result = resolve_mod_role(guild, "123456")
+        result = resolve_mod_role(guild, role_id)
         assert result is expected_role
         guild.get_role.assert_called_once_with(123456)
 
@@ -383,21 +376,19 @@ class TestResolveModRole:
 class TestResolveMemberSafe:
     """Characterization: resolve_member_safe with valid/invalid/missing member."""
 
-    def test_valid_member_found(self) -> None:
-        """Valid int member_id that resolves → returns the member."""
+    @pytest.mark.parametrize(
+        ("member_id", "case_id"),
+        [
+            pytest.param(42, "valid-member-found"),
+            pytest.param("42", "valid-string-member-id"),
+        ],
+    )
+    def test_valid_member_found(self, member_id: int | str, case_id: str) -> None:
+        """Valid int or string-digit member_id resolves to the member via get_member."""
         guild = MagicMock()
         expected = _make_member()
         guild.get_member.return_value = expected
-        result = resolve_member_safe(guild, 42)
-        assert result is expected
-        guild.get_member.assert_called_once_with(42)
-
-    def test_valid_string_member_id(self) -> None:
-        """String digit member_id → converts to int and resolves."""
-        guild = MagicMock()
-        expected = _make_member()
-        guild.get_member.return_value = expected
-        result = resolve_member_safe(guild, "42")
+        result = resolve_member_safe(guild, member_id)
         assert result is expected
         guild.get_member.assert_called_once_with(42)
 
@@ -440,20 +431,23 @@ class TestResolveCategoryName:
         db.get_ticket_category.assert_called_once_with("cat-uuid-123")
 
     @pytest.mark.asyncio
-    async def test_missing_category_returns_fallback(self) -> None:
-        """DB returns None → returns default fallback 'ticket'."""
+    @pytest.mark.parametrize(
+        ("fallback", "expected", "case_id"),
+        [
+            pytest.param(None, "ticket", "missing-category-returns-default-fallback"),
+            pytest.param("default", "default", "custom-fallback-when-db-empty"),
+        ],
+    )
+    async def test_missing_category_returns_fallback(self, fallback: str | None, expected: str, case_id: str) -> None:
+        """DB returns None → returns the fallback ('ticket' default, or the
+        caller-supplied custom fallback)."""
         db = MagicMock()
         db.get_ticket_category = AsyncMock(return_value=None)
-        result = await resolve_category_name(db, "nonexistent-uuid")
-        assert result == "ticket"
-
-    @pytest.mark.asyncio
-    async def test_custom_fallback(self) -> None:
-        """Custom fallback provided when DB returns None."""
-        db = MagicMock()
-        db.get_ticket_category = AsyncMock(return_value=None)
-        result = await resolve_category_name(db, "nonexistent-uuid", fallback="default")
-        assert result == "default"
+        if fallback is None:
+            result = await resolve_category_name(db, "nonexistent-uuid")
+        else:
+            result = await resolve_category_name(db, "nonexistent-uuid", fallback=fallback)
+        assert result == expected
 
     @pytest.mark.asyncio
     async def test_none_category_id_returns_fallback(self) -> None:
