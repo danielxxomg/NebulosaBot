@@ -81,40 +81,28 @@ export const buildMockServiceClient = (overrides: {
     single: vi.fn().mockResolvedValue(overrides.guildSelectResult ?? { data: null, error: null }),
   };
 
-  const updateEqChain = {
-    // For update().eq()
-    then: vi.fn(),
-  };
+  // For update().eq() — the terminal spy resolves like the old thenable
+  // (await x === await Promise.resolve(x) at these call sites).
+  const updateEqChain = vi
+    .fn()
+    .mockResolvedValue(
+      overrides.guildUpdateError ? { error: overrides.guildUpdateError } : { error: null }
+    );
 
-  // Make updateEqChain thenable so await works.
-  Object.defineProperty(updateEqChain, "then", {
-    value: (resolve: (v: unknown) => void) =>
-      resolve(overrides.guildUpdateError ? { error: overrides.guildUpdateError } : { error: null }),
-    writable: true,
-  });
+  const upsertEqChainEconomy = vi
+    .fn()
+    .mockResolvedValue(
+      overrides.economyUpsertError ? { error: overrides.economyUpsertError } : { error: null }
+    );
 
-  const upsertEqChainEconomy = {
-    then: vi.fn(),
-  };
-
-  Object.defineProperty(upsertEqChainEconomy, "then", {
-    value: (resolve: (v: unknown) => void) =>
-      resolve(overrides.economyUpsertError ? { error: overrides.economyUpsertError } : { error: null }),
-    writable: true,
-  });
-
-  const upsertEqChainGreeting = {
-    then: vi.fn(),
-  };
+  const upsertEqChainGreeting = vi
+    .fn()
+    .mockResolvedValue(
+      overrides.greetingUpsertError ? { error: overrides.greetingUpsertError } : { error: null }
+    );
 
   const greetingUpsert = vi.fn().mockReturnValue({
     eq: vi.fn().mockReturnValue(upsertEqChainGreeting),
-  });
-
-  Object.defineProperty(upsertEqChainGreeting, "then", {
-    value: (resolve: (v: unknown) => void) =>
-      resolve(overrides.greetingUpsertError ? { error: overrides.greetingUpsertError } : { error: null }),
-    writable: true,
   });
 
   // Ticket read chain: select -> eq -> order -> limit (terminal, thenable).
