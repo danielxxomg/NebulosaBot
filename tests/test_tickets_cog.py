@@ -548,7 +548,6 @@ class TestTicketActionsView:
         ticket_bot.ticket_service.claim_ticket.assert_awaited_once()
         ticket_interaction.response.edit_message.assert_awaited_once()
 
-
     async def test_close_button_generates_transcript(
         self,
         ticket_bot: MagicMock,
