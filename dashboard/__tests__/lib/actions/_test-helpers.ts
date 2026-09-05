@@ -197,6 +197,9 @@ export const buildMockServiceClient = (overrides: {
       return {};
     }),
     // Test-only handle exposing the stable ticket-chain spies for assertions.
+    greeting: {
+      upsert: greetingUpsert,
+    },
     ticket: {
       eq: ticketEq,
       limit: ticketLimit,
@@ -207,6 +210,12 @@ export const buildMockServiceClient = (overrides: {
       updateEq: ticketUpdateEq,
     } satisfies TicketChainSpies,
     // Test-only handle exposing the stable ticket-note-chain spies for assertions.
+    ticketAudit: {
+      eq: ticketAuditEq,
+      order: ticketAuditOrder,
+      range: ticketAuditRange,
+      select: ticketAuditSelect,
+    },
     ticketNote: {
       delete: ticketNoteDelete,
       deleteEq: ticketNoteDeleteEq,
@@ -217,16 +226,6 @@ export const buildMockServiceClient = (overrides: {
       select: ticketNoteSelect,
       single: ticketNoteSingle,
     } satisfies TicketNoteChainSpies,
-    // Test-only handle exposing the stable ticket-audit-chain spies.
-    ticketAudit: {
-      eq: ticketAuditEq,
-      order: ticketAuditOrder,
-      range: ticketAuditRange,
-      select: ticketAuditSelect,
-    },
-    greeting: {
-      upsert: greetingUpsert,
-    },
   };
 };
 

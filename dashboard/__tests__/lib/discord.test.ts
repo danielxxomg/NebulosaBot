@@ -10,8 +10,7 @@ describe("hasAdministratorPerm", () => {
   let hasAdministratorPerm: (permissions: string) => boolean;
 
   beforeAll(async () => {
-    const mod = await import("@/lib/discord");
-    hasAdministratorPerm = mod.hasAdministratorPerm;
+    ({ hasAdministratorPerm } = await import("@/lib/discord"));
   });
 
   it("returns true when ADMINISTRATOR bit (0x8) is set", () => {
@@ -58,8 +57,7 @@ describe("fetchUserGuilds", () => {
   beforeAll(async () => {
     // Clear the in-memory cache between test runs by re-importing.
     vi.resetModules();
-    const mod = await import("@/lib/discord");
-    fetchUserGuilds = mod.fetchUserGuilds;
+    ({ fetchUserGuilds } = await import("@/lib/discord"));
   });
 
   beforeEach(() => {
@@ -85,7 +83,7 @@ describe("fetchUserGuilds", () => {
     ];
 
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(JSON.stringify(mockGuilds), { status: 200 })
+      Response.json(mockGuilds, { status: 200 })
     );
 
     const result = await fetchUserGuilds("fake-access-token-1234567890abcdef");
@@ -107,7 +105,7 @@ describe("fetchUserGuilds", () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(
-        new Response(JSON.stringify(mockGuilds), { status: 200 })
+        Response.json(mockGuilds, { status: 200 })
       );
 
     // Re-import to ensure clean cache.
@@ -121,6 +119,7 @@ describe("fetchUserGuilds", () => {
 
     // Second call — should be cached.
     await fn("token-abc");
-    expect(fetchSpy).toHaveBeenCalledTimes(1); // Still 1 — cached!
+    // Still 1 — cached!
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });

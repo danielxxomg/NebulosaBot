@@ -1,7 +1,7 @@
 import TicketsPage from "@/app/(authenticated)/guilds/[guildId]/tickets/page";
 import { buildTicketTree } from "@/app/(authenticated)/guilds/[guildId]/tickets/_lib/build-ticket-tree";
-import { TicketRowActions } from "@/app/(authenticated)/guilds/[guildId]/tickets/_components/TicketRowActions";
-import { NotesPanel } from "@/app/(authenticated)/guilds/[guildId]/tickets/_components/NotesPanel";
+import { TicketRowActions } from "@/app/(authenticated)/guilds/[guildId]/tickets/_components/ticket-row-actions";
+import { NotesPanel } from "@/app/(authenticated)/guilds/[guildId]/tickets/_components/notes-panel";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   render,

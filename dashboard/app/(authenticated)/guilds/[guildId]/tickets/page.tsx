@@ -10,8 +10,8 @@ import {
 import { getTicketsForGuild } from "@/lib/actions/ticket-actions";
 import type { Ticket, TicketStatus } from "@/lib/types";
 import { buildTicketTree } from "./_lib/build-ticket-tree";
-import { TicketRowActions } from "./_components/TicketRowActions";
-import { AuditPanel } from "./_components/AuditPanel";
+import { TicketRowActions } from "./_components/ticket-row-actions";
+import { AuditPanel } from "./_components/audit-panel";
 
 export const metadata = {
   title: "Tickets — NebulosaBot Dashboard",
@@ -132,7 +132,7 @@ const TicketRow = ({
             </span>
           )}
           <span>#{ticket.ticketNumber}</span>
-          {isChild && parentNumber != null && (
+          {isChild && parentNumber !== null && (
             <span className="sr-only">Sub-ticket of #{parentNumber}</span>
           )}
         </div>
