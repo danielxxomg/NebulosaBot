@@ -28,6 +28,193 @@ from bot.views.ticket_category_select import _CategorySelect, _EditCategorySelec
 from bot.views.tickets import TicketActionsView, TicketPanelView, _CategorySelectView
 
 # ===========================================================================
+# Shared test helpers (S5c1: extracted from duplicated per-class scaffolds —
+# every extraction is a strict superset of the call sites it replaced)
+# ===========================================================================
+
+
+def _make_deploy_pair(
+    *,
+    message_id: int = 42,
+    with_avatar: bool = False,
+    with_guild_service: bool = True,
+    send_side_effect: Exception | None = None,
+) -> tuple[MagicMock, MagicMock]:
+    """Build a (channel, bot) pair wired for deploy_ticket_panel tests.
+
+    channel.id=999 with an AsyncMock send returning a message whose id is
+    ``message_id``. ``send_side_effect`` makes channel.send raise (Forbidden
+    path). ``with_guild_service``/``with_avatar`` wire the optional bot bits.
+    """
+    channel = MagicMock()
+    channel.id = 999
+    channel.send = AsyncMock()
+    if send_side_effect is not None:
+        channel.send.side_effect = send_side_effect
+    mock_message = MagicMock()
+    mock_message.id = message_id
+    mock_message.channel = channel
+    channel.send.return_value = mock_message
+
+    mock_bot = MagicMock()
+    if with_guild_service:
+        mock_bot.guild_service = MagicMock()
+        mock_bot.guild_service.update_guild_panel = AsyncMock()
+    if with_avatar:
+        mock_bot.user = MagicMock()
+        mock_bot.user.display_avatar = MagicMock()
+        mock_bot.user.display_avatar.url = "https://cdn.discordapp.com/avatars/bot123/avatar.png"
+    return channel, mock_bot
+
+
+def _make_view_interaction(
+    *,
+    guild_id: int = 123456789,
+    user_id: int = 111111111,
+    channel_id: int = 888888888,
+    member: bool = False,
+    admin: bool = False,
+    channel: bool = False,
+    message: bool = False,
+    claim: bool = False,
+    with_followup: bool = True,
+    with_original: bool = False,
+) -> MagicMock:
+    """Build a mock Interaction wired for ticket-view button/select callbacks.
+
+    Superset of the former _make_close_interaction, _make_claim_interaction,
+    _make_edit_interaction and _make_select_interaction builders: guild/user/
+    ids are common; ``member`` gives the user Member spec + permissions attrs,
+    ``admin`` sets guild_permissions.administrator, ``claim`` adds the
+    claim-flow service mocks (mod-role cache, claim/transfer, logging),
+    ``channel`` attaches a TextChannel mock with an AsyncMock send,
+    ``message`` attaches an AsyncMock-edit message.
+    """
+    interaction = MagicMock(spec=discord.Interaction)
+    interaction.guild_id = guild_id
+    interaction.channel_id = channel_id
+    interaction.response = MagicMock()
+    interaction.response.send_message = AsyncMock()
+    interaction.response.edit_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.response.is_done.return_value = False
+    if with_followup:
+        interaction.followup = MagicMock()
+        interaction.followup.send = AsyncMock()
+    if with_original:
+        interaction.original_response = AsyncMock()
+
+    guild = MagicMock()
+    guild.id = guild_id
+    interaction.guild = guild
+
+    user = MagicMock(spec=discord.Member)
+    user.id = user_id
+    user.mention = f"<@{user_id}>"
+    if member:
+        user.guild_permissions = MagicMock()
+        user.guild_permissions.administrator = admin
+        user.roles = []
+    interaction.user = user
+
+    if message:
+        interaction.message = MagicMock()
+        interaction.message.edit = AsyncMock()
+
+    if channel:
+        text_channel = MagicMock(spec=discord.TextChannel)
+        text_channel.id = channel_id
+        if claim:
+            text_channel.guild = guild
+        text_channel.send = AsyncMock()
+        interaction.channel = text_channel
+
+    bot = MagicMock()
+    bot.db = MagicMock()
+    bot.db.get_ticket_by_channel = AsyncMock()
+    bot.ticket_service = MagicMock()
+    if claim:
+        bot.db.get_ticket_categories = AsyncMock(return_value=[])
+        bot._guild_mod_role_cache = {}
+        bot.ticket_service.claim_ticket = AsyncMock()
+        bot.ticket_service.transfer_ticket = AsyncMock()
+        bot.logging_service = MagicMock()
+    interaction.client = bot
+
+    return interaction
+
+
+def _claimed_row() -> dict:
+    """Return a DB row for a claimed ticket in the shared test guild."""
+    return {
+        "id": "ticket-uuid-claimed",
+        "ticketNumber": 5,
+        "guildId": "123456789",
+        "authorId": "111111111",
+        "channelId": "888888888",
+        "categoryId": None,
+        "status": "claimed",
+        "claimedBy": "111111111",
+        "transcriptUrl": None,
+        "createdAt": "2026-01-15T10:00:00+00:00",
+        "closedAt": None,
+        "lastActivity": "2026-01-15T10:00:00+00:00",
+    }
+
+
+def _edit_ticket_row(
+    *,
+    id_label: str = "edit",
+    ticket_number: int = 5,
+    status: str = "open",
+    category_id: str | None = "cat-uuid",
+) -> dict:
+    """Return a DB row for the edit-category/close flows (row id varies by flow)."""
+    return {
+        "id": f"ticket-uuid-{id_label}",
+        "ticketNumber": ticket_number,
+        "guildId": "123456789",
+        "authorId": "111111111",
+        "channelId": "888888888",
+        "categoryId": category_id,
+        "status": status,
+        "claimedBy": None,
+        "transcriptUrl": None,
+        "createdAt": "2026-01-15T10:00:00+00:00",
+        "closedAt": None,
+        "lastActivity": "2026-01-15T10:00:00+00:00",
+    }
+
+
+def _category_rows() -> list[dict]:
+    """Return two active ticket-category DB rows (Support, Billing)."""
+    return [
+        {
+            "id": "cat-uuid-1",
+            "guildId": "123456789",
+            "name": "Support",
+            "emoji": None,
+            "description": "General support",
+            "position": 0,
+            "active": True,
+            "createdAt": "2026-01-01T00:00:00",
+            "fieldDefinitions": [],
+        },
+        {
+            "id": "cat-uuid-2",
+            "guildId": "123456789",
+            "name": "Billing",
+            "emoji": None,
+            "description": "Billing issues",
+            "position": 1,
+            "active": True,
+            "createdAt": "2026-01-01T00:00:00",
+            "fieldDefinitions": [],
+        },
+    ]
+
+
+# ===========================================================================
 # deploy_ticket_panel — shared helper (ticket-panel-persistence, Phase 2)
 # ===========================================================================
 
@@ -40,18 +227,7 @@ class TestDeployTicketPanel:
         """deploy_ticket_panel() MUST send an embed with TicketPanelView and return the message."""
         from bot.views.tickets import TicketPanelView, deploy_ticket_panel
 
-        channel = MagicMock()
-        channel.id = 999
-        channel.send = AsyncMock()
-        mock_message = MagicMock()
-        mock_message.id = 42
-        mock_message.channel = channel
-        channel.send.return_value = mock_message
-
-        mock_bot = MagicMock()
-        mock_bot.guild_service = MagicMock()
-        mock_bot.guild_service.update_guild_panel = AsyncMock()
-
+        channel, mock_bot = _make_deploy_pair()
         msg = await deploy_ticket_panel(channel, "123456789", bot=mock_bot)
 
         channel.send.assert_awaited_once()
@@ -59,27 +235,15 @@ class TestDeployTicketPanel:
         assert "embed" in call_kwargs
         assert "view" in call_kwargs
         assert isinstance(call_kwargs["view"], TicketPanelView)
-        assert msg is mock_message
+        assert msg is channel.send.return_value
 
     @pytest.mark.asyncio
     async def test_calls_update_guild_panel_with_message_ids(self) -> None:
         """deploy_ticket_panel() MUST call guild_service.update_guild_panel() with the message/channel IDs."""
         from bot.views.tickets import deploy_ticket_panel
 
-        channel = MagicMock()
-        channel.id = 999
-        channel.send = AsyncMock()
-        mock_message = MagicMock()
-        mock_message.id = 42
-        mock_message.channel = channel
-        channel.send.return_value = mock_message
-
-        mock_bot = MagicMock()
-        mock_bot.guild_service = MagicMock()
-        mock_bot.guild_service.update_guild_panel = AsyncMock()
-
+        channel, mock_bot = _make_deploy_pair()
         await deploy_ticket_panel(channel, "123456789", bot=mock_bot)
-
         mock_bot.guild_service.update_guild_panel.assert_awaited_once_with("123456789", str(42), str(999))
 
     @pytest.mark.asyncio
@@ -87,11 +251,10 @@ class TestDeployTicketPanel:
         """deploy_ticket_panel() MUST propagate discord.Forbidden when channel.send() fails."""
         from bot.views.tickets import deploy_ticket_panel
 
-        channel = MagicMock()
-        channel.send = AsyncMock(side_effect=discord.Forbidden(MagicMock(), "missing perms"))
-
-        mock_bot = MagicMock()
-        mock_bot.guild_service = MagicMock()
+        channel, mock_bot = _make_deploy_pair(
+            with_guild_service=False,
+            send_side_effect=discord.Forbidden(MagicMock(), "missing perms"),
+        )
 
         with pytest.raises(discord.Forbidden):
             await deploy_ticket_panel(channel, "123456789", bot=mock_bot)
@@ -101,17 +264,7 @@ class TestDeployTicketPanel:
         """deploy_ticket_panel(title=..., description_text=...) MUST pass them to the embed."""
         from bot.views.tickets import deploy_ticket_panel
 
-        channel = MagicMock()
-        channel.send = AsyncMock()
-        mock_message = MagicMock()
-        mock_message.id = 42
-        mock_message.channel = channel
-        channel.send.return_value = mock_message
-
-        mock_bot = MagicMock()
-        mock_bot.guild_service = MagicMock()
-        mock_bot.guild_service.update_guild_panel = AsyncMock()
-
+        channel, mock_bot = _make_deploy_pair()
         await deploy_ticket_panel(
             channel,
             "123456789",
@@ -129,81 +282,43 @@ class TestDeployTicketPanel:
         """deploy_ticket_panel MUST set footer icon_url from bot.user.display_avatar."""
         from bot.views.tickets import deploy_ticket_panel
 
-        channel = MagicMock()
-        channel.send = AsyncMock()
-        mock_message = MagicMock()
-        mock_message.id = 42
-        mock_message.channel = channel
-        channel.send.return_value = mock_message
-
-        mock_bot = MagicMock()
-        mock_bot.guild_service = MagicMock()
-        mock_bot.guild_service.update_guild_panel = AsyncMock()
-        mock_bot.user = MagicMock()
-        mock_bot.user.display_avatar = MagicMock()
-        mock_bot.user.display_avatar.url = "https://cdn.discordapp.com/avatars/bot123/avatar.png"
-
+        channel, mock_bot = _make_deploy_pair(with_avatar=True)
         await deploy_ticket_panel(channel, "123456789", bot=mock_bot)
 
         embed = channel.send.call_args.kwargs["embed"]
         assert embed.footer.icon_url == "https://cdn.discordapp.com/avatars/bot123/avatar.png"
 
+    @pytest.mark.parametrize(
+        ("icon_url", "expected_icon_url"),
+        [
+            pytest.param(
+                "https://cdn.discordapp.com/icons/123456789/server.png",
+                "https://cdn.discordapp.com/icons/123456789/server.png",
+                id="guild-icon-available",
+            ),
+            pytest.param(None, "https://cdn.discordapp.com/avatars/bot123/avatar.png", id="guild-no-icon-fallback"),
+        ],
+    )
     @pytest.mark.asyncio
-    async def test_embed_footer_uses_guild_icon_when_available(self) -> None:
-        """deploy_ticket_panel MUST use guild.icon.url as footer icon when guild has an icon."""
+    async def test_embed_footer_resolves_guild_icon_with_bot_avatar_fallback(
+        self, icon_url: str | None, expected_icon_url: str
+    ) -> None:
+        """Footer icon MUST prefer guild.icon.url, falling back to the bot avatar."""
         from bot.views.tickets import deploy_ticket_panel
 
-        channel = MagicMock()
-        channel.send = AsyncMock()
-        mock_message = MagicMock()
-        mock_message.id = 42
-        mock_message.channel = channel
-        channel.send.return_value = mock_message
-
-        mock_bot = MagicMock()
-        mock_bot.guild_service = MagicMock()
-        mock_bot.guild_service.update_guild_panel = AsyncMock()
-        mock_bot.user = MagicMock()
-        mock_bot.user.display_avatar = MagicMock()
-        mock_bot.user.display_avatar.url = "https://cdn.discordapp.com/avatars/bot123/avatar.png"
-
+        channel, mock_bot = _make_deploy_pair(with_avatar=True)
         mock_guild = MagicMock(spec=discord.Guild)
         mock_guild.id = 123456789
-        mock_guild.icon = MagicMock()
-        mock_guild.icon.url = "https://cdn.discordapp.com/icons/123456789/server.png"
+        if icon_url is not None:
+            mock_guild.icon = MagicMock()
+            mock_guild.icon.url = icon_url
+        else:
+            mock_guild.icon = None
 
         await deploy_ticket_panel(channel, "123456789", bot=mock_bot, guild=mock_guild)
 
         embed = channel.send.call_args.kwargs["embed"]
-        assert embed.footer.icon_url == "https://cdn.discordapp.com/icons/123456789/server.png"
-
-    @pytest.mark.asyncio
-    async def test_embed_footer_falls_back_to_bot_avatar_when_guild_no_icon(self) -> None:
-        """deploy_ticket_panel MUST fall back to bot avatar when guild has no custom icon."""
-        from bot.views.tickets import deploy_ticket_panel
-
-        channel = MagicMock()
-        channel.send = AsyncMock()
-        mock_message = MagicMock()
-        mock_message.id = 42
-        mock_message.channel = channel
-        channel.send.return_value = mock_message
-
-        mock_bot = MagicMock()
-        mock_bot.guild_service = MagicMock()
-        mock_bot.guild_service.update_guild_panel = AsyncMock()
-        mock_bot.user = MagicMock()
-        mock_bot.user.display_avatar = MagicMock()
-        mock_bot.user.display_avatar.url = "https://cdn.discordapp.com/avatars/bot123/avatar.png"
-
-        mock_guild = MagicMock(spec=discord.Guild)
-        mock_guild.id = 123456789
-        mock_guild.icon = None
-
-        await deploy_ticket_panel(channel, "123456789", bot=mock_bot, guild=mock_guild)
-
-        embed = channel.send.call_args.kwargs["embed"]
-        assert embed.footer.icon_url == "https://cdn.discordapp.com/avatars/bot123/avatar.png"
+        assert embed.footer.icon_url == expected_icon_url
 
 
 # ===========================================================================
@@ -214,74 +329,37 @@ class TestDeployTicketPanel:
 class TestDeployTicketPanelDefaults:
     """Verify deploy_ticket_panel resolves None title/description via t()."""
 
+    @pytest.mark.parametrize(
+        ("guild_id", "language", "expected_title", "desc_fragment"),
+        [
+            pytest.param("500", "es", "Tickets de Soporte", "ticket de soporte", id="spanish"),
+            pytest.param("600", "en", "Support Tickets", "support ticket", id="english"),
+        ],
+    )
     @pytest.mark.asyncio
-    async def test_none_defaults_resolve_via_t_spanish(self) -> None:
-        """title=None + description_text=None MUST resolve to Spanish defaults via t()."""
+    async def test_none_defaults_resolve_via_t(
+        self, guild_id: str, language: str, expected_title: str, desc_fragment: str
+    ) -> None:
+        """title=None + description_text=None MUST resolve to localized defaults via t()."""
         from bot.core.i18n import load_locales, set_guild_language
         from bot.views.tickets import deploy_ticket_panel
 
         load_locales()
-        set_guild_language("500", "es")
+        set_guild_language(guild_id, language)
 
-        channel = MagicMock()
-        channel.send = AsyncMock()
-        mock_message = MagicMock()
-        mock_message.id = 42
-        mock_message.channel = channel
-        channel.send.return_value = mock_message
-
-        mock_bot = MagicMock()
-        mock_bot.guild_service = MagicMock()
-        mock_bot.guild_service.update_guild_panel = AsyncMock()
-
-        await deploy_ticket_panel(channel, "500", bot=mock_bot)
+        channel, mock_bot = _make_deploy_pair()
+        await deploy_ticket_panel(channel, guild_id, bot=mock_bot)
 
         embed = channel.send.call_args.kwargs["embed"]
-        assert embed.title == "Tickets de Soporte"
-        assert "ticket de soporte" in embed.description.lower()
-
-    @pytest.mark.asyncio
-    async def test_none_defaults_resolve_via_t_english(self) -> None:
-        """title=None + description_text=None MUST resolve to English defaults via t()."""
-        from bot.core.i18n import load_locales, set_guild_language
-        from bot.views.tickets import deploy_ticket_panel
-
-        load_locales()
-        set_guild_language("600", "en")
-
-        channel = MagicMock()
-        channel.send = AsyncMock()
-        mock_message = MagicMock()
-        mock_message.id = 42
-        mock_message.channel = channel
-        channel.send.return_value = mock_message
-
-        mock_bot = MagicMock()
-        mock_bot.guild_service = MagicMock()
-        mock_bot.guild_service.update_guild_panel = AsyncMock()
-
-        await deploy_ticket_panel(channel, "600", bot=mock_bot)
-
-        embed = channel.send.call_args.kwargs["embed"]
-        assert embed.title == "Support Tickets"
-        assert "support ticket" in embed.description.lower()
+        assert embed.title == expected_title
+        assert desc_fragment in embed.description.lower()
 
     @pytest.mark.asyncio
     async def test_explicit_values_override_defaults(self) -> None:
         """Explicit title/description_text MUST override t() defaults."""
         from bot.views.tickets import deploy_ticket_panel
 
-        channel = MagicMock()
-        channel.send = AsyncMock()
-        mock_message = MagicMock()
-        mock_message.id = 42
-        mock_message.channel = channel
-        channel.send.return_value = mock_message
-
-        mock_bot = MagicMock()
-        mock_bot.guild_service = MagicMock()
-        mock_bot.guild_service.update_guild_panel = AsyncMock()
-
+        channel, mock_bot = _make_deploy_pair()
         await deploy_ticket_panel(
             channel,
             "500",
@@ -456,14 +534,46 @@ class TestTicketIntakeModalDynamicFields:
         )
         return modal, guild
 
-    def test_no_field_definitions_has_two_inputs(self) -> None:
-        """With no field_definitions, modal MUST have exactly 2 TextInputs (title + desc)."""
-        modal, _ = self._make_modal(field_definitions=[])
+    @pytest.mark.parametrize(
+        ("definitions", "expected_inputs"),
+        [
+            pytest.param([], 2, id="no-definitions"),
+            pytest.param(
+                [
+                    {
+                        "key": "player_nick",
+                        "label": "Player Nickname",
+                        "style": "short",
+                        "required": True,
+                        "max_length": 100,
+                    }
+                ],
+                3,
+                id="single-definition",
+            ),
+            pytest.param(
+                [
+                    {"key": "a", "label": "Field A", "style": "short", "required": True, "max_length": 100},
+                    {"key": "b", "label": "Field B", "style": "short", "required": False, "max_length": 100},
+                    {"key": "c", "label": "Field C", "style": "paragraph", "required": False, "max_length": 500},
+                ],
+                5,
+                id="three-definitions",
+            ),
+        ],
+    )
+    def test_field_definitions_yield_expected_input_count(self, definitions: list[dict], expected_inputs: int) -> None:
+        """Modal MUST have 2 base TextInputs plus one per field_definition (Discord max 5)."""
+        modal, _ = self._make_modal(field_definitions=definitions)
         text_inputs = [c for c in modal.children if isinstance(c, discord.ui.TextInput)]
-        assert len(text_inputs) == 2
+        assert len(text_inputs) == expected_inputs
 
     def test_single_field_definition_adds_third_input(self) -> None:
-        """With 1 field_definition, modal MUST have 3 TextInputs."""
+        """With 1 field_definition, the third input's label is the field label.
+
+        Uses the serialized payload to avoid the deprecated TextInput.label
+        property; the sibling count matrix above proves 2→3 inputs.
+        """
         defs = [
             {"key": "player_nick", "label": "Player Nickname", "style": "short", "required": True, "max_length": 100},
         ]
@@ -473,17 +583,6 @@ class TestTicketIntakeModalDynamicFields:
         # Third input label is the field label (use serialized payload to avoid
         # deprecated TextInput.label property).
         assert text_inputs[2].to_component_dict()["label"] == "Player Nickname"
-
-    def test_three_field_definitions_adds_five_inputs(self) -> None:
-        """With 3 field_definitions, modal MUST have 5 TextInputs (Discord max)."""
-        defs = [
-            {"key": "a", "label": "Field A", "style": "short", "required": True, "max_length": 100},
-            {"key": "b", "label": "Field B", "style": "short", "required": False, "max_length": 100},
-            {"key": "c", "label": "Field C", "style": "paragraph", "required": False, "max_length": 500},
-        ]
-        modal, _ = self._make_modal(field_definitions=defs)
-        text_inputs = [c for c in modal.children if isinstance(c, discord.ui.TextInput)]
-        assert len(text_inputs) == 5
 
     def test_paragraph_field_uses_paragraph_style(self) -> None:
         """A field with style='paragraph' MUST use TextStyle.paragraph."""
@@ -572,13 +671,14 @@ class TestTicketIntakeModalSubmit:
 
         return modal, guild
 
-    @pytest.mark.asyncio
-    async def test_submit_with_custom_fields_passes_to_create(self) -> None:
-        """on_submit MUST collect dynamic field values into custom_fields and pass to _create_ticket_after_modal."""
+    @staticmethod
+    def _make_submit_interaction() -> MagicMock:
+        """Build a mock interaction wired for the on_submit create path.
 
-        defs = [{"key": "player_nick", "label": "Nick", "style": "short", "required": True, "max_length": 100}]
-        modal, _ = self._build_modal_with_mocked_inputs(defs, custom_values=["DarkSlayer42"])
-
+        Shared preamble of the create-path submit tests (custom-fields pass,
+        optional-empty exclusion, no-definitions). The required-empty test
+        keeps its own lean interaction — it asserts the NOT-created polarity.
+        """
         interaction = MagicMock()
         interaction.response = MagicMock()
         interaction.response.is_done.return_value = False
@@ -588,13 +688,53 @@ class TestTicketIntakeModalSubmit:
         interaction.user = MagicMock(spec=discord.Member)
         interaction.user.id = 456
         interaction.user.mention = "<@456>"
+        return interaction
+
+    @pytest.mark.parametrize(
+        ("field_defs", "custom_values", "expected_custom_fields"),
+        [
+            pytest.param(
+                [{"key": "player_nick", "label": "Nick", "style": "short", "required": True, "max_length": 100}],
+                ["DarkSlayer42"],
+                {"player_nick": "DarkSlayer42"},
+                id="custom-fields-passed",
+            ),
+            pytest.param(
+                [
+                    {"key": "player_nick", "label": "Nick", "style": "short", "required": True, "max_length": 100},
+                    {
+                        "key": "evidence_url",
+                        "label": "Evidence",
+                        "style": "short",
+                        "required": False,
+                        "max_length": 100,
+                    },
+                ],
+                ["DarkSlayer42", ""],
+                {"player_nick": "DarkSlayer42"},
+                id="optional-empty-excluded",
+            ),
+            pytest.param([], [], {}, id="no-definitions-empty-fields"),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_submit_collects_expected_custom_fields(
+        self, field_defs: list[dict], custom_values: list[str], expected_custom_fields: dict[str, str]
+    ) -> None:
+        """on_submit MUST collect dynamic field values into custom_fields for create.
+
+        The blank-required-field error path is a NOT-created polarity and keeps
+        its own dedicated test below.
+        """
+        modal, _ = self._build_modal_with_mocked_inputs(field_defs, custom_values=custom_values)
+        interaction = self._make_submit_interaction()
 
         with patch("bot.views.tickets._create_ticket_after_modal", new_callable=AsyncMock) as mock_create:
             await modal.on_submit(interaction)
 
         mock_create.assert_awaited_once()
         call_kwargs = mock_create.call_args.kwargs
-        assert call_kwargs["custom_fields"] == {"player_nick": "DarkSlayer42"}
+        assert call_kwargs["custom_fields"] == expected_custom_fields
 
     @pytest.mark.asyncio
     async def test_submit_required_field_empty_shows_error(self) -> None:
@@ -615,57 +755,6 @@ class TestTicketIntakeModalSubmit:
         interaction.response.send_message.assert_awaited_once()
         mock_create.assert_not_awaited()
 
-    @pytest.mark.asyncio
-    async def test_submit_optional_field_empty_excluded(self) -> None:
-        """on_submit with a blank optional field MUST exclude it from custom_fields."""
-
-        defs = [
-            {"key": "player_nick", "label": "Nick", "style": "short", "required": True, "max_length": 100},
-            {"key": "evidence_url", "label": "Evidence", "style": "short", "required": False, "max_length": 100},
-        ]
-        modal, _ = self._build_modal_with_mocked_inputs(defs, custom_values=["DarkSlayer42", ""])
-
-        interaction = MagicMock()
-        interaction.response = MagicMock()
-        interaction.response.is_done.return_value = False
-        interaction.response.defer = AsyncMock()
-        interaction.followup = MagicMock()
-        interaction.followup.send = AsyncMock()
-        interaction.user = MagicMock(spec=discord.Member)
-        interaction.user.id = 456
-        interaction.user.mention = "<@456>"
-
-        with patch("bot.views.tickets._create_ticket_after_modal", new_callable=AsyncMock) as mock_create:
-            await modal.on_submit(interaction)
-
-        mock_create.assert_awaited_once()
-        call_kwargs = mock_create.call_args.kwargs
-        assert call_kwargs["custom_fields"] == {"player_nick": "DarkSlayer42"}
-        assert "evidence_url" not in call_kwargs["custom_fields"]
-
-    @pytest.mark.asyncio
-    async def test_submit_no_definitions_passes_empty_custom_fields(self) -> None:
-        """on_submit with no field_definitions MUST pass custom_fields={} to create."""
-
-        modal, _ = self._build_modal_with_mocked_inputs([], custom_values=[])
-
-        interaction = MagicMock()
-        interaction.response = MagicMock()
-        interaction.response.is_done.return_value = False
-        interaction.response.defer = AsyncMock()
-        interaction.followup = MagicMock()
-        interaction.followup.send = AsyncMock()
-        interaction.user = MagicMock(spec=discord.Member)
-        interaction.user.id = 456
-        interaction.user.mention = "<@456>"
-
-        with patch("bot.views.tickets._create_ticket_after_modal", new_callable=AsyncMock) as mock_create:
-            await modal.on_submit(interaction)
-
-        mock_create.assert_awaited_once()
-        call_kwargs = mock_create.call_args.kwargs
-        assert call_kwargs["custom_fields"] == {}
-
 
 # ===========================================================================
 # PR2 — Close Confirmation (task 2.2.1 RED)
@@ -675,66 +764,6 @@ class TestTicketIntakeModalSubmit:
 class TestCloseButtonConfirmation:
     """Verify close button sends ephemeral ConfirmCancelView before closing."""
 
-    @staticmethod
-    def _make_close_interaction(
-        *,
-        guild_id: int = 123456789,
-        user_id: int = 111111111,
-        channel_id: int = 888888888,
-        is_author: bool = True,
-    ) -> MagicMock:
-        """Return a mock Interaction wired for the close button callback."""
-
-        interaction = MagicMock(spec=discord.Interaction)
-        interaction.guild_id = guild_id
-        interaction.channel_id = channel_id
-        interaction.response = MagicMock()
-        interaction.response.send_message = AsyncMock()
-        interaction.response.defer = AsyncMock()
-        interaction.response.is_done.return_value = False
-        interaction.followup = MagicMock()
-        interaction.followup.send = AsyncMock()
-        interaction.original_response = AsyncMock()
-
-        guild = MagicMock()
-        guild.id = guild_id
-        interaction.guild = guild
-
-        user = MagicMock(spec=discord.Member)
-        user.id = user_id
-        interaction.user = user
-
-        channel = MagicMock(spec=discord.TextChannel)
-        channel.id = channel_id
-        channel.send = AsyncMock()
-        interaction.channel = channel
-
-        bot = MagicMock()
-        bot.db = MagicMock()
-        bot.db.get_ticket_by_channel = AsyncMock()
-        bot.guild_service = MagicMock()
-        bot.ticket_service = MagicMock()
-        interaction.client = bot
-
-        return interaction
-
-    @staticmethod
-    def _ticket_row_for_close(*, author_id: str = "111111111", status: str = "open") -> dict:
-        return {
-            "id": "ticket-uuid-close",
-            "ticketNumber": 7,
-            "guildId": "123456789",
-            "authorId": author_id,
-            "channelId": "888888888",
-            "categoryId": None,
-            "status": status,
-            "claimedBy": None,
-            "transcriptUrl": None,
-            "createdAt": "2026-01-15T10:00:00+00:00",
-            "closedAt": None,
-            "lastActivity": "2026-01-15T10:00:00+00:00",
-        }
-
     @pytest.mark.asyncio
     async def test_close_button_sends_ephemeral_confirm_view(self) -> None:
         """Close button MUST send an ephemeral ConfirmCancelView (not close immediately)."""
@@ -742,8 +771,8 @@ class TestCloseButtonConfirmation:
         from bot.views.tickets import TicketActionsView
 
         view = TicketActionsView(guild_id="123456789")
-        interaction = self._make_close_interaction()
-        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row_for_close()
+        interaction = _make_view_interaction(channel=True)
+        interaction.client.db.get_ticket_by_channel.return_value = _edit_ticket_row(id_label="close")
 
         await view.close_button.callback(interaction)
 
@@ -759,8 +788,8 @@ class TestCloseButtonConfirmation:
         from bot.views.tickets import TicketActionsView
 
         view = TicketActionsView(guild_id="123456789")
-        interaction = self._make_close_interaction()
-        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row_for_close()
+        interaction = _make_view_interaction(channel=True)
+        interaction.client.db.get_ticket_by_channel.return_value = _edit_ticket_row(id_label="close")
         interaction.client.ticket_service.close_ticket_full = AsyncMock()
 
         await view.close_button.callback(interaction)
@@ -775,8 +804,8 @@ class TestCloseButtonConfirmation:
         from bot.views.tickets import TicketActionsView
 
         view = TicketActionsView(guild_id="123456789")
-        interaction = self._make_close_interaction()
-        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row_for_close()
+        interaction = _make_view_interaction(channel=True)
+        interaction.client.db.get_ticket_by_channel.return_value = _edit_ticket_row(id_label="close")
         interaction.client.ticket_service.close_ticket_full = AsyncMock(return_value=None)
 
         await view.close_button.callback(interaction)
@@ -811,8 +840,8 @@ class TestCloseButtonConfirmation:
         from bot.views.tickets import TicketActionsView
 
         view = TicketActionsView(guild_id="123456789")
-        interaction = self._make_close_interaction()
-        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row_for_close()
+        interaction = _make_view_interaction(channel=True)
+        interaction.client.db.get_ticket_by_channel.return_value = _edit_ticket_row(id_label="close")
 
         await view.close_button.callback(interaction)
 
@@ -838,8 +867,8 @@ class TestCloseButtonConfirmation:
         from bot.views.tickets import TicketActionsView
 
         view = TicketActionsView(guild_id="123456789")
-        interaction = self._make_close_interaction(user_id=111111111)
-        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row_for_close()
+        interaction = _make_view_interaction(channel=True)
+        interaction.client.db.get_ticket_by_channel.return_value = _edit_ticket_row(id_label="close")
         interaction.client.ticket_service.close_ticket_full = AsyncMock()
 
         await view.close_button.callback(interaction)
@@ -869,9 +898,9 @@ class TestCloseButtonConfirmation:
         from bot.views.tickets import TicketActionsView
 
         view = TicketActionsView(guild_id="123456789")
-        interaction = self._make_close_interaction(user_id=999999999)
+        interaction = _make_view_interaction(user_id=999999999, channel=True)
         # Ticket authored by someone else.
-        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row_for_close(author_id="111111111")
+        interaction.client.db.get_ticket_by_channel.return_value = _edit_ticket_row(id_label="close")
 
         # Patch is_mod_check to return False.
         with patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=False):
@@ -892,8 +921,8 @@ class TestCloseButtonConfirmation:
 
         view = TicketActionsView(guild_id="123456789")
         # User is NOT the author (author is 111111111, closer is 999999999).
-        interaction = self._make_close_interaction(user_id=999999999)
-        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row_for_close(author_id="111111111")
+        interaction = _make_view_interaction(user_id=999999999, channel=True)
+        interaction.client.db.get_ticket_by_channel.return_value = _edit_ticket_row(id_label="close")
 
         # Patch is_mod_check to return True — this user IS a moderator.
         with patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=True):
@@ -914,50 +943,6 @@ class TestCloseButtonConfirmation:
 class TestClaimOnClaimedTransferConfirm:
     """Verify claim on already-claimed ticket shows transfer confirmation dialog."""
 
-    @staticmethod
-    def _make_claim_interaction(
-        *,
-        guild_id: int = 123456789,
-        user_id: int = 222222222,
-        channel_id: int = 888888888,
-    ) -> MagicMock:
-        """Return a mock Interaction wired for the claim button callback."""
-        interaction = MagicMock(spec=discord.Interaction)
-        interaction.guild_id = guild_id
-        interaction.channel_id = channel_id
-        interaction.response = MagicMock()
-        interaction.response.send_message = AsyncMock()
-        interaction.response.edit_message = AsyncMock()
-        interaction.response.is_done.return_value = False
-        interaction.original_response = AsyncMock()
-
-        guild = MagicMock()
-        guild.id = guild_id
-        interaction.guild = guild
-
-        user = MagicMock(spec=discord.Member)
-        user.id = user_id
-        user.guild_permissions = MagicMock()
-        user.guild_permissions.administrator = True
-        user.roles = []
-        interaction.user = user
-
-        # message.edit must be an AsyncMock for the embed refresh after transfer.
-        interaction.message = MagicMock()
-        interaction.message.edit = AsyncMock()
-
-        bot = MagicMock()
-        bot.db = MagicMock()
-        bot.db.get_ticket_by_channel = AsyncMock()
-        bot._guild_mod_role_cache = {}
-        bot.ticket_service = MagicMock()
-        bot.ticket_service.claim_ticket = AsyncMock()
-        bot.ticket_service.transfer_ticket = AsyncMock()
-        bot.logging_service = MagicMock()
-        interaction.client = bot
-
-        return interaction
-
     @pytest.mark.asyncio
     async def test_claim_on_claimed_shows_transfer_confirm(self) -> None:
         """Claim on already-claimed ticket MUST send ephemeral ConfirmCancelView (not error embed)."""
@@ -965,23 +950,8 @@ class TestClaimOnClaimedTransferConfirm:
         from bot.views.tickets import TicketActionsView
 
         view = TicketActionsView(guild_id="123456789")
-        interaction = self._make_claim_interaction()
-
-        claimed_row = {
-            "id": "ticket-uuid-claimed",
-            "ticketNumber": 5,
-            "guildId": "123456789",
-            "authorId": "111111111",
-            "channelId": "888888888",
-            "categoryId": None,
-            "status": "claimed",
-            "claimedBy": "111111111",
-            "transcriptUrl": None,
-            "createdAt": "2026-01-15T10:00:00+00:00",
-            "closedAt": None,
-            "lastActivity": "2026-01-15T10:00:00+00:00",
-        }
-        interaction.client.db.get_ticket_by_channel.return_value = claimed_row
+        interaction = _make_view_interaction(user_id=222222222, member=True, admin=True, message=True, claim=True)
+        interaction.client.db.get_ticket_by_channel.return_value = _claimed_row()
 
         await view.claim_button.callback(interaction)
 
@@ -998,27 +968,12 @@ class TestClaimOnClaimedTransferConfirm:
         from bot.views.tickets import TicketActionsView
 
         view = TicketActionsView(guild_id="123456789")
-        interaction = self._make_claim_interaction(user_id=222222222)
-
-        claimed_row = {
-            "id": "ticket-uuid-claimed",
-            "ticketNumber": 5,
-            "guildId": "123456789",
-            "authorId": "111111111",
-            "channelId": "888888888",
-            "categoryId": None,
-            "status": "claimed",
-            "claimedBy": "111111111",
-            "transcriptUrl": None,
-            "createdAt": "2026-01-15T10:00:00+00:00",
-            "closedAt": None,
-            "lastActivity": "2026-01-15T10:00:00+00:00",
-        }
-        interaction.client.db.get_ticket_by_channel.return_value = claimed_row
+        interaction = _make_view_interaction(user_id=222222222, member=True, admin=True, message=True, claim=True)
+        interaction.client.db.get_ticket_by_channel.return_value = _claimed_row()
 
         from bot.models.ticket import Ticket
 
-        transferred = Ticket.from_db_row({**claimed_row, "claimedBy": "222222222"})
+        transferred = Ticket.from_db_row({**_claimed_row(), "claimedBy": "222222222"})
         interaction.client.ticket_service.transfer_ticket = AsyncMock(return_value=transferred)
 
         await view.claim_button.callback(interaction)
@@ -1053,23 +1008,8 @@ class TestClaimOnClaimedTransferConfirm:
         from bot.views.tickets import TicketActionsView
 
         view = TicketActionsView(guild_id="123456789")
-        interaction = self._make_claim_interaction()
-
-        claimed_row = {
-            "id": "ticket-uuid-claimed",
-            "ticketNumber": 5,
-            "guildId": "123456789",
-            "authorId": "111111111",
-            "channelId": "888888888",
-            "categoryId": None,
-            "status": "claimed",
-            "claimedBy": "111111111",
-            "transcriptUrl": None,
-            "createdAt": "2026-01-15T10:00:00+00:00",
-            "closedAt": None,
-            "lastActivity": "2026-01-15T10:00:00+00:00",
-        }
-        interaction.client.db.get_ticket_by_channel.return_value = claimed_row
+        interaction = _make_view_interaction(user_id=222222222, member=True, admin=True, message=True, claim=True)
+        interaction.client.db.get_ticket_by_channel.return_value = _claimed_row()
 
         await view.claim_button.callback(interaction)
 
@@ -1169,9 +1109,20 @@ class TestModalModRoleResolution:
         call_kwargs = bot.ticket_service.create_ticket_channel.call_args.kwargs
         assert call_kwargs["mod_role"] is mod_role
 
+    @pytest.mark.parametrize(
+        ("mod_role_id", "scenario"),
+        [
+            pytest.param(None, "none-mod-role-id", id="none"),
+            pytest.param("not-a-number", "invalid-mod-role-id-valueerror-suppressed", id="invalid"),
+        ],
+    )
     @pytest.mark.asyncio
-    async def test_none_mod_role_id_passes_none(self) -> None:
-        """config.mod_role_id=None → mod_role=None passed to service."""
+    async def test_unresolvable_mod_role_id_passes_none(self, mod_role_id: str | None, scenario: str) -> None:
+        """config.mod_role_id=None or non-numeric → mod_role=None passed to service.
+
+        resolve_mod_role suppresses the int() ValueError, so both the absent
+        role and the malformed role id resolve to None identically.
+        """
         from bot.views.tickets import _create_ticket_after_modal
 
         guild = MagicMock(spec=discord.Guild)
@@ -1182,54 +1133,7 @@ class TestModalModRoleResolution:
         bot.db = MagicMock()
         config = MagicMock()
         config.ticket_category_id = "100000000"
-        config.mod_role_id = None
-        bot.guild_service = MagicMock()
-        bot.guild_service.get_config = AsyncMock(return_value=config)
-        bot.ticket_service = MagicMock()
-
-        category_channel = MagicMock(spec=discord.CategoryChannel)
-        guild.get_channel = MagicMock(return_value=category_channel)
-
-        from bot.models.ticket import Ticket
-
-        ticket = Ticket(
-            id="t1",
-            ticket_number=1,
-            guild_id="123",
-            author_id="456",
-            channel_id="789",
-            status="open",
-            created_at=datetime(2026, 1, 1, tzinfo=UTC),
-            last_activity=datetime(2026, 1, 1, tzinfo=UTC),
-        )
-        mock_channel = MagicMock()
-        sent_message = AsyncMock()
-        mock_channel.send = AsyncMock(return_value=sent_message)
-        bot.ticket_service.create_ticket_channel = AsyncMock(return_value=(mock_channel, ticket))
-
-        interaction = self._make_modal_interaction(guild, bot)
-
-        with patch("bot.views.tickets.TicketActionsView"):
-            await _create_ticket_after_modal(interaction, guild, "cat-uuid", "Support", "Help", "desc")
-
-        bot.ticket_service.create_ticket_channel.assert_awaited_once()
-        call_kwargs = bot.ticket_service.create_ticket_channel.call_args.kwargs
-        assert call_kwargs["mod_role"] is None
-
-    @pytest.mark.asyncio
-    async def test_invalid_mod_role_id_passes_none(self) -> None:
-        """config.mod_role_id='not-a-number' → ValueError suppressed, mod_role=None."""
-        from bot.views.tickets import _create_ticket_after_modal
-
-        guild = MagicMock(spec=discord.Guild)
-        guild.id = 123456789
-        guild.get_role = MagicMock(return_value=None)
-
-        bot = MagicMock()
-        bot.db = MagicMock()
-        config = MagicMock()
-        config.ticket_category_id = "100000000"
-        config.mod_role_id = "not-a-number"
+        config.mod_role_id = mod_role_id
         bot.guild_service = MagicMock()
         bot.guild_service.get_config = AsyncMock(return_value=config)
         bot.ticket_service = MagicMock()
@@ -1324,87 +1228,6 @@ class TestCreateTicketLimitEphemeral:
 class TestEditCategoryButton:
     """Verify Edit Category button on TicketActionsView: i18n, mod gate, select."""
 
-    @staticmethod
-    def _make_edit_interaction(
-        *,
-        guild_id: int = 123456789,
-        user_id: int = 111111111,
-        channel_id: int = 888888888,
-    ) -> MagicMock:
-        """Return a mock Interaction wired for the edit category button."""
-        interaction = MagicMock(spec=discord.Interaction)
-        interaction.guild_id = guild_id
-        interaction.channel_id = channel_id
-        interaction.response = MagicMock()
-        interaction.response.send_message = AsyncMock()
-        interaction.response.edit_message = AsyncMock()
-        interaction.response.is_done.return_value = False
-        interaction.followup = MagicMock()
-        interaction.followup.send = AsyncMock()
-        interaction.original_response = AsyncMock()
-
-        guild = MagicMock()
-        guild.id = guild_id
-        interaction.guild = guild
-
-        user = MagicMock(spec=discord.Member)
-        user.id = user_id
-        interaction.user = user
-
-        bot = MagicMock()
-        bot.db = MagicMock()
-        bot.db.get_ticket_by_channel = AsyncMock()
-        bot.db.get_ticket_categories = AsyncMock(return_value=[])
-        bot._guild_mod_role_cache = {}
-        bot.ticket_service = MagicMock()
-        interaction.client = bot
-
-        return interaction
-
-    @staticmethod
-    def _ticket_row(*, status: str = "open", category_id: str | None = "cat-uuid") -> dict:
-        return {
-            "id": "ticket-uuid-edit",
-            "ticketNumber": 5,
-            "guildId": "123456789",
-            "authorId": "111111111",
-            "channelId": "888888888",
-            "categoryId": category_id,
-            "status": status,
-            "claimedBy": None,
-            "transcriptUrl": None,
-            "createdAt": "2026-01-15T10:00:00+00:00",
-            "closedAt": None,
-            "lastActivity": "2026-01-15T10:00:00+00:00",
-        }
-
-    @staticmethod
-    def _category_rows() -> list[dict]:
-        return [
-            {
-                "id": "cat-uuid-1",
-                "guildId": "123456789",
-                "name": "Support",
-                "emoji": None,
-                "description": "General support",
-                "position": 0,
-                "active": True,
-                "createdAt": "2026-01-01T00:00:00",
-                "fieldDefinitions": [],
-            },
-            {
-                "id": "cat-uuid-2",
-                "guildId": "123456789",
-                "name": "Billing",
-                "emoji": None,
-                "description": "Billing issues",
-                "position": 1,
-                "active": True,
-                "createdAt": "2026-01-01T00:00:00",
-                "fieldDefinitions": [],
-            },
-        ]
-
     def test_edit_category_button_exists_on_view(self) -> None:
         """TicketActionsView MUST have a button with custom_id='ticket:edit-category'."""
         from bot.views.tickets import TicketActionsView
@@ -1435,8 +1258,8 @@ class TestEditCategoryButton:
         from bot.views.tickets import TicketActionsView
 
         view = TicketActionsView(guild_id="123456789")
-        interaction = self._make_edit_interaction()
-        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row()
+        interaction = _make_view_interaction(claim=True)
+        interaction.client.db.get_ticket_by_channel.return_value = _edit_ticket_row()
 
         with patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=False):
             await view.edit_category_button.callback(interaction)
@@ -1451,9 +1274,9 @@ class TestEditCategoryButton:
         from bot.views.tickets import TicketActionsView, _EditCategoryView
 
         view = TicketActionsView(guild_id="123456789")
-        interaction = self._make_edit_interaction()
-        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row()
-        interaction.client.db.get_ticket_categories.return_value = self._category_rows()
+        interaction = _make_view_interaction(claim=True)
+        interaction.client.db.get_ticket_by_channel.return_value = _edit_ticket_row()
+        interaction.client.db.get_ticket_categories.return_value = _category_rows()
 
         with patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=True):
             await view.edit_category_button.callback(interaction)
@@ -1469,8 +1292,8 @@ class TestEditCategoryButton:
         from bot.views.tickets import TicketActionsView
 
         view = TicketActionsView(guild_id="123456789")
-        interaction = self._make_edit_interaction()
-        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row()
+        interaction = _make_view_interaction(claim=True)
+        interaction.client.db.get_ticket_by_channel.return_value = _edit_ticket_row()
         interaction.client.db.get_ticket_categories.return_value = []
 
         with patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=True):
@@ -1485,64 +1308,6 @@ class TestEditCategoryButton:
 
 class TestEditCategorySelect:
     """Verify _EditCategorySelect callback: mod re-check, closed, limit, rename."""
-
-    @staticmethod
-    def _make_select_interaction(
-        *,
-        guild_id: int = 123456789,
-        user_id: int = 111111111,
-        channel_id: int = 888888888,
-    ) -> MagicMock:
-        """Return a mock Interaction wired for the edit category select callback."""
-        interaction = MagicMock(spec=discord.Interaction)
-        interaction.guild_id = guild_id
-        interaction.channel_id = channel_id
-        interaction.response = MagicMock()
-        interaction.response.send_message = AsyncMock()
-        interaction.response.edit_message = AsyncMock()
-        interaction.response.is_done.return_value = False
-        interaction.followup = MagicMock()
-        interaction.followup.send = AsyncMock()
-
-        guild = MagicMock()
-        guild.id = guild_id
-        interaction.guild = guild
-
-        channel = MagicMock(spec=discord.TextChannel)
-        channel.id = channel_id
-        channel.guild = guild
-        interaction.channel = channel
-
-        user = MagicMock(spec=discord.Member)
-        user.id = user_id
-        user.mention = f"<@{user_id}>"
-        interaction.user = user
-
-        bot = MagicMock()
-        bot.db = MagicMock()
-        bot.db.get_ticket_by_channel = AsyncMock()
-        bot._guild_mod_role_cache = {}
-        bot.ticket_service = MagicMock()
-        interaction.client = bot
-
-        return interaction
-
-    @staticmethod
-    def _ticket_row(*, status: str = "open") -> dict:
-        return {
-            "id": "ticket-uuid-select",
-            "ticketNumber": 5,
-            "guildId": "123456789",
-            "authorId": "111111111",
-            "channelId": "888888888",
-            "categoryId": "cat-uuid-1",
-            "status": status,
-            "claimedBy": None,
-            "transcriptUrl": None,
-            "createdAt": "2026-01-15T10:00:00+00:00",
-            "closedAt": None,
-            "lastActivity": "2026-01-15T10:00:00+00:00",
-        }
 
     @staticmethod
     def _make_select(
@@ -1565,20 +1330,7 @@ class TestEditCategorySelect:
                 ),
             ]
         if ticket_row is None:
-            ticket_row = {
-                "id": "ticket-uuid-select",
-                "ticketNumber": 5,
-                "guildId": "123456789",
-                "authorId": "111111111",
-                "channelId": "888888888",
-                "categoryId": "cat-uuid-1",
-                "status": "open",
-                "claimedBy": None,
-                "transcriptUrl": None,
-                "createdAt": "2026-01-15T10:00:00+00:00",
-                "closedAt": None,
-                "lastActivity": "2026-01-15T10:00:00+00:00",
-            }
+            ticket_row = _edit_ticket_row(id_label="select", category_id="cat-uuid-1")
         options = [
             discord.SelectOption(label=cat.name, value=cat.id, description=cat.description) for cat in categories
         ]
@@ -1591,8 +1343,10 @@ class TestEditCategorySelect:
         guild = MagicMock()
         guild.id = 123456789
         select = self._make_select(guild)
-        interaction = self._make_select_interaction()
-        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row()
+        interaction = _make_view_interaction(channel=True, claim=True)
+        interaction.client.db.get_ticket_by_channel.return_value = _edit_ticket_row(
+            id_label="select", category_id="cat-uuid-1"
+        )
         # Simulate selecting "Billing".
         select._values = ["cat-uuid-2"]
 
@@ -1610,9 +1364,9 @@ class TestEditCategorySelect:
 
         guild = MagicMock()
         guild.id = 123456789
-        closed_row = self._ticket_row(status="closed")
+        closed_row = _edit_ticket_row(id_label="select", status="closed", category_id="cat-uuid-1")
         select = self._make_select(guild, ticket_row=closed_row)
-        interaction = self._make_select_interaction()
+        interaction = _make_view_interaction(channel=True, claim=True)
         interaction.client.db.get_ticket_by_channel.return_value = closed_row
         select._values = ["cat-uuid-2"]
 
@@ -1632,8 +1386,10 @@ class TestEditCategorySelect:
         guild = MagicMock()
         guild.id = 123456789
         select = self._make_select(guild)
-        interaction = self._make_select_interaction()
-        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row()
+        interaction = _make_view_interaction(channel=True, claim=True)
+        interaction.client.db.get_ticket_by_channel.return_value = _edit_ticket_row(
+            id_label="select", category_id="cat-uuid-1"
+        )
         select._values = ["cat-uuid-2"]
 
         updated_ticket = Ticket(
@@ -1658,23 +1414,51 @@ class TestEditCategorySelect:
         call_kwargs = interaction.client.ticket_service.edit_ticket_category.call_args.kwargs
         assert call_kwargs["is_mod"] is True
 
+    @pytest.mark.parametrize(
+        ("side_effect", "expected_title", "expected_desc_fragment", "rejects_limit_keys"),
+        [
+            pytest.param(
+                ValueError("User 111111111 already has an open ticket in category 'cat-uuid-2'"),
+                "tickets.actions.edit_category_limit_title",
+                "tickets.actions.edit_category_limit_description",
+                True,
+                id="limit-valueerror",
+            ),
+            pytest.param(
+                ValueError("Cannot edit category of a closed ticket (status='closed')"),
+                "tickets.actions.edit_category_closed_title",
+                "tickets.actions.edit_category_closed_description",
+                True,
+                id="service-closed-valueerror",
+            ),
+        ],
+    )
     @pytest.mark.asyncio
-    async def test_select_limit_violation_shows_specific_ux(self) -> None:
-        """Limit ValueError from edit_ticket_category MUST show edit_category_limit_* UX."""
+    async def test_select_valueerror_maps_to_expected_ux(
+        self,
+        side_effect: ValueError,
+        expected_title: str,
+        expected_desc_fragment: str,
+        rejects_limit_keys: bool,
+    ) -> None:
+        """Service ValueErrors MUST map to the matching UX keys, not the limit fallback.
+
+        Mirrors the real invariant messages from the ticket service: a limit
+        violation resolves the limit_* keys; a closed-under-us race resolves
+        the closed_* keys — never the generic unexpected_title.
+        """
 
         guild = MagicMock()
         guild.id = 123456789
         select = self._make_select(guild)
-        interaction = self._make_select_interaction()
-        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row()
+        interaction = _make_view_interaction(channel=True, claim=True)
+        interaction.client.db.get_ticket_by_channel.return_value = _edit_ticket_row(
+            id_label="select", category_id="cat-uuid-1"
+        )
         select._values = ["cat-uuid-2"]
 
-        # Mirror the real invariant message from check_one_ticket_per_user_per_category.
-        interaction.client.ticket_service.edit_ticket_category = AsyncMock(
-            side_effect=ValueError("User 111111111 already has an open ticket in category 'cat-uuid-2'"),
-        )
+        interaction.client.ticket_service.edit_ticket_category = AsyncMock(side_effect=side_effect)
 
-        # Patch t() to return the raw key so we can verify the right key is used.
         with (
             patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=True),
             patch("bot.views.tickets.t", side_effect=lambda gid, key, **kw: key),
@@ -1684,10 +1468,11 @@ class TestEditCategorySelect:
         interaction.response.send_message.assert_awaited_once()
         call_kwargs = interaction.response.send_message.call_args.kwargs
         assert call_kwargs.get("ephemeral") is True
-        # Verify the embed uses edit_category_limit_* keys, NOT the generic/unexpected key.
         embed = call_kwargs["embed"]
-        assert embed.title == "tickets.actions.edit_category_limit_title"
-        assert "tickets.actions.edit_category_limit_description" in embed.description
+        assert embed.title == expected_title
+        assert expected_desc_fragment in embed.description
+        if rejects_limit_keys:
+            assert "edit_category_limit" not in embed.title or embed.title == expected_title
 
     @pytest.mark.asyncio
     async def test_select_closed_during_dropdown_window_is_rejected(self) -> None:
@@ -1701,11 +1486,11 @@ class TestEditCategorySelect:
         guild = MagicMock()
         guild.id = 123456789
         # Select carries a stale OPEN row from button-open time.
-        select = self._make_select(guild, ticket_row=self._ticket_row(status="open"))
-        interaction = self._make_select_interaction()
+        select = self._make_select(guild, ticket_row=_edit_ticket_row(id_label="select", category_id="cat-uuid-1"))
+        interaction = _make_view_interaction(channel=True, claim=True)
         # DB now reports it CLOSED.
-        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row(
-            status="closed",
+        interaction.client.db.get_ticket_by_channel.return_value = _edit_ticket_row(
+            id_label="select", status="closed", category_id="cat-uuid-1"
         )
         select._values = ["cat-uuid-2"]
 
@@ -1725,42 +1510,6 @@ class TestEditCategorySelect:
         assert "tickets.actions.edit_category_closed_description" in embed.description
 
     @pytest.mark.asyncio
-    async def test_select_service_closed_valueerror_shows_closed_ux(self) -> None:
-        """Service closing the ticket under us MUST show closed keys, not limit.
-
-        The DB row is still open (race) but the service re-fetches internally
-        and raises a closed ValueError — the callback MUST map it to the
-        closed UX, NOT the limit UX.
-        """
-
-        guild = MagicMock()
-        guild.id = 123456789
-        select = self._make_select(guild)
-        interaction = self._make_select_interaction()
-        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row()
-        select._values = ["cat-uuid-2"]
-
-        interaction.client.ticket_service.edit_ticket_category = AsyncMock(
-            side_effect=ValueError("Cannot edit category of a closed ticket (status='closed')"),
-        )
-
-        with (
-            patch("bot.views.tickets.is_mod_check", new_callable=AsyncMock, return_value=True),
-            patch("bot.views.tickets.t", side_effect=lambda gid, key, **kw: key),
-        ):
-            await select.callback(interaction)
-
-        interaction.response.send_message.assert_awaited_once()
-        call_kwargs = interaction.response.send_message.call_args.kwargs
-        assert call_kwargs.get("ephemeral") is True
-        embed = call_kwargs["embed"]
-        # MUST use the closed keys, NOT the limit keys.
-        assert embed.title == "tickets.actions.edit_category_closed_title"
-        assert "tickets.actions.edit_category_closed_description" in embed.description
-        assert "edit_category_limit" not in embed.title
-        assert "edit_category_limit" not in (embed.description or "")
-
-    @pytest.mark.asyncio
     async def test_select_other_valueerror_does_not_show_limit_ux(self) -> None:
         """A non-closed, non-limit ValueError MUST NOT show limit keys.
 
@@ -1771,8 +1520,10 @@ class TestEditCategorySelect:
         guild = MagicMock()
         guild.id = 123456789
         select = self._make_select(guild)
-        interaction = self._make_select_interaction()
-        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row()
+        interaction = _make_view_interaction(channel=True, claim=True)
+        interaction.client.db.get_ticket_by_channel.return_value = _edit_ticket_row(
+            id_label="select", category_id="cat-uuid-1"
+        )
         select._values = ["cat-uuid-2"]
 
         bogus_message = "Ticket some-uuid not found"
@@ -1805,8 +1556,10 @@ class TestEditCategorySelect:
         guild = MagicMock()
         guild.id = 123456789
         select = self._make_select(guild)
-        interaction = self._make_select_interaction()
-        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row()
+        interaction = _make_view_interaction(channel=True, claim=True)
+        interaction.client.db.get_ticket_by_channel.return_value = _edit_ticket_row(
+            id_label="select", category_id="cat-uuid-1"
+        )
         select._values = ["cat-uuid-2"]
 
         updated_ticket = Ticket(
@@ -1843,8 +1596,10 @@ class TestEditCategorySelect:
         guild = MagicMock()
         guild.id = 123456789
         select = self._make_select(guild)
-        interaction = self._make_select_interaction()
-        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row()
+        interaction = _make_view_interaction(channel=True, claim=True)
+        interaction.client.db.get_ticket_by_channel.return_value = _edit_ticket_row(
+            id_label="select", category_id="cat-uuid-1"
+        )
         select._values = ["cat-uuid-2"]
 
         updated_ticket = Ticket(
@@ -1886,21 +1641,12 @@ class TestEditCategorySelect:
             ),
         ]
         options = [discord.SelectOption(label="Billing", value="cat-uuid-2")]
-        ticket_row = {
-            "id": "ticket-uuid-select",
-            "ticketNumber": 5,
-            "guildId": "123456789",
-            "authorId": "111111111",
-            "channelId": "888888888",
-            "categoryId": "cat-uuid-1",
-            "status": "open",
-            "claimedBy": None,
-            "transcriptUrl": None,
-            "createdAt": "2026-01-15T10:00:00+00:00",
-            "closedAt": None,
-            "lastActivity": "2026-01-15T10:00:00+00:00",
-        }
-        view = _EditCategoryView(options, guild, categories, ticket_row)
+        view = _EditCategoryView(
+            options,
+            guild,
+            categories,
+            _edit_ticket_row(id_label="select", category_id="cat-uuid-1"),
+        )
         assert view.timeout == 300
 
     @pytest.mark.asyncio
@@ -1931,9 +1677,11 @@ class TestEditCategorySelect:
                 ),
             ],
         )
-        interaction = self._make_select_interaction()
+        interaction = _make_view_interaction(channel=True, claim=True)
         # ticket_row categoryId=cat-uuid-1 → matches Support option
-        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row()
+        interaction.client.db.get_ticket_by_channel.return_value = _edit_ticket_row(
+            id_label="select", category_id="cat-uuid-1"
+        )
         select._values = ["cat-uuid-2"]
 
         updated_ticket = Ticket(
@@ -1978,9 +1726,9 @@ class TestEditCategorySelect:
         guild = MagicMock()
         guild.id = 123456789
         select = self._make_select(guild)
-        interaction = self._make_select_interaction()
+        interaction = _make_view_interaction(channel=True, claim=True)
         # Old ticket has categoryId=None
-        row = self._ticket_row()
+        row = _edit_ticket_row(id_label="select", category_id="cat-uuid-1")
         row["categoryId"] = None
         interaction.client.db.get_ticket_by_channel.return_value = row
         select._values = ["cat-uuid-2"]
@@ -2018,8 +1766,10 @@ class TestEditCategorySelect:
         guild = MagicMock()
         guild.id = 123456789
         select = self._make_select(guild)
-        interaction = self._make_select_interaction()
-        interaction.client.db.get_ticket_by_channel.return_value = self._ticket_row()
+        interaction = _make_view_interaction(channel=True, claim=True)
+        interaction.client.db.get_ticket_by_channel.return_value = _edit_ticket_row(
+            id_label="select", category_id="cat-uuid-1"
+        )
         select._values = ["cat-uuid-2"]
 
         updated_ticket = Ticket(
