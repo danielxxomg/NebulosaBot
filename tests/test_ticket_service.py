@@ -1552,110 +1552,87 @@ async def test_transfer_closed_denied(service: TicketService, mock_db: AsyncMock
     assert kwargs["outcome"] == "denied"
 
 
-@pytest.mark.asyncio
-async def test_note_dedup_within_window(service: TicketService, mock_db: AsyncMock) -> None:
-    """3.5/3.6: a duplicate note (same author, within 2s) MUST raise ValueError."""
-    ticket_id = "ticket-uuid-003"
-    author = "999999999"
-    mock_db.get_ticket.return_value = {
-        "id": ticket_id,
-        "guildId": "123456789",
-        "ticketNumber": 3,
-    }
-    mock_db.get_ticket_notes.return_value = []  # under cap
-    mock_db.get_recent_notes_for_dedup.return_value = [
-        {"content": "Hello World"},  # same normalized form as incoming
-    ]
-
-    with pytest.raises(ValueError, match=r"duplicate|dedup"):
-        await service.create_note(ticket_id, author, "  hello world  ")
-
-    mock_db.insert_ticket_note.assert_not_awaited()
-    kwargs = _audit_kwargs(mock_db)
-    assert kwargs["action"] == "note_add"
-    assert kwargs["outcome"] == "denied"
-
-
-@pytest.mark.asyncio
-async def test_note_dedup_outside_window_allowed(service: TicketService, mock_db: AsyncMock) -> None:
-    """3.5/3.6: outside the dedup window the same content is allowed (audit success)."""
-    ticket_id = "ticket-uuid-003"
-    author = "999999999"
-    mock_db.get_ticket.return_value = _ticket_guild_row(ticket_id)
-    mock_db.get_ticket_notes.return_value = []
-    mock_db.get_recent_notes_for_dedup.return_value = []  # no recent → no dup
-    mock_db.insert_ticket_note.return_value = _note_row(content="hello")
-
-    await service.create_note(ticket_id, author, "hello")
-
-    mock_db.insert_ticket_note.assert_awaited_once()
-    kwargs = _audit_kwargs(mock_db)
-    assert kwargs["action"] == "note_add"
-    assert kwargs["outcome"] == "success"
+_NOTE_PRIVACY_MATRIX: ClassVar[list[Any]] = [
+    # create_note: dedup gate (2s window) — denied / cleared
+    pytest.param(
+        "note_add",
+        "dedup",
+        [{"content": "Hello World"}],
+        None,
+        True,
+        "duplicate|dedup",
+        id="note-dedup-within-window-denied",
+    ),
+    pytest.param("note_add", "dedup", [], "hello", False, None, id="note-dedup-outside-window-success"),
+    # create_note: 50-note cap — denied / under-cap
+    pytest.param("note_add", "cap", 50, None, True, "cap", id="note-cap-denied-audited"),
+    pytest.param("note_add", "cap", 30, "new note", False, None, id="note-under-cap-audited-success"),
+    # delete_note: author-only rule — allowed / rejected
+    pytest.param("note_delete", "delete", "999999999", None, False, None, id="note-delete-own-audited-success"),
+    pytest.param(
+        "note_delete", "delete", "userA", None, True, r"[Aa]uthor|owner", id="note-delete-other-audited-denied"
+    ),
+]
 
 
 @pytest.mark.asyncio
-async def test_note_cap_denied_audited(service: TicketService, mock_db: AsyncMock) -> None:
-    """3.5/3.6: at the 50-note cap, create_note MUST audit denied + raise."""
+@pytest.mark.parametrize(
+    ("audit_action", "gate", "gate_value", "insert_content", "expect_denied", "match"),
+    _NOTE_PRIVACY_MATRIX,
+)
+async def test_note_privacy_matrix(
+    audit_action: str,
+    gate: str,
+    gate_value: object,
+    insert_content: str | None,
+    expect_denied: bool,
+    match: str | None,
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """Note-privacy audit matrix (3.5/3.6, TI-034, TI-035): every note
+    add/delete MUST write a ticket_audit row whose outcome reflects the
+    privacy gate — dedup window + 50-note cap deny create_note; author-only
+    rule gates delete_note. Denied paths raise with no mutation.
+    """
     ticket_id = "ticket-uuid-003"
     mock_db.get_ticket.return_value = _ticket_guild_row(ticket_id)
-    mock_db.get_ticket_notes.return_value = [_note_row() for _ in range(50)]
+    if audit_action == "note_add":
+        if gate == "dedup":
+            mock_db.get_ticket_notes.return_value = []
+            mock_db.get_recent_notes_for_dedup.return_value = gate_value
+        else:  # cap
+            mock_db.get_ticket_notes.return_value = [_note_row() for _ in range(gate_value)]
+            mock_db.get_recent_notes_for_dedup.return_value = []
+        if insert_content is not None:
+            mock_db.insert_ticket_note.return_value = _note_row(content=insert_content)
 
-    with pytest.raises(ValueError, match=r"cap"):
-        await service.create_note(ticket_id, "999999999", "one too many")
+        if expect_denied:
+            with pytest.raises(ValueError, match=match):
+                await service.create_note(
+                    ticket_id, "999999999", "  hello world  " if gate == "dedup" else "one too many"
+                )
+            mock_db.insert_ticket_note.assert_not_awaited()
+        else:
+            await service.create_note(ticket_id, "999999999", insert_content)
+            mock_db.insert_ticket_note.assert_awaited_once()
+    else:  # note_delete
+        note_author = "999999999" if not expect_denied else gate_value
+        mock_db.get_ticket_notes.return_value = [_note_row(author_id=note_author)]
 
-    mock_db.insert_ticket_note.assert_not_awaited()
+        if expect_denied:
+            with pytest.raises(ValueError, match=match):
+                await service.delete_note("note-uuid-001", author_id="userB", ticket_id=ticket_id)
+            mock_db.delete_ticket_note.assert_not_awaited()
+        else:
+            await service.delete_note("note-uuid-001", author_id=note_author, ticket_id=ticket_id)
+            mock_db.delete_ticket_note.assert_awaited_once_with(
+                "note-uuid-001", guild_id="123456789", ticket_id=ticket_id
+            )
+
     kwargs = _audit_kwargs(mock_db)
-    assert kwargs["action"] == "note_add"
-    assert kwargs["outcome"] == "denied"
-
-
-@pytest.mark.asyncio
-async def test_note_under_cap_audited_success(service: TicketService, mock_db: AsyncMock) -> None:
-    """TI-034: under the cap, create_note persists + audits success."""
-    ticket_id = "ticket-uuid-003"
-    mock_db.get_ticket.return_value = _ticket_guild_row(ticket_id)
-    mock_db.get_ticket_notes.return_value = [_note_row() for _ in range(30)]
-    mock_db.get_recent_notes_for_dedup.return_value = []
-    mock_db.insert_ticket_note.return_value = _note_row(content="new note")
-
-    await service.create_note(ticket_id, "999999999", "new note")
-
-    mock_db.insert_ticket_note.assert_awaited_once()
-    kwargs = _audit_kwargs(mock_db)
-    assert kwargs["outcome"] == "success"
-
-
-@pytest.mark.asyncio
-async def test_note_delete_author_audited_success(service: TicketService, mock_db: AsyncMock) -> None:
-    """TI-035: author deleting own note MUST audit success."""
-    ticket_id = "ticket-uuid-003"
-    author = "999999999"
-    mock_db.get_ticket.return_value = _ticket_guild_row(ticket_id)
-    mock_db.get_ticket_notes.return_value = [_note_row(author_id=author)]
-
-    await service.delete_note("note-uuid-001", author_id=author, ticket_id=ticket_id)
-
-    mock_db.delete_ticket_note.assert_awaited_once_with("note-uuid-001", guild_id="123456789", ticket_id=ticket_id)
-    kwargs = _audit_kwargs(mock_db)
-    assert kwargs["action"] == "note_delete"
-    assert kwargs["outcome"] == "success"
-
-
-@pytest.mark.asyncio
-async def test_note_delete_other_denied_audited(service: TicketService, mock_db: AsyncMock) -> None:
-    """delete_note by a non-author MUST audit denied + raise."""
-    ticket_id = "ticket-uuid-003"
-    mock_db.get_ticket.return_value = _ticket_guild_row(ticket_id)
-    mock_db.get_ticket_notes.return_value = [_note_row(author_id="userA")]
-
-    with pytest.raises(ValueError, match=r"[Aa]uthor|owner"):
-        await service.delete_note("note-uuid-001", author_id="userB", ticket_id=ticket_id)
-
-    mock_db.delete_ticket_note.assert_not_awaited()
-    kwargs = _audit_kwargs(mock_db)
-    assert kwargs["action"] == "note_delete"
-    assert kwargs["outcome"] == "denied"
+    assert kwargs["action"] == audit_action
+    assert kwargs["outcome"] == "denied" if expect_denied else kwargs["outcome"] == "success"
 
 
 @pytest.mark.asyncio
