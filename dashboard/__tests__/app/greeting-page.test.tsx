@@ -1,3 +1,4 @@
+import GreetingConfigPage from "@/app/(authenticated)/guilds/[guildId]/greeting/page";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const { mockCreateServiceClient, mockConfigForm } = vi.hoisted(() => ({
@@ -16,8 +17,6 @@ vi.mock("@/components/config-form", () => ({
 vi.mock("@/lib/actions/greeting-actions", () => ({
   updateGreetingConfig: vi.fn(),
 }));
-
-import GreetingConfigPage from "@/app/(authenticated)/guilds/[guildId]/greeting/page";
 
 const setupGreeting = (data: Record<string, unknown> | null) => {
   const terminal = { maybeSingle: vi.fn().mockResolvedValue({ data, error: null }) };

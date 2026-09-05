@@ -1,3 +1,5 @@
+import { updateGuildConfig } from "@/lib/actions/guild-actions";
+import { createServiceClient } from "@/lib/supabase";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   buildMockServiceClient,
@@ -34,9 +36,6 @@ vi.mock("@/lib/discord", () => ({
 vi.mock("next/cache", () => ({
   revalidatePath: (...args: unknown[]) => mockRevalidatePath(...args),
 }));
-
-import { updateGuildConfig } from "@/lib/actions/guild-actions";
-import { createServiceClient } from "@/lib/supabase";
 
 const GUILD_ID = "123456789012345678";
 

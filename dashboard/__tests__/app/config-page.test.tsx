@@ -1,3 +1,4 @@
+import GuildConfigPage from "@/app/(authenticated)/guilds/[guildId]/config/page";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 
@@ -19,8 +20,6 @@ vi.mock("@/lib/supabase", () => ({
 vi.mock("@/lib/actions/guild-actions", () => ({
   updateGuildConfig: vi.fn(),
 }));
-
-import GuildConfigPage from "@/app/(authenticated)/guilds/[guildId]/config/page";
 
 // ---------------------------------------------------------------------------
 // Helpers

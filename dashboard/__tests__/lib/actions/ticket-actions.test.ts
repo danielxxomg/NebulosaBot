@@ -1,3 +1,14 @@
+import {
+  getTicketsForGuild,
+  getReopenGuidance,
+  transferTicket,
+  getTicketNotes,
+  addTicketNote,
+  deleteTicketNote,
+  getTicketAudit,
+} from "@/lib/actions/ticket-actions";
+import { createServiceClient } from "@/lib/supabase";
+import { NOTE_CAP } from "@/lib/ticket-invariants";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   buildMockServiceClient,
@@ -29,18 +40,6 @@ vi.mock("@/lib/discord", () => ({
     return (permsBigInt & ADMINISTRATOR) === ADMINISTRATOR;
   },
 }));
-
-import {
-  getTicketsForGuild,
-  getReopenGuidance,
-  transferTicket,
-  getTicketNotes,
-  addTicketNote,
-  deleteTicketNote,
-  getTicketAudit,
-} from "@/lib/actions/ticket-actions";
-import { createServiceClient } from "@/lib/supabase";
-import { NOTE_CAP } from "@/lib/ticket-invariants";
 
 const GUILD_ID = "123456789012345678";
 const OTHER_GUILD_ID = "999999999999999999";

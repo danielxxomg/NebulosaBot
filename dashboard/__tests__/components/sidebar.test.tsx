@@ -1,3 +1,4 @@
+import { Sidebar } from "@/components/sidebar";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 
@@ -13,8 +14,6 @@ const mockUsePathname = vi.fn();
 vi.mock("next/navigation", () => ({
   usePathname: () => mockUsePathname(),
 }));
-
-import { Sidebar } from "@/components/sidebar";
 
 // ---------------------------------------------------------------------------
 // Helpers
