@@ -1625,15 +1625,26 @@ class TestNoteListPrivacy:
         slash_ctx.interaction = MagicMock() if slash else None
         slash_ctx.author.send = AsyncMock()
 
+    # Slash path — populated vs empty notes share the ephemeral contract.
+    # Parametrized (S6 ceiling cut): both rows reply ephemerally to the
+    # author's ctx (the empty-state is private), with notes content present
+    # only in the populated row and no DM needed for the slash reply.
+    _SLASH_NOTES_CASES: ClassVar[list[Any]] = [
+        pytest.param(True, id="slash-populated-is-ephemeral"),
+        pytest.param(False, id="slash-empty-is-ephemeral"),
+    ]
+
+    @pytest.mark.parametrize("notes", _SLASH_NOTES_CASES)
     async def test_note_list_slash_is_ephemeral(
         self,
         tickets_cog: TicketsCog,
         slash_ctx: MagicMock,
         ticket_bot: MagicMock,
         mock_db,
+        notes: bool,
     ) -> None:
-        """Slash invocation → ctx.send(embed=..., ephemeral=True) with notes."""
-        self._note_list_env(tickets_cog, slash_ctx, ticket_bot, mock_db, slash=True)
+        """Slash invocation → ctx.send(embed=..., ephemeral=True)."""
+        self._note_list_env(tickets_cog, slash_ctx, ticket_bot, mock_db, slash=True, notes=notes)
 
         await tickets_cog.note_list.callback(tickets_cog, slash_ctx)
 
@@ -1642,8 +1653,13 @@ class TestNoteListPrivacy:
         assert call_kwargs.get("ephemeral") is True
         embed = call_kwargs.get("embed")
         assert embed is not None
-        # Notes content present in the ephemeral embed.
-        assert "Secret staff note" in (embed.description or "")
+        if notes:
+            # Notes content present in the ephemeral embed.
+            assert "Secret staff note" in (embed.description or "")
+        else:
+            assert "No" in (embed.title or "") or "no staff notes" in (embed.description or "").lower()
+        # No DM needed for slash — the ephemeral reply suffices.
+        slash_ctx.author.send.assert_not_awaited()
 
     async def test_note_list_prefix_dms_author(
         self,
@@ -1690,31 +1706,6 @@ class TestNoteListPrivacy:
         assert "Secret staff note" not in (chan_embed.description or "")
         mock_exc.assert_called_once()
 
-    async def test_note_list_empty_slash_is_ephemeral(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db,
-    ) -> None:
-        """B1: empty notes via slash → ephemeral 'No Notes' embed (no channel leak).
-
-        The empty-state ('ticket has no staff notes') is private state and
-        MUST NOT be broadcast to the channel. Slash replies ephemerally.
-        """
-        self._note_list_env(tickets_cog, slash_ctx, ticket_bot, mock_db, slash=True, notes=False)
-
-        await tickets_cog.note_list.callback(tickets_cog, slash_ctx)
-
-        # Slash MUST reply ephemerally — the empty-state is private.
-        slash_ctx.send.assert_awaited_once()
-        call_kwargs = slash_ctx.send.call_args.kwargs
-        assert call_kwargs.get("ephemeral") is True
-        embed = call_kwargs.get("embed")
-        assert embed is not None
-        assert "No" in (embed.title or "") or "no staff notes" in (embed.description or "").lower()
-        # No DM needed for slash — the ephemeral reply suffices.
-        slash_ctx.author.send.assert_not_awaited()
 
     async def test_note_list_empty_prefix_dms_author(
         self,
