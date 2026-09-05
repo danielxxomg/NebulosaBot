@@ -1725,8 +1725,6 @@ class TestNoteListPrivacy:
         mock_exc.assert_called_once()
 
 
-
-
 # ===========================================================================
 # B2 — /reopen status guard (service ValueError + cog error embed)
 # ===========================================================================

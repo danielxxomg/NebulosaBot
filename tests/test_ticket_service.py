@@ -1046,8 +1046,12 @@ async def test_reopen_no_category_configured_raises(
     ("missing_row", "status", "ticket_ref", "match"),
     [
         pytest.param(True, None, "nope", r"Ticket .* not found", id="reopen-not-found"),
-        pytest.param(False, "open", "ticket-uuid-003", r"Solo se pueden reabrir tickets cerrados", id="reopen-rejects-open"),
-        pytest.param(False, "claimed", "ticket-uuid-003", r"Solo se pueden reabrir tickets cerrados", id="reopen-rejects-claimed"),
+        pytest.param(
+            False, "open", "ticket-uuid-003", r"Solo se pueden reabrir tickets cerrados", id="reopen-rejects-open"
+        ),
+        pytest.param(
+            False, "claimed", "ticket-uuid-003", r"Solo se pueden reabrir tickets cerrados", id="reopen-rejects-claimed"
+        ),
     ],
 )
 async def test_reopen_rejects_non_closed_ticket(
@@ -4447,7 +4451,6 @@ class TestRepairTicketManualGrant:
 
         assert result.outcome == "repaired"
         mock_db.transition_ticket_to_closed.assert_awaited_once()
-
 
 
 # ---------------------------------------------------------------------------

@@ -1019,7 +1019,9 @@ class TestPollFallback:
             pytest.param(True, True, id="poll-task-recreated-when-unhealthy-after-recovery"),
         ],
     )
-    async def test_poll_task_recovery_cycle(self, cache: TTLCache, with_preflight_state: bool, expect_recreated: bool) -> None:
+    async def test_poll_task_recovery_cycle(
+        self, cache: TTLCache, with_preflight_state: bool, expect_recreated: bool
+    ) -> None:
         """Spec R4 recovery cycle: recovery (SUBSCRIBED) MUST stop the poll
         task and reset ``last_check`` — not merely flag it dormant (a live
         dormant task is the prior bug). Symmetrically, a later unhealthy
