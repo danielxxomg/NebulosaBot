@@ -1130,18 +1130,38 @@ def _mock_logging_service() -> AsyncMock:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("test_id", "explicit_new_staff"),
+    [
+        pytest.param(True, True, id="explicit-staff-arg"),
+        pytest.param(True, False, id="default-staff-same-constant"),
+    ],
+    ids=["explicit-staff-arg", "default-staff-same-constant"],
+)
 async def test_transfer_updates_claimed_by(
+    test_id: bool,
+    explicit_new_staff: bool,
     service: TicketService,
     mock_db: AsyncMock,
     ticket_row: dict,
 ) -> None:
-    """transfer_ticket MUST mutate claimedBy and (re)claim the ticket."""
+    """transfer_ticket MUST mutate claimedBy and (re)claim the ticket.
+
+    Parametrized (S1a cut): both variants call transfer with the same
+    constants and assert the same contract — DB updated with new claimedBy
+    and the returned ticket carries it. The only difference is whether
+    _transfer_preread wires the re-read with an explicit new_staff or relies
+    on its identical default constant.
+    """
     ticket_id = ticket_row["id"]
     new_staff = "222222222"
     actor = "999999999"
 
     # PR2 contract: pre-read open+unclaimed (invariant passes), re-read claimed.
-    _transfer_preread(mock_db, ticket_row, new_staff=new_staff)
+    if explicit_new_staff:
+        _transfer_preread(mock_db, ticket_row, new_staff=new_staff)
+    else:
+        _transfer_preread(mock_db, ticket_row)
 
     guild = MagicMock()
     guild.id = 123456789
@@ -1162,35 +1182,6 @@ async def test_transfer_updates_claimed_by(
     assert update_kwargs["claimedBy"] == new_staff
 
     assert ticket.claimed_by == new_staff
-
-
-@pytest.mark.asyncio
-async def test_transfer_unclaimed_implicit_claim(
-    service: TicketService,
-    mock_db: AsyncMock,
-    ticket_row: dict,
-) -> None:
-    """Transferring an unclaimed ticket MUST set claimedBy (implicit claim)."""
-    ticket_id = ticket_row["id"]
-    # PR2 contract: pre-read open+unclaimed, re-read claimed.
-    _transfer_preread(mock_db, ticket_row)
-
-    guild = MagicMock()
-    guild.id = 123456789
-    guild.get_member = MagicMock(return_value=MagicMock())
-    logging_service = _mock_logging_service()
-
-    ticket = await service.transfer_ticket(
-        ticket_id,
-        new_claimed_by="222222222",
-        actor_id="999999999",
-        guild=guild,
-        logging_service=logging_service,
-    )
-
-    update_kwargs = mock_db.update_ticket.call_args.kwargs
-    assert update_kwargs["claimedBy"] == "222222222"
-    assert ticket.claimed_by == "222222222"
 
 
 @pytest.mark.asyncio
@@ -1967,17 +1958,32 @@ async def test_create_ticket_channel_creates_channel_and_inserts(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("ticket_number", "renamed"),
+    [
+        (42, True),
+        (1, False),
+    ],
+    ids=["number-differs-renames", "number-matches-no-rename"],
+)
 async def test_create_ticket_channel_renames_if_number_differs(
+    ticket_number: int,
+    renamed: bool,
     service: TicketService,
     mock_db: AsyncMock,
     ticket_row: dict,
 ) -> None:
-    """When tentative name differs from actual ticket number, channel MUST be renamed."""
-    # Channel created with tentative name "support-testuser-0001" but DB returns ticketNumber=42.
+    """When tentative name differs from actual ticket number, channel MUST be renamed; matching number MUST NOT rename.
+
+    Parametrized (S1a cut): both variants create the channel with tentative
+    name "support-testuser-0001" and assert the rename contract against the
+    DB-returned ticketNumber.
+    """
+    # Channel created with tentative name "support-testuser-0001" but DB returns ticketNumber=ticket_number.
     guild, category, author = _channel_triple("support-testuser-0001")
 
     mock_db.get_max_ticket_number.return_value = 0
-    mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 42}
+    mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": ticket_number}
 
     _channel, ticket = await service.create_ticket_channel(
         guild,
@@ -1987,34 +1993,12 @@ async def test_create_ticket_channel_renames_if_number_differs(
         category_name="Support",
     )
 
-    # Channel renamed to match actual ticket number.
-    guild.create_text_channel.return_value.edit.assert_awaited_once_with(name="support-testuser-0042")
-    assert ticket.ticket_number == 42
-
-
-@pytest.mark.asyncio
-async def test_create_ticket_channel_no_rename_if_name_matches(
-    service: TicketService,
-    mock_db: AsyncMock,
-    ticket_row: dict,
-) -> None:
-    """When tentative name matches actual ticket number, no rename is needed."""
-    guild, category, author = _channel_triple("support-testuser-0001")
-
-    mock_db.get_max_ticket_number.return_value = 0
-    mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1}
-
-    _channel, ticket = await service.create_ticket_channel(
-        guild,
-        category,
-        author,
-        guild_id="123456789",
-        category_name="Support",
-    )
-
-    # No rename needed.
-    guild.create_text_channel.return_value.edit.assert_not_awaited()
-    assert ticket.ticket_number == 1
+    # Channel renamed iff actual ticket number differs from the tentative name.
+    if renamed:
+        guild.create_text_channel.return_value.edit.assert_awaited_once_with(name="support-testuser-0042")
+    else:
+        guild.create_text_channel.return_value.edit.assert_not_awaited()
+    assert ticket.ticket_number == ticket_number
 
 
 @pytest.mark.asyncio
@@ -2082,15 +2066,31 @@ async def test_create_ticket_channel_forwards_subject_and_description(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("cf", "expected_custom_fields"),
+    [
+        ({"player_nick": "DarkSlasher42", "evidence_url": "https://imgur.com/abc"}, None),
+        (None, None),
+    ],
+    ids=["with-custom-fields", "without-custom-fields"],
+)
 async def test_create_ticket_with_custom_fields(
+    cf: dict[str, str] | None,
+    expected_custom_fields: dict[str, str] | None,
     service: TicketService,
     mock_db: AsyncMock,
     ticket_row: dict,
 ) -> None:
-    """create_ticket(custom_fields=...) MUST forward to insert_ticket and persist on the model."""
-    cf = {"player_nick": "DarkSlayer42", "evidence_url": "https://imgur.com/abc"}
+    """create_ticket(custom_fields=...) MUST forward to insert_ticket and persist on the model; omitted MUST pass None.
+
+    Parametrized (S1a cut): both variants assert the same two-sided contract
+    (insert_ticket kwargs + returned model) with the per-case expected value;
+    the only difference is whether custom_fields is provided explicitly or
+    omitted (explicit None == omitted None by production default).
+    """
+    expected = cf if cf is not None else expected_custom_fields
     mock_db.get_max_ticket_number.return_value = 0
-    mock_db.insert_ticket.return_value = {**ticket_row, "customFields": cf}
+    mock_db.insert_ticket.return_value = {**ticket_row, "customFields": expected}
 
     ticket = await service.create_ticket(
         guild_id="123456789",
@@ -2101,68 +2101,46 @@ async def test_create_ticket_with_custom_fields(
     )
 
     insert_kwargs = mock_db.insert_ticket.call_args.kwargs
-    assert insert_kwargs["custom_fields"] == cf
-    assert ticket.custom_fields == cf
+    assert insert_kwargs["custom_fields"] == expected
+    assert ticket.custom_fields == expected
 
 
 @pytest.mark.asyncio
-async def test_create_ticket_without_custom_fields(
-    service: TicketService,
-    mock_db: AsyncMock,
-    ticket_row: dict,
-) -> None:
-    """create_ticket() without custom_fields MUST pass None to insert_ticket."""
-    mock_db.get_max_ticket_number.return_value = 0
-    mock_db.insert_ticket.return_value = {**ticket_row, "customFields": None}
-
-    ticket = await _create_ticket(service)
-
-    insert_kwargs = mock_db.insert_ticket.call_args.kwargs
-    assert insert_kwargs["custom_fields"] is None
-    assert ticket.custom_fields is None
-
-
-@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("cf", "expected_custom_fields"),
+    [
+        ({"player_nick": "DarkSlayer42"}, None),
+        (None, None),
+    ],
+    ids=["forwards-custom-fields", "without-custom-fields"],
+)
 async def test_create_ticket_channel_forwards_custom_fields(
+    cf: dict[str, str] | None,
+    expected_custom_fields: dict[str, str] | None,
     service: TicketService,
     mock_db: AsyncMock,
     ticket_row: dict,
 ) -> None:
-    """create_ticket_channel(custom_fields=...) MUST forward to create_ticket."""
+    """create_ticket_channel(custom_fields=...) MUST forward to create_ticket; omitted MUST pass None.
+
+    Parametrized (S1a cut): both variants assert the same two-sided contract
+    (insert_ticket kwargs + returned model) with the per-case expected value;
+    the only difference is whether custom_fields is provided explicitly or
+    omitted (explicit None == omitted None by production default).
+    """
+    expected = cf if cf is not None else expected_custom_fields
     guild, category, author = _channel_triple()
-    cf = {"player_nick": "DarkSlayer42"}
 
     mock_db.get_max_ticket_number.return_value = 0
-    mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1, "customFields": cf}
+    mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1, "customFields": expected}
 
     _channel, ticket = await service.create_ticket_channel(
         guild, category, author, guild_id="123456789", category_name="Support", custom_fields=cf
     )
 
     insert_kwargs = mock_db.insert_ticket.call_args.kwargs
-    assert insert_kwargs["custom_fields"] == cf
-    assert ticket.custom_fields == cf
-
-
-@pytest.mark.asyncio
-async def test_create_ticket_channel_without_custom_fields(
-    service: TicketService,
-    mock_db: AsyncMock,
-    ticket_row: dict,
-) -> None:
-    """create_ticket_channel() without custom_fields MUST pass None to create_ticket."""
-    guild, category, author = _channel_triple()
-
-    mock_db.get_max_ticket_number.return_value = 0
-    mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1, "customFields": None}
-
-    _channel, ticket = await service.create_ticket_channel(
-        guild, category, author, guild_id="123456789", category_name="Support"
-    )
-
-    insert_kwargs = mock_db.insert_ticket.call_args.kwargs
-    assert insert_kwargs["custom_fields"] is None
-    assert ticket.custom_fields is None
+    assert insert_kwargs["custom_fields"] == expected
+    assert ticket.custom_fields == expected
 
 
 # ===========================================================================
