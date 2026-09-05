@@ -4343,31 +4343,61 @@ class TestRepairTicketManualGrant:
         return bot
 
     @pytest.mark.asyncio
-    async def test_operator_no_grant_is_denied(
-        self,
-        service: TicketService,
-        mock_db: AsyncMock,
-    ) -> None:
-        """A bot-owner operator without an explicit grant is denied before any probe."""
-
-        authority = RepairAuthority(
+    @staticmethod
+    def _owner_authority() -> RepairAuthority:
+        """Bot-owner authority targeting the default ticket guild."""
+        return RepairAuthority(
             actor_id="owner-1",
             guild_id=None,
             target_guild_id="123456789",
             is_bot_owner=True,
         )
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("global_grant", "expect_reason"),
+        [
+            pytest.param(None, "operator_mutation_requires_grant", id="no-grant-denied"),
+            pytest.param(
+                GlobalMutationGrant(
+                    actor_id="someone-else",
+                    scope="global",
+                    target_guild_id="123456789",
+                    reason="maintenance",
+                    confirmed=True,
+                ),
+                "grant_actor_mismatch",
+                id="grant-actor-mismatch-denied",
+            ),
+        ],
+    )
+    async def test_operator_grant_denials(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+        global_grant: GlobalMutationGrant | None,
+        expect_reason: str,
+    ) -> None:
+        """Manual-repair operator grant denials skip before any probe: a
+        bot-owner without an explicit grant (operator_mutation_requires_grant)
+        and a grant naming a different actor (grant_actor_mismatch) are both
+        denied.
+
+        Parametrized (S6 ceiling cut): both rows share the repair_ticket_manual
+        scaffold and the no-mutation contract.
+        """
         result = await service.repair_ticket_manual(
             "t-1",
             guild_id="123456789",
             actor_id="owner-1",
-            authority=authority,
+            authority=self._owner_authority(),
             bot=self._manual_bot(),
             preflight=_resolved_preflight(),
+            global_grant=global_grant,
         )
 
         assert result.outcome == "skipped"
-        assert result.reason == "operator_mutation_requires_grant"
+        assert result.reason == expect_reason
         mock_db.get_ticket.assert_not_awaited()
         mock_db.transition_ticket_to_closed.assert_not_awaited()
 
@@ -4418,41 +4448,6 @@ class TestRepairTicketManualGrant:
         assert result.outcome == "repaired"
         mock_db.transition_ticket_to_closed.assert_awaited_once()
 
-    @pytest.mark.asyncio
-    async def test_operator_grant_actor_mismatch_denied(
-        self,
-        service: TicketService,
-        mock_db: AsyncMock,
-    ) -> None:
-        """A grant naming a different actor never authorizes this operator."""
-
-        authority = RepairAuthority(
-            actor_id="owner-1",
-            guild_id=None,
-            target_guild_id="123456789",
-            is_bot_owner=True,
-        )
-        grant = GlobalMutationGrant(
-            actor_id="someone-else",
-            scope="global",
-            target_guild_id="123456789",
-            reason="maintenance",
-            confirmed=True,
-        )
-
-        result = await service.repair_ticket_manual(
-            "t-1",
-            guild_id="123456789",
-            actor_id="owner-1",
-            authority=authority,
-            bot=self._manual_bot(),
-            preflight=_resolved_preflight(),
-            global_grant=grant,
-        )
-
-        assert result.outcome == "skipped"
-        assert result.reason == "grant_actor_mismatch"
-        mock_db.get_ticket.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
