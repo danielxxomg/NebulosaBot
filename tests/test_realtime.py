@@ -742,21 +742,21 @@ class TestOnSubscribe:
 
         assert not inspect.iscoroutinefunction(sub._on_subscribe)
 
-    def test_subscribed_status_stored(self, cache: TTLCache) -> None:
+    @pytest.mark.parametrize(
+        ("status", "err", "expect_status"),
+        [
+            pytest.param("SUBSCRIBED", None, "SUBSCRIBED", id="subscribed-status-stored"),
+            pytest.param("CHANNEL_ERROR", Exception("boom"), "CHANNEL_ERROR", id="channel-error-status-stored"),
+        ],
+    )
+    def test_status_stored(self, cache: TTLCache, status: str, err: object, expect_status: str) -> None:
+        """on_subscribe stores whatever status the SDK reports (sync callback)."""
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
 
-        sub._on_subscribe("SUBSCRIBED", None)
+        sub._on_subscribe(status, err)
 
-        assert sub._status == "SUBSCRIBED"
-
-    def test_channel_error_status_stored(self, cache: TTLCache) -> None:
-        client = _make_client_mock()
-        sub = _make_subscriber(cache, client)
-
-        sub._on_subscribe("CHANNEL_ERROR", Exception("boom"))
-
-        assert sub._status == "CHANNEL_ERROR"
+        assert sub._status == expect_status
 
     def test_subscribed_disables_poll_fallback(self, cache: TTLCache) -> None:
         """SUBSCRIBED status MUST set _poll_fallback_enabled to False."""
