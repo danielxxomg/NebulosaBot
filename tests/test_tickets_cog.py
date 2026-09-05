@@ -548,27 +548,6 @@ class TestTicketActionsView:
         ticket_bot.ticket_service.claim_ticket.assert_awaited_once()
         ticket_interaction.response.edit_message.assert_awaited_once()
 
-    async def test_claim_already_claimed(
-        self,
-        ticket_bot: MagicMock,
-        ticket_interaction: MagicMock,
-        mock_db,
-    ) -> None:
-        """Already claimed ticket → error embed."""
-        ticket_interaction.client = ticket_bot
-        # PR2: Claim is mod-gated — make the clicker a mod so we reach the
-        # "Already Claimed" branch instead of the mod-deny branch.
-        ticket_interaction.user.guild_permissions.administrator = True
-        ticket_bot._guild_mod_role_cache = {}
-        ticket_row = _ticket_row(status="claimed")
-        ticket_row["claimedBy"] = "999999999"
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=ticket_row)
-
-        view = TicketActionsView()
-        await view.claim_button.callback(ticket_interaction)
-
-        embed = _interaction_embed(ticket_interaction)
-        assert embed.title is not None
 
     async def test_close_button_generates_transcript(
         self,
@@ -694,18 +673,35 @@ class TestTicketPanelViewEdgeCases:
 class TestClaimEdgeCases:
     """Edge cases for claim button."""
 
-    async def test_claim_no_ticket(
+    @pytest.mark.parametrize(
+        ("row",),
+        [
+            pytest.param(None, id="claim-no-ticket"),
+            pytest.param("claimed", id="claim-already-claimed"),
+        ],
+    )
+    async def test_claim_denials(
         self,
         ticket_bot: MagicMock,
         ticket_interaction: MagicMock,
         mock_db,
+        row: str | None,
     ) -> None:
-        """Claim on non-ticket channel → error embed."""
+        """Claim denials surface an error embed: a non-ticket channel (no
+        row) and an already-claimed ticket (claimedBy another mod) both deny.
+
+        Parametrized (S6 ceiling cut): both rows pass the mod gate (admin
+        fallback) and share the embed assert; the branch differs per row.
+        """
         ticket_interaction.client = ticket_bot
-        # PR2: pass the mod gate so the "not a ticket channel" branch is reached.
         ticket_interaction.user.guild_permissions.administrator = True
         ticket_bot._guild_mod_role_cache = {}
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=None)
+        if row is None:
+            mock_db.get_ticket_by_channel = AsyncMock(return_value=None)
+        else:
+            claimed_row = _ticket_row(status="claimed")
+            claimed_row["claimedBy"] = "999999999"
+            mock_db.get_ticket_by_channel = AsyncMock(return_value=claimed_row)
 
         view = TicketActionsView()
         await view.claim_button.callback(ticket_interaction)
