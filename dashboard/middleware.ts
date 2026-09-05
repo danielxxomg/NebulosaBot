@@ -41,7 +41,7 @@ export const middleware = async (request: NextRequest) => {
  *  - favicon.ico and favicon.png (served as static assets, never auth-guarded)
  *
  * `runtime: "nodejs"` runs the middleware on the Node.js runtime so that
- * @supabase/supabase-js (which references `process.version`) does not trigger
+ * the Supabase JS SDK (which references `process.version`) does not trigger
  * an Edge Runtime compatibility warning during `next build`.
  *
  * This ensures middleware runs for pages but not internal Next.js requests.

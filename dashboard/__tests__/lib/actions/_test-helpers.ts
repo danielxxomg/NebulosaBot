@@ -81,40 +81,28 @@ export const buildMockServiceClient = (overrides: {
     single: vi.fn().mockResolvedValue(overrides.guildSelectResult ?? { data: null, error: null }),
   };
 
-  const updateEqChain = {
-    // For update().eq()
-    then: vi.fn(),
-  };
+  // For update().eq() — the terminal spy resolves like the old thenable
+  // (await x === await Promise.resolve(x) at these call sites).
+  const updateEqChain = vi
+    .fn()
+    .mockResolvedValue(
+      overrides.guildUpdateError ? { error: overrides.guildUpdateError } : { error: null }
+    );
 
-  // Make updateEqChain thenable so await works.
-  Object.defineProperty(updateEqChain, "then", {
-    value: (resolve: (v: unknown) => void) =>
-      resolve(overrides.guildUpdateError ? { error: overrides.guildUpdateError } : { error: null }),
-    writable: true,
-  });
+  const upsertEqChainEconomy = vi
+    .fn()
+    .mockResolvedValue(
+      overrides.economyUpsertError ? { error: overrides.economyUpsertError } : { error: null }
+    );
 
-  const upsertEqChainEconomy = {
-    then: vi.fn(),
-  };
-
-  Object.defineProperty(upsertEqChainEconomy, "then", {
-    value: (resolve: (v: unknown) => void) =>
-      resolve(overrides.economyUpsertError ? { error: overrides.economyUpsertError } : { error: null }),
-    writable: true,
-  });
-
-  const upsertEqChainGreeting = {
-    then: vi.fn(),
-  };
+  const upsertEqChainGreeting = vi
+    .fn()
+    .mockResolvedValue(
+      overrides.greetingUpsertError ? { error: overrides.greetingUpsertError } : { error: null }
+    );
 
   const greetingUpsert = vi.fn().mockReturnValue({
     eq: vi.fn().mockReturnValue(upsertEqChainGreeting),
-  });
-
-  Object.defineProperty(upsertEqChainGreeting, "then", {
-    value: (resolve: (v: unknown) => void) =>
-      resolve(overrides.greetingUpsertError ? { error: overrides.greetingUpsertError } : { error: null }),
-    writable: true,
   });
 
   // Ticket read chain: select -> eq -> order -> limit (terminal, thenable).
@@ -209,6 +197,9 @@ export const buildMockServiceClient = (overrides: {
       return {};
     }),
     // Test-only handle exposing the stable ticket-chain spies for assertions.
+    greeting: {
+      upsert: greetingUpsert,
+    },
     ticket: {
       eq: ticketEq,
       limit: ticketLimit,
@@ -219,6 +210,12 @@ export const buildMockServiceClient = (overrides: {
       updateEq: ticketUpdateEq,
     } satisfies TicketChainSpies,
     // Test-only handle exposing the stable ticket-note-chain spies for assertions.
+    ticketAudit: {
+      eq: ticketAuditEq,
+      order: ticketAuditOrder,
+      range: ticketAuditRange,
+      select: ticketAuditSelect,
+    },
     ticketNote: {
       delete: ticketNoteDelete,
       deleteEq: ticketNoteDeleteEq,
@@ -229,16 +226,6 @@ export const buildMockServiceClient = (overrides: {
       select: ticketNoteSelect,
       single: ticketNoteSingle,
     } satisfies TicketNoteChainSpies,
-    // Test-only handle exposing the stable ticket-audit-chain spies.
-    ticketAudit: {
-      eq: ticketAuditEq,
-      order: ticketAuditOrder,
-      range: ticketAuditRange,
-      select: ticketAuditSelect,
-    },
-    greeting: {
-      upsert: greetingUpsert,
-    },
   };
 };
 
@@ -287,8 +274,10 @@ export const buildDiscordMocks = (adminGuildId: string) => {
 
   const hasAdministratorPerm = vi.fn((perm: string) => {
     const permsBigInt = BigInt(perm);
-    const ADMINISTRATOR = 0x8n;
-    return (permsBigInt & ADMINISTRATOR) === ADMINISTRATOR;
+    // ADMINISTRATOR = bit 3 (0x8). Arithmetic bit-test (no-bitwise bans
+    // &/|/>>/<<): floor-division by 8 drops the low 3 bits, odd/even of
+    // the result is the bit's value.
+    return (permsBigInt / 8n) % 2n === 1n;
   });
 
   return { fetchUserGuilds, hasAdministratorPerm };

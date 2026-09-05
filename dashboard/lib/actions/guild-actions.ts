@@ -16,7 +16,8 @@ const VALID_LANGUAGES = new Set([
  * Validate that a string looks like a Discord snowflake (17-20 digit number).
  */
 const isValidSnowflake = (value: string | null): boolean => {
-  if (!value) {return true;} // null/empty is valid (optional field)
+  // null/empty is valid (optional field)
+  if (!value) {return true;}
   return /^\d{17,20}$/u.test(value);
 };
 

@@ -1,5 +1,6 @@
+import GuildConfigPage from "@/app/(authenticated)/guilds/[guildId]/config/page";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render } from "@testing-library/react";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -11,7 +12,7 @@ const mockSelect = vi.fn(() => ({ eq: mockEq }));
 const mockFrom = vi.fn(() => ({ select: mockSelect }));
 
 vi.mock("@/lib/supabase", () => ({
-  createServiceClient: vi.fn(async () => ({
+  createServiceClient: vi.fn(() => ({
     from: mockFrom,
   })),
 }));
@@ -19,8 +20,6 @@ vi.mock("@/lib/supabase", () => ({
 vi.mock("@/lib/actions/guild-actions", () => ({
   updateGuildConfig: vi.fn(),
 }));
-
-import GuildConfigPage from "@/app/(authenticated)/guilds/[guildId]/config/page";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -67,7 +66,9 @@ describe("GuildConfigPage — ticket category label", () => {
     // element MUST contain this text.  Current label is "Ticket Category ID"
     // which does NOT match the spec.
     const labelEl = document.querySelector('label[for="ticketCategoryId"]');
-    expect(labelEl).not.toBeNull();
-    expect(labelEl!.textContent).toContain("Discord Category Channel ID");
+    if (!labelEl) {
+      throw new Error("ticketCategoryId label not rendered");
+    }
+    expect(labelEl.textContent).toContain("Discord Category Channel ID");
   });
 });

@@ -6,8 +6,8 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { getReopenGuidance, transferTicket } from "@/lib/actions/ticket-actions";
 import type { Ticket } from "@/lib/types";
-import { NotesPanel } from "./NotesPanel";
-import { ReopenTicketDialog } from "./ReopenTicketDialog";
+import { NotesPanel } from "./notes-panel";
+import { ReopenTicketDialog } from "./reopen-ticket-dialog";
 import type { ReopenGuidance } from "@/lib/actions/ticket-actions";
 
 /**

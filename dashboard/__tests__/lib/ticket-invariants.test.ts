@@ -26,7 +26,8 @@ describe("computeNoteHash — normalization (decision #9)", () => {
     const a = computeNoteHash("  Hello   World  ");
     const b = computeNoteHash("hello world");
     expect(a).toBe(b);
-    expect(a).toMatch(/^[0-9a-f]{64}$/u); // sha256 hex
+    // sha256 hex
+    expect(a).toMatch(/^[0-9a-f]{64}$/u);
   });
 
   it("produces a stable hex digest for identical normalized content", () => {
