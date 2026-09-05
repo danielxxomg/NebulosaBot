@@ -1661,29 +1661,47 @@ class TestNoteListPrivacy:
         # No DM needed for slash — the ephemeral reply suffices.
         slash_ctx.author.send.assert_not_awaited()
 
+    # Prefix path — populated vs empty notes share the DM-privacy contract.
+    # Parametrized (S6 ceiling cut): both rows DM the author privately and
+    # keep the channel embed confirmation-only; the channel MUST NOT leak
+    # note content (populated) nor the empty-state wording (B1 bug).
+    _PREFIX_NOTES_CASES: ClassVar[list[Any]] = [
+        pytest.param(True, id="prefix-populated-dms-author"),
+        pytest.param(False, id="prefix-empty-dms-author"),
+    ]
+
+    @pytest.mark.parametrize("notes", _PREFIX_NOTES_CASES)
     async def test_note_list_prefix_dms_author(
         self,
         tickets_cog: TicketsCog,
         slash_ctx: MagicMock,
         ticket_bot: MagicMock,
         mock_db,
+        notes: bool,
     ) -> None:
         """Prefix invocation → notes DM'd to author, channel gets confirmation only."""
-        self._note_list_env(tickets_cog, slash_ctx, ticket_bot, mock_db, slash=False)
+        self._note_list_env(tickets_cog, slash_ctx, ticket_bot, mock_db, slash=False, notes=notes)
 
         await tickets_cog.note_list.callback(tickets_cog, slash_ctx)
 
-        # Notes DM'd to author.
+        # Notes/empty-state DM'd to the author.
         slash_ctx.author.send.assert_awaited_once()
         dm_embed = slash_ctx.author.send.call_args.kwargs.get("embed")
         assert dm_embed is not None
-        assert "Secret staff note" in (dm_embed.description or "")
+        if notes:
+            assert "Secret staff note" in (dm_embed.description or "")
+        else:
+            assert "No" in (dm_embed.title or "") or "no staff notes" in (dm_embed.description or "").lower()
 
-        # Channel confirmation does NOT contain note content.
+        # Channel confirmation does NOT contain note content nor the
+        # empty-state wording ('No Notes' / 'no staff notes yet' — B1 bug).
         slash_ctx.send.assert_awaited_once()
         chan_embed = slash_ctx.send.call_args.kwargs.get("embed")
         assert chan_embed is not None
+        chan_text = f"{chan_embed.title or ''} {chan_embed.description or ''}".lower()
         assert "Secret staff note" not in (chan_embed.description or "")
+        assert "no staff notes yet" not in chan_text
+        assert "no notes" not in chan_text
 
     async def test_note_list_prefix_dm_failure_sends_error(
         self,
@@ -1707,38 +1725,6 @@ class TestNoteListPrivacy:
         mock_exc.assert_called_once()
 
 
-    async def test_note_list_empty_prefix_dms_author(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db,
-    ) -> None:
-        """B1: empty notes via prefix → DM 'No Notes' to author, channel gets confirmation-only.
-
-        The channel confirmation MUST NOT disclose that the ticket has no
-        staff notes (that state leak is the B1 bug). The author receives
-        the empty-state privately via DM; the channel sees only the same
-        generic 'Notes Sent' confirmation used by the non-empty path.
-        """
-        self._note_list_env(tickets_cog, slash_ctx, ticket_bot, mock_db, slash=False, notes=False)
-
-        await tickets_cog.note_list.callback(tickets_cog, slash_ctx)
-
-        # The empty-state ('No Notes') is DM'd privately to the author.
-        slash_ctx.author.send.assert_awaited_once()
-        dm_embed = slash_ctx.author.send.call_args.kwargs.get("embed")
-        assert dm_embed is not None
-        assert "No" in (dm_embed.title or "") or "no staff notes" in (dm_embed.description or "").lower()
-
-        # Channel gets a confirmation-only embed — MUST NOT leak the
-        # empty-state wording ('No Notes' / 'no staff notes yet').
-        slash_ctx.send.assert_awaited_once()
-        chan_embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert chan_embed is not None
-        chan_text = f"{chan_embed.title or ''} {chan_embed.description or ''}".lower()
-        assert "no staff notes yet" not in chan_text
-        assert "no notes" not in chan_text
 
 
 # ===========================================================================
