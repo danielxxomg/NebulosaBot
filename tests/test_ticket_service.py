@@ -3709,49 +3709,53 @@ async def test_repair_quarantine_never_claims_mutation(
 
 
 @pytest.mark.asyncio
-async def test_repair_skipped_live_channel_still_audits_denied(
+@pytest.mark.parametrize(
+    "evidence_kind, expect_outcome, expect_reason",
+    [
+        # A live-channel skip (not_corroborated) writes a denied audit row, no mutation.
+        ("live", "skipped", "not_corroborated"),
+        # An already-closed duplicate/loser writes a deterministic denied audit row.
+        ("already_closed", "already_closed", "already_closed"),
+    ],
+    ids=["skipped_live_channel", "already_closed"],
+)
+async def test_denied_repair_outcomes_audit_denied(
     service: TicketService,
     mock_db: AsyncMock,
     ticket_row: dict,
+    evidence_kind: str,
+    expect_outcome: str,
+    expect_reason: str,
 ) -> None:
-    """A live-channel skip (not_corroborated) writes a denied audit row, no mutation."""
-    live = IntegrityEvidence(
-        ticket_id=ticket_row["id"],
-        guild_id=ticket_row["guildId"],
-        channel_id=ticket_row["channelId"],
-        status="open",
-        channel_exists=True,
-        observed_at=datetime.now(UTC),
-    )
-    result = await service.repair_ticket_from_evidence(
-        live,
-        preflight=_resolved_preflight(),
-        close_reason="zombie:channel_deleted",
-    )
+    """Both non-repair outcomes route through the shared evaluation and
+    write a best-effort denied audit row with the deterministic reason;
+    neither mutates the ticket.
+    """
+    if evidence_kind == "live":
+        evidence = IntegrityEvidence(
+            ticket_id=ticket_row["id"],
+            guild_id=ticket_row["guildId"],
+            channel_id=ticket_row["channelId"],
+            status="open",
+            channel_exists=True,
+            observed_at=datetime.now(UTC),
+        )
+        result = await service.repair_ticket_from_evidence(
+            evidence,
+            preflight=_resolved_preflight(),
+            close_reason="zombie:channel_deleted",
+        )
+    else:
+        evidence = _corroborated_evidence(ticket_row)
+        mock_db.transition_ticket_to_closed = AsyncMock(return_value=None)
+        result = await _repair_from_evidence(service, evidence)
 
-    assert result.outcome == "skipped"
-    mock_db.transition_ticket_to_closed.assert_not_awaited()
+    assert result.outcome == expect_outcome
+    if evidence_kind == "live":
+        mock_db.transition_ticket_to_closed.assert_not_awaited()
     kwargs = _assert_audit(mock_db)
     assert kwargs["outcome"] == "denied"
-    assert kwargs["reason"] == "not_corroborated"
-
-
-@pytest.mark.asyncio
-async def test_repair_already_closed_audits_denied(
-    service: TicketService,
-    mock_db: AsyncMock,
-    ticket_row: dict,
-) -> None:
-    """An already-closed duplicate/loser writes a deterministic denied audit row."""
-    evidence = _corroborated_evidence(ticket_row)
-    mock_db.transition_ticket_to_closed = AsyncMock(return_value=None)
-
-    result = await _repair_from_evidence(service, evidence)
-
-    assert result.outcome == "already_closed"
-    kwargs = _assert_audit(mock_db)
-    assert kwargs["outcome"] == "denied"
-    assert kwargs["reason"] == "already_closed"
+    assert kwargs["reason"] == expect_reason
 
 
 # ---------------------------------------------------------------------------
