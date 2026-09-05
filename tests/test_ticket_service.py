@@ -1302,39 +1302,36 @@ async def test_create_note_cap_enforced(
 
 
 @pytest.mark.asyncio
-async def test_get_notes_returns_list(
+@pytest.mark.parametrize(
+    ("notes_count", "expect_models"),
+    [
+        pytest.param(3, True, id="get-notes-returns-models"),
+        pytest.param(0, False, id="get-notes-empty"),
+    ],
+)
+async def test_get_notes_delegation(
+    notes_count: int,
+    expect_models: bool,
     service: TicketService,
     mock_db: AsyncMock,
 ) -> None:
-    """get_notes MUST delegate to the DB and return TicketNote models."""
+    """get_notes MUST delegate to the DB: non-empty → TicketNote models,
+    no notes → empty list (both after the guild-scoped pre-read).
+    """
     mock_db.get_ticket.return_value = {
         "id": "ticket-uuid-003",
         "guildId": "123456789",
     }
-    mock_db.get_ticket_notes.return_value = [_note_row(note_id=f"n-{i}") for i in range(3)]
+    mock_db.get_ticket_notes.return_value = [_note_row(note_id=f"n-{i}") for i in range(notes_count)]
 
     notes = await service.get_notes("ticket-uuid-003")
 
     mock_db.get_ticket_notes.assert_awaited_once()
-    assert len(notes) == 3
-    assert all(isinstance(n, TicketNote) for n in notes)
-
-
-@pytest.mark.asyncio
-async def test_get_notes_empty(
-    service: TicketService,
-    mock_db: AsyncMock,
-) -> None:
-    """get_notes on a ticket with no notes MUST return an empty list."""
-    mock_db.get_ticket.return_value = {
-        "id": "ticket-uuid-003",
-        "guildId": "123456789",
-    }
-    mock_db.get_ticket_notes.return_value = []
-
-    notes = await service.get_notes("ticket-uuid-003")
-
-    assert notes == []
+    if expect_models:
+        assert len(notes) == 3
+        assert all(isinstance(n, TicketNote) for n in notes)
+    else:
+        assert notes == []
 
 
 @pytest.mark.asyncio
@@ -1367,33 +1364,37 @@ async def test_get_notes_audits_success(
 
 
 @pytest.mark.asyncio
-async def test_delete_note_own(
+@pytest.mark.parametrize(
+    ("caller_id", "expect_deleted"),
+    [
+        pytest.param("999999999", True, id="delete-note-own-allowed"),
+        pytest.param("888888888", False, id="delete-note-other-rejected"),
+    ],
+)
+async def test_delete_note_author_gate(
+    caller_id: str,
+    expect_deleted: bool,
     service: TicketService,
     mock_db: AsyncMock,
 ) -> None:
-    """The note author MUST be able to delete their own note."""
+    """delete_note MUST allow the note author and reject non-authors: the
+    author's call reaches the guild-scoped DB delete; any other caller
+    raises ValueError (author mismatch) with no DB mutation.
+    """
     mock_db.get_ticket.return_value = _ticket_guild_row("ticket-uuid-003")
     mock_db.get_ticket_notes.return_value = [_note_row(author_id="999999999")]
 
-    await service.delete_note("note-uuid-001", author_id="999999999", ticket_id="ticket-uuid-003")
+    if expect_deleted:
+        await service.delete_note("note-uuid-001", author_id=caller_id, ticket_id="ticket-uuid-003")
 
-    mock_db.delete_ticket_note.assert_awaited_once_with(
-        "note-uuid-001", guild_id="123456789", ticket_id="ticket-uuid-003"
-    )
+        mock_db.delete_ticket_note.assert_awaited_once_with(
+            "note-uuid-001", guild_id="123456789", ticket_id="ticket-uuid-003"
+        )
+    else:
+        with pytest.raises(ValueError, match=r"[Aa]uthor"):
+            await service.delete_note("note-uuid-001", author_id=caller_id, ticket_id="ticket-uuid-003")
 
-
-@pytest.mark.asyncio
-async def test_delete_note_other_rejected(
-    service: TicketService,
-    mock_db: AsyncMock,
-) -> None:
-    """A non-author MUST NOT delete someone else's note."""
-    mock_db.get_ticket_notes.return_value = [_note_row(author_id="999999999")]
-
-    with pytest.raises(ValueError, match=r"[Aa]uthor"):
-        await service.delete_note("note-uuid-001", author_id="888888888", ticket_id="ticket-uuid-003")
-
-    mock_db.delete_ticket_note.assert_not_awaited()
+        mock_db.delete_ticket_note.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1482,31 +1483,30 @@ async def test_close_audits_success(service: TicketService, mock_db: AsyncMock, 
 
 
 @pytest.mark.asyncio
-async def test_close_denied_audits_and_reraises(service: TicketService, mock_db: AsyncMock, ticket_row: dict) -> None:
-    """Close on an already-closed ticket MUST raise ValueError (transition returns None)."""
-    mock_db.transition_ticket_to_closed = AsyncMock(return_value=None)
-    mock_db.get_ticket.return_value = {**ticket_row, "status": "closed"}
-
-    with pytest.raises(ValueError, match="already closed or not found"):
-        await service.close_ticket(ticket_row["id"], closed_by="999999999")
-
-    mock_db.update_ticket.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_close_denied_writes_audit(service: TicketService, mock_db: AsyncMock, ticket_row: dict) -> None:
-    """R1-003: denied-close MUST write a best-effort denied audit row before raising."""
+@pytest.mark.parametrize("audit_assert", [False, True], ids=["close-denied-reraise", "close-denied-writes-audit"])
+async def test_close_denied_contract(
+    audit_assert: bool,
+    service: TicketService,
+    mock_db: AsyncMock,
+    ticket_row: dict,
+) -> None:
+    """Close on an already-closed ticket MUST raise ValueError (transition
+    returns None) without mutation; the guild-resolved best-effort denied
+    audit row MUST be written before raising (R1-003).
+    """
     mock_db.transition_ticket_to_closed = AsyncMock(return_value=None)
     mock_db.get_ticket.return_value = ticket_row  # resolve guild for audit scoping
 
     with pytest.raises(ValueError, match="already closed or not found"):
         await service.close_ticket(ticket_row["id"], closed_by="999999999")
 
-    kwargs = _assert_audit(mock_db)
-    assert kwargs["action"] == "close"
-    assert kwargs["outcome"] == "denied"
-    assert kwargs["guild_id"] == ticket_row["guildId"]
-    assert kwargs["actor_id"] == "999999999"
+    mock_db.update_ticket.assert_not_awaited()
+    if audit_assert:
+        kwargs = _assert_audit(mock_db)
+        assert kwargs["action"] == "close"
+        assert kwargs["outcome"] == "denied"
+        assert kwargs["guild_id"] == ticket_row["guildId"]
+        assert kwargs["actor_id"] == "999999999"
 
 
 @pytest.mark.asyncio
@@ -1552,110 +1552,87 @@ async def test_transfer_closed_denied(service: TicketService, mock_db: AsyncMock
     assert kwargs["outcome"] == "denied"
 
 
-@pytest.mark.asyncio
-async def test_note_dedup_within_window(service: TicketService, mock_db: AsyncMock) -> None:
-    """3.5/3.6: a duplicate note (same author, within 2s) MUST raise ValueError."""
-    ticket_id = "ticket-uuid-003"
-    author = "999999999"
-    mock_db.get_ticket.return_value = {
-        "id": ticket_id,
-        "guildId": "123456789",
-        "ticketNumber": 3,
-    }
-    mock_db.get_ticket_notes.return_value = []  # under cap
-    mock_db.get_recent_notes_for_dedup.return_value = [
-        {"content": "Hello World"},  # same normalized form as incoming
-    ]
-
-    with pytest.raises(ValueError, match=r"duplicate|dedup"):
-        await service.create_note(ticket_id, author, "  hello world  ")
-
-    mock_db.insert_ticket_note.assert_not_awaited()
-    kwargs = _audit_kwargs(mock_db)
-    assert kwargs["action"] == "note_add"
-    assert kwargs["outcome"] == "denied"
-
-
-@pytest.mark.asyncio
-async def test_note_dedup_outside_window_allowed(service: TicketService, mock_db: AsyncMock) -> None:
-    """3.5/3.6: outside the dedup window the same content is allowed (audit success)."""
-    ticket_id = "ticket-uuid-003"
-    author = "999999999"
-    mock_db.get_ticket.return_value = _ticket_guild_row(ticket_id)
-    mock_db.get_ticket_notes.return_value = []
-    mock_db.get_recent_notes_for_dedup.return_value = []  # no recent → no dup
-    mock_db.insert_ticket_note.return_value = _note_row(content="hello")
-
-    await service.create_note(ticket_id, author, "hello")
-
-    mock_db.insert_ticket_note.assert_awaited_once()
-    kwargs = _audit_kwargs(mock_db)
-    assert kwargs["action"] == "note_add"
-    assert kwargs["outcome"] == "success"
+_NOTE_PRIVACY_MATRIX = [
+    # create_note: dedup gate (2s window) — denied / cleared
+    pytest.param(
+        "note_add",
+        "dedup",
+        [{"content": "Hello World"}],
+        "  hello world  ",
+        True,
+        "duplicate|dedup",
+        id="note-dedup-within-window-denied",
+    ),
+    pytest.param("note_add", "dedup", [], "hello", False, None, id="note-dedup-outside-window-success"),
+    # create_note: 50-note cap — denied / under-cap
+    pytest.param("note_add", "cap", 50, "one too many", True, "cap", id="note-cap-denied-audited"),
+    pytest.param("note_add", "cap", 30, "new note", False, None, id="note-under-cap-audited-success"),
+    # delete_note: author-only rule — allowed / rejected
+    pytest.param("note_delete", "delete", "999999999", None, False, None, id="note-delete-own-audited-success"),
+    pytest.param(
+        "note_delete", "delete", "userA", None, True, r"[Aa]uthor|owner", id="note-delete-other-audited-denied"
+    ),
+]
 
 
 @pytest.mark.asyncio
-async def test_note_cap_denied_audited(service: TicketService, mock_db: AsyncMock) -> None:
-    """3.5/3.6: at the 50-note cap, create_note MUST audit denied + raise."""
+@pytest.mark.parametrize(
+    ("audit_action", "gate", "gate_value", "insert_content", "expect_denied", "match"),
+    _NOTE_PRIVACY_MATRIX,
+)
+async def test_note_privacy_matrix(
+    audit_action: str,
+    gate: str,
+    gate_value: object,
+    insert_content: str | None,
+    expect_denied: bool,
+    match: str | None,
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """Note-privacy audit matrix (3.5/3.6, TI-034, TI-035): every note
+    add/delete MUST write a ticket_audit row whose outcome reflects the
+    privacy gate — dedup window + 50-note cap deny create_note; author-only
+    rule gates delete_note. Denied paths raise with no mutation.
+    """
     ticket_id = "ticket-uuid-003"
     mock_db.get_ticket.return_value = _ticket_guild_row(ticket_id)
-    mock_db.get_ticket_notes.return_value = [_note_row() for _ in range(50)]
+    if audit_action == "note_add":
+        if gate == "dedup":
+            assert isinstance(gate_value, list)
+            mock_db.get_ticket_notes.return_value = []
+            mock_db.get_recent_notes_for_dedup.return_value = gate_value
+        else:  # cap
+            assert isinstance(gate_value, int)
+            mock_db.get_ticket_notes.return_value = [_note_row() for _ in range(gate_value)]
+            mock_db.get_recent_notes_for_dedup.return_value = []
+        assert isinstance(insert_content, str)
+        mock_db.insert_ticket_note.return_value = _note_row(content=insert_content)
 
-    with pytest.raises(ValueError, match=r"cap"):
-        await service.create_note(ticket_id, "999999999", "one too many")
+        if expect_denied:
+            with pytest.raises(ValueError, match=match):
+                await service.create_note(ticket_id, "999999999", insert_content)
+            mock_db.insert_ticket_note.assert_not_awaited()
+        else:
+            await service.create_note(ticket_id, "999999999", insert_content)
+            mock_db.insert_ticket_note.assert_awaited_once()
+    else:  # note_delete
+        note_author = "userA" if expect_denied else "999999999"
+        mock_db.get_ticket_notes.return_value = [_note_row(author_id=note_author)]
 
-    mock_db.insert_ticket_note.assert_not_awaited()
+        if expect_denied:
+            with pytest.raises(ValueError, match=match):
+                await service.delete_note("note-uuid-001", author_id="userB", ticket_id=ticket_id)
+            mock_db.delete_ticket_note.assert_not_awaited()
+        else:
+            await service.delete_note("note-uuid-001", author_id=note_author, ticket_id=ticket_id)
+            mock_db.delete_ticket_note.assert_awaited_once_with(
+                "note-uuid-001", guild_id="123456789", ticket_id=ticket_id
+            )
+
     kwargs = _audit_kwargs(mock_db)
-    assert kwargs["action"] == "note_add"
-    assert kwargs["outcome"] == "denied"
-
-
-@pytest.mark.asyncio
-async def test_note_under_cap_audited_success(service: TicketService, mock_db: AsyncMock) -> None:
-    """TI-034: under the cap, create_note persists + audits success."""
-    ticket_id = "ticket-uuid-003"
-    mock_db.get_ticket.return_value = _ticket_guild_row(ticket_id)
-    mock_db.get_ticket_notes.return_value = [_note_row() for _ in range(30)]
-    mock_db.get_recent_notes_for_dedup.return_value = []
-    mock_db.insert_ticket_note.return_value = _note_row(content="new note")
-
-    await service.create_note(ticket_id, "999999999", "new note")
-
-    mock_db.insert_ticket_note.assert_awaited_once()
-    kwargs = _audit_kwargs(mock_db)
-    assert kwargs["outcome"] == "success"
-
-
-@pytest.mark.asyncio
-async def test_note_delete_author_audited_success(service: TicketService, mock_db: AsyncMock) -> None:
-    """TI-035: author deleting own note MUST audit success."""
-    ticket_id = "ticket-uuid-003"
-    author = "999999999"
-    mock_db.get_ticket.return_value = _ticket_guild_row(ticket_id)
-    mock_db.get_ticket_notes.return_value = [_note_row(author_id=author)]
-
-    await service.delete_note("note-uuid-001", author_id=author, ticket_id=ticket_id)
-
-    mock_db.delete_ticket_note.assert_awaited_once_with("note-uuid-001", guild_id="123456789", ticket_id=ticket_id)
-    kwargs = _audit_kwargs(mock_db)
-    assert kwargs["action"] == "note_delete"
-    assert kwargs["outcome"] == "success"
-
-
-@pytest.mark.asyncio
-async def test_note_delete_other_denied_audited(service: TicketService, mock_db: AsyncMock) -> None:
-    """delete_note by a non-author MUST audit denied + raise."""
-    ticket_id = "ticket-uuid-003"
-    mock_db.get_ticket.return_value = _ticket_guild_row(ticket_id)
-    mock_db.get_ticket_notes.return_value = [_note_row(author_id="userA")]
-
-    with pytest.raises(ValueError, match=r"[Aa]uthor|owner"):
-        await service.delete_note("note-uuid-001", author_id="userB", ticket_id=ticket_id)
-
-    mock_db.delete_ticket_note.assert_not_awaited()
-    kwargs = _audit_kwargs(mock_db)
-    assert kwargs["action"] == "note_delete"
-    assert kwargs["outcome"] == "denied"
+    assert kwargs["action"] == audit_action
+    assert kwargs["outcome"] == ("denied" if expect_denied else "success")
 
 
 @pytest.mark.asyncio
@@ -1808,44 +1785,43 @@ async def test_audit_guild_scope_query(mock_db: AsyncMock) -> None:
 
 
 @pytest.mark.asyncio
-async def test_reopen_no_category_raises_typed_exception(
+@pytest.mark.parametrize(
+    ("case", "guild_config_kwargs", "get_channel_return"),
+    [
+        pytest.param(
+            "no_category_configured",
+            {"category_id": None},
+            "__SKIP__",
+            id="reopen-no-category-typed",
+        ),
+        pytest.param(
+            "deleted_category",
+            {},
+            None,
+            id="reopen-deleted-category-typed",
+        ),
+    ],
+)
+async def test_reopen_category_raises_typed_exception(
+    case: str,
+    guild_config_kwargs: dict,
+    get_channel_return: object,
     service: TicketService,
     mock_db: AsyncMock,
 ) -> None:
-    """reopen_ticket MUST raise TicketCategoryNotConfiguredError (not raw
-    ValueError) when no ticket category is configured for the guild.
+    """reopen_ticket MUST raise TicketCategoryNotConfiguredError (typed, not
+    raw ValueError) when no ticket category is configured for the guild OR
+    the configured Discord category channel no longer exists.
     """
 
     ticket_id = "ticket-uuid-003"
     closed_row = _closed_ticket_row()
     mock_db.get_ticket.return_value = closed_row
-    _wire_guild_config(mock_db, category_id=None)
+    _wire_guild_config(mock_db, **guild_config_kwargs)
 
     guild = _mock_guild_for_reopen(category_channel=None)
-
-    with pytest.raises(TicketCategoryNotConfiguredError):
-        await service.reopen_ticket(ticket_id, guild=guild)
-
-    guild.create_text_channel.assert_not_awaited()
-    mock_db.update_ticket.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_reopen_deleted_category_raises_typed_exception(
-    service: TicketService,
-    mock_db: AsyncMock,
-) -> None:
-    """reopen_ticket MUST raise TicketCategoryNotConfiguredError when the
-    configured Discord category channel no longer exists.
-    """
-
-    ticket_id = "ticket-uuid-003"
-    closed_row = _closed_ticket_row()
-    mock_db.get_ticket.return_value = closed_row
-    _wire_guild_config(mock_db)
-
-    guild = _mock_guild_for_reopen(category_channel=None)
-    guild.get_channel = MagicMock(return_value=None)
+    if get_channel_return != "__SKIP__":
+        guild.get_channel = MagicMock(return_value=get_channel_return)
 
     with pytest.raises(TicketCategoryNotConfiguredError):
         await service.reopen_ticket(ticket_id, guild=guild)
@@ -2300,57 +2276,48 @@ async def test_reopen_fallback_name_resolution(
 
 
 @pytest.mark.asyncio
-async def test_claim_success_audit_failure_continues(
+@pytest.mark.parametrize(
+    ("op", "wire", "verify"),
+    [
+        # Claim: audit failure on success path → role-assignment action proceeds.
+        pytest.param(
+            "claim",
+            "claim",
+            lambda t, row: t.status == "claimed" and t.claimed_by == "999999999",
+            id="claim-audit-failure-continues",
+        ),
+        # Close: audit failure on success path → channel delete/transcript proceed.
+        pytest.param("close", "close", lambda t, row: t.status == "closed", id="close-audit-failure-continues"),
+    ],
+)
+async def test_success_audit_failure_continues(
+    op: str,
+    wire: str,
+    verify,
     service: TicketService,
     mock_db: AsyncMock,
     ticket_row: dict,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Spec: claim success audit failure MUST NOT abort the claim.
-
-    When insert_audit_row raises on the success path, the claim
-    UI action (role assignment) proceeds normally and a WARNING is logged.
+    """Spec: a success-path audit failure MUST NOT abort the UI action
+    (claim role assignment / close channel delete + transcript) — the op
+    proceeds normally and a WARNING is logged.
     """
 
-    ticket_id = ticket_row["id"]
-    staff_id = "999999999"
-
-    _claim_preread(mock_db, ticket_row, staff_id)
+    if wire == "claim":
+        _claim_preread(mock_db, ticket_row, "999999999")
+    else:
+        _wire_transition(mock_db, ticket_row)
+        mock_db.get_ticket.return_value = ticket_row
     mock_db.insert_audit_row.side_effect = Exception("audit table unavailable")
 
     with caplog.at_level(logging.WARNING, logger="bot.services.ticket_service"):
-        ticket = await service.claim_ticket(ticket_id, claimed_by=staff_id)
+        if op == "claim":
+            ticket = await service.claim_ticket(ticket_row["id"], claimed_by="999999999")
+        else:
+            ticket = await service.close_ticket(ticket_row["id"], closed_by="999999999")
 
-    # Claim succeeded — ticket is claimed despite audit failure.
-    assert ticket.status == "claimed"
-    assert ticket.claimed_by == staff_id
-    assert any("audit" in r.message.lower() for r in caplog.records)
-
-
-@pytest.mark.asyncio
-async def test_close_success_audit_failure_continues(
-    service: TicketService,
-    mock_db: AsyncMock,
-    ticket_row: dict,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Spec: close success audit failure MUST NOT abort the close.
-
-    When insert_audit_row raises on the success path, the close
-    UI action (channel delete, transcript) proceeds normally and a WARNING is logged.
-    """
-
-    ticket_id = ticket_row["id"]
-
-    _wire_transition(mock_db, ticket_row)
-    mock_db.get_ticket.return_value = ticket_row
-    mock_db.insert_audit_row.side_effect = Exception("audit table unavailable")
-
-    with caplog.at_level(logging.WARNING, logger="bot.services.ticket_service"):
-        ticket = await service.close_ticket(ticket_id, closed_by="999999999")
-
-    # Close succeeded — ticket is closed despite audit failure.
-    assert ticket.status == "closed"
+    assert verify(ticket, ticket_row)
     assert any("audit" in r.message.lower() for r in caplog.records)
 
 
@@ -2744,69 +2711,72 @@ async def test_edit_ticket_category_writes_audit_on_success(
 
 
 @pytest.mark.asyncio
-async def test_edit_ticket_category_non_mod_denied(
+@pytest.mark.parametrize(
+    ("case", "row_kwargs", "count_return", "match", "audit_denied"),
+    [
+        pytest.param("non-mod", {}, None, r"[Mm]oderator", True, id="edit-category-non-mod-denied"),
+        pytest.param(
+            "closed",
+            {"status": "closed"},
+            None,
+            r"[Cc]losed",
+            False,
+            id="edit-category-closed-rejected",
+        ),
+        pytest.param(
+            "limit-violation",
+            {"author_id": "111111111"},
+            1,  # author already has an open ticket in the target category
+            r"already has an open ticket",
+            False,
+            id="edit-category-limit-violation",
+        ),
+        pytest.param("not-found", {}, None, r"[Nn]ot found", False, id="edit-category-not-found"),
+    ],
+)
+async def test_edit_ticket_category_denied_matrix(
+    case: str,
+    row_kwargs: dict,
+    count_return: int | None,
+    match: str,
+    audit_denied: bool,
     service: TicketService,
     mock_db: AsyncMock,
 ) -> None:
-    """Non-mod actor MUST be denied by check_can_edit_category."""
+    """edit_ticket_category denial gates (task 2.3 RED): non-mod actors are
+    denied by check_can_edit_category (with a denied audit row); closed
+    tickets and per-author open-ticket limit violations raise ValueError
+    before any DB mutation.
+    """
     ticket_id = "ticket-uuid-edit"
-    open_row = _open_ticket_row_for_edit()
     channel = _mock_channel_for_edit()
+    if case == "not-found":
+        mock_db.get_ticket.return_value = None
+    else:
+        open_row = _open_ticket_row_for_edit(**row_kwargs)
+        mock_db.get_ticket.return_value = open_row
+    if count_return is not None:
+        mock_db.count_user_open_tickets_in_category.return_value = count_return
 
-    mock_db.get_ticket.return_value = open_row
-
-    with pytest.raises(ValueError, match=r"[Mm]oderator"):
-        await service.edit_ticket_category(
-            ticket_id,
-            "cat-uuid-billing",
-            channel=channel,
-            actor_id="111111111",  # author, not mod
-            is_mod=False,
-        )
+    if case == "non-mod":
+        with pytest.raises(ValueError, match=match):
+            await service.edit_ticket_category(
+                ticket_id,
+                "cat-uuid-billing",
+                channel=channel,
+                actor_id="111111111",  # author, not mod
+                is_mod=False,
+            )
+    else:
+        with pytest.raises(ValueError, match=match):
+            await _edit_category(service, ticket_id, channel)
 
     # No DB mutation on denial.
     mock_db.update_ticket.assert_not_awaited()
-    # Audit denied written.
-    kwargs = _assert_audit(mock_db)
-    assert kwargs["action"] == "edit_category"
-    assert kwargs["outcome"] == "denied"
-
-
-@pytest.mark.asyncio
-async def test_edit_ticket_category_closed_rejected(
-    service: TicketService,
-    mock_db: AsyncMock,
-) -> None:
-    """Edit on a closed ticket MUST raise ValueError and not mutate DB."""
-    ticket_id = "ticket-uuid-edit"
-    closed_row = _open_ticket_row_for_edit(status="closed")
-    channel = _mock_channel_for_edit()
-
-    mock_db.get_ticket.return_value = closed_row
-
-    with pytest.raises(ValueError, match=r"[Cc]losed"):
-        await _edit_category(service, ticket_id, channel)
-
-    mock_db.update_ticket.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_edit_ticket_category_limit_violation(
-    service: TicketService,
-    mock_db: AsyncMock,
-) -> None:
-    """Edit into category where author already has open ticket MUST raise ValueError."""
-    ticket_id = "ticket-uuid-edit"
-    open_row = _open_ticket_row_for_edit(author_id="111111111")
-    channel = _mock_channel_for_edit()
-
-    mock_db.get_ticket.return_value = open_row
-    mock_db.count_user_open_tickets_in_category.return_value = 1  # already has one
-
-    with pytest.raises(ValueError, match=r"already has an open ticket"):
-        await _edit_category(service, ticket_id, channel)
-
-    mock_db.update_ticket.assert_not_awaited()
+    if audit_denied:
+        kwargs = _assert_audit(mock_db)
+        assert kwargs["action"] == "edit_category"
+        assert kwargs["outcome"] == "denied"
 
 
 @pytest.mark.asyncio
@@ -2869,21 +2839,6 @@ async def test_edit_ticket_category_same_category_noop(
     # DB updated (even though category didn't change — the method doesn't optimize for no-op).
     mock_db.update_ticket.assert_awaited_once()
     assert rename_ok is True
-
-
-@pytest.mark.asyncio
-async def test_edit_ticket_category_not_found(
-    service: TicketService,
-    mock_db: AsyncMock,
-) -> None:
-    """Editing a non-existent ticket MUST raise ValueError."""
-    mock_db.get_ticket.return_value = None
-    channel = _mock_channel_for_edit()
-
-    with pytest.raises(ValueError, match=r"[Nn]ot found"):
-        await _edit_category(service, "nonexistent", channel)
-
-    mock_db.update_ticket.assert_not_awaited()
 
 
 # ===========================================================================
@@ -3131,53 +3086,44 @@ class TestCloseTicketConditional:
     """close_ticket with close_reason, zombie path, re-close ValueError."""
 
     @pytest.mark.asyncio
-    async def test_close_reason_persists_when_provided(
+    @pytest.mark.parametrize(
+        ("close_reason", "expect_status_assert"),
+        [
+            pytest.param("zombie:channel_missing", True, id="close-reason-provided"),
+            pytest.param(None, False, id="close-reason-none-not-forwarded"),
+        ],
+    )
+    async def test_close_reason_forwarding(
         self,
+        close_reason: str | None,
+        expect_status_assert: bool,
         service: TicketService,
         mock_db: AsyncMock,
         ticket_row: dict,
     ) -> None:
-        """When close_reason is provided, it MUST be forwarded to transition_ticket_to_closed."""
+        """close_ticket MUST forward close_reason verbatim (None included) to
+        transition_ticket_to_closed: provided values persist, None MUST NOT
+        overwrite an existing closeReason on the row.
+        """
         ticket_id = ticket_row["id"]
-        closed_row = _wire_transition(mock_db, ticket_row, close_reason="zombie:channel_missing")
+        closed_row = _wire_transition(mock_db, ticket_row, close_reason=close_reason)
         mock_db.get_ticket.return_value = closed_row
 
-        ticket = await service.close_ticket(
-            ticket_id,
-            closed_by="999999999",
-            close_reason="zombie:channel_missing",
-        )
+        kwargs: dict[str, str] = {"closed_by": "999999999"}
+        if close_reason is not None:
+            kwargs["close_reason"] = close_reason
+
+        ticket = await service.close_ticket(ticket_id, **kwargs)
 
         mock_db.transition_ticket_to_closed.assert_awaited_once_with(
             ticket_row["guildId"],
             ticket_id,
             expected_statuses=("open", "claimed"),
-            close_reason="zombie:channel_missing",
+            close_reason=close_reason,
             transcript_url=None,
         )
-        assert ticket.status == "closed"
-
-    @pytest.mark.asyncio
-    async def test_close_reason_none_does_not_overwrite(
-        self,
-        service: TicketService,
-        mock_db: AsyncMock,
-        ticket_row: dict,
-    ) -> None:
-        """When close_reason is None, it MUST NOT be forwarded."""
-        ticket_id = ticket_row["id"]
-        closed_row = _wire_transition(mock_db, ticket_row)
-        mock_db.get_ticket.return_value = closed_row
-
-        await service.close_ticket(ticket_id, closed_by="999999999")
-
-        mock_db.transition_ticket_to_closed.assert_awaited_once_with(
-            ticket_row["guildId"],
-            ticket_id,
-            expected_statuses=("open", "claimed"),
-            close_reason=None,
-            transcript_url=None,
-        )
+        if expect_status_assert:
+            assert ticket.status == "closed"
 
     @pytest.mark.asyncio
     async def test_zombie_path_skips_transcript_and_channel_deletion(
@@ -3499,34 +3445,30 @@ async def test_repair_denied_when_preflight_unresolved(
 
 
 @pytest.mark.asyncio
-async def test_repair_quarantines_unknown_evidence(
+@pytest.mark.parametrize(
+    ("case", "evidence_kwargs"),
+    [
+        pytest.param("unknown_channel_existence", {"channel_exists": None}, id="repair-quarantine-unknown"),
+        pytest.param(
+            "stale_absence_evidence",
+            {"observed_at": datetime(2020, 1, 1, tzinfo=UTC)},
+            id="repair-quarantine-stale",
+        ),
+    ],
+)
+async def test_repair_quarantines_unresolved_evidence(
+    case: str,
+    evidence_kwargs: dict,
     service: TicketService,
     mock_db: AsyncMock,
     ticket_row: dict,
 ) -> None:
-    """Unknown (None) channel existence MUST quarantine, never mutate."""
+    """Evidence whose corroboration is unresolved (unknown channel
+    existence or stale observation) MUST quarantine (skipped /
+    evidence_unresolved), never mutate.
+    """
 
-    evidence = _evidence(ticket_row, channel_exists=None)
-    assert evidence.corroborated is None
-
-    result = await _repair_from_evidence(service, evidence)
-
-    assert isinstance(result, RepairResult)
-    assert result.action == "no_op"
-    assert result.outcome == "skipped"
-    assert result.reason == "evidence_unresolved"
-    mock_db.transition_ticket_to_closed.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_repair_quarantines_stale_evidence(
-    service: TicketService,
-    mock_db: AsyncMock,
-    ticket_row: dict,
-) -> None:
-    """Stale absence evidence MUST quarantine (unresolved), never mutate."""
-
-    evidence = _evidence(ticket_row, observed_at=datetime(2020, 1, 1, tzinfo=UTC))
+    evidence = _evidence(ticket_row, **evidence_kwargs)
     assert evidence.corroborated is None
 
     result = await _repair_from_evidence(service, evidence)
