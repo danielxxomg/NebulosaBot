@@ -1552,20 +1552,20 @@ async def test_transfer_closed_denied(service: TicketService, mock_db: AsyncMock
     assert kwargs["outcome"] == "denied"
 
 
-_NOTE_PRIVACY_MATRIX: ClassVar[list[Any]] = [
+_NOTE_PRIVACY_MATRIX = [
     # create_note: dedup gate (2s window) — denied / cleared
     pytest.param(
         "note_add",
         "dedup",
         [{"content": "Hello World"}],
-        None,
+        "  hello world  ",
         True,
         "duplicate|dedup",
         id="note-dedup-within-window-denied",
     ),
     pytest.param("note_add", "dedup", [], "hello", False, None, id="note-dedup-outside-window-success"),
     # create_note: 50-note cap — denied / under-cap
-    pytest.param("note_add", "cap", 50, None, True, "cap", id="note-cap-denied-audited"),
+    pytest.param("note_add", "cap", 50, "one too many", True, "cap", id="note-cap-denied-audited"),
     pytest.param("note_add", "cap", 30, "new note", False, None, id="note-under-cap-audited-success"),
     # delete_note: author-only rule — allowed / rejected
     pytest.param("note_delete", "delete", "999999999", None, False, None, id="note-delete-own-audited-success"),
@@ -1599,25 +1599,25 @@ async def test_note_privacy_matrix(
     mock_db.get_ticket.return_value = _ticket_guild_row(ticket_id)
     if audit_action == "note_add":
         if gate == "dedup":
+            assert isinstance(gate_value, list)
             mock_db.get_ticket_notes.return_value = []
             mock_db.get_recent_notes_for_dedup.return_value = gate_value
         else:  # cap
+            assert isinstance(gate_value, int)
             mock_db.get_ticket_notes.return_value = [_note_row() for _ in range(gate_value)]
             mock_db.get_recent_notes_for_dedup.return_value = []
-        if insert_content is not None:
-            mock_db.insert_ticket_note.return_value = _note_row(content=insert_content)
+        assert isinstance(insert_content, str)
+        mock_db.insert_ticket_note.return_value = _note_row(content=insert_content)
 
         if expect_denied:
             with pytest.raises(ValueError, match=match):
-                await service.create_note(
-                    ticket_id, "999999999", "  hello world  " if gate == "dedup" else "one too many"
-                )
+                await service.create_note(ticket_id, "999999999", insert_content)
             mock_db.insert_ticket_note.assert_not_awaited()
         else:
             await service.create_note(ticket_id, "999999999", insert_content)
             mock_db.insert_ticket_note.assert_awaited_once()
     else:  # note_delete
-        note_author = "999999999" if not expect_denied else gate_value
+        note_author = "userA" if expect_denied else "999999999"
         mock_db.get_ticket_notes.return_value = [_note_row(author_id=note_author)]
 
         if expect_denied:
@@ -1632,7 +1632,7 @@ async def test_note_privacy_matrix(
 
     kwargs = _audit_kwargs(mock_db)
     assert kwargs["action"] == audit_action
-    assert kwargs["outcome"] == "denied" if expect_denied else kwargs["outcome"] == "success"
+    assert kwargs["outcome"] == ("denied" if expect_denied else "success")
 
 
 @pytest.mark.asyncio
