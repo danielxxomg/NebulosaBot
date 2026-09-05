@@ -405,19 +405,6 @@ class TestSubscriberStop:
         assert client.remove_all_channels.await_count == 1
 
 
-class TestMarkRecentWrite:
-    """mark_recent_write — public API for database.py integration (task 3.10)."""
-
-    @pytest.mark.asyncio
-    async def test_mark_then_cdc_skips(self, cache: TTLCache) -> None:
-        client = _make_client_mock()
-        sub = _make_subscriber(cache, client)
-
-        await sub.mark_recent_write("guild", "G1")
-
-        assert await sub.recent_writes.contains("guild", "G1") is True
-
-
 # ===========================================================================
 # CDC handler dispatch (tasks 2.3, 2.4, 3.5)
 # ===========================================================================
@@ -688,7 +675,7 @@ class TestNormalizeCdcPayload:
 
 
 class TestSelfEchoFiltering:
-    """A CDC event for a row the bot just wrote MUST be skipped."""
+    """A CDC event for a row the bot just wrote MUST be skipped (TTL-gated)."""
 
     @pytest.mark.asyncio
     async def test_recent_write_skips_invalidation(self, cache: TTLCache) -> None:
@@ -725,6 +712,21 @@ class TestSelfEchoFiltering:
         await sub._handle_cdc(_cdc_payload(table="guild", record={"id": "G-other"}))
 
         assert cache.get("G-other:config") is None
+
+    @pytest.mark.asyncio
+    async def test_mark_recent_write_stores_in_recent_writes(self, cache: TTLCache) -> None:
+        """mark_recent_write — public API records {table}:{id} in recent_writes.
+
+        Deduped in the S6 ceiling cut: the sub-level wiring (recent_writes IS
+        the RecentWriteSet, and mark_recent_write delegates to it) shares the
+        skip-behavior rows above; this probe pins the public-API surface.
+        """
+        client = _make_client_mock()
+        sub = _make_subscriber(cache, client)
+
+        await sub.mark_recent_write("guild", "G1")
+
+        assert await sub.recent_writes.contains("guild", "G1") is True
 
 
 # ===========================================================================
