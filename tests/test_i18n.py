@@ -16,14 +16,18 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Generator
+from collections.abc import Coroutine, Generator
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 from unittest.mock import MagicMock
 
 import discord
 import pytest
 from discord import app_commands
+
+from unittest.mock import AsyncMock  # noqa: E402, PLC0415 -- facade indirection  # isort: skip
+from bot.bot import NebulosaBot  # noqa: E402, PLC0415 -- facade indirection  # isort: skip
+from collections.abc import Callable  # isort: skip
 
 # ---------------------------------------------------------------------------
 # Reset fixture — clears module-level i18n state between tests
@@ -33,7 +37,7 @@ from discord import app_commands
 @pytest.fixture(autouse=True)
 def _reset_i18n_state() -> Generator[None, None, None]:
     """Clear module-level i18n state before each test."""
-    from bot.core import i18n
+    from bot.core import i18n  # noqa: PLC0415 -- facade indirection
 
     # Save original state.
     orig_locales = dict(i18n._locales)
@@ -98,7 +102,12 @@ def _slash_locale_data() -> tuple[dict, dict]:
     return es_data, en_data
 
 
-def _make_setup_bot_with_tracking():
+def _make_setup_bot_with_tracking() -> tuple[
+    NebulosaBot,
+    list[str],
+    Callable[[object], Coroutine[Any, Any, None]],
+    Callable[..., Coroutine[Any, Any, list[object]]],
+]:
     """Return (bot, call_order, set_translator, sync) for setup_hook ordering tests."""
     from bot.bot import NebulosaBot  # noqa: PLC0415 -- facade indirection
     from bot.config import BotConfig  # noqa: PLC0415 -- facade indirection
@@ -111,10 +120,10 @@ def _make_setup_bot_with_tracking():
     bot = NebulosaBot(config=config, intents=discord.Intents.default())
     call_order: list[str] = []
 
-    async def tracking_set_translator(translator):
+    async def tracking_set_translator(translator: object) -> None:
         call_order.append("set_translator")
 
-    async def tracking_sync(*args, **kwargs):
+    async def tracking_sync(*args: object, **kwargs: object) -> list[object]:
         call_order.append("sync")
         return []
 
@@ -131,14 +140,14 @@ class TestLoadLocales:
 
     def test_load_locales_reads_es_and_en(self, tmp_path: Path) -> None:
         """load_locales() MUST make both locale dicts available in memory."""
-        from bot.core.i18n import load_locales
+        from bot.core.i18n import load_locales  # noqa: PLC0415 -- facade indirection
 
         _write_locale(tmp_path, "es", {"core": {"ping": {"title": "Pong!"}}})
         _write_locale(tmp_path, "en", {"core": {"ping": {"title": "Pong!"}}})
 
         load_locales(tmp_path / "locales")
 
-        from bot.core import i18n
+        from bot.core import i18n  # noqa: PLC0415 -- facade indirection
 
         assert "es" in i18n._locales
         assert "en" in i18n._locales
@@ -151,7 +160,7 @@ class TestLoadLocales:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """If a locale file is missing, load_locales() MUST log a warning and continue."""
-        from bot.core.i18n import load_locales
+        from bot.core.i18n import load_locales  # noqa: PLC0415 -- facade indirection
 
         # Only create es.json, not en.json
         _write_locale(tmp_path, "es", {"core": {"ping": {"title": "Pong!"}}})
@@ -172,21 +181,21 @@ class TestSetGuildLanguage:
 
     def test_set_guild_language_updates_map(self) -> None:
         """set_guild_language() MUST update the guild→language mapping."""
-        from bot.core.i18n import set_guild_language
+        from bot.core.i18n import set_guild_language  # noqa: PLC0415 -- facade indirection
 
         set_guild_language("123456789", "en")
 
-        from bot.core import i18n
+        from bot.core import i18n  # noqa: PLC0415 -- facade indirection
 
         assert i18n._guild_languages["123456789"] == "en"
 
     def test_set_guild_language_accepts_int(self) -> None:
         """set_guild_language() MUST accept int guild_id (converts to str internally)."""
-        from bot.core.i18n import set_guild_language
+        from bot.core.i18n import set_guild_language  # noqa: PLC0415 -- facade indirection
 
         set_guild_language(987654321, "es")
 
-        from bot.core import i18n
+        from bot.core import i18n  # noqa: PLC0415 -- facade indirection
 
         assert i18n._guild_languages["987654321"] == "es"
 
@@ -202,7 +211,7 @@ class TestTFunction:
     @pytest.fixture(autouse=True)
     def _load_test_locales(self, tmp_path: Path) -> None:
         """Load test locales before each test."""
-        from bot.core.i18n import load_locales, set_guild_language
+        from bot.core.i18n import load_locales, set_guild_language  # noqa: PLC0415 -- facade indirection
 
         es_data = {
             "core": {
@@ -233,14 +242,14 @@ class TestTFunction:
 
     def test_t_es_lookup(self) -> None:
         """t() MUST return Spanish string for an es-configured guild."""
-        from bot.core.i18n import t
+        from bot.core.i18n import t  # noqa: PLC0415 -- facade indirection
 
         result = t("111", "core.status.title")
         assert result == "Estado del Bot"
 
     def test_t_en_lookup(self) -> None:
         """t() MUST return English string for an en-configured guild."""
-        from bot.core.i18n import t
+        from bot.core.i18n import t  # noqa: PLC0415 -- facade indirection
 
         result = t("222", "core.status.title")
         assert result == "Bot Status"
@@ -248,8 +257,8 @@ class TestTFunction:
     def test_t_missing_key_fallback_to_es(self) -> None:
         """When en locale lacks a key, t() MUST fall back to es."""
         # Add a key only to es
-        from bot.core import i18n
-        from bot.core.i18n import t
+        from bot.core import i18n  # noqa: PLC0415 -- facade indirection
+        from bot.core.i18n import t  # noqa: PLC0415 -- facade indirection
 
         i18n._locales["es"]["only_es"] = {"key": "Solo español"}
 
@@ -258,14 +267,14 @@ class TestTFunction:
 
     def test_t_exhausted_fallback_returns_raw_key(self) -> None:
         """When key is missing in ALL locales, t() MUST return the raw key."""
-        from bot.core.i18n import t
+        from bot.core.i18n import t  # noqa: PLC0415 -- facade indirection
 
         result = t("222", "nonexistent.deeply.nested.key")
         assert result == "nonexistent.deeply.nested.key"
 
     def test_t_interpolation(self) -> None:
         """t() MUST replace {placeholder} tokens with matching kwargs."""
-        from bot.core.i18n import t
+        from bot.core.i18n import t  # noqa: PLC0415 -- facade indirection
 
         result = t("222", "core.ping.latency", latency=42)
         assert result == "WebSocket latency: **42 ms**"
@@ -275,7 +284,7 @@ class TestTFunction:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """When kwargs is missing a placeholder, t() MUST log a warning."""
-        from bot.core.i18n import t
+        from bot.core.i18n import t  # noqa: PLC0415 -- facade indirection
 
         with caplog.at_level(logging.WARNING):
             result = t("222", "core.ping.latency")
@@ -286,14 +295,14 @@ class TestTFunction:
 
     def test_t_none_guild_id_fallback_to_es(self) -> None:
         """When guild_id is None, t() MUST fall back to es locale."""
-        from bot.core.i18n import t
+        from bot.core.i18n import t  # noqa: PLC0415 -- facade indirection
 
         result = t(None, "core.ping.title")
         assert result == "Pong!"
 
     def test_t_unknown_guild_fallback_to_es(self) -> None:
         """When guild_id is not in the language map, t() MUST fall back to es."""
-        from bot.core.i18n import t
+        from bot.core.i18n import t  # noqa: PLC0415 -- facade indirection
 
         result = t("999", "core.status.title")
         assert result == "Estado del Bot"
@@ -310,7 +319,7 @@ class TestGreetingLocaleKeys:
     @pytest.fixture(autouse=True)
     def _load_greeting_locales(self, tmp_path: Path) -> None:
         """Load minimal greeting locales so missing production keys fail RED."""
-        from bot.core.i18n import load_locales, set_guild_language
+        from bot.core.i18n import load_locales, set_guild_language  # noqa: PLC0415 -- facade indirection
 
         _write_locale(
             tmp_path,
@@ -360,7 +369,7 @@ class TestGreetingLocaleKeys:
         cta: str,
     ) -> None:
         """ES and EN greeting keys resolve and consume their own placeholders."""
-        from bot.core.i18n import t
+        from bot.core.i18n import t  # noqa: PLC0415 -- facade indirection
 
         values = (
             t(guild_id, "greetings.card.welcome_title"),
@@ -374,8 +383,8 @@ class TestGreetingLocaleKeys:
 
     def test_greeting_fallback_precedes_raw_key_and_preserves_template_namespace(self) -> None:
         """Missing EN greeting keys use ES, while message placeholders stay separate."""
-        from bot.core import i18n
-        from bot.core.i18n import t
+        from bot.core import i18n  # noqa: PLC0415 -- facade indirection
+        from bot.core.i18n import t  # noqa: PLC0415 -- facade indirection
 
         del i18n._locales["en"]["greetings"]["card"]["welcome_title"]
 
@@ -392,7 +401,7 @@ class TestGreetingLocaleKeys:
             == "Member #7"
         )
 
-        from bot.services.greeting_service import _format_template
+        from bot.services.greeting_service import _format_template  # noqa: PLC0415 -- facade indirection
 
         member = MagicMock()
         member.mention = "<@222>"
@@ -401,8 +410,8 @@ class TestGreetingLocaleKeys:
 
     def test_real_locale_files_define_greeting_namespace(self) -> None:
         """The shipped ES/EN locale files expose every Phase 2 greeting key."""
-        from bot.core import i18n
-        from bot.core.i18n import load_locales
+        from bot.core import i18n  # noqa: PLC0415 -- facade indirection
+        from bot.core.i18n import load_locales  # noqa: PLC0415 -- facade indirection
 
         load_locales()
 
@@ -429,7 +438,7 @@ class TestLocaleTranslator:
     @pytest.fixture(autouse=True)
     def _load_test_locales(self, tmp_path: Path) -> None:
         """Load test locales with slash keys for translator tests."""
-        from bot.core.i18n import load_locales
+        from bot.core.i18n import load_locales  # noqa: PLC0415 -- facade indirection
 
         es_data, en_data = _slash_locale_data()
         _write_locale(tmp_path, "es", es_data)
@@ -438,7 +447,7 @@ class TestLocaleTranslator:
 
     async def test_spanish_locale_returns_es_string(self) -> None:
         """Spanish Discord locale MUST return the Spanish translation string."""
-        from bot.core.i18n import LocaleTranslator
+        from bot.core.i18n import LocaleTranslator  # noqa: PLC0415 -- facade indirection
 
         translator = LocaleTranslator()
         string = app_commands.locale_str("Muestra la latencia WebSocket del bot.", key="slash.descriptions.ping")
@@ -449,7 +458,7 @@ class TestLocaleTranslator:
 
     async def test_english_locale_returns_en_string(self) -> None:
         """English Discord locale MUST return the English translation string."""
-        from bot.core.i18n import LocaleTranslator
+        from bot.core.i18n import LocaleTranslator  # noqa: PLC0415 -- facade indirection
 
         translator = LocaleTranslator()
         string = app_commands.locale_str("Muestra la latencia WebSocket del bot.", key="slash.descriptions.ping")
@@ -460,7 +469,7 @@ class TestLocaleTranslator:
 
     async def test_unknown_locale_returns_none(self) -> None:
         """Unsupported locale (e.g. French) MUST return None — Discord shows default."""
-        from bot.core.i18n import LocaleTranslator
+        from bot.core.i18n import LocaleTranslator  # noqa: PLC0415 -- facade indirection
 
         translator = LocaleTranslator()
         string = app_commands.locale_str("Muestra la latencia WebSocket del bot.", key="slash.descriptions.ping")
@@ -471,7 +480,7 @@ class TestLocaleTranslator:
 
     async def test_no_key_returns_none(self) -> None:
         """When locale_str has no key in extras, translate() MUST return None."""
-        from bot.core.i18n import LocaleTranslator
+        from bot.core.i18n import LocaleTranslator  # noqa: PLC0415 -- facade indirection
 
         translator = LocaleTranslator()
         string = app_commands.locale_str("Some text")
@@ -482,7 +491,7 @@ class TestLocaleTranslator:
 
     async def test_missing_key_in_locale_returns_none(self) -> None:
         """When the key doesn't exist in the locale dict, translate() MUST return None."""
-        from bot.core.i18n import LocaleTranslator
+        from bot.core.i18n import LocaleTranslator  # noqa: PLC0415 -- facade indirection
 
         translator = LocaleTranslator()
         string = app_commands.locale_str("Missing", key="slash.descriptions.nonexistent")
@@ -493,7 +502,7 @@ class TestLocaleTranslator:
 
     async def test_es_es_variant_maps_to_es(self) -> None:
         """Spanish (Latin America) locale variant MUST map to es."""
-        from bot.core.i18n import LocaleTranslator
+        from bot.core.i18n import LocaleTranslator  # noqa: PLC0415 -- facade indirection
 
         translator = LocaleTranslator()
         string = app_commands.locale_str("Muestra la latencia WebSocket del bot.", key="slash.descriptions.ping")
@@ -504,7 +513,7 @@ class TestLocaleTranslator:
 
     async def test_en_gb_variant_maps_to_en(self) -> None:
         """English (UK) locale variant MUST map to en."""
-        from bot.core.i18n import LocaleTranslator
+        from bot.core.i18n import LocaleTranslator  # noqa: PLC0415 -- facade indirection
 
         translator = LocaleTranslator()
         string = app_commands.locale_str("Muestra la latencia WebSocket del bot.", key="slash.descriptions.ping")
@@ -515,7 +524,7 @@ class TestLocaleTranslator:
 
     async def test_describes_key_resolves_nested(self) -> None:
         """Nested describes key (slash.describes.warn.member) MUST resolve correctly."""
-        from bot.core.i18n import LocaleTranslator
+        from bot.core.i18n import LocaleTranslator  # noqa: PLC0415 -- facade indirection
 
         translator = LocaleTranslator()
         string = app_commands.locale_str("El miembro a advertir", key="slash.describes.warn.member")
@@ -526,7 +535,7 @@ class TestLocaleTranslator:
 
     async def test_no_database_calls(self) -> None:
         """Translator MUST NOT make any database calls — purely in-memory."""
-        from bot.core.i18n import LocaleTranslator
+        from bot.core.i18n import LocaleTranslator  # noqa: PLC0415 -- facade indirection
 
         translator = LocaleTranslator()
         string = app_commands.locale_str("test", key="slash.descriptions.ping")
@@ -534,7 +543,7 @@ class TestLocaleTranslator:
 
         # This should complete without any async DB calls
         result = await translator.translate(string, discord.Locale.spain_spanish, context)
-        assert result is not None
+        assert result == "Muestra la latencia WebSocket del bot."
 
 
 # ---------------------------------------------------------------------------
@@ -548,7 +557,7 @@ class TestValidateSlashLocalizations:
     @pytest.fixture(autouse=True)
     def _load_test_locales(self, tmp_path: Path) -> None:
         """Load test locales with slash keys for validation tests."""
-        from bot.core.i18n import load_locales
+        from bot.core.i18n import load_locales  # noqa: PLC0415 -- facade indirection
 
         es_data, en_data = _slash_locale_data()
         _write_locale(tmp_path, "es", es_data)
@@ -557,7 +566,7 @@ class TestValidateSlashLocalizations:
 
     def test_valid_commands_pass(self) -> None:
         """Commands with correct locale_str descriptions MUST pass validation."""
-        from bot.core.i18n import validate_slash_localizations
+        from bot.core.i18n import validate_slash_localizations  # noqa: PLC0415 -- facade indirection
 
         tree = MagicMock()
         cmd = MagicMock(spec=app_commands.Command)
@@ -575,7 +584,7 @@ class TestValidateSlashLocalizations:
 
     def test_missing_description_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
         """Command with missing description_localizations MUST log a warning."""
-        from bot.core.i18n import validate_slash_localizations
+        from bot.core.i18n import validate_slash_localizations  # noqa: PLC0415 -- facade indirection
 
         tree = MagicMock()
         cmd = MagicMock(spec=app_commands.Command)
@@ -595,7 +604,7 @@ class TestValidateSlashLocalizations:
 
     def test_nested_group_commands_validated(self, caplog: pytest.LogCaptureFixture) -> None:
         """Subcommands in groups MUST be validated recursively."""
-        from bot.core.i18n import validate_slash_localizations
+        from bot.core.i18n import validate_slash_localizations  # noqa: PLC0415 -- facade indirection
 
         tree = MagicMock()
 
@@ -625,7 +634,7 @@ class TestValidateSlashLocalizations:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """HybridAppCommand lacking description_localizations MUST NOT raise AttributeError."""
-        from bot.core.i18n import validate_slash_localizations
+        from bot.core.i18n import validate_slash_localizations  # noqa: PLC0415 -- facade indirection
 
         tree = MagicMock()
 
@@ -653,7 +662,7 @@ class TestValidateSlashLocalizations:
 
     def test_hybrid_app_command_with_locale_description_skips_warning(self) -> None:
         """HybridAppCommand with _locale_description set MUST pass validation without warnings."""
-        from bot.core.i18n import validate_slash_localizations
+        from bot.core.i18n import validate_slash_localizations  # noqa: PLC0415 -- facade indirection
 
         tree = MagicMock()
 
@@ -689,13 +698,13 @@ class TestSlashMetadataKeys:
     @pytest.fixture(autouse=True)
     def _load_real_locales_for_slash(self) -> None:
         """Load the real locale files so slash key lookups work."""
-        from bot.core.i18n import load_locales
+        from bot.core.i18n import load_locales  # noqa: PLC0415 -- facade indirection
 
         load_locales()
 
     def test_descriptions_keys_exist_in_both_locales(self) -> None:
         """All slash.descriptions.* keys MUST exist in both es.json and en.json."""
-        from bot.core import i18n
+        from bot.core import i18n  # noqa: PLC0415 -- facade indirection
 
         required_keys = [
             "ping",
@@ -756,7 +765,7 @@ class TestSlashMetadataKeys:
 
     def test_describes_keys_exist_in_both_locales(self) -> None:
         """All slash.describes.* keys MUST exist in both es.json and en.json."""
-        from bot.core import i18n
+        from bot.core import i18n  # noqa: PLC0415 -- facade indirection
 
         required_describes = [
             ("help", "module"),
@@ -866,4 +875,4 @@ class TestTranslatorRegistrationOrder:
 
 
 # Import AsyncMock and patch at module level for the bot tests.
-from unittest.mock import AsyncMock, patch  # noqa: E402, PLC0415 -- facade indirection  # isort: skip
+from unittest.mock import patch  # noqa: E402, PLC0415 -- facade indirection  # isort: skip
