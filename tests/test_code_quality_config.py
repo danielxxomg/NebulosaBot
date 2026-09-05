@@ -77,27 +77,33 @@ def test_code_quality_workflow_exists():
 
 
 def test_code_quality_workflow_has_jscpd_step():
-    """The workflow must contain a jscpd step with continue-on-error: true."""
+    """The workflow must contain a jscpd step; the workflow is fully blocking."""
     content = CI_WORKFLOW.read_text(encoding="utf-8")
 
     # Find the jscpd step block — look for jscpd in run or uses fields
     has_jscpd = "jscpd" in content
     assert has_jscpd, "Workflow must reference jscpd"
 
-    # The workflow must be report-only (continue-on-error at step level)
-    # We parse YAML structurally: find jscpd step and check continue-on-error
-    # Simple heuristic: the string "continue-on-error: true" must appear
-    assert "continue-on-error: true" in content, "jscpd/vulture steps must have continue-on-error: true (report-only)"
+    # Unified-pending-close S4: the advisory escape hatch is GONE. The
+    # report step carries no flag and the budget gate was already blocking
+    # (duplication-budget spec), so no `continue-on-error: true` may remain.
+    assert "continue-on-error: true" not in content, (
+        "no step may keep continue-on-error: true — jscpd gate is blocking and the advisory phase ended with S4"
+    )
 
 
 def test_code_quality_workflow_has_vulture_step():
-    """The workflow must contain a vulture step with continue-on-error: true."""
+    """The workflow must contain a vulture step; the workflow is fully blocking."""
     content = CI_WORKFLOW.read_text(encoding="utf-8")
 
     has_vulture = "vulture" in content
     assert has_vulture, "Workflow must reference vulture"
 
-    assert "continue-on-error: true" in content, "jscpd/vulture steps must have continue-on-error: true (report-only)"
+    # Vulture flipped blocking in ops-zero-lite S0.9; the S4 flip removes
+    # the last escape hatch, so the string must be gone entirely.
+    assert "continue-on-error: true" not in content, (
+        "vulture is blocking since ops-zero-lite S0.9 — no continue-on-error: true may remain in the workflow"
+    )
 
 
 def test_code_quality_workflow_triggers_on_pull_request():
