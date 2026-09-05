@@ -514,34 +514,36 @@ async def test_claim_ticket_not_found(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("rows", "expect_len"),
+    [
+        pytest.param("two", 2, id="returns-models"),
+        pytest.param("empty", 0, id="empty-list"),
+    ],
+)
 async def test_get_stale_tickets_returns_models(
+    rows: str,
+    expect_len: int,
     service: TicketService,
     mock_db: AsyncMock,
     ticket_row: dict,
 ) -> None:
-    """get_stale_tickets MUST call DB with correct args and return Ticket models."""
+    """get_stale_tickets MUST call DB with correct args and return Ticket models.
+
+    Parametrized (S6 ceiling cut): the empty row re-asserts the same DB-call
+    contract with zero rows — when no stale tickets exist the service MUST
+    return an empty list (no models, same single guild-scoped DB call).
+    """
     guild_id = "123456789"
-    mock_db.get_stale_tickets.return_value = [ticket_row, ticket_row]
+    mock_db.get_stale_tickets.return_value = [ticket_row, ticket_row] if rows == "two" else []
 
     tickets = await service.get_stale_tickets(guild_id, hours=72)
 
     mock_db.get_stale_tickets.assert_awaited_once_with(guild_id, hours=72)
-    assert len(tickets) == 2
+    assert len(tickets) == expect_len
     assert all(isinstance(t, Ticket) for t in tickets)
-    assert tickets[0].status == "open"
-
-
-@pytest.mark.asyncio
-async def test_get_stale_tickets_empty(
-    service: TicketService,
-    mock_db: AsyncMock,
-) -> None:
-    """When no stale tickets exist, get_stale_tickets MUST return an empty list."""
-    mock_db.get_stale_tickets.return_value = []
-
-    tickets = await service.get_stale_tickets("123456789")
-
-    assert tickets == []
+    if tickets:
+        assert tickets[0].status == "open"
 
 
 # ---------------------------------------------------------------------------
