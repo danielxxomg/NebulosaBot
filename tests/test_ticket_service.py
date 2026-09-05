@@ -4087,68 +4087,60 @@ class TestSweepIntegrity:
             "status": "open",
         }
 
-    @pytest.mark.asyncio
-    async def test_corroborated_absence_repairs(
+    @pytest.mark.parametrize(
+        "probe_behavior, expect_outcomes, expect_reason",
+        [
+            # NotFound probe → corroborated evidence → repaired via coordinator.
+            ("not_found", ("repaired",), None),
+            # A present channel → not corroborated → skipped/quarantined, no mutation.
+            ("live_channel", ("skipped", "quarantined"), None),
+            # Transient probe (HTTP) → reviewable skip + backoff.
+            ("transient_error", ("skipped",), "probe_unresolved"),
+        ],
+        ids=["corroborated_repair", "live_skip", "unresolved_dry_run"],
+    )
+    async def test_probe_outcomes_route_through_coordinator(
         self,
         service: TicketService,
         mock_db: AsyncMock,
+        probe_behavior: str,
+        expect_outcomes: tuple[str, ...],
+        expect_reason: str | None,
     ) -> None:
-        """NotFound probe → corroborated evidence → repaired via coordinator."""
-        mock_db.get_open_ticket_channel_ids = AsyncMock(return_value=["888888888"])
-        mock_db.get_active_ticket_by_channel = AsyncMock(return_value=self._active_row("888888888"))
-        _wire_closed_transition(mock_db, self._active_row("888888888"))
-
-        bot = self._sweep_bot()
-        bot.get_guild().fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(), "gone"))
-
-        results = await service.sweep_integrity("123456789", bot, preflight=_resolved_preflight())
-
-        assert len(results) == 1
-        assert results[0].outcome == "repaired"
-        mock_db.transition_ticket_to_closed.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_live_channel_is_skipped(
-        self,
-        service: TicketService,
-        mock_db: AsyncMock,
-    ) -> None:
-        """A present channel → not corroborated → skipped, no mutation."""
-        mock_db.get_open_ticket_channel_ids = AsyncMock(return_value=["888888888"])
-        mock_db.get_active_ticket_by_channel = AsyncMock(return_value=self._active_row("888888888"))
-
-        bot = self._sweep_bot()
-        channel = MagicMock(spec=discord.TextChannel)
-        channel.id = 888888888
-        bot.get_guild().fetch_channel = AsyncMock(return_value=channel)
-
-        results = await service.sweep_integrity("123456789", bot, preflight=_resolved_preflight())
-
-        assert len(results) == 1
-        assert results[0].outcome in ("skipped", "quarantined")
-        mock_db.transition_ticket_to_closed.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_unresolved_probe_dry_runs(
-        self,
-        service: TicketService,
-        mock_db: AsyncMock,
-    ) -> None:
-        """Transient probe (None) → reviewable skip + backoff, no mutation."""
+        """Sweep probes route by outcome: corroborated absence repairs, a
+        live channel is skipped (not corroborated), a transient probe
+        dry-runs with backoff and a reviewable reason. No mutation except
+        on the repaired row.
+        """
         mock_db.get_open_ticket_channel_ids = AsyncMock(return_value=["888888888"])
         mock_db.get_active_ticket_by_channel = AsyncMock(return_value=self._active_row("888888888"))
 
         bot = self._sweep_bot()
-        bot.get_guild().fetch_channel = AsyncMock(side_effect=discord.HTTPException(MagicMock(), "timeout"))
+        if probe_behavior == "not_found":
+            _wire_closed_transition(mock_db, self._active_row("888888888"))
+            bot.get_guild().fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(), "gone"))
+        elif probe_behavior == "live_channel":
+            channel = MagicMock(spec=discord.TextChannel)
+            channel.id = 888888888
+            bot.get_guild().fetch_channel = AsyncMock(return_value=channel)
+        else:
+            bot.get_guild().fetch_channel = AsyncMock(side_effect=discord.HTTPException(MagicMock(), "timeout"))
 
-        with patch("bot.services.ticket_service.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        if probe_behavior == "transient_error":
+            with patch("bot.services.ticket_service.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+                results = await service.sweep_integrity("123456789", bot, preflight=_resolved_preflight())
+            mock_sleep.assert_awaited_once()
+        else:
             results = await service.sweep_integrity("123456789", bot, preflight=_resolved_preflight())
 
         assert len(results) == 1
-        assert results[0].outcome == "skipped"
-        assert results[0].reason == "probe_unresolved"
-        mock_db.transition_ticket_to_closed.assert_not_awaited()
-        mock_sleep.assert_awaited_once()
+        assert results[0].outcome in expect_outcomes
+        if expect_reason is not None:
+            assert results[0].reason == expect_reason
+        if "repaired" in expect_outcomes:
+            mock_db.transition_ticket_to_closed.assert_awaited_once()
+        else:
+            mock_db.transition_ticket_to_closed.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_bounded_batch_limits_probes(
