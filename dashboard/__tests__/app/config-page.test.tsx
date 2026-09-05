@@ -12,7 +12,7 @@ const mockSelect = vi.fn(() => ({ eq: mockEq }));
 const mockFrom = vi.fn(() => ({ select: mockSelect }));
 
 vi.mock("@/lib/supabase", () => ({
-  createServiceClient: vi.fn(async () => ({
+  createServiceClient: vi.fn(() => ({
     from: mockFrom,
   })),
 }));
@@ -66,7 +66,9 @@ describe("GuildConfigPage — ticket category label", () => {
     // element MUST contain this text.  Current label is "Ticket Category ID"
     // which does NOT match the spec.
     const labelEl = document.querySelector('label[for="ticketCategoryId"]');
-    expect(labelEl).not.toBeNull();
-    expect(labelEl!.textContent).toContain("Discord Category Channel ID");
+    if (!labelEl) {
+      throw new Error("ticketCategoryId label not rendered");
+    }
+    expect(labelEl.textContent).toContain("Discord Category Channel ID");
   });
 });

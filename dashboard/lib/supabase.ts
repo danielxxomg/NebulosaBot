@@ -3,17 +3,29 @@ import type { CookieOptions } from '@supabase/ssr';
 import { cookies } from "next/headers";
 
 /**
+ * Read a required public env var, throwing at first use when unset so a
+ * misconfigured deployment fails loudly instead of silently issuing
+ * requests to an undefined URL.
+ */
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+}
+
+/**
  * Create a browser-side Supabase client using the anon public key.
  *
  * Used in Client Components for real-time subscriptions and
  * client-side data fetching from the browser.
  */
-export const createClient = () => 
+export const createClient = () =>
   createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-;
+    requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
+    requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+  );
 
 /**
  * Create a server-side Supabase client using cookie-based auth.
@@ -25,24 +37,23 @@ export const createServerSupabaseClient = async () => {
   const cookieStore = await cookies();
 
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
+    requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
     {
       cookies: {
-        async get(name: string) {
-          const cookie = cookieStore.get(name);
-          return cookie?.value;
+        get(name: string) {
+          return cookieStore.get(name)?.value;
         },
         async remove(name: string, options: CookieOptions) {
           try {
-            cookieStore.set({ name, value: "", ...options });
+            await cookieStore.set({ name, value: "", ...options });
           } catch {
             // Cookie can only be modified in a Server Action or Route Handler.
           }
         },
         async set(name: string, value: string, options: CookieOptions) {
           try {
-            cookieStore.set({ name, value, ...options });
+            await cookieStore.set({ name, value, ...options });
           } catch {
             // Cookie can only be modified in a Server Action or Route Handler.
           }
@@ -62,24 +73,23 @@ export const createServiceClient = async () => {
   const cookieStore = await cookies();
 
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
+    requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
     {
       cookies: {
-        async get(name: string) {
-          const cookie = cookieStore.get(name);
-          return cookie?.value;
+        get(name: string) {
+          return cookieStore.get(name)?.value;
         },
         async remove(name: string, options: CookieOptions) {
           try {
-            cookieStore.set({ name, value: "", ...options });
+            await cookieStore.set({ name, value: "", ...options });
           } catch {
             // Cookie can only be modified in a Server Action or Route Handler.
           }
         },
         async set(name: string, value: string, options: CookieOptions) {
           try {
-            cookieStore.set({ name, value, ...options });
+            await cookieStore.set({ name, value, ...options });
           } catch {
             // Cookie can only be modified in a Server Action or Route Handler.
           }

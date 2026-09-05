@@ -39,12 +39,13 @@ export const buildTicketTree = (tickets: Ticket[]): TicketTreeNode[] => {
 
   const roots: TicketTreeNode[] = [];
   for (const ticket of tickets) {
-    const node = nodes.get(ticket.id)!;
+    const node = nodes.get(ticket.id);
     const {parentId} = ticket;
     const parent = parentId ? byId.get(parentId) : undefined;
-    if (parent && nodes.has(parent.id)) {
-      nodes.get(parent.id)!.children.push(ticket);
-    } else {
+    const parentNode = parent ? nodes.get(parent.id) : undefined;
+    if (node && parentNode) {
+      parentNode.children.push(ticket);
+    } else if (node) {
       roots.push(node);
     }
   }

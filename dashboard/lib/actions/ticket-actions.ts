@@ -104,9 +104,7 @@ const resolveSessionUserId = async (): Promise<string> => {
  * Returns `"unknown"` when no session is available (the page layout guard
  * ensures a session exists before this is reachable in practice).
  */
-export const getCurrentUserId = async (): Promise<string> => 
-  resolveSessionUserId()
-;
+export const getCurrentUserId = (): Promise<string> => resolveSessionUserId();
 
 /**
  * Fetch up to {@link TICKET_PAGE_LIMIT} tickets for a guild, newest first.
