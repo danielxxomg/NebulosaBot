@@ -701,12 +701,31 @@ def _wire_guild_config(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param("success", id="success"),
+        pytest.param(
+            "carve_out",
+            id="carve-out-skips-duplicate-check",
+        ),
+    ],
+)
 async def test_create_subticket_success(
+    case: str,
     service: TicketService,
     mock_db: AsyncMock,
     ticket_row: dict,
 ) -> None:
-    """Valid parent → sub-ticket created with parentId set, cache synced."""
+    """Valid parent → sub-ticket created with parentId set, cache synced.
+
+    Parametrized (S6 ceiling cut): the carve-out row re-runs the identical
+    valid-parent setup — per the spec, sub-ticket creation succeeds even
+    when the author already has an open ticket (the one-open-ticket
+    constraint is skipped), so both rows share the success contract:
+    parentId forwarded to insert (guild-scoped, MAX+1), the returned model
+    carries it, and the channel cache is synced.
+    """
     parent_id = "parent-uuid-001"
     guild_id = "123456789"
     channel_id = "666666666"
@@ -737,6 +756,10 @@ async def test_create_subticket_success(
 
     # Cache synced with the new channel.
     assert 666666666 in service._ticket_channel_cache
+
+    # Insert really happened exactly once (carve-out row: no duplicate guard
+    # blocked the insert even though the author may already hold a ticket).
+    mock_db.insert_ticket.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -797,36 +820,6 @@ async def test_create_subticket_invalid_parent_rejected(
         )
 
     mock_db.insert_ticket.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_create_subticket_carve_out_skips_duplicate_check(
-    service: TicketService,
-    mock_db: AsyncMock,
-    ticket_row: dict,
-) -> None:
-    """When parentId is set, the one-open-ticket constraint MUST be skipped.
-
-    The user already has an open ticket in the same category, yet the
-    sub-ticket creation MUST succeed without a duplicate error. This is
-    the carve-out mandated by the spec.
-    """
-    parent_id = "parent-uuid-001"
-    mock_db.get_ticket.return_value = _parent_row(parent_id=None)
-    mock_db.get_max_ticket_number.return_value = 5
-    mock_db.insert_ticket.return_value = {**ticket_row, "parentId": parent_id, "ticketNumber": 6}
-
-    # Even though the author already has an open ticket, parentId set → carve-out.
-    ticket = await service.create_subticket(
-        parent_id=parent_id,
-        author_id="111111111",
-        category_id="cat-uuid-001",
-        channel_id="666666666",
-        guild_id="123456789",
-    )
-
-    assert ticket.parent_id == parent_id
-    mock_db.insert_ticket.assert_awaited_once()
 
 
 # ===========================================================================
