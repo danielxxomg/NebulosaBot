@@ -1008,53 +1008,46 @@ class TestSlashCommands:
         ctx.channel = MagicMock()
         return ctx
 
-    async def test_ticket_panel_deploys_panel(
+    @pytest.mark.parametrize(
+        ("overrides", "expect_title", "expect_desc"),
+        [
+            pytest.param(False, None, None, id="panel-deploys-defaults"),
+            pytest.param(True, "Mi Panel", "Abre un ticket", id="panel-explicit-overrides"),
+        ],
+    )
+    async def test_ticket_panel_deploy_args(
         self,
         tickets_cog: TicketsCog,
         ticket_bot: MagicMock,
-        mock_db,
+        overrides: bool,
+        expect_title: str | None,
+        expect_desc: str | None,
     ) -> None:
-        """ticket_panel command delegates to deploy_ticket_panel with None defaults."""
+        """ticket_panel delegates to deploy_ticket_panel: None defaults by
+        default; explicit title/desc pass through as-is (success embed sent).
+
+        Parametrized (S6 ceiling fix-2): both rows share the deploy-contract
+        assert with per-case expected values.
+        """
         ctx = self._panel_ctx()
+        kwargs: dict[str, Any] = {}
+        if overrides:
+            kwargs = {"title": expect_title, "description_text": expect_desc}
 
         with patch("bot.cogs.tickets.deploy_ticket_panel", new_callable=AsyncMock) as mock_deploy:
-            await tickets_cog.ticket_panel.callback(tickets_cog, ctx)
+            await tickets_cog.ticket_panel.callback(tickets_cog, ctx, **kwargs)
 
         mock_deploy.assert_awaited_once_with(
             ctx.channel,
             "123456789",
             bot=ticket_bot,
             guild=ctx.guild,
-            title=None,
-            description_text=None,
+            title=expect_title,
+            description_text=expect_desc,
         )
-        # Success embed sent.
-        ctx.send.assert_awaited()
-
-    async def test_ticket_panel_explicit_overrides_pass_through(
-        self,
-        tickets_cog: TicketsCog,
-        ticket_bot: MagicMock,
-    ) -> None:
-        """ticket_panel with explicit title/desc passes them through as-is."""
-        ctx = self._panel_ctx()
-
-        with patch("bot.cogs.tickets.deploy_ticket_panel", new_callable=AsyncMock) as mock_deploy:
-            await tickets_cog.ticket_panel.callback(
-                tickets_cog,
-                ctx,
-                title="Mi Panel",
-                description_text="Abre un ticket",
-            )
-
-        mock_deploy.assert_awaited_once_with(
-            ctx.channel,
-            "123456789",
-            bot=ticket_bot,
-            guild=ctx.guild,
-            title="Mi Panel",
-            description_text="Abre un ticket",
-        )
+        if not overrides:
+            # Success embed sent.
+            ctx.send.assert_awaited()
 
     async def test_ticket_panel_no_guild(
         self,
