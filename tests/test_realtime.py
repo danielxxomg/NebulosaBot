@@ -169,23 +169,22 @@ class TestRecentWriteSet:
         await rws.mark("guild", "G1")
         assert await rws.contains("ticket", "G1") is False
 
+    @pytest.mark.parametrize(
+        ("delta", "expect_present"),
+        [
+            pytest.param(4.0, True, id="entry-still-present-within-5s"),
+            pytest.param(6.0, False, id="entry-expires-after-5s"),
+        ],
+    )
     @pytest.mark.asyncio
-    async def test_entry_expires_after_5s(self) -> None:
-        """Spec: entries older than ~5s MUST NOT filter (lazy eviction)."""
+    async def test_entry_ttl_window(self, delta: float, expect_present: bool) -> None:
+        """Spec: entries live ~5s — inside the window contains() is True,
+        past it the entry no longer filters (lazy eviction)."""
         rws = RecentWriteSet()
         with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
             await rws.mark("guild", "G1")
-        # Advance past the 5s TTL window.
-        with patch("bot.core.realtime.time.monotonic", return_value=1006.0):
-            assert await rws.contains("guild", "G1") is False
-
-    @pytest.mark.asyncio
-    async def test_entry_still_present_within_5s(self) -> None:
-        rws = RecentWriteSet()
-        with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
-            await rws.mark("guild", "G1")
-        with patch("bot.core.realtime.time.monotonic", return_value=1004.0):
-            assert await rws.contains("guild", "G1") is True
+        with patch("bot.core.realtime.time.monotonic", return_value=1000.0 + delta):
+            assert await rws.contains("guild", "G1") is expect_present
 
     @pytest.mark.asyncio
     async def test_expired_entry_evicted_lazily(self) -> None:
