@@ -678,58 +678,35 @@ class TestModerationServiceSwap:
         mock_db.insert_infraction.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_kick_persists_via_service_on_confirm(
+    @pytest.mark.parametrize(
+        "action, reason, extra_kwargs",
+        [
+            ("kick", "rule violation", {}),
+            ("ban", "severe violation", {"delete_days": 3}),
+        ],
+        ids=["kick", "ban"],
+    )
+    async def test_persists_via_service_on_confirm(
         self,
         sentinel_cog: SentinelCog,
         sentinel_bot: MagicMock,
         sentinel_ctx: MagicMock,
         target_member: MagicMock,
+        action: str,
+        reason: str,
+        extra_kwargs: dict,
     ) -> None:
-        """kick confirm → infraction_service.kick called; no direct insert."""
-        target_member.kick = AsyncMock()
-        service_kick = AsyncMock()
+        """kick/ban confirm → infraction_service.<action> called; no direct insert."""
+        setattr(target_member, action, AsyncMock())
+        service_mock = AsyncMock()
         sentinel_bot.db.insert_infraction = AsyncMock()
 
         with (
             patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)),
-            patch.object(InfractionService, "kick", service_kick),
+            patch.object(InfractionService, action, service_mock),
         ):
-            await sentinel_cog.kick.callback(sentinel_cog, sentinel_ctx, target_member, reason="rule violation")
-
-            view = sentinel_ctx.send.call_args.kwargs.get("view")
-            confirm_button = next(
-                c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == "confirm:confirm"
-            )
-            interaction = MagicMock(spec=discord.Interaction)
-            interaction.user = MagicMock(spec=discord.Member)
-            interaction.user.id = sentinel_ctx.author.id
-            interaction.response = MagicMock()
-            interaction.response.edit_message = AsyncMock()
-
-            await confirm_button.callback(interaction)
-
-        service_kick.assert_awaited_once_with("123456789", "555555555", "111111111", "rule violation")
-        sentinel_bot.db.insert_infraction.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_ban_persists_via_service_on_confirm(
-        self,
-        sentinel_cog: SentinelCog,
-        sentinel_bot: MagicMock,
-        sentinel_ctx: MagicMock,
-        target_member: MagicMock,
-    ) -> None:
-        """ban confirm → infraction_service.ban called; no direct insert."""
-        target_member.ban = AsyncMock()
-        service_ban = AsyncMock()
-        sentinel_bot.db.insert_infraction = AsyncMock()
-
-        with (
-            patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)),
-            patch.object(InfractionService, "ban", service_ban),
-        ):
-            await sentinel_cog.ban.callback(
-                sentinel_cog, sentinel_ctx, target_member, reason="severe violation", delete_days=3
+            await getattr(sentinel_cog, action).callback(
+                sentinel_cog, sentinel_ctx, target_member, reason=reason, **extra_kwargs
             )
 
             view = sentinel_ctx.send.call_args.kwargs.get("view")
@@ -744,7 +721,7 @@ class TestModerationServiceSwap:
 
             await confirm_button.callback(interaction)
 
-        service_ban.assert_awaited_once_with("123456789", "555555555", "111111111", "severe violation")
+        service_mock.assert_awaited_once_with("123456789", "555555555", "111111111", reason)
         sentinel_bot.db.insert_infraction.assert_not_awaited()
 
 
