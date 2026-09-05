@@ -169,23 +169,22 @@ class TestRecentWriteSet:
         await rws.mark("guild", "G1")
         assert await rws.contains("ticket", "G1") is False
 
+    @pytest.mark.parametrize(
+        ("delta", "expect_present"),
+        [
+            pytest.param(4.0, True, id="entry-still-present-within-5s"),
+            pytest.param(6.0, False, id="entry-expires-after-5s"),
+        ],
+    )
     @pytest.mark.asyncio
-    async def test_entry_expires_after_5s(self) -> None:
-        """Spec: entries older than ~5s MUST NOT filter (lazy eviction)."""
+    async def test_entry_ttl_window(self, delta: float, expect_present: bool) -> None:
+        """Spec: entries live ~5s — inside the window contains() is True,
+        past it the entry no longer filters (lazy eviction)."""
         rws = RecentWriteSet()
         with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
             await rws.mark("guild", "G1")
-        # Advance past the 5s TTL window.
-        with patch("bot.core.realtime.time.monotonic", return_value=1006.0):
-            assert await rws.contains("guild", "G1") is False
-
-    @pytest.mark.asyncio
-    async def test_entry_still_present_within_5s(self) -> None:
-        rws = RecentWriteSet()
-        with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
-            await rws.mark("guild", "G1")
-        with patch("bot.core.realtime.time.monotonic", return_value=1004.0):
-            assert await rws.contains("guild", "G1") is True
+        with patch("bot.core.realtime.time.monotonic", return_value=1000.0 + delta):
+            assert await rws.contains("guild", "G1") is expect_present
 
     @pytest.mark.asyncio
     async def test_expired_entry_evicted_lazily(self) -> None:
@@ -286,15 +285,9 @@ class TestSubscriberStart:
         client.channel.assert_called_once_with("cache-sync")
         assert channel.on_postgres_changes.call_count == 6
         channel.subscribe.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_start_subscribes_to_six_tables(self, cache: TTLCache) -> None:
-        channel = _make_channel_mock()
-        client = _make_client_mock(channel)
-        sub = _make_subscriber(cache, client)
-
-        await sub.start()
-
+        # The registered tables are exactly the six-table contract (this row
+        # also carries the old start_subscribes_to_six_tables literal-set
+        # assertion, deduped in the S6 ceiling cut).
         tables_called = {call.kwargs.get("table") for call in channel.on_postgres_changes.call_args_list}
         assert tables_called == {"guild", "greeting_config", "ticket", "ticket_note", "member", "economy_config"}
 
@@ -393,36 +386,28 @@ class TestSubscriberStop:
         assert watchdog is not None and (watchdog.cancelled() or watchdog.done())
 
     @pytest.mark.asyncio
-    async def test_stop_idempotent_when_not_started(self, cache: TTLCache) -> None:
+    @pytest.mark.parametrize(
+        "start_first",
+        [
+            pytest.param(False, id="stop-before-start-must-not-raise"),
+            pytest.param(True, id="stop-twice-second-is-no-op"),
+        ],
+    )
+    async def test_stop_idempotent(self, cache: TTLCache, start_first: bool) -> None:
+        """stop() is idempotent: before start() or called twice it MUST NOT
+        raise, and the client teardown (remove_all_channels) runs exactly once.
+        """
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
-        # stop() before start() MUST NOT raise.
+        if start_first:
+            await sub.start()
+
         await sub.stop()
+        await sub.stop()  # second call MUST NOT raise in both rows
 
-    @pytest.mark.asyncio
-    async def test_stop_is_idempotent_when_called_twice(self, cache: TTLCache) -> None:
-        client = _make_client_mock()
-        sub = _make_subscriber(cache, client)
-        await sub.start()
-
-        await sub.stop()
-        await sub.stop()  # second call MUST NOT raise
-
-        # remove_all_channels called on the first stop; second is a no-op.
-        assert client.remove_all_channels.await_count == 1
-
-
-class TestMarkRecentWrite:
-    """mark_recent_write — public API for database.py integration (task 3.10)."""
-
-    @pytest.mark.asyncio
-    async def test_mark_then_cdc_skips(self, cache: TTLCache) -> None:
-        client = _make_client_mock()
-        sub = _make_subscriber(cache, client)
-
-        await sub.mark_recent_write("guild", "G1")
-
-        assert await sub.recent_writes.contains("guild", "G1") is True
+        if start_first:
+            # remove_all_channels called on the first stop; second is a no-op.
+            assert client.remove_all_channels.await_count == 1
 
 
 # ===========================================================================
@@ -695,7 +680,7 @@ class TestNormalizeCdcPayload:
 
 
 class TestSelfEchoFiltering:
-    """A CDC event for a row the bot just wrote MUST be skipped."""
+    """A CDC event for a row the bot just wrote MUST be skipped (TTL-gated)."""
 
     @pytest.mark.asyncio
     async def test_recent_write_skips_invalidation(self, cache: TTLCache) -> None:
@@ -733,6 +718,21 @@ class TestSelfEchoFiltering:
 
         assert cache.get("G-other:config") is None
 
+    @pytest.mark.asyncio
+    async def test_mark_recent_write_stores_in_recent_writes(self, cache: TTLCache) -> None:
+        """mark_recent_write — public API records {table}:{id} in recent_writes.
+
+        Deduped in the S6 ceiling cut: the sub-level wiring (recent_writes IS
+        the RecentWriteSet, and mark_recent_write delegates to it) shares the
+        skip-behavior rows above; this probe pins the public-API surface.
+        """
+        client = _make_client_mock()
+        sub = _make_subscriber(cache, client)
+
+        await sub.mark_recent_write("guild", "G1")
+
+        assert await sub.recent_writes.contains("guild", "G1") is True
+
 
 # ===========================================================================
 # on_subscribe callback (task 3.4)
@@ -749,21 +749,21 @@ class TestOnSubscribe:
 
         assert not inspect.iscoroutinefunction(sub._on_subscribe)
 
-    def test_subscribed_status_stored(self, cache: TTLCache) -> None:
+    @pytest.mark.parametrize(
+        ("status", "err", "expect_status"),
+        [
+            pytest.param("SUBSCRIBED", None, "SUBSCRIBED", id="subscribed-status-stored"),
+            pytest.param("CHANNEL_ERROR", Exception("boom"), "CHANNEL_ERROR", id="channel-error-status-stored"),
+        ],
+    )
+    def test_status_stored(self, cache: TTLCache, status: str, err: object, expect_status: str) -> None:
+        """on_subscribe stores whatever status the SDK reports (sync callback)."""
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
 
-        sub._on_subscribe("SUBSCRIBED", None)
+        sub._on_subscribe(status, err)
 
-        assert sub._status == "SUBSCRIBED"
-
-    def test_channel_error_status_stored(self, cache: TTLCache) -> None:
-        client = _make_client_mock()
-        sub = _make_subscriber(cache, client)
-
-        sub._on_subscribe("CHANNEL_ERROR", Exception("boom"))
-
-        assert sub._status == "CHANNEL_ERROR"
+        assert sub._status == expect_status
 
     def test_subscribed_disables_poll_fallback(self, cache: TTLCache) -> None:
         """SUBSCRIBED status MUST set _poll_fallback_enabled to False."""
@@ -1011,49 +1011,44 @@ class TestPollFallback:
         assert gt_values[table] == "2025-06-01T09:30:00+00:00"
 
     @pytest.mark.asyncio
-    async def test_poll_stops_on_recovery(self, cache: TTLCache) -> None:
-        """Spec R4: when status returns to SUBSCRIBED the poll loop MUST stop
-        and ``last_check`` reset — not merely flagged dormant behind a flag.
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("with_preflight_state", "expect_recreated"),
+        [
+            pytest.param(False, False, id="poll-stops-on-recovery"),
+            pytest.param(True, True, id="poll-task-recreated-when-unhealthy-after-recovery"),
+        ],
+    )
+    async def test_poll_task_recovery_cycle(
+        self, cache: TTLCache, with_preflight_state: bool, expect_recreated: bool
+    ) -> None:
+        """Spec R4 recovery cycle: recovery (SUBSCRIBED) MUST stop the poll
+        task and reset ``last_check`` — not merely flag it dormant (a live
+        dormant task is the prior bug). Symmetrically, a later unhealthy
+        spell (>60s) MUST recreate the poll task so the fallback runs again.
 
-        A permanently-running dormant task violates the spec clause "the poll
-        loop stops" (``spec.md:106-110``); this regression test asserts the
-        task itself is cancelled/cleared, not just the fallback flag.
+        Parametrized (S6 ceiling cut): both rows share the start → recover →
+        assert scaffold; the second row continues into the unhealthy probe.
         """
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
         await sub.start()
         try:
-            poll_task_before = sub._poll_task
-            assert poll_task_before is not None  # start() spawns the poll task
-            sub._poll_fallback_enabled = True
-            sub._last_check = "2025-06-01T10:00:00+00:00"
+            if with_preflight_state:
+                sub._poll_fallback_enabled = True
+                sub._last_check = "2025-06-01T10:00:00+00:00"
 
             # Sync callback — no await.
             sub._on_subscribe("SUBSCRIBED", None)
 
             assert sub._poll_fallback_enabled is False
-            assert sub._last_check == "1970-01-01T00:00:00+00:00"
+            if with_preflight_state:
+                assert sub._last_check == "1970-01-01T00:00:00+00:00"
             # The poll task MUST be stopped — cleared to None, or done/cancelled.
-            # A live dormant task (the prior bug) fails this assertion.
             assert sub._poll_task is None or sub._poll_task.done() or sub._poll_task.cancelled()
-        finally:
-            await sub.stop()
 
-    @pytest.mark.asyncio
-    async def test_poll_task_recreated_when_unhealthy_after_recovery(self, cache: TTLCache) -> None:
-        """After recovery cancels the poll task, a subsequent unhealthy spell
-        (>60s) MUST recreate the poll task so the fallback can run again.
-
-        Symmetric to ``test_poll_stops_on_recovery``: stop-on-recover is only
-        correct if a later unhealthy period restarts the loop.
-        """
-        client = _make_client_mock()
-        sub = _make_subscriber(cache, client)
-        await sub.start()
-        try:
-            # Recover — cancels and clears the poll task.
-            sub._on_subscribe("SUBSCRIBED", None)
-            assert sub._poll_task is None or sub._poll_task.done() or sub._poll_task.cancelled()
+            if not expect_recreated:
+                return
 
             # Now go unhealthy for >60s and run a health check.
             sub._status = "CHANNEL_ERROR"
@@ -1078,22 +1073,46 @@ class TestMigrationWatchdog:
     """_watchdog_check_once — warns after 30s post-SUBSCRIBED with 0 events."""
 
     @pytest.mark.asyncio
-    async def test_warns_after_30s_no_events(self, cache: TTLCache, caplog) -> None:
+    @pytest.mark.parametrize(
+        ("elapsed_note", "received_count", "expect_warn"),
+        [
+            pytest.param("35s", 0, True, id="warns-after-30s-no-events"),
+            pytest.param("35s", 3, False, id="silent-when-events-received"),
+            pytest.param("15s", 0, False, id="silent-before-30s"),
+        ],
+    )
+    async def test_watchdog_warn_gate(
+        self,
+        cache: TTLCache,
+        caplog,
+        elapsed_note: str,
+        received_count: int,
+        expect_warn: bool,
+    ) -> None:
+        """Watchdog warns only when SUBSCRIBED for ≥30s AND zero received events.
+
+        Parametrized (S6 ceiling cut): the three rows share one scaffold —
+        35s+0 events warns (and flips _watchdog_warned), 35s with events stays
+        silent, and 15s stays silent.
+        """
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
         sub._status = "SUBSCRIBED"
         with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
-            sub._subscribed_at = 965.0  # 35s ago
-            sub._event_count = 0
+            sub._subscribed_at = 965.0 if elapsed_note == "35s" else 985.0  # 35s / 15s ago
+            sub._received_count = received_count
             with caplog.at_level(logging.WARNING, logger="bot.core.realtime"):
                 await sub._watchdog_check_once()
 
-        assert any("supabase_realtime publication" in r.message for r in caplog.records)
-        assert sub._watchdog_warned is True
+        warned = any("supabase_realtime publication" in r.message for r in caplog.records)
+        assert warned is expect_warn
+        if expect_warn:
+            assert sub._watchdog_warned is True
 
     @pytest.mark.asyncio
-    async def test_warns_only_once_when_no_events(self, cache: TTLCache, caplog) -> None:
-        """Watchdog MUST not spam every 30s after the first publication warning."""
+    async def test_watchdog_warns_only_once(self, cache: TTLCache, caplog) -> None:
+        """Watchdog MUST not spam every 30s after the first publication
+        warning — the second tick stays silent via _watchdog_warned."""
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
         sub._status = "SUBSCRIBED"
@@ -1107,32 +1126,6 @@ class TestMigrationWatchdog:
         messages = [r.message for r in caplog.records if "supabase_realtime publication" in r.message]
         assert len(messages) == 1
 
-    @pytest.mark.asyncio
-    async def test_silent_when_events_received(self, cache: TTLCache, caplog) -> None:
-        client = _make_client_mock()
-        sub = _make_subscriber(cache, client)
-        sub._status = "SUBSCRIBED"
-        with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
-            sub._subscribed_at = 965.0
-            sub._received_count = 3
-            with caplog.at_level(logging.WARNING, logger="bot.core.realtime"):
-                await sub._watchdog_check_once()
-
-        assert not any("publication" in r.message for r in caplog.records)
-
-    @pytest.mark.asyncio
-    async def test_silent_before_30s(self, cache: TTLCache, caplog) -> None:
-        client = _make_client_mock()
-        sub = _make_subscriber(cache, client)
-        sub._status = "SUBSCRIBED"
-        with patch("bot.core.realtime.time.monotonic", return_value=1000.0):
-            sub._subscribed_at = 985.0  # 15s ago
-            sub._event_count = 0
-            with caplog.at_level(logging.WARNING, logger="bot.core.realtime"):
-                await sub._watchdog_check_once()
-
-        assert not any("publication" in r.message for r in caplog.records)
-
 
 # ===========================================================================
 # C2 — Received counter (counts all CDC events, even skipped ones)
@@ -1143,39 +1136,39 @@ class TestReceivedCounter:
     """_received_count MUST increment for every CDC event, even skipped ones."""
 
     @pytest.mark.asyncio
-    async def test_received_count_increments_for_valid_event(self, cache: TTLCache) -> None:
-        """Valid CDC event increments both _received_count and _event_count."""
+    @pytest.mark.parametrize(
+        ("arrange", "expect_event_count"),
+        [
+            pytest.param("valid", 1, id="increments-for-valid-event"),
+            pytest.param("skipped", 0, id="increments-for-skipped-event"),
+            pytest.param("self_echo", 0, id="increments-for-self-echo"),
+        ],
+    )
+    async def test_received_count_increments(
+        self,
+        cache: TTLCache,
+        arrange: str,
+        expect_event_count: int,
+    ) -> None:
+        """Every CDC event increments _received_count; _event_count only on
+        valid (non-skipped, non-echo) events — per row: a valid guild event
+        counts both, a skipped ticket_note (no ids) counts received only, and
+        a self-echo counts received only.
+        """
         client = _make_client_mock()
         sub = _make_subscriber(cache, client)
 
-        await sub._handle_cdc(_cdc_payload(table="guild", record={"id": "G1"}))
+        if arrange == "valid":
+            await sub._handle_cdc(_cdc_payload(table="guild", record={"id": "G1"}))
+        elif arrange == "skipped":
+            # ticket_note with no ticketId and no guildId — will be skipped
+            await sub._handle_cdc(_cdc_payload(table="ticket_note", record={}))
+        else:  # self_echo
+            await sub.mark_recent_write("guild", "G-echo")
+            await sub._handle_cdc(_cdc_payload(table="guild", record={"id": "G-echo"}))
 
         assert sub._received_count == 1
-        assert sub._event_count == 1
-
-    @pytest.mark.asyncio
-    async def test_received_count_increments_for_skipped_event(self, cache: TTLCache) -> None:
-        """Skipped CDC event (no guild_id) increments _received_count but NOT _event_count."""
-        client = _make_client_mock()
-        sub = _make_subscriber(cache, client)
-
-        # ticket_note with no ticketId and no guildId — will be skipped
-        await sub._handle_cdc(_cdc_payload(table="ticket_note", record={}))
-
-        assert sub._received_count == 1
-        assert sub._event_count == 0  # NOT incremented (skipped)
-
-    @pytest.mark.asyncio
-    async def test_received_count_increments_for_self_echo(self, cache: TTLCache) -> None:
-        """Self-echo event increments _received_count but NOT _event_count."""
-        client = _make_client_mock()
-        sub = _make_subscriber(cache, client)
-        await sub.mark_recent_write("guild", "G-echo")
-
-        await sub._handle_cdc(_cdc_payload(table="guild", record={"id": "G-echo"}))
-
-        assert sub._received_count == 1
-        assert sub._event_count == 0  # NOT incremented (self-echo skipped)
+        assert sub._event_count == expect_event_count  # 0 = NOT incremented (skipped/echo)
 
     @pytest.mark.asyncio
     async def test_watchdog_uses_received_count(self, cache: TTLCache, caplog) -> None:

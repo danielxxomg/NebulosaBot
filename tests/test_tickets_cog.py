@@ -1469,19 +1469,47 @@ class TestNoteCommands:
         assert call_args[2] == "Customer escalated"
         slash_ctx.send.assert_awaited()
 
-    async def test_note_add_cap_error(
+    # /note error paths: (command, side_effect text, description fragment).
+    # Parametrized (S6 ceiling cut): both gates raise inside the service and
+    # the cog renders the same error-embed contract (Failed title or the
+    # privacy-gate fragment) — cap for note_add, author-only for note_delete.
+    _NOTE_ERROR_MATRIX: ClassVar[list[Any]] = [
+        pytest.param("note_add", "Note limit reached", "limit", "one too many", None, id="note-add-cap-error"),
+        pytest.param(
+            "note_delete",
+            "Only the note author may delete this note",
+            "author",
+            None,
+            "note-uuid-001",
+            id="note-delete-not-owner",
+        ),
+    ]  # noqa: E501 -- long exception strings kept verbatim per row
+
+    @pytest.mark.parametrize(("command", "exc_text", "fragment", "note_content", "note_id"), _NOTE_ERROR_MATRIX)
+    async def test_note_service_error_shows_error(
         self,
         tickets_cog: TicketsCog,
         slash_ctx: MagicMock,
         ticket_bot: MagicMock,
         mock_db,
+        command: str,
+        exc_text: str,
+        fragment: str,
+        note_content: str | None,
+        note_id: str | None,
     ) -> None:
-        """create_note raises (cap) → error embed."""
+        """Service raises (cap / ownership) → error embed with the gate fragment."""
         _ticket_channel_row(mock_db)
-        ticket_bot.ticket_service.create_note = AsyncMock(side_effect=ValueError("Note limit reached"))
-        await tickets_cog.note_add.callback(tickets_cog, slash_ctx, content="one too many")
+        service_method = "create_note" if command == "note_add" else "delete_note"
+        setattr(ticket_bot.ticket_service, service_method, AsyncMock(side_effect=ValueError(exc_text)))
+
+        if command == "note_add":
+            await tickets_cog.note_add.callback(tickets_cog, slash_ctx, content=note_content or "")
+        else:
+            await tickets_cog.note_delete.callback(tickets_cog, slash_ctx, note_id=note_id or "")
+
         embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert "Failed" in embed.title or "limit" in (embed.description or "").lower()
+        assert "Failed" in embed.title or fragment in (embed.description or "").lower()
 
     async def test_note_list_shows_notes(
         self,
@@ -1530,22 +1558,6 @@ class TestNoteCommands:
         assert call_kwargs["note_id"] == "note-uuid-001"
         assert call_kwargs["author_id"] == "111111111"
 
-    async def test_note_delete_not_owner(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db,
-    ) -> None:
-        """delete_note raises (ownership) → error embed."""
-        _ticket_channel_row(mock_db)
-        ticket_bot.ticket_service.delete_note = AsyncMock(
-            side_effect=ValueError("Only the note author may delete this note")
-        )
-        await tickets_cog.note_delete.callback(tickets_cog, slash_ctx, note_id="note-uuid-001")
-        embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert "Failed" in embed.title or "author" in (embed.description or "").lower()
-
 
 class TestSubsidiadosPermissions:
     """Verify every subsidiaries command is gated by @is_mod().
@@ -1556,27 +1568,23 @@ class TestSubsidiadosPermissions:
     (verified empirically: ``checks=[]``, ``app_command.checks=[1]``).
     """
 
+    # (command attribute, human-readable command name).
+    _GATED_COMMANDS: ClassVar[list[Any]] = [
+        pytest.param("subticket_create", "/subticket create", id="subticket-create"),
+        pytest.param("reopen", "/reopen", id="reopen"),
+        pytest.param("transfer", "/transfer", id="transfer"),
+        pytest.param("note_add", "/note add", id="note-add"),
+        pytest.param("note_list", "/note list", id="note-list"),
+        pytest.param("note_delete", "/note delete", id="note-delete"),
+    ]
+
     @staticmethod
     def _is_mod_gated(cmd) -> bool:
         return bool(cmd.checks) or (hasattr(cmd, "app_command") and bool(cmd.app_command.checks))
 
-    def test_subticket_create_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
-        assert self._is_mod_gated(tickets_cog.subticket_create), "/subticket create MUST be gated by @is_mod()"
-
-    def test_reopen_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
-        assert self._is_mod_gated(tickets_cog.reopen), "/reopen MUST be gated by @is_mod()"
-
-    def test_transfer_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
-        assert self._is_mod_gated(tickets_cog.transfer), "/transfer MUST be gated by @is_mod()"
-
-    def test_note_add_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
-        assert self._is_mod_gated(tickets_cog.note_add), "/note add MUST be gated by @is_mod()"
-
-    def test_note_list_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
-        assert self._is_mod_gated(tickets_cog.note_list), "/note list MUST be gated by @is_mod()"
-
-    def test_note_delete_is_mod_gated(self, tickets_cog: TicketsCog) -> None:
-        assert self._is_mod_gated(tickets_cog.note_delete), "/note delete MUST be gated by @is_mod()"
+    @pytest.mark.parametrize(("cmd_attr", "cmd_label"), _GATED_COMMANDS)
+    def test_is_mod_gated(self, tickets_cog: TicketsCog, cmd_attr: str, cmd_label: str) -> None:
+        assert self._is_mod_gated(getattr(tickets_cog, cmd_attr)), f"{cmd_label} MUST be gated by @is_mod()"
 
 
 # ===========================================================================
@@ -1617,15 +1625,26 @@ class TestNoteListPrivacy:
         slash_ctx.interaction = MagicMock() if slash else None
         slash_ctx.author.send = AsyncMock()
 
+    # Slash path — populated vs empty notes share the ephemeral contract.
+    # Parametrized (S6 ceiling cut): both rows reply ephemerally to the
+    # author's ctx (the empty-state is private), with notes content present
+    # only in the populated row and no DM needed for the slash reply.
+    _SLASH_NOTES_CASES: ClassVar[list[Any]] = [
+        pytest.param(True, id="slash-populated-is-ephemeral"),
+        pytest.param(False, id="slash-empty-is-ephemeral"),
+    ]
+
+    @pytest.mark.parametrize("notes", _SLASH_NOTES_CASES)
     async def test_note_list_slash_is_ephemeral(
         self,
         tickets_cog: TicketsCog,
         slash_ctx: MagicMock,
         ticket_bot: MagicMock,
         mock_db,
+        notes: bool,
     ) -> None:
-        """Slash invocation → ctx.send(embed=..., ephemeral=True) with notes."""
-        self._note_list_env(tickets_cog, slash_ctx, ticket_bot, mock_db, slash=True)
+        """Slash invocation → ctx.send(embed=..., ephemeral=True)."""
+        self._note_list_env(tickets_cog, slash_ctx, ticket_bot, mock_db, slash=True, notes=notes)
 
         await tickets_cog.note_list.callback(tickets_cog, slash_ctx)
 
@@ -1634,32 +1653,55 @@ class TestNoteListPrivacy:
         assert call_kwargs.get("ephemeral") is True
         embed = call_kwargs.get("embed")
         assert embed is not None
-        # Notes content present in the ephemeral embed.
-        assert "Secret staff note" in (embed.description or "")
+        if notes:
+            # Notes content present in the ephemeral embed.
+            assert "Secret staff note" in (embed.description or "")
+        else:
+            assert "No" in (embed.title or "") or "no staff notes" in (embed.description or "").lower()
+        # No DM needed for slash — the ephemeral reply suffices.
+        slash_ctx.author.send.assert_not_awaited()
 
+    # Prefix path — populated vs empty notes share the DM-privacy contract.
+    # Parametrized (S6 ceiling cut): both rows DM the author privately and
+    # keep the channel embed confirmation-only; the channel MUST NOT leak
+    # note content (populated) nor the empty-state wording (B1 bug).
+    _PREFIX_NOTES_CASES: ClassVar[list[Any]] = [
+        pytest.param(True, id="prefix-populated-dms-author"),
+        pytest.param(False, id="prefix-empty-dms-author"),
+    ]
+
+    @pytest.mark.parametrize("notes", _PREFIX_NOTES_CASES)
     async def test_note_list_prefix_dms_author(
         self,
         tickets_cog: TicketsCog,
         slash_ctx: MagicMock,
         ticket_bot: MagicMock,
         mock_db,
+        notes: bool,
     ) -> None:
         """Prefix invocation → notes DM'd to author, channel gets confirmation only."""
-        self._note_list_env(tickets_cog, slash_ctx, ticket_bot, mock_db, slash=False)
+        self._note_list_env(tickets_cog, slash_ctx, ticket_bot, mock_db, slash=False, notes=notes)
 
         await tickets_cog.note_list.callback(tickets_cog, slash_ctx)
 
-        # Notes DM'd to author.
+        # Notes/empty-state DM'd to the author.
         slash_ctx.author.send.assert_awaited_once()
         dm_embed = slash_ctx.author.send.call_args.kwargs.get("embed")
         assert dm_embed is not None
-        assert "Secret staff note" in (dm_embed.description or "")
+        if notes:
+            assert "Secret staff note" in (dm_embed.description or "")
+        else:
+            assert "No" in (dm_embed.title or "") or "no staff notes" in (dm_embed.description or "").lower()
 
-        # Channel confirmation does NOT contain note content.
+        # Channel confirmation does NOT contain note content nor the
+        # empty-state wording ('No Notes' / 'no staff notes yet' — B1 bug).
         slash_ctx.send.assert_awaited_once()
         chan_embed = slash_ctx.send.call_args.kwargs.get("embed")
         assert chan_embed is not None
+        chan_text = f"{chan_embed.title or ''} {chan_embed.description or ''}".lower()
         assert "Secret staff note" not in (chan_embed.description or "")
+        assert "no staff notes yet" not in chan_text
+        assert "no notes" not in chan_text
 
     async def test_note_list_prefix_dm_failure_sends_error(
         self,
@@ -1681,65 +1723,6 @@ class TestNoteListPrivacy:
         assert chan_embed is not None
         assert "Secret staff note" not in (chan_embed.description or "")
         mock_exc.assert_called_once()
-
-    async def test_note_list_empty_slash_is_ephemeral(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db,
-    ) -> None:
-        """B1: empty notes via slash → ephemeral 'No Notes' embed (no channel leak).
-
-        The empty-state ('ticket has no staff notes') is private state and
-        MUST NOT be broadcast to the channel. Slash replies ephemerally.
-        """
-        self._note_list_env(tickets_cog, slash_ctx, ticket_bot, mock_db, slash=True, notes=False)
-
-        await tickets_cog.note_list.callback(tickets_cog, slash_ctx)
-
-        # Slash MUST reply ephemerally — the empty-state is private.
-        slash_ctx.send.assert_awaited_once()
-        call_kwargs = slash_ctx.send.call_args.kwargs
-        assert call_kwargs.get("ephemeral") is True
-        embed = call_kwargs.get("embed")
-        assert embed is not None
-        assert "No" in (embed.title or "") or "no staff notes" in (embed.description or "").lower()
-        # No DM needed for slash — the ephemeral reply suffices.
-        slash_ctx.author.send.assert_not_awaited()
-
-    async def test_note_list_empty_prefix_dms_author(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db,
-    ) -> None:
-        """B1: empty notes via prefix → DM 'No Notes' to author, channel gets confirmation-only.
-
-        The channel confirmation MUST NOT disclose that the ticket has no
-        staff notes (that state leak is the B1 bug). The author receives
-        the empty-state privately via DM; the channel sees only the same
-        generic 'Notes Sent' confirmation used by the non-empty path.
-        """
-        self._note_list_env(tickets_cog, slash_ctx, ticket_bot, mock_db, slash=False, notes=False)
-
-        await tickets_cog.note_list.callback(tickets_cog, slash_ctx)
-
-        # The empty-state ('No Notes') is DM'd privately to the author.
-        slash_ctx.author.send.assert_awaited_once()
-        dm_embed = slash_ctx.author.send.call_args.kwargs.get("embed")
-        assert dm_embed is not None
-        assert "No" in (dm_embed.title or "") or "no staff notes" in (dm_embed.description or "").lower()
-
-        # Channel gets a confirmation-only embed — MUST NOT leak the
-        # empty-state wording ('No Notes' / 'no staff notes yet').
-        slash_ctx.send.assert_awaited_once()
-        chan_embed = slash_ctx.send.call_args.kwargs.get("embed")
-        assert chan_embed is not None
-        chan_text = f"{chan_embed.title or ''} {chan_embed.description or ''}".lower()
-        assert "no staff notes yet" not in chan_text
-        assert "no notes" not in chan_text
 
 
 # ===========================================================================
@@ -2326,46 +2309,39 @@ class TestReopenByTicketRef:
         mock_db.get_ticket_by_number.assert_not_awaited()
         ticket_bot.ticket_service.reopen_ticket.assert_awaited_once()
 
-    async def test_reopen_bad_ref_shows_error(
+    # Unresolved-ref scenarios: (ticket_ref literal, get_ticket stub,
+    # get_ticket_by_number stub, expected outcome note). Parametrized (S6
+    # ceiling cut): all three surface the same error embed with no reopen —
+    # unparseable ref, valid-number-miss, and cross-guild UUID.
+    _REOPEN_REF_ERRORS: ClassVar[list[Any]] = [
+        pytest.param("not-a-ticket", None, None, id="bad-ref-shows-error"),
+        pytest.param("#9999", False, None, id="missing-ticket-shows-error"),
+        pytest.param(
+            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            {"id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "guildId": "999000999"},
+            None,
+            id="wrong-guild-denied",
+        ),
+    ]
+
+    @pytest.mark.parametrize(("ticket_ref", "get_ticket_row", "by_number_row"), _REOPEN_REF_ERRORS)
+    async def test_reopen_ref_error_shows_embed(
         self,
         tickets_cog: TicketsCog,
         slash_ctx: MagicMock,
         mock_db,
+        ticket_ref: str,
+        get_ticket_row: dict | None,
+        by_number_row: dict | None,
     ) -> None:
-        """An unparseable ticket_ref MUST surface an error_embed (no reopen)."""
-        mock_db.get_ticket_by_number = AsyncMock(return_value=None)
-        mock_db.get_ticket = AsyncMock(return_value=None)
+        """Unresolved ticket_ref (unparseable / no match / other guild) MUST
+        surface an error_embed with no reopen. The cross-guild row carries a
+        ticket found but belonging to a DIFFERENT guild (999000999)."""
+        mock_db.get_ticket = AsyncMock(return_value=get_ticket_row)
+        if by_number_row is not None:
+            mock_db.get_ticket_by_number = AsyncMock(return_value=by_number_row)
 
-        await tickets_cog.reopen.callback(tickets_cog, slash_ctx, ticket_ref="not-a-ticket")
-
-        _sent_embed(slash_ctx)
-
-    async def test_reopen_missing_ticket_shows_error(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        mock_db,
-    ) -> None:
-        """A valid number that matches no ticket MUST surface an error_embed."""
-        mock_db.get_ticket_by_number = AsyncMock(return_value=None)
-
-        await tickets_cog.reopen.callback(tickets_cog, slash_ctx, ticket_ref="#9999")
-
-        _sent_embed(slash_ctx)
-
-    async def test_reopen_wrong_guild_denied(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        mock_db,
-    ) -> None:
-        """A UUID ref belonging to a different guild MUST be denied."""
-        uuid_str = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-        # Ticket found but belongs to a DIFFERENT guild.
-        other_guild_row = {**_ticket_row(status="closed"), "id": uuid_str, "guildId": "999000999"}
-        mock_db.get_ticket = AsyncMock(return_value=other_guild_row)
-
-        await tickets_cog.reopen.callback(tickets_cog, slash_ctx, ticket_ref=uuid_str)
+        await tickets_cog.reopen.callback(tickets_cog, slash_ctx, ticket_ref=ticket_ref)
 
         _sent_embed(slash_ctx)
 
@@ -2784,24 +2760,44 @@ class TestUnclaimCommand:
         title = kwargs["embed"].title or ""
         assert "Permission" in title or "Denied" in title
 
-    async def test_unclaim_on_unclaimed_ticket_rejected(
+    # Not-claimable channel rows: (scenario, expect_ephemeral). Parametrized
+    # (S6 ceiling cut): an unclaimed ticket (claimedBy=None) and a non-ticket
+    # channel (no row) both leave the service unawaited with an error embed —
+    # ephemeral only in the unclaimed-ticket case.
+    _UNCLAIM_NOT_CLAIMABLE: ClassVar[list[Any]] = [
+        pytest.param("unclaimed", True, id="unclaimed-ticket-rejected"),
+        pytest.param("no_row", False, id="not-ticket-channel"),
+    ]
+
+    @pytest.mark.parametrize(("scenario", "expect_ephemeral"), _UNCLAIM_NOT_CLAIMABLE)
+    async def test_unclaim_not_claimable_shows_error(
         self,
         tickets_cog: TicketsCog,
         slash_ctx: MagicMock,
         ticket_bot: MagicMock,
         mock_db,
+        scenario: str,
+        expect_ephemeral: bool,
     ) -> None:
-        """Unclaim on an unclaimed ticket → ephemeral error embed."""
+        """Unclaim on an unclaimed ticket / non-ticket channel → error embed,
+        service never awaited (the ephemeral flag applies to the unclaimed
+        ticket; the plain channel error is a non-ephemeral embed)."""
         slash_ctx.author.id = 111111111
-        open_row = _ticket_row(status="open")
-        open_row["claimedBy"] = None
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=open_row)
         ticket_bot.ticket_service.unclaim_ticket = AsyncMock()
+        if scenario == "unclaimed":
+            open_row = _ticket_row(status="open")
+            open_row["claimedBy"] = None
+            mock_db.get_ticket_by_channel = AsyncMock(return_value=open_row)
+        else:
+            mock_db.get_ticket_by_channel = AsyncMock(return_value=None)
 
         await tickets_cog.unclaim.callback(tickets_cog, slash_ctx)
 
         ticket_bot.ticket_service.unclaim_ticket.assert_not_called()
-        _sent_ephemeral_kwargs(slash_ctx)
+        if expect_ephemeral:
+            _sent_ephemeral_kwargs(slash_ctx)
+        else:
+            _sent_embed(slash_ctx)
 
     async def test_unclaim_no_guild(
         self,
@@ -2815,22 +2811,6 @@ class TestUnclaimCommand:
         await tickets_cog.unclaim.callback(tickets_cog, ctx)
 
         _sent_embed(ctx)
-
-    async def test_unclaim_not_ticket_channel(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        ticket_bot: MagicMock,
-        mock_db,
-    ) -> None:
-        """/unclaim in non-ticket channel → error embed."""
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=None)
-        ticket_bot.ticket_service.unclaim_ticket = AsyncMock()
-
-        await tickets_cog.unclaim.callback(tickets_cog, slash_ctx)
-
-        ticket_bot.ticket_service.unclaim_ticket.assert_not_called()
-        _sent_embed(slash_ctx)
 
     async def test_unclaim_service_error(
         self,

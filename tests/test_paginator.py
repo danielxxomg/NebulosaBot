@@ -14,6 +14,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
+import pytest
 
 from bot.core.i18n import load_locales, set_guild_language
 from bot.utils.paginator import EmbedPaginator
@@ -44,15 +45,17 @@ class TestEmbedPaginatorInit:
         children = list(view.children)
         assert len(children) == 3
 
-    def test_default_timeout_is_120(self) -> None:
-        """Default timeout MUST be 120 seconds."""
-        view = EmbedPaginator(_make_pages())
-        assert view.timeout == 120.0
-
-    def test_custom_timeout(self) -> None:
-        """Timeout MUST be configurable."""
-        view = EmbedPaginator(_make_pages(), timeout=60)
-        assert view.timeout == 60
+    @pytest.mark.parametrize(
+        ("timeout", "expect_timeout"),
+        [
+            pytest.param(None, 120.0, id="default-timeout-is-120"),
+            pytest.param(60, 60, id="custom-timeout"),
+        ],
+    )
+    def test_timeout(self, timeout: float | None, expect_timeout: float) -> None:
+        """Default timeout MUST be 120s; an explicit timeout is configurable."""
+        view = EmbedPaginator(_make_pages()) if timeout is None else EmbedPaginator(_make_pages(), timeout=timeout)
+        assert view.timeout == expect_timeout
 
     def test_starts_on_page_zero(self) -> None:
         """Initial current_page MUST be 0."""
@@ -134,27 +137,24 @@ class TestEmbedPaginatorNavigation:
 
 
 class TestEmbedPaginatorStop:
-    """Tests for the stop button."""
+    """Tests for the stop button (matrix: disable-all + edit)."""
 
-    async def test_stop_disables_all_buttons(self) -> None:
-        """Stop button MUST disable prev, next, and itself."""
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("check_edit", [False, True], ids=["disables-all-buttons", "sends-edit"])
+    async def test_stop_button(self, check_edit: bool) -> None:
+        """Stop button MUST disable prev/next/itself; the edit row also
+        asserts edit_message fired once (stop renders the disabled view)."""
         view = EmbedPaginator(_make_pages(3))
         interaction = _make_interaction()
 
         await view.stop_button.callback(interaction)
 
-        for child in view.children:
-            if isinstance(child, discord.ui.Button):
-                assert child.disabled is True
-
-    async def test_stop_sends_edit(self) -> None:
-        """Stop button MUST call edit_message to update the view."""
-        view = EmbedPaginator(_make_pages(3))
-        interaction = _make_interaction()
-
-        await view.stop_button.callback(interaction)
-
-        interaction.response.edit_message.assert_awaited_once()
+        if not check_edit:
+            for child in view.children:
+                if isinstance(child, discord.ui.Button):
+                    assert child.disabled is True
+        else:
+            interaction.response.edit_message.assert_awaited_once()
 
 
 class TestEmbedPaginatorTimeout:
@@ -205,47 +205,19 @@ class TestEmbedPaginatorLocalizedLabels:
         """Return all button children in order."""
         return [c for c in view.children if isinstance(c, discord.ui.Button)]
 
-    def test_spanish_guild_shows_spanish_previous(self) -> None:
-        """Spanish guild MUST show Spanish Previous button label."""
-        set_guild_language("300", "es")
-        view = EmbedPaginator(_make_pages(), guild_id="300")
+    @pytest.mark.parametrize(
+        ("lang", "labels"),
+        [
+            pytest.param("es", ("◀ Anterior", "Siguiente ▶", "⏹ Detener"), id="spanish-guild-spanish-labels"),
+            pytest.param("en", ("◀ Previous", "Next ▶", "⏹ Stop"), id="english-guild-english-labels"),
+        ],
+    )
+    def test_guild_language_shows_localized_labels(self, lang: str, labels: tuple[str, str, str]) -> None:
+        """The guild's language MUST drive all three button labels via t()."""
+        set_guild_language("300" if lang == "es" else "400", lang)
+        view = EmbedPaginator(_make_pages(), guild_id="300" if lang == "es" else "400")
         buttons = self._get_buttons(view)
-        assert buttons[0].label == "◀ Anterior"
-
-    def test_spanish_guild_shows_spanish_next(self) -> None:
-        """Spanish guild MUST show Spanish Next button label."""
-        set_guild_language("300", "es")
-        view = EmbedPaginator(_make_pages(), guild_id="300")
-        buttons = self._get_buttons(view)
-        assert buttons[1].label == "Siguiente ▶"
-
-    def test_spanish_guild_shows_spanish_stop(self) -> None:
-        """Spanish guild MUST show Spanish Stop button label."""
-        set_guild_language("300", "es")
-        view = EmbedPaginator(_make_pages(), guild_id="300")
-        buttons = self._get_buttons(view)
-        assert buttons[2].label == "⏹ Detener"
-
-    def test_english_guild_shows_english_previous(self) -> None:
-        """English guild MUST show English Previous button label."""
-        set_guild_language("400", "en")
-        view = EmbedPaginator(_make_pages(), guild_id="400")
-        buttons = self._get_buttons(view)
-        assert buttons[0].label == "◀ Previous"
-
-    def test_english_guild_shows_english_next(self) -> None:
-        """English guild MUST show English Next button label."""
-        set_guild_language("400", "en")
-        view = EmbedPaginator(_make_pages(), guild_id="400")
-        buttons = self._get_buttons(view)
-        assert buttons[1].label == "Next ▶"
-
-    def test_english_guild_shows_english_stop(self) -> None:
-        """English guild MUST show English Stop button label."""
-        set_guild_language("400", "en")
-        view = EmbedPaginator(_make_pages(), guild_id="400")
-        buttons = self._get_buttons(view)
-        assert buttons[2].label == "⏹ Stop"
+        assert [b.label for b in buttons] == list(labels)
 
     def test_no_guild_id_shows_default_labels(self) -> None:
         """Without guild_id, buttons MUST use default Spanish (es) labels."""

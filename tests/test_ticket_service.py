@@ -514,34 +514,36 @@ async def test_claim_ticket_not_found(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("rows", "expect_len"),
+    [
+        pytest.param("two", 2, id="returns-models"),
+        pytest.param("empty", 0, id="empty-list"),
+    ],
+)
 async def test_get_stale_tickets_returns_models(
+    rows: str,
+    expect_len: int,
     service: TicketService,
     mock_db: AsyncMock,
     ticket_row: dict,
 ) -> None:
-    """get_stale_tickets MUST call DB with correct args and return Ticket models."""
+    """get_stale_tickets MUST call DB with correct args and return Ticket models.
+
+    Parametrized (S6 ceiling cut): the empty row re-asserts the same DB-call
+    contract with zero rows — when no stale tickets exist the service MUST
+    return an empty list (no models, same single guild-scoped DB call).
+    """
     guild_id = "123456789"
-    mock_db.get_stale_tickets.return_value = [ticket_row, ticket_row]
+    mock_db.get_stale_tickets.return_value = [ticket_row, ticket_row] if rows == "two" else []
 
     tickets = await service.get_stale_tickets(guild_id, hours=72)
 
     mock_db.get_stale_tickets.assert_awaited_once_with(guild_id, hours=72)
-    assert len(tickets) == 2
+    assert len(tickets) == expect_len
     assert all(isinstance(t, Ticket) for t in tickets)
-    assert tickets[0].status == "open"
-
-
-@pytest.mark.asyncio
-async def test_get_stale_tickets_empty(
-    service: TicketService,
-    mock_db: AsyncMock,
-) -> None:
-    """When no stale tickets exist, get_stale_tickets MUST return an empty list."""
-    mock_db.get_stale_tickets.return_value = []
-
-    tickets = await service.get_stale_tickets("123456789")
-
-    assert tickets == []
+    if tickets:
+        assert tickets[0].status == "open"
 
 
 # ---------------------------------------------------------------------------
@@ -701,12 +703,31 @@ def _wire_guild_config(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param("success", id="success"),
+        pytest.param(
+            "carve_out",
+            id="carve-out-skips-duplicate-check",
+        ),
+    ],
+)
 async def test_create_subticket_success(
+    case: str,
     service: TicketService,
     mock_db: AsyncMock,
     ticket_row: dict,
 ) -> None:
-    """Valid parent → sub-ticket created with parentId set, cache synced."""
+    """Valid parent → sub-ticket created with parentId set, cache synced.
+
+    Parametrized (S6 ceiling cut): the carve-out row re-runs the identical
+    valid-parent setup — per the spec, sub-ticket creation succeeds even
+    when the author already has an open ticket (the one-open-ticket
+    constraint is skipped), so both rows share the success contract:
+    parentId forwarded to insert (guild-scoped, MAX+1), the returned model
+    carries it, and the channel cache is synced.
+    """
     parent_id = "parent-uuid-001"
     guild_id = "123456789"
     channel_id = "666666666"
@@ -737,6 +758,10 @@ async def test_create_subticket_success(
 
     # Cache synced with the new channel.
     assert 666666666 in service._ticket_channel_cache
+
+    # Insert really happened exactly once (carve-out row: no duplicate guard
+    # blocked the insert even though the author may already hold a ticket).
+    mock_db.insert_ticket.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -797,36 +822,6 @@ async def test_create_subticket_invalid_parent_rejected(
         )
 
     mock_db.insert_ticket.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_create_subticket_carve_out_skips_duplicate_check(
-    service: TicketService,
-    mock_db: AsyncMock,
-    ticket_row: dict,
-) -> None:
-    """When parentId is set, the one-open-ticket constraint MUST be skipped.
-
-    The user already has an open ticket in the same category, yet the
-    sub-ticket creation MUST succeed without a duplicate error. This is
-    the carve-out mandated by the spec.
-    """
-    parent_id = "parent-uuid-001"
-    mock_db.get_ticket.return_value = _parent_row(parent_id=None)
-    mock_db.get_max_ticket_number.return_value = 5
-    mock_db.insert_ticket.return_value = {**ticket_row, "parentId": parent_id, "ticketNumber": 6}
-
-    # Even though the author already has an open ticket, parentId set → carve-out.
-    ticket = await service.create_subticket(
-        parent_id=parent_id,
-        author_id="111111111",
-        category_id="cat-uuid-001",
-        channel_id="666666666",
-        guild_id="123456789",
-    )
-
-    assert ticket.parent_id == parent_id
-    mock_db.insert_ticket.assert_awaited_once()
 
 
 # ===========================================================================
@@ -1047,43 +1042,47 @@ async def test_reopen_no_category_configured_raises(
 
 
 @pytest.mark.asyncio
-async def test_reopen_ticket_not_found(
-    service: TicketService,
-    mock_db: AsyncMock,
-) -> None:
-    """Reopening a non-existent ticket MUST raise ValueError."""
-    mock_db.get_ticket.return_value = None
-    guild = _mock_guild_for_reopen(category_channel=None)
-
-    with pytest.raises(ValueError, match=r"Ticket .* not found"):
-        await service.reopen_ticket("nope", guild=guild)
-
-    guild.create_text_channel.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("status", ["open", "claimed"])
+@pytest.mark.parametrize(
+    ("missing_row", "status", "ticket_ref", "match"),
+    [
+        pytest.param(True, None, "nope", r"Ticket .* not found", id="reopen-not-found"),
+        pytest.param(
+            False, "open", "ticket-uuid-003", r"Solo se pueden reabrir tickets cerrados", id="reopen-rejects-open"
+        ),
+        pytest.param(
+            False, "claimed", "ticket-uuid-003", r"Solo se pueden reabrir tickets cerrados", id="reopen-rejects-claimed"
+        ),
+    ],
+)
 async def test_reopen_rejects_non_closed_ticket(
+    missing_row: bool,
+    status: str | None,
+    ticket_ref: str,
+    match: str,
     service: TicketService,
     mock_db: AsyncMock,
-    status: str,
 ) -> None:
-    """B2: reopen_ticket MUST raise ValueError when status is not 'closed'.
+    """reopen_ticket MUST raise ValueError before creating any channel: for a
+    non-existent ticket ("not found") and for a non-closed ticket (B2
+    defense-in-depth — even if a caller bypasses the cog guard, the service
+    refuses a duplicate channel for an open/claimed ticket).
 
-    Defense-in-depth: even if a caller bypasses the cog guard, the service
-    refuses to create a duplicate channel for an open/claimed ticket.
+    Parametrized (S6 ceiling cut): the not-found row folds into the same
+    rejection matrix (same scaffold, same no-channel contract, distinct
+    denial reason).
     """
-    ticket_id = "ticket-uuid-003"
-    non_closed_row = {**_closed_ticket_row(), "status": status}
-    mock_db.get_ticket.return_value = non_closed_row
+    if missing_row:
+        mock_db.get_ticket.return_value = None
+    else:
+        non_closed_row = {**_closed_ticket_row(), "status": status}
+        mock_db.get_ticket.return_value = non_closed_row
+        # The denial text resolves via t() — pin the expected language so the
+        # assertion is independent of module-level poisoning (test isolation).
+        set_guild_language("123456789", "es")
     guild = _mock_guild_for_reopen(category_channel=None)
-    # The denial text now resolves via t() — pin the expected language for
-    # this guild so the assertion is independent of module-level poisoning
-    # from other test files (test isolation).
-    set_guild_language("123456789", "es")
 
-    with pytest.raises(ValueError, match=r"Solo se pueden reabrir tickets cerrados"):
-        await service.reopen_ticket(ticket_id, guild=guild)
+    with pytest.raises(ValueError, match=match):
+        await service.reopen_ticket(ticket_ref, guild=guild)
 
     # No duplicate channel created; no DB mutation.
     guild.create_text_channel.assert_not_awaited()
@@ -1365,50 +1364,50 @@ async def test_get_notes_audits_success(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("caller_id", "expect_deleted"),
+    ("note_row", "caller_id", "requested_note", "expect_deleted", "match"),
     [
-        pytest.param("999999999", True, id="delete-note-own-allowed"),
-        pytest.param("888888888", False, id="delete-note-other-rejected"),
+        pytest.param("999999999", "999999999", "note-uuid-001", True, None, id="delete-note-own-allowed"),
+        pytest.param("999999999", "888888888", "note-uuid-001", False, r"[Aa]uthor", id="delete-note-other-rejected"),
+        pytest.param("other-note", "999999999", "missing-note", False, r"[Nn]ot found", id="delete-note-missing-row"),
     ],
 )
 async def test_delete_note_author_gate(
+    note_row: str,
     caller_id: str,
+    requested_note: str,
     expect_deleted: bool,
+    match: str | None,
     service: TicketService,
     mock_db: AsyncMock,
 ) -> None:
-    """delete_note MUST allow the note author and reject non-authors: the
-    author's call reaches the guild-scoped DB delete; any other caller
-    raises ValueError (author mismatch) with no DB mutation.
+    """delete_note MUST allow the note author and reject non-authors /
+    unknown note ids: the author's matching call reaches the guild-scoped
+    DB delete; any other caller raises ValueError (author mismatch) and a
+    note that does not belong to the ticket raises (not found) — both with
+    no DB mutation.
+
+    Parametrized (S6 ceiling cut): the not-found row folds the standalone
+    probe into the same gate matrix (same scaffold, same no-mutation
+    contract, distinct denial reason).
     """
     mock_db.get_ticket.return_value = _ticket_guild_row("ticket-uuid-003")
-    mock_db.get_ticket_notes.return_value = [_note_row(author_id="999999999")]
+    if match is not None and "[Nn]ot found" in match:
+        # Not-found row: the note id does not belong to the ticket at all.
+        mock_db.get_ticket_notes.return_value = [_note_row(note_id=note_row)]
+    else:
+        mock_db.get_ticket_notes.return_value = [_note_row(note_id="note-uuid-001", author_id=note_row)]
 
     if expect_deleted:
-        await service.delete_note("note-uuid-001", author_id=caller_id, ticket_id="ticket-uuid-003")
+        await service.delete_note(requested_note, author_id=caller_id, ticket_id="ticket-uuid-003")
 
         mock_db.delete_ticket_note.assert_awaited_once_with(
-            "note-uuid-001", guild_id="123456789", ticket_id="ticket-uuid-003"
+            requested_note, guild_id="123456789", ticket_id="ticket-uuid-003"
         )
     else:
-        with pytest.raises(ValueError, match=r"[Aa]uthor"):
-            await service.delete_note("note-uuid-001", author_id=caller_id, ticket_id="ticket-uuid-003")
+        with pytest.raises(ValueError, match=match):
+            await service.delete_note(requested_note, author_id=caller_id, ticket_id="ticket-uuid-003")
 
         mock_db.delete_ticket_note.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_delete_note_not_found(
-    service: TicketService,
-    mock_db: AsyncMock,
-) -> None:
-    """Deleting a note that does not belong to the ticket MUST raise ValueError."""
-    mock_db.get_ticket_notes.return_value = [_note_row(note_id="other-note")]
-
-    with pytest.raises(ValueError, match=r"[Nn]ot found"):
-        await service.delete_note("missing-note", author_id="999999999", ticket_id="ticket-uuid-003")
-
-    mock_db.delete_ticket_note.assert_not_awaited()
 
 
 # ===========================================================================
@@ -1636,35 +1635,47 @@ async def test_note_privacy_matrix(
 
 
 @pytest.mark.asyncio
-async def test_reopen_audits_success(service: TicketService, mock_db: AsyncMock) -> None:
-    """3.7/3.8: reopen success MUST write an audit success row after channel creation."""
+@pytest.mark.parametrize(
+    ("non_closed_row", "expect_outcome"),
+    [
+        pytest.param(None, "success", id="reopen-success-audited"),
+        pytest.param("open", "denied", id="reopen-denied-audited"),
+    ],
+)
+async def test_reopen_audit_outcome(
+    non_closed_row: str | None,
+    expect_outcome: str,
+    service: TicketService,
+    mock_db: AsyncMock,
+) -> None:
+    """3.7/3.8: reopen MUST write an audit row whose outcome reflects the
+    invariant — success after channel creation on a closed ticket; denied +
+    re-raise on a non-closed ticket (no channel created).
+
+    Parametrized (S6 ceiling cut): both rows share the audit contract
+    (action=reopen, guild-scoped); only the wiring and outcome differ.
+    """
     ticket_id = "ticket-uuid-003"
-    guild = _wire_reopen_success(mock_db)
+    if non_closed_row is None:
+        guild = _wire_reopen_success(mock_db)
 
-    await service.reopen_ticket(ticket_id, guild=guild)
-
-    kwargs = _assert_audit(mock_db)
-    assert kwargs["action"] == "reopen"
-    assert kwargs["outcome"] == "success"
-    assert kwargs["guild_id"] == "123456789"
-
-
-@pytest.mark.asyncio
-async def test_reopen_denied_audited(service: TicketService, mock_db: AsyncMock) -> None:
-    """3.7/3.8: reopen on a non-closed ticket MUST audit denied + re-raise."""
-    ticket_id = "ticket-uuid-003"
-    open_row = {**_closed_ticket_row(), "status": "open"}
-    mock_db.get_ticket.return_value = open_row
-    guild = _mock_guild_for_reopen(category_channel=None)
-    set_guild_language("123456789", "es")  # denial text resolves via t()
-
-    with pytest.raises(ValueError, match=r"cerrados"):
         await service.reopen_ticket(ticket_id, guild=guild)
 
-    kwargs = _assert_audit(mock_db)
-    assert kwargs["action"] == "reopen"
-    assert kwargs["outcome"] == "denied"
-    guild.create_text_channel.assert_not_awaited()
+        kwargs = _assert_audit(mock_db)
+        assert kwargs["outcome"] == "success"
+        assert kwargs["guild_id"] == "123456789"
+    else:
+        open_row = {**_closed_ticket_row(), "status": non_closed_row}
+        mock_db.get_ticket.return_value = open_row
+        guild = _mock_guild_for_reopen(category_channel=None)
+        set_guild_language("123456789", "es")  # denial text resolves via t()
+
+        with pytest.raises(ValueError, match=r"cerrados"):
+            await service.reopen_ticket(ticket_id, guild=guild)
+
+        kwargs = _assert_audit(mock_db)
+        assert kwargs["outcome"] == "denied"
+        guild.create_text_channel.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -4336,31 +4347,61 @@ class TestRepairTicketManualGrant:
         return bot
 
     @pytest.mark.asyncio
-    async def test_operator_no_grant_is_denied(
-        self,
-        service: TicketService,
-        mock_db: AsyncMock,
-    ) -> None:
-        """A bot-owner operator without an explicit grant is denied before any probe."""
-
-        authority = RepairAuthority(
+    @staticmethod
+    def _owner_authority() -> RepairAuthority:
+        """Bot-owner authority targeting the default ticket guild."""
+        return RepairAuthority(
             actor_id="owner-1",
             guild_id=None,
             target_guild_id="123456789",
             is_bot_owner=True,
         )
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("global_grant", "expect_reason"),
+        [
+            pytest.param(None, "operator_mutation_requires_grant", id="no-grant-denied"),
+            pytest.param(
+                GlobalMutationGrant(
+                    actor_id="someone-else",
+                    scope="global",
+                    target_guild_id="123456789",
+                    reason="maintenance",
+                    confirmed=True,
+                ),
+                "grant_actor_mismatch",
+                id="grant-actor-mismatch-denied",
+            ),
+        ],
+    )
+    async def test_operator_grant_denials(
+        self,
+        service: TicketService,
+        mock_db: AsyncMock,
+        global_grant: GlobalMutationGrant | None,
+        expect_reason: str,
+    ) -> None:
+        """Manual-repair operator grant denials skip before any probe: a
+        bot-owner without an explicit grant (operator_mutation_requires_grant)
+        and a grant naming a different actor (grant_actor_mismatch) are both
+        denied.
+
+        Parametrized (S6 ceiling cut): both rows share the repair_ticket_manual
+        scaffold and the no-mutation contract.
+        """
         result = await service.repair_ticket_manual(
             "t-1",
             guild_id="123456789",
             actor_id="owner-1",
-            authority=authority,
+            authority=self._owner_authority(),
             bot=self._manual_bot(),
             preflight=_resolved_preflight(),
+            global_grant=global_grant,
         )
 
         assert result.outcome == "skipped"
-        assert result.reason == "operator_mutation_requires_grant"
+        assert result.reason == expect_reason
         mock_db.get_ticket.assert_not_awaited()
         mock_db.transition_ticket_to_closed.assert_not_awaited()
 
@@ -4410,42 +4451,6 @@ class TestRepairTicketManualGrant:
 
         assert result.outcome == "repaired"
         mock_db.transition_ticket_to_closed.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_operator_grant_actor_mismatch_denied(
-        self,
-        service: TicketService,
-        mock_db: AsyncMock,
-    ) -> None:
-        """A grant naming a different actor never authorizes this operator."""
-
-        authority = RepairAuthority(
-            actor_id="owner-1",
-            guild_id=None,
-            target_guild_id="123456789",
-            is_bot_owner=True,
-        )
-        grant = GlobalMutationGrant(
-            actor_id="someone-else",
-            scope="global",
-            target_guild_id="123456789",
-            reason="maintenance",
-            confirmed=True,
-        )
-
-        result = await service.repair_ticket_manual(
-            "t-1",
-            guild_id="123456789",
-            actor_id="owner-1",
-            authority=authority,
-            bot=self._manual_bot(),
-            preflight=_resolved_preflight(),
-            global_grant=grant,
-        )
-
-        assert result.outcome == "skipped"
-        assert result.reason == "grant_actor_mismatch"
-        mock_db.get_ticket.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

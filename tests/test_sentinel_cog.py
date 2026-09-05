@@ -394,14 +394,15 @@ class TestKickBanConfirmation:
         sentinel_bot.logging_service.log_moderation_action.assert_awaited_once()
 
     @pytest.mark.parametrize(
-        "action, reason",
+        ("action", "reason", "check_timeout_edit"),
         [
-            ("kick", "rule violation"),
-            ("ban", "severe violation"),
+            pytest.param("kick", "rule violation", False, id="wires-message-for-timeout-kick"),
+            pytest.param("ban", "severe violation", False, id="wires-message-for-timeout-ban"),
+            pytest.param("kick", "rule violation", True, id="timeout-edits-wired-message-kick"),
+            pytest.param("ban", "severe violation", True, id="timeout-edits-wired-message-ban"),
         ],
-        ids=["kick", "ban"],
     )
-    async def test_wires_message_for_timeout(
+    async def test_confirmation_message_wiring(
         self,
         sentinel_cog: SentinelCog,
         sentinel_bot: MagicMock,
@@ -409,11 +410,14 @@ class TestKickBanConfirmation:
         target_member: MagicMock,
         action: str,
         reason: str,
+        check_timeout_edit: bool,
     ) -> None:
-        """kick/ban → view.message is the Message returned by ctx.send().
+        """kick/ban → ctx.send() returns a Message that the view stores in
+        view.message (no private attribute injection) so on_timeout edits it.
 
-        Production wiring: ctx.send() returns a Message, and the view must
-        store it so on_timeout can edit it. No private attribute injection.
+        Parametrized (S6 ceiling cut): the wiring row asserts view.message is
+        the production-returned message; the timeout row runs the full flow
+        (command → wired message → on_timeout edit with the Timed Out embed).
         """
         mock_message = AsyncMock()
         sentinel_ctx.send = AsyncMock(return_value=mock_message)
@@ -424,39 +428,10 @@ class TestKickBanConfirmation:
 
         view = sentinel_ctx.send.call_args.kwargs.get("view")
         assert view is not None
-        assert view.message is mock_message
 
-    @pytest.mark.parametrize(
-        "action, reason",
-        [
-            ("kick", "rule violation"),
-            ("ban", "severe violation"),
-        ],
-        ids=["kick", "ban"],
-    )
-    async def test_timeout_edits_wired_message(
-        self,
-        sentinel_cog: SentinelCog,
-        sentinel_bot: MagicMock,
-        sentinel_ctx: MagicMock,
-        target_member: MagicMock,
-        action: str,
-        reason: str,
-    ) -> None:
-        """kick/ban → on_timeout edits the message wired by production code.
-
-        Full production flow: command sends confirmation, ctx.send returns a
-        message which is wired to view.message, then on_timeout edits it.
-        """
-        mock_message = AsyncMock()
-        sentinel_ctx.send = AsyncMock(return_value=mock_message)
-        setattr(target_member, action, AsyncMock())
-
-        with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
-            await getattr(sentinel_cog, action).callback(sentinel_cog, sentinel_ctx, target_member, reason=reason)
-
-        view = sentinel_ctx.send.call_args.kwargs.get("view")
-        assert view is not None
+        if not check_timeout_edit:
+            assert view.message is mock_message
+            return
 
         # Simulate timeout — should edit the wired message.
         await view.on_timeout()
@@ -477,7 +452,14 @@ class TestAuditReasonLocalization:
     """
 
     @pytest.mark.asyncio
-    async def test_unwarn_audit_reason_localized(
+    @pytest.mark.parametrize(
+        ("action", "reason_key"),
+        [
+            pytest.param("unwarn", "sentinel.unwarn.audit_reason", id="unwarn-audit-reason-localized"),
+            pytest.param("unmute", "sentinel.unmute.audit_reason", id="unmute-audit-reason-localized"),
+        ],
+    )
+    async def test_command_audit_reason_localized(
         self,
         sentinel_cog: SentinelCog,
         sentinel_bot: MagicMock,
@@ -485,34 +467,29 @@ class TestAuditReasonLocalization:
         target_member: MagicMock,
         mock_db,
         warn_row: dict,
+        action: str,
+        reason_key: str,
     ) -> None:
-        """unwarn → audit reason resolves sentinel.unwarn.audit_reason."""
-        mock_db.get_active_warnings = AsyncMock(return_value=[warn_row])
-        mock_db.deactivate_infraction = AsyncMock()
-        mock_db.update_member_warnings = AsyncMock()
+        """unwarn/unmute → audit reason resolves the action's sentinel key.
+
+        Parametrized (S6 ceiling cut): both rows drive the command, then pin
+        log_moderation_action's 5th positional arg to the localized reason.
+        """
+        if action == "unwarn":
+            mock_db.get_active_warnings = AsyncMock(return_value=[warn_row])
+            mock_db.deactivate_infraction = AsyncMock()
+            mock_db.update_member_warnings = AsyncMock()
+        else:
+            target_member.timeout = AsyncMock()
 
         with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
-            await sentinel_cog.unwarn.callback(sentinel_cog, sentinel_ctx, target_member)
+            await getattr(sentinel_cog, action).callback(sentinel_cog, sentinel_ctx, target_member)
 
         log_args = sentinel_bot.logging_service.log_moderation_action.await_args.args
-        assert log_args[4] == t("123456789", "sentinel.unwarn.audit_reason", id=warn_row["id"])
-
-    @pytest.mark.asyncio
-    async def test_unmute_audit_reason_localized(
-        self,
-        sentinel_cog: SentinelCog,
-        sentinel_bot: MagicMock,
-        sentinel_ctx: MagicMock,
-        target_member: MagicMock,
-    ) -> None:
-        """unmute → audit reason resolves sentinel.unmute.audit_reason."""
-        target_member.timeout = AsyncMock()
-
-        with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
-            await sentinel_cog.unmute.callback(sentinel_cog, sentinel_ctx, target_member)
-
-        log_args = sentinel_bot.logging_service.log_moderation_action.await_args.args
-        assert log_args[4] == t("123456789", "sentinel.unmute.audit_reason")
+        if action == "unwarn":
+            assert log_args[4] == t("123456789", reason_key, id=warn_row["id"])
+        else:
+            assert log_args[4] == t("123456789", reason_key)
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -1074,37 +1051,34 @@ class TestValidateTarget:
 
 
 class TestHandleModError:
-    """Tests for _handle_mod_error helper."""
+    """Tests for _handle_mod_error helper (exception → embed mapping matrix)."""
 
-    async def test_forbidden_maps_to_permission_error(
+    @pytest.mark.parametrize(
+        ("error_name", "title_fragment"),
+        [
+            pytest.param("forbidden", "Permission Denied", id="forbidden-permission-error"),
+            pytest.param("http", "Action Failed", id="http-action-failed"),
+        ],
+    )
+    async def test_exception_maps_to_error_embed(
         self,
         sentinel_cog: SentinelCog,
         sentinel_ctx: MagicMock,
         target_member: MagicMock,
+        error_name: str,
+        title_fragment: str,
     ) -> None:
-        """discord.Forbidden → permission error embed."""
-        await sentinel_cog._handle_mod_error(
-            sentinel_ctx, discord.Forbidden(response=MagicMock(), message="no perm"), "mute", target_member
+        """discord.Forbidden → permission error embed; discord.HTTPException → action failed embed."""
+        error = (
+            discord.Forbidden(response=MagicMock(), message="no perm")
+            if error_name == "forbidden"
+            else discord.HTTPException(response=MagicMock(), message="http error")
         )
+        await sentinel_cog._handle_mod_error(sentinel_ctx, error, "mute", target_member)
 
         sentinel_ctx.send.assert_awaited_once()
         embed = sentinel_ctx.send.call_args.kwargs.get("embed")
-        assert "Permission Denied" in embed.title
-
-    async def test_http_exception_maps_to_action_failed(
-        self,
-        sentinel_cog: SentinelCog,
-        sentinel_ctx: MagicMock,
-        target_member: MagicMock,
-    ) -> None:
-        """discord.HTTPException → action failed embed."""
-        await sentinel_cog._handle_mod_error(
-            sentinel_ctx, discord.HTTPException(response=MagicMock(), message="http error"), "kick", target_member
-        )
-
-        sentinel_ctx.send.assert_awaited_once()
-        embed = sentinel_ctx.send.call_args.kwargs.get("embed")
-        assert "Action Failed" in embed.title
+        assert title_fragment in embed.title
 
 
 # ---------------------------------------------------------------------------
