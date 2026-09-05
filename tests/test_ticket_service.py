@@ -217,17 +217,35 @@ async def test_create_ticket_retries_exhausted(
 
 
 @pytest.mark.asyncio
-async def test_create_ticket_with_subject_and_description(
+@pytest.mark.parametrize(
+    ("subject", "description", "expected_subject", "expected_description"),
+    [
+        ("Login broken", "Cannot access since Monday", "Login broken", "Cannot access since Monday"),
+        (None, None, None, None),
+    ],
+    ids=["with-subject-and-description", "without-subject-and-description"],
+)
+async def test_create_ticket_subject_description_passthrough(
+    subject: str | None,
+    description: str | None,
+    expected_subject: str | None,
+    expected_description: str | None,
     service: TicketService,
     mock_db: AsyncMock,
     ticket_row: dict,
 ) -> None:
-    """create_ticket(subject=..., description=...) MUST forward to insert_ticket."""
+    """create_ticket(subject=..., description=...) MUST forward to insert_ticket; omitted MUST pass None.
+
+    Parametrized (S1b cut): both variants assert the same two-sided contract
+    (insert_ticket kwargs + returned model) with the per-case expected value;
+    the only difference is whether subject/description are provided explicitly
+    or passed as None (explicit None == omitted None by production default).
+    """
     mock_db.get_max_ticket_number.return_value = 0
     mock_db.insert_ticket.return_value = {
         **ticket_row,
-        "subject": "Login broken",
-        "description": "Cannot access since Monday",
+        "subject": expected_subject,
+        "description": expected_description,
     }
 
     ticket = await service.create_ticket(
@@ -235,34 +253,15 @@ async def test_create_ticket_with_subject_and_description(
         author_id="111111111",
         category_id=None,
         channel_id="888888888",
-        subject="Login broken",
-        description="Cannot access since Monday",
+        subject=subject,
+        description=description,
     )
 
     call_kwargs = mock_db.insert_ticket.call_args.kwargs
-    assert call_kwargs["subject"] == "Login broken"
-    assert call_kwargs["description"] == "Cannot access since Monday"
-    assert ticket.subject == "Login broken"
-    assert ticket.description == "Cannot access since Monday"
-
-
-@pytest.mark.asyncio
-async def test_create_ticket_without_subject_and_description(
-    service: TicketService,
-    mock_db: AsyncMock,
-    ticket_row: dict,
-) -> None:
-    """create_ticket() without subject/description MUST pass None to insert_ticket."""
-    mock_db.get_max_ticket_number.return_value = 0
-    mock_db.insert_ticket.return_value = {**ticket_row, "subject": None, "description": None}
-
-    ticket = await _create_ticket(service)
-
-    call_kwargs = mock_db.insert_ticket.call_args.kwargs
-    assert call_kwargs["subject"] is None
-    assert call_kwargs["description"] is None
-    assert ticket.subject is None
-    assert ticket.description is None
+    assert call_kwargs["subject"] == expected_subject
+    assert call_kwargs["description"] == expected_description
+    assert ticket.subject == expected_subject
+    assert ticket.description == expected_description
 
 
 # ---------------------------------------------------------------------------
@@ -2149,18 +2148,35 @@ async def test_create_ticket_channel_forwards_custom_fields(
 
 
 @pytest.mark.asyncio
-async def test_create_ticket_channel_uses_sanitized_name(
+@pytest.mark.parametrize(
+    ("ticket_number", "expected_channel_name"),
+    [
+        (1, "soporte-testuser-0001"),
+        (42, "soporte-testuser-0042"),
+    ],
+    ids=["uses-sanitized-tentative-name", "renames-with-sanitized-actual"],
+)
+async def test_create_ticket_channel_sanitized_name(
+    ticket_number: int,
+    expected_channel_name: str,
     service: TicketService,
     mock_db: AsyncMock,
     ticket_row: dict,
 ) -> None:
-    """create_ticket_channel MUST use sanitize_channel_name for the channel name."""
+    """create_ticket_channel MUST use sanitize_channel_name; when tentative != actual, rename MUST use sanitized format.
+
+    Parametrized (S1b cut): both variants assert the same sanitize_channel_name
+    contract (create name == f"{category}-{username}-{number:04d}" pattern via
+    production sanitize) with the per-case expected channel name; the only
+    difference is whether the created name matches the actual ticket number
+    (no rename) or not (rename via sanitized edit).
+    """
     guild, category, author = _channel_triple("soporte-testuser-0001")
 
     mock_db.get_max_ticket_number.return_value = 0
-    mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 1}
+    mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": ticket_number}
 
-    _, __ = await service.create_ticket_channel(
+    _, ticket = await service.create_ticket_channel(
         guild,
         category,
         author,
@@ -2168,34 +2184,14 @@ async def test_create_ticket_channel_uses_sanitized_name(
         category_name="Soporte",
     )
 
-    # Channel created with sanitized name.
+    # Channel created with sanitized name; renamed to sanitized actual name when number differs.
     create_kwargs = guild.create_text_channel.call_args.kwargs
-    assert create_kwargs["name"] == "soporte-testuser-0001"
-
-
-@pytest.mark.asyncio
-async def test_create_ticket_channel_renames_with_sanitized_actual(
-    service: TicketService,
-    mock_db: AsyncMock,
-    ticket_row: dict,
-) -> None:
-    """When tentative != actual, rename MUST use sanitized format."""
-    guild, category, author = _channel_triple("soporte-testuser-0001")
-
-    mock_db.get_max_ticket_number.return_value = 0
-    mock_db.insert_ticket.return_value = {**ticket_row, "ticketNumber": 42}
-
-    _channel, ticket = await service.create_ticket_channel(
-        guild,
-        category,
-        author,
-        guild_id="123456789",
-        category_name="Soporte",
-    )
-
-    # Channel renamed to sanitized actual name.
-    guild.create_text_channel.return_value.edit.assert_awaited_once_with(name="soporte-testuser-0042")
-    assert ticket.ticket_number == 42
+    if ticket_number == 1:
+        assert create_kwargs["name"] == expected_channel_name
+        guild.create_text_channel.return_value.edit.assert_not_awaited()
+    else:
+        guild.create_text_channel.return_value.edit.assert_awaited_once_with(name=expected_channel_name)
+    assert ticket.ticket_number == ticket_number
 
 
 @pytest.mark.asyncio
@@ -2262,40 +2258,40 @@ async def test_reopen_uses_sanitized_channel_name(
 
 
 @pytest.mark.asyncio
-async def test_reopen_fallback_when_category_not_found(
+@pytest.mark.parametrize(
+    ("wire_category", "get_member_return", "expected_channel_name"),
+    [
+        (None, None, "ticket-user-0003"),
+        ({"name": "Soporte", "id": "cat-uuid-001"}, None, "soporte-user-0003"),
+    ],
+    ids=["fallback-when-category-not-found", "fallback-when-author-not-in-guild"],
+)
+async def test_reopen_fallback_name_resolution(
+    wire_category: dict | None,
+    get_member_return: MagicMock | None,
+    expected_channel_name: str,
     service: TicketService,
     mock_db: AsyncMock,
 ) -> None:
-    """When category lookup fails, reopen MUST fall back to 'ticket' prefix."""
+    """reopen_ticket MUST fall back when category lookup fails or author member is absent.
+
+    Parametrized (S1b cut): both variants assert the same fallback contract
+    (create_text_channel called once with the fallback-resolved sanitized
+    name) with the per-case expected name; the only difference is which input
+    degrades: category lookup returns None → 'ticket' prefix, author member
+    not found → 'user' username slot.
+    """
     ticket_id = "ticket-uuid-003"
-    # Category lookup returns None (not found).
-    guild = _wire_reopen_success(mock_db, category=None)
-    guild.get_member = MagicMock(return_value=None)
+    # Per-case degrade: category lookup failure or author not in guild.
+    guild = _wire_reopen_success(mock_db, category=wire_category)
+    guild.get_member = MagicMock(return_value=get_member_return)
 
     await service.reopen_ticket(ticket_id, guild=guild)
 
     guild.create_text_channel.assert_awaited_once()
     create_kwargs = guild.create_text_channel.call_args.kwargs
-    # Fallback: ticket-user-0003
-    assert create_kwargs["name"] == "ticket-user-0003"
-
-
-@pytest.mark.asyncio
-async def test_reopen_fallback_when_author_not_in_guild(
-    service: TicketService,
-    mock_db: AsyncMock,
-) -> None:
-    """When author member is not found, reopen MUST fall back to 'user'."""
-    ticket_id = "ticket-uuid-003"
-    guild = _wire_reopen_success(mock_db, category={"name": "Soporte", "id": "cat-uuid-001"})
-    # Author not found in guild.
-    guild.get_member = MagicMock(return_value=None)
-
-    await service.reopen_ticket(ticket_id, guild=guild)
-
-    guild.create_text_channel.assert_awaited_once()
-    create_kwargs = guild.create_text_channel.call_args.kwargs
-    assert create_kwargs["name"] == "soporte-user-0003"
+    # Fallback: ticket-user-0003 / soporte-user-0003.
+    assert create_kwargs["name"] == expected_channel_name
 
 
 # ===========================================================================
@@ -2573,38 +2569,35 @@ async def test_unclaim_ticket_resets_status_and_claimed_by(
 
 
 @pytest.mark.asyncio
-async def test_unclaim_ticket_unclaimed_raises(
+@pytest.mark.parametrize(
+    ("claimed_by", "caller", "match_pattern"),
+    [
+        (None, "userA", r"claimed"),
+        ("userA", "userB", r"claimer|mod|permission"),
+    ],
+    ids=["unclaimed-raises", "non-claimer-non-mod-denied"],
+)
+async def test_unclaim_ticket_denied(
+    claimed_by: str | None,
+    caller: str,
+    match_pattern: str,
     service: TicketService,
     mock_db: AsyncMock,
 ) -> None:
-    """unclaim_ticket on an unclaimed ticket MUST raise ValueError + audit denied."""
+    """unclaim_ticket MUST raise ValueError + audit denied for unclaimed or non-claimer-non-mod callers.
+
+    Parametrized (S1b cut): both variants assert the same denied contract
+    (ValueError + update_ticket not awaited + unclaim/denied audit row) with
+    the per-case match pattern; the only difference is which precondition is
+    violated: ticket not claimed, or caller is neither claimer nor mod.
+    """
     ticket_id = "ticket-uuid-unclaim"
 
-    open_row = _unclaim_row(status="open", claimed_by=None)
-    mock_db.get_ticket.return_value = open_row
+    row = _unclaim_row(status="open" if claimed_by is None else "claimed", claimed_by=claimed_by)
+    mock_db.get_ticket.return_value = row
 
-    with pytest.raises(ValueError, match=r"claimed"):
-        await service.unclaim_ticket(ticket_id, "userA", is_mod=False)
-
-    mock_db.update_ticket.assert_not_awaited()
-    kwargs = _assert_audit(mock_db)
-    assert kwargs["action"] == "unclaim"
-    assert kwargs["outcome"] == "denied"
-
-
-@pytest.mark.asyncio
-async def test_unclaim_ticket_non_claimer_non_mod_denied(
-    service: TicketService,
-    mock_db: AsyncMock,
-) -> None:
-    """unclaim_ticket by non-claimer non-mod MUST raise ValueError + audit denied."""
-    ticket_id = "ticket-uuid-unclaim"
-
-    claimed_row = _unclaim_row(status="claimed", claimed_by="userA")
-    mock_db.get_ticket.return_value = claimed_row
-
-    with pytest.raises(ValueError, match=r"claimer|mod|permission"):
-        await service.unclaim_ticket(ticket_id, "userB", is_mod=False)
+    with pytest.raises(ValueError, match=match_pattern):
+        await service.unclaim_ticket(ticket_id, caller, is_mod=False)
 
     mock_db.update_ticket.assert_not_awaited()
     kwargs = _assert_audit(mock_db)
