@@ -452,7 +452,14 @@ class TestAuditReasonLocalization:
     """
 
     @pytest.mark.asyncio
-    async def test_unwarn_audit_reason_localized(
+    @pytest.mark.parametrize(
+        ("action", "reason_key"),
+        [
+            pytest.param("unwarn", "sentinel.unwarn.audit_reason", id="unwarn-audit-reason-localized"),
+            pytest.param("unmute", "sentinel.unmute.audit_reason", id="unmute-audit-reason-localized"),
+        ],
+    )
+    async def test_audit_reason_localized(
         self,
         sentinel_cog: SentinelCog,
         sentinel_bot: MagicMock,
@@ -460,34 +467,29 @@ class TestAuditReasonLocalization:
         target_member: MagicMock,
         mock_db,
         warn_row: dict,
+        action: str,
+        reason_key: str,
     ) -> None:
-        """unwarn → audit reason resolves sentinel.unwarn.audit_reason."""
-        mock_db.get_active_warnings = AsyncMock(return_value=[warn_row])
-        mock_db.deactivate_infraction = AsyncMock()
-        mock_db.update_member_warnings = AsyncMock()
+        """unwarn/unmute → audit reason resolves the action's sentinel key.
+
+        Parametrized (S6 ceiling cut): both rows drive the command, then pin
+        log_moderation_action's 5th positional arg to the localized reason.
+        """
+        if action == "unwarn":
+            mock_db.get_active_warnings = AsyncMock(return_value=[warn_row])
+            mock_db.deactivate_infraction = AsyncMock()
+            mock_db.update_member_warnings = AsyncMock()
+        else:
+            target_member.timeout = AsyncMock()
 
         with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
-            await sentinel_cog.unwarn.callback(sentinel_cog, sentinel_ctx, target_member)
+            await getattr(sentinel_cog, action).callback(sentinel_cog, sentinel_ctx, target_member)
 
         log_args = sentinel_bot.logging_service.log_moderation_action.await_args.args
-        assert log_args[4] == t("123456789", "sentinel.unwarn.audit_reason", id=warn_row["id"])
-
-    @pytest.mark.asyncio
-    async def test_unmute_audit_reason_localized(
-        self,
-        sentinel_cog: SentinelCog,
-        sentinel_bot: MagicMock,
-        sentinel_ctx: MagicMock,
-        target_member: MagicMock,
-    ) -> None:
-        """unmute → audit reason resolves sentinel.unmute.audit_reason."""
-        target_member.timeout = AsyncMock()
-
-        with patch.object(sentinel_cog, "_validate_target", new=AsyncMock(return_value=True)):
-            await sentinel_cog.unmute.callback(sentinel_cog, sentinel_ctx, target_member)
-
-        log_args = sentinel_bot.logging_service.log_moderation_action.await_args.args
-        assert log_args[4] == t("123456789", "sentinel.unmute.audit_reason")
+        if action == "unwarn":
+            assert log_args[4] == t("123456789", reason_key, id=warn_row["id"])
+        else:
+            assert log_args[4] == t("123456789", reason_key)
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
