@@ -3490,34 +3490,30 @@ async def test_repair_denied_when_preflight_unresolved(
 
 
 @pytest.mark.asyncio
-async def test_repair_quarantines_unknown_evidence(
+@pytest.mark.parametrize(
+    ("case", "evidence_kwargs"),
+    [
+        pytest.param("unknown_channel_existence", {"channel_exists": None}, id="repair-quarantine-unknown"),
+        pytest.param(
+            "stale_absence_evidence",
+            {"observed_at": datetime(2020, 1, 1, tzinfo=UTC)},
+            id="repair-quarantine-stale",
+        ),
+    ],
+)
+async def test_repair_quarantines_unresolved_evidence(
+    case: str,
+    evidence_kwargs: dict,
     service: TicketService,
     mock_db: AsyncMock,
     ticket_row: dict,
 ) -> None:
-    """Unknown (None) channel existence MUST quarantine, never mutate."""
+    """Evidence whose corroboration is unresolved (unknown channel
+    existence or stale observation) MUST quarantine (skipped /
+    evidence_unresolved), never mutate.
+    """
 
-    evidence = _evidence(ticket_row, channel_exists=None)
-    assert evidence.corroborated is None
-
-    result = await _repair_from_evidence(service, evidence)
-
-    assert isinstance(result, RepairResult)
-    assert result.action == "no_op"
-    assert result.outcome == "skipped"
-    assert result.reason == "evidence_unresolved"
-    mock_db.transition_ticket_to_closed.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_repair_quarantines_stale_evidence(
-    service: TicketService,
-    mock_db: AsyncMock,
-    ticket_row: dict,
-) -> None:
-    """Stale absence evidence MUST quarantine (unresolved), never mutate."""
-
-    evidence = _evidence(ticket_row, observed_at=datetime(2020, 1, 1, tzinfo=UTC))
+    evidence = _evidence(ticket_row, **evidence_kwargs)
     assert evidence.corroborated is None
 
     result = await _repair_from_evidence(service, evidence)
