@@ -188,21 +188,21 @@ describe("getTicketsForGuild — auth gating", () => {
     setupAuth({ hasSession: false });
     const result = await getTicketsForGuild(GUILD_ID);
     expect(result.data).toBeNull();
-    expect(result.error).toMatch(/authenticated/i);
+    expect(result.error).toMatch(/authenticated/iu);
   });
 
   it("returns an auth error when the caller is not a guild admin", async () => {
     setupAuth({ isAdmin: false });
     const result = await getTicketsForGuild(GUILD_ID);
     expect(result.data).toBeNull();
-    expect(result.error).toMatch(/administrator/i);
+    expect(result.error).toMatch(/administrator/iu);
   });
 
   it("returns an auth error when the guild is inactive", async () => {
     setupAuth({ guildActive: false });
     const result = await getTicketsForGuild(GUILD_ID);
     expect(result.data).toBeNull();
-    expect(result.error).toMatch(/guild not found|inactive/i);
+    expect(result.error).toMatch(/guild not found|inactive/iu);
   });
 });
 
@@ -231,7 +231,7 @@ describe("getReopenGuidance — auth gating", () => {
     const result = await getReopenGuidance(TICKET_ID);
 
     expect(result.data).toBeNull();
-    expect(result.error).toMatch(/administrator/i);
+    expect(result.error).toMatch(/administrator/iu);
     // resolveTicketGuild reads the ticket for guildId; the category check is
     // skipped because auth fails first.
   });
@@ -244,7 +244,7 @@ describe("getReopenGuidance — auth gating", () => {
     const result = await getReopenGuidance(TICKET_ID);
 
     expect(result.data).toBeNull();
-    expect(result.error).toMatch(/administrator/i);
+    expect(result.error).toMatch(/administrator/iu);
   });
 });
 
@@ -262,7 +262,7 @@ describe("getReopenGuidance — category gate (TI-030)", () => {
     const result = await getReopenGuidance(TICKET_ID);
 
     expect(result.data).toBeNull();
-    expect(result.error).toMatch(/category is not configured/i);
+    expect(result.error).toMatch(/category is not configured/iu);
   });
 
   it("returns an error when ticketCategoryId is an empty string", async () => {
@@ -278,7 +278,7 @@ describe("getReopenGuidance — category gate (TI-030)", () => {
     const result = await getReopenGuidance(TICKET_ID);
 
     expect(result.data).toBeNull();
-    expect(result.error).toMatch(/category is not configured/i);
+    expect(result.error).toMatch(/category is not configured/iu);
   });
 });
 
@@ -308,7 +308,7 @@ describe("getReopenGuidance — guidance shape (TI-029)", () => {
     setupAuth({ ticketSingle: null });
     const result = await getReopenGuidance(TICKET_ID);
     expect(result.data).toBeNull();
-    expect(result.error).toMatch(/not found/i);
+    expect(result.error).toMatch(/not found/iu);
   });
 });
 
@@ -325,7 +325,7 @@ describe("transferTicket — auth gating", () => {
     const result = await transferTicket(TICKET_ID, CLAIMED_BY);
 
     expect(result.data).toBeNull();
-    expect(result.error).toMatch(/administrator/i);
+    expect(result.error).toMatch(/administrator/iu);
     expect(svc.ticket.update).not.toHaveBeenCalled();
   });
 });
@@ -367,7 +367,7 @@ describe("transferTicket — updates claimedBy AND status='claimed'", () => {
     const svc = setupAuth({ ticketSingle: null });
     const result = await transferTicket(TICKET_ID, CLAIMED_BY);
     expect(result.data).toBeNull();
-    expect(result.error).toMatch(/not found/i);
+    expect(result.error).toMatch(/not found/iu);
     expect(svc.ticket.update).not.toHaveBeenCalled();
   });
 
@@ -378,7 +378,7 @@ describe("transferTicket — updates claimedBy AND status='claimed'", () => {
     });
     const result = await transferTicket(TICKET_ID, CLAIMED_BY);
     expect(result.data).toBeNull();
-    expect(result.error).toMatch(/database error/i);
+    expect(result.error).toMatch(/database error/iu);
   });
 });
 
@@ -424,7 +424,7 @@ describe("addTicketNote — auth gating", () => {
     });
     const result = await addTicketNote(TICKET_ID, "hello");
     expect(result.data).toBeNull();
-    expect(result.error).toMatch(/administrator/i);
+    expect(result.error).toMatch(/administrator/iu);
     expect(svc.ticketNote.insert).not.toHaveBeenCalled();
   });
 });
@@ -440,7 +440,7 @@ describe("addTicketNote — note cap (TI-031 / TI-034)", () => {
     const result = await addTicketNote(TICKET_ID, "one too many");
 
     expect(result.data).toBeNull();
-    expect(result.error).toMatch(/cap|limit/i);
+    expect(result.error).toMatch(/cap|limit/iu);
     expect(svc.ticketNote.insert).not.toHaveBeenCalled();
   });
 
@@ -482,7 +482,7 @@ describe("addTicketNote — note dedup (TI-016 normalized hash)", () => {
     const result = await addTicketNote(TICKET_ID, "  hello   world  ");
 
     expect(result.data).toBeNull();
-    expect(result.error).toMatch(/duplicate/i);
+    expect(result.error).toMatch(/duplicate/iu);
     expect(svc.ticketNote.insert).not.toHaveBeenCalled();
   });
 
@@ -536,7 +536,7 @@ describe("deleteTicketNote — author-only ownership (TI-032 / TI-035)", () => {
     const result = await deleteTicketNote(NOTE_ID);
 
     expect(result.data).toBeNull();
-    expect(result.error).toMatch(/author|owner|own note/i);
+    expect(result.error).toMatch(/author|owner|own note/iu);
     expect(svc.ticketNote.delete).not.toHaveBeenCalled();
   });
 
@@ -549,7 +549,7 @@ describe("deleteTicketNote — author-only ownership (TI-032 / TI-035)", () => {
     const result = await deleteTicketNote(NOTE_ID);
 
     expect(result.data).toBeNull();
-    expect(result.error).toMatch(/administrator/i);
+    expect(result.error).toMatch(/administrator/iu);
     expect(svc.ticketNote.delete).not.toHaveBeenCalled();
   });
 
@@ -557,7 +557,7 @@ describe("deleteTicketNote — author-only ownership (TI-032 / TI-035)", () => {
     setupAuth({ ticketNoteSingle: null });
     const result = await deleteTicketNote(NOTE_ID);
     expect(result.data).toBeNull();
-    expect(result.error).toMatch(/not found/i);
+    expect(result.error).toMatch(/not found/iu);
   });
 });
 
@@ -570,7 +570,7 @@ describe("getTicketAudit — auth gating", () => {
     const svc = setupAuth({ isAdmin: false });
     const result = await getTicketAudit(GUILD_ID, TICKET_ID, 1);
     expect(result.data).toBeNull();
-    expect(result.error).toMatch(/administrator/i);
+    expect(result.error).toMatch(/administrator/iu);
     expect(svc.ticketAudit.select).not.toHaveBeenCalled();
   });
 });
@@ -618,6 +618,6 @@ describe("getTicketAudit — guild-scoped pagination (TI-038 / TI-021)", () => {
     setupAuth({ ticketAuditError: new Error("audit table missing") });
     const result = await getTicketAudit(GUILD_ID, TICKET_ID, 1);
     expect(result.data).toBeNull();
-    expect(result.error).toMatch(/database error/i);
+    expect(result.error).toMatch(/database error/iu);
   });
 });

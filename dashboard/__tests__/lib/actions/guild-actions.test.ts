@@ -99,7 +99,7 @@ describe("updateGuildConfig — auth rejection", () => {
     const fd = buildFormData({ language: "en", prefix: "!" });
     const result = await updateGuildConfig(GUILD_ID, fd);
     if (!result.success) {
-      expect(result.error).toMatch(/re-login/i);
+      expect(result.error).toMatch(/re-login/iu);
     }
   });
 
@@ -108,7 +108,7 @@ describe("updateGuildConfig — auth rejection", () => {
     const fd = buildFormData({ language: "en", prefix: "!" });
     const result = await updateGuildConfig(GUILD_ID, fd);
     if (!result.success) {
-      expect(result.error).toMatch(/inactive|not found/i);
+      expect(result.error).toMatch(/inactive|not found/iu);
     }
   });
 
@@ -117,7 +117,7 @@ describe("updateGuildConfig — auth rejection", () => {
     const fd = buildFormData({ language: "en", prefix: "!" });
     const result = await updateGuildConfig(GUILD_ID, fd);
     if (!result.success) {
-      expect(result.error).toMatch(/administrator/i);
+      expect(result.error).toMatch(/administrator/iu);
     }
   });
 });

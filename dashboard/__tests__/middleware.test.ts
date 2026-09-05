@@ -35,7 +35,7 @@ function compileMatcher(entry: string): RegExp {
   // additional "/" inside `_next/static` and `_next/image`, so delimiter
   // slicing via lastIndexOf would be incorrect).
   const body = entry.slice(1);
-  return new RegExp(`^/${body}$`);
+  return new RegExp(`^/${body}$`, "u");
 }
 
 describe("middleware config", () => {

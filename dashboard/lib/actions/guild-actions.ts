@@ -17,7 +17,7 @@ const VALID_LANGUAGES = new Set([
  */
 function isValidSnowflake(value: string | null): boolean {
   if (!value) {return true;} // null/empty is valid (optional field)
-  return /^\d{17,20}$/.test(value);
+  return /^\d{17,20}$/u.test(value);
 }
 
 /**

@@ -96,7 +96,7 @@ describe("updateGreetingConfig — auth rejection", () => {
     const fd = buildFormData({ welcomeChannelId: "123456789012345678" });
     const result = await updateGreetingConfig(GUILD_ID, fd);
     if (!result.success) {
-      expect(result.error).toMatch(/administrator/i);
+      expect(result.error).toMatch(/administrator/iu);
     }
   });
 });

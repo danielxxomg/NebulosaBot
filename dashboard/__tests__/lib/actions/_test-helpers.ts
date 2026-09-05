@@ -313,7 +313,7 @@ export function buildFormData(entries: Record<string, string>): FormData {
 export function assertAuthError(result: ActionResult): void {
   expect(result.success).toBe(false);
   if (!result.success) {
-    expect(result.error).toMatch(/authenticated|admin/i);
+    expect(result.error).toMatch(/authenticated|admin/iu);
   }
 }
 

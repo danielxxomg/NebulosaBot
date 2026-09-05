@@ -26,7 +26,7 @@ import { NOTE_DEDUP_WINDOW_SECONDS } from "./ticket-invariants";
  * helper and makes `"  Hello   World  "` hash identically to `"hello world"`.
  */
 export function computeNoteHash(content: string): string {
-  const normalized = content.trim().toLowerCase().split(/\s+/).join(" ");
+  const normalized = content.trim().toLowerCase().split(/\s+/u).join(" ");
   return createHash("sha256").update(normalized, "utf-8").digest("hex");
 }
 

@@ -110,7 +110,7 @@ describe("updateEconomyConfig — auth rejection", () => {
     });
     const result = await updateEconomyConfig(GUILD_ID, fd);
     if (!result.success) {
-      expect(result.error).toMatch(/administrator/i);
+      expect(result.error).toMatch(/administrator/iu);
     }
   });
 });

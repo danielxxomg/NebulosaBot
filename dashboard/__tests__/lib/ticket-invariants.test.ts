@@ -26,7 +26,7 @@ describe("computeNoteHash — normalization (decision #9)", () => {
     const a = computeNoteHash("  Hello   World  ");
     const b = computeNoteHash("hello world");
     expect(a).toBe(b);
-    expect(a).toMatch(/^[0-9a-f]{64}$/); // sha256 hex
+    expect(a).toMatch(/^[0-9a-f]{64}$/u); // sha256 hex
   });
 
   it("produces a stable hex digest for identical normalized content", () => {
@@ -60,12 +60,12 @@ describe("checkCanClaim — status state machine", () => {
   });
 
   it("rejects claiming a closed ticket", () => {
-    expect(() => checkCanClaim("closed", null)).toThrow(/claim/i);
+    expect(() => checkCanClaim("closed", null)).toThrow(/claim/iu);
   });
 
   it("rejects claiming an already-claimed ticket (no-overwrite)", () => {
-    expect(() => checkCanClaim("claimed", "userA")).toThrow(/claim/i);
-    expect(() => checkCanClaim("claimed", "userB")).toThrow(/claim/i);
+    expect(() => checkCanClaim("claimed", "userA")).toThrow(/claim/iu);
+    expect(() => checkCanClaim("claimed", "userB")).toThrow(/claim/iu);
   });
 });
 
@@ -77,7 +77,7 @@ describe("checkCanClose", () => {
     expect(() => checkCanClose("claimed")).not.toThrow();
   });
   it("rejects closing an already-closed ticket", () => {
-    expect(() => checkCanClose("closed")).toThrow(/close/i);
+    expect(() => checkCanClose("closed")).toThrow(/close/iu);
   });
 });
 
@@ -86,7 +86,7 @@ describe("checkCanReopen — status guard", () => {
     expect(() => checkCanReopen("closed")).not.toThrow();
   });
   it.each(["open", "claimed"])("rejects reopening a non-closed ticket (status=%s)", (status) => {
-    expect(() => checkCanReopen(status)).toThrow(/reopen/i);
+    expect(() => checkCanReopen(status)).toThrow(/reopen/iu);
   });
 });
 
@@ -98,13 +98,13 @@ describe("checkCanTransfer — reassign + same-user reject", () => {
     expect(() => checkCanTransfer("claimed", "userA", "userB")).not.toThrow();
   });
   it("rejects transferring a closed ticket", () => {
-    expect(() => checkCanTransfer("closed", "userA", "userB")).toThrow(/closed/i);
+    expect(() => checkCanTransfer("closed", "userA", "userB")).toThrow(/closed/iu);
   });
   it("rejects transfer to the same staff member who already claimed it", () => {
-    expect(() => checkCanTransfer("claimed", "userA", "userA")).toThrow(/same/i);
+    expect(() => checkCanTransfer("claimed", "userA", "userA")).toThrow(/same/iu);
   });
   it("rejects transfer without a target", () => {
-    expect(() => checkCanTransfer("open", null, null)).toThrow(/target/i);
+    expect(() => checkCanTransfer("open", null, null)).toThrow(/target/iu);
   });
 });
 
@@ -113,10 +113,10 @@ describe("checkCanAddNote — cap enforcement", () => {
     expect(() => checkCanAddNote(30, NOTE_CAP)).not.toThrow();
   });
   it("rejects adding a note at the cap", () => {
-    expect(() => checkCanAddNote(NOTE_CAP, NOTE_CAP)).toThrow(/cap/i);
+    expect(() => checkCanAddNote(NOTE_CAP, NOTE_CAP)).toThrow(/cap/iu);
   });
   it("rejects adding a note above the cap", () => {
-    expect(() => checkCanAddNote(NOTE_CAP + 5, NOTE_CAP)).toThrow(/cap/i);
+    expect(() => checkCanAddNote(NOTE_CAP + 5, NOTE_CAP)).toThrow(/cap/iu);
   });
 });
 
@@ -125,7 +125,7 @@ describe("checkCanDeleteNote — author-only", () => {
     expect(() => checkCanDeleteNote("userA", "userA")).not.toThrow();
   });
   it("rejects deleting another author's note", () => {
-    expect(() => checkCanDeleteNote("userA", "userB")).toThrow(/author|owner/i);
+    expect(() => checkCanDeleteNote("userA", "userB")).toThrow(/author|owner/iu);
   });
 });
 
@@ -135,18 +135,18 @@ describe("checkSubticketParent — parentId FK invariants (depth max 2)", () => 
     expect(() => checkSubticketParent(parent, "guildA", "guildA", "child-1")).not.toThrow();
   });
   it("rejects a missing parent", () => {
-    expect(() => checkSubticketParent(null, "guildA", "guildA", "child-1")).toThrow(/parent/i);
+    expect(() => checkSubticketParent(null, "guildA", "guildA", "child-1")).toThrow(/parent/iu);
   });
   it("rejects a self-referential parent", () => {
     const parent = { guildId: "guildA", id: "t-1", parentId: null };
-    expect(() => checkSubticketParent(parent, "guildA", "guildA", "t-1")).toThrow(/self/i);
+    expect(() => checkSubticketParent(parent, "guildA", "guildA", "t-1")).toThrow(/self/iu);
   });
   it("rejects a parent that is itself a subticket (depth limit)", () => {
     const parent = { guildId: "guildA", id: "parent-1", parentId: "grandparent-1" };
-    expect(() => checkSubticketParent(parent, "guildA", "guildA", "child-1")).toThrow(/depth|nested|sub/i);
+    expect(() => checkSubticketParent(parent, "guildA", "guildA", "child-1")).toThrow(/depth|nested|sub/iu);
   });
   it("rejects a cross-guild parent", () => {
     const parent = { guildId: "guildA", id: "parent-1", parentId: null };
-    expect(() => checkSubticketParent(parent, "guildA", "guildB", "child-1")).toThrow(/guild/i);
+    expect(() => checkSubticketParent(parent, "guildA", "guildB", "child-1")).toThrow(/guild/iu);
   });
 });

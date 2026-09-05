@@ -67,7 +67,7 @@ export async function updateEconomyConfig(
   }
 
   // Validate levelUpChannelId snowflake.
-  if (levelUpChannelId && !/^\d{17,20}$/.test(levelUpChannelId)) {
+  if (levelUpChannelId && !/^\d{17,20}$/u.test(levelUpChannelId)) {
     return { error: "Level-up channel ID must be a valid Discord snowflake.", field: "levelUpChannelId", success: false };
   }
 

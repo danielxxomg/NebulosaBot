@@ -110,20 +110,20 @@ describe("Contract TI-001..TI-007 (status state machine)", () => {
   });
 
   it("ti005ClosedClaimDenied — claim on a closed ticket is denied", () => {
-    expect(() => checkCanClaim("closed", null)).toThrow(/claim/i);
+    expect(() => checkCanClaim("closed", null)).toThrow(/claim/iu);
   });
 
   it.each(["open", "claimed"])(
     "ti006NonClosedNoGuidance — reopen denied for non-closed (status=%s)",
     (status) => {
-      expect(() => checkCanReopen(status)).toThrow(/reopen/i);
+      expect(() => checkCanReopen(status)).toThrow(/reopen/iu);
     }
   );
 
   it.each(["userA", "userB"])(
     "ti007ClaimNoOverwrite — claim on already-claimed denied (claimant=%s)",
     (claimant) => {
-      expect(() => checkCanClaim("claimed", claimant)).toThrow(/claim/i);
+      expect(() => checkCanClaim("claimed", claimant)).toThrow(/claim/iu);
     }
   );
 });
@@ -144,7 +144,7 @@ describe("Contract TI-008..TI-010 (transfer)", () => {
   });
 
   it("ti010TransferSameUserDenied — transfer to the current claimant is denied", () => {
-    expect(() => checkCanTransfer("claimed", "userA", "userA")).toThrow(/same/i);
+    expect(() => checkCanTransfer("claimed", "userA", "userA")).toThrow(/same/iu);
   });
 });
 
@@ -161,27 +161,27 @@ describe("Contract TI-011..TI-015 (parentId FK)", () => {
 
   it("ti012ParentMissingDenied — missing parent is denied", () => {
     expect(() => checkSubticketParent(null, "guildA", "guildA", "child-1")).toThrow(
-      /parent/i
+      /parent/iu
     );
   });
 
   it("ti013SelfParentDenied — self-referential parent is denied", () => {
     expect(() =>
       checkSubticketParent(parentRow("t-1"), "guildA", "guildA", "t-1")
-    ).toThrow(/self/i);
+    ).toThrow(/self/iu);
   });
 
   it("ti014DepthDenied — a parent that is itself a subticket is denied (depth max 2)", () => {
     const deepest = parentRow("parent-1", "grandparent-1");
     expect(() =>
       checkSubticketParent(deepest, "guildA", "guildA", "child-1")
-    ).toThrow(/depth|nested|sub/i);
+    ).toThrow(/depth|nested|sub/iu);
   });
 
   it("ti015CrossGuildParentDenied — cross-guild parent is denied", () => {
     expect(() =>
       checkSubticketParent(parentRow("parent-1"), "guildA", "guildB", "child-1")
-    ).toThrow(/guild/i);
+    ).toThrow(/guild/iu);
   });
 });
 
@@ -364,13 +364,13 @@ describe("Contract TI-029..TI-030 (dashboard reopen drift)", () => {
 
 describe("Contract TI-031..TI-032 (note cap + delete ownership)", () => {
   it("ti031NoteCap — at/over the cap the add is denied; under it is allowed", () => {
-    expect(() => checkCanAddNote(NOTE_CAP, NOTE_CAP)).toThrow(/cap/i);
-    expect(() => checkCanAddNote(NOTE_CAP + 5, NOTE_CAP)).toThrow(/cap/i);
+    expect(() => checkCanAddNote(NOTE_CAP, NOTE_CAP)).toThrow(/cap/iu);
+    expect(() => checkCanAddNote(NOTE_CAP + 5, NOTE_CAP)).toThrow(/cap/iu);
     expect(() => checkCanAddNote(30, NOTE_CAP)).not.toThrow();
   });
 
   it("ti032NoteDeleteOwnerOnly — only the author may delete", () => {
-    expect(() => checkCanDeleteNote("userA", "userB")).toThrow(/author|owner/i);
+    expect(() => checkCanDeleteNote("userA", "userB")).toThrow(/author|owner/iu);
     expect(() => checkCanDeleteNote("userA", "userA")).not.toThrow();
   });
 });

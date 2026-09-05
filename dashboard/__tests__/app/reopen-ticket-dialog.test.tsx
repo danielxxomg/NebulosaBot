@@ -30,7 +30,7 @@ describe("ReopenTicketDialog — guidance view (TI-029)", () => {
       />
     );
 
-    expect(screen.getByText(/Reopen in Discord/i)).toBeTruthy();
+    expect(screen.getByText(/Reopen in Discord/iu)).toBeTruthy();
     expect(screen.getByText("/reopen ticket:#0003")).toBeTruthy();
     // The ticket number cell renders exactly "#0003" (exact match so the
     // command line "/reopen ticket:#0003" doesn't collide).
@@ -47,7 +47,7 @@ describe("ReopenTicketDialog — guidance view (TI-029)", () => {
         onClose={onClose}
       />
     );
-    fireEvent.click(screen.getByRole("button", { name: /Close/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Close/iu }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -60,8 +60,8 @@ describe("ReopenTicketDialog — guidance view (TI-029)", () => {
         onClose={() => {}}
       />
     );
-    expect(screen.queryByText(/Reopen in Discord/i)).toBeNull();
-    expect(screen.queryByText(/\/reopen ticket:#0003/)).toBeNull();
+    expect(screen.queryByText(/Reopen in Discord/iu)).toBeNull();
+    expect(screen.queryByText(/\/reopen ticket:#0003/u)).toBeNull();
   });
 });
 
@@ -77,11 +77,11 @@ describe("ReopenTicketDialog — category-not-configured error (TI-030)", () => 
     );
 
     expect(
-      screen.getByText(/Ticket category is not configured/i)
+      screen.getByText(/Ticket category is not configured/iu)
     ).toBeTruthy();
     // CRITICAL (TI-030): no command must be shown when the category is missing.
-    expect(screen.queryByText(/\/reopen ticket:/)).toBeNull();
-    expect(screen.queryByText(/#0003/)).toBeNull();
+    expect(screen.queryByText(/\/reopen ticket:/u)).toBeNull();
+    expect(screen.queryByText(/#0003/u)).toBeNull();
   });
 
   it("still allows closing the error modal", () => {
@@ -94,7 +94,7 @@ describe("ReopenTicketDialog — category-not-configured error (TI-030)", () => 
         onClose={onClose}
       />
     );
-    fireEvent.click(screen.getByRole("button", { name: /Close/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Close/iu }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

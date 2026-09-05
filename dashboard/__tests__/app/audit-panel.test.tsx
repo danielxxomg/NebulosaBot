@@ -64,14 +64,14 @@ describe("AuditPanel — load + list (TI-038)", () => {
   it("passes the optional ticketId filter through to the action", async () => {
     mockGetTicketAudit.mockResolvedValue({ data: [], error: null });
     render(<AuditPanel guildId={GUILD_ID} ticketId="t-42" />);
-    expect(await screen.findByText(/No audit events yet/i)).toBeTruthy();
+    expect(await screen.findByText(/No audit events yet/iu)).toBeTruthy();
     expect(mockGetTicketAudit).toHaveBeenCalledWith(GUILD_ID, "t-42", 1);
   });
 
   it("shows the empty state when there are no audit rows", async () => {
     mockGetTicketAudit.mockResolvedValue({ data: [], error: null });
     render(<AuditPanel guildId={GUILD_ID} />);
-    expect(await screen.findByText(/No audit events yet/i)).toBeTruthy();
+    expect(await screen.findByText(/No audit events yet/iu)).toBeTruthy();
   });
 
   it("shows the load error when the action errors", async () => {
@@ -80,7 +80,7 @@ describe("AuditPanel — load + list (TI-038)", () => {
       error: "Database error: permission denied",
     });
     render(<AuditPanel guildId={GUILD_ID} />);
-    expect(await screen.findByText(/permission denied/i)).toBeTruthy();
+    expect(await screen.findByText(/permission denied/iu)).toBeTruthy();
   });
 });
 
@@ -91,7 +91,7 @@ describe("AuditPanel — outcome badges are accessible (TI-028 visual)", () => {
       error: null,
     });
     render(<AuditPanel guildId={GUILD_ID} />);
-    expect(await screen.findByText(/success/i)).toBeTruthy();
+    expect(await screen.findByText(/success/iu)).toBeTruthy();
   });
 
   it("renders a denied badge with the reason and accessible text", async () => {
@@ -106,7 +106,7 @@ describe("AuditPanel — outcome badges are accessible (TI-028 visual)", () => {
       error: null,
     });
     render(<AuditPanel guildId={GUILD_ID} />);
-    expect(await screen.findByText(/denied/i)).toBeTruthy();
+    expect(await screen.findByText(/denied/iu)).toBeTruthy();
     expect(screen.getByText("Already claimed")).toBeTruthy();
   });
 
@@ -116,7 +116,7 @@ describe("AuditPanel — outcome badges are accessible (TI-028 visual)", () => {
       error: null,
     });
     render(<AuditPanel guildId={GUILD_ID} />);
-    expect(await screen.findByText(/error/i)).toBeTruthy();
+    expect(await screen.findByText(/error/iu)).toBeTruthy();
     expect(screen.getByText("boom")).toBeTruthy();
   });
 });
@@ -137,12 +137,12 @@ describe("AuditPanel — pagination (TI-038)", () => {
     // is on the first paint.
     const page1Rows = await screen.findAllByText("claim");
     expect(page1Rows).toHaveLength(20);
-    const next = screen.getByRole("button", { name: /Next/i });
+    const next = screen.getByRole("button", { name: /Next/iu });
     expect(next.hasAttribute("disabled")).toBe(false);
 
     fireEvent.click(next);
     // Same asserts as before, reordered after the UI settles (design.md).
-    expect(await screen.findByText(/Page 2/i)).toBeTruthy();
+    expect(await screen.findByText(/Page 2/iu)).toBeTruthy();
     expect(mockGetTicketAudit).toHaveBeenNthCalledWith(2, GUILD_ID, undefined, 2);
   });
 
@@ -156,7 +156,7 @@ describe("AuditPanel — pagination (TI-038)", () => {
     // Short page renders exactly 1 row → the page landed and Next is off.
     const pageRows = await screen.findAllByText("claim");
     expect(pageRows).toHaveLength(1);
-    expect(screen.getByRole("button", { name: /Next/i }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: /Next/iu }).hasAttribute("disabled")).toBe(true);
   });
 
   it("disables Previous on page 1 and enables it on page 2", async () => {
@@ -170,10 +170,10 @@ describe("AuditPanel — pagination (TI-038)", () => {
     // UI-first: all 20 page-1 rows rendered before reading the Previous button.
     const page1Rows = await screen.findAllByText("claim");
     expect(page1Rows).toHaveLength(20);
-    expect(screen.getByRole("button", { name: /Previous/i }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: /Previous/iu }).hasAttribute("disabled")).toBe(true);
 
-    fireEvent.click(screen.getByRole("button", { name: /Next/i }));
-    expect(await screen.findByText(/Page 2/i)).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Previous/i }).hasAttribute("disabled")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: /Next/iu }));
+    expect(await screen.findByText(/Page 2/iu)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Previous/iu }).hasAttribute("disabled")).toBe(false);
   });
 });
