@@ -1123,53 +1123,35 @@ class TestSlashCommands:
         embed = _sent_embed(ctx)
         assert "Duplicate" in (embed.title or "")
 
-    async def test_delete_category_not_found(
+    # delete_category denial rows: (ctx guild, category row or None, open-count stub,
+    # title fragment). Parametrized (S6 ceiling fix-2): not-found / wrong-guild /
+    # in-use share the delete_category denial scaffold with per-case wiring.
+    _DELETE_DENIALS: ClassVar[list[Any]] = [
+        pytest.param("123456789", None, None, "Not Found", id="delete-category-not-found"),
+        pytest.param("999999999", "row", None, "Servidor Incorrecto", id="delete-category-wrong-guild"),
+        pytest.param("123456789", "row", 3, "In Use", id="delete-category-in-use"),
+    ]
+
+    @pytest.mark.parametrize(("ctx_guild", "row_kind", "open_count", "title_fragment"), _DELETE_DENIALS)
+    async def test_delete_category_denials(
         self,
         tickets_cog: TicketsCog,
         mock_db,
+        ctx_guild: str,
+        row_kind: str | None,
+        open_count: int | None,
+        title_fragment: str,
     ) -> None:
-        """delete_category with invalid ID → error embed."""
-        ctx = _guild_ctx(123456789)
-
-        mock_db.get_ticket_category = AsyncMock(return_value=None)
-
-        await tickets_cog.delete_category.callback(tickets_cog, ctx, category_id="nonexistent")
-
-        embed = _sent_embed(ctx)
-        assert "Not Found" in (embed.title or "")
-
-    async def test_delete_category_wrong_guild(
-        self,
-        tickets_cog: TicketsCog,
-        mock_db,
-    ) -> None:
-        """delete_category for category in another guild → error embed."""
-        ctx = _guild_ctx("999999999")
-
-        row = _category_row()  # guildId = "123456789"
-        mock_db.get_ticket_category = AsyncMock(return_value=row)
+        """delete_category denial → error embed with the case's title fragment."""
+        ctx = _guild_ctx(ctx_guild)
+        mock_db.get_ticket_category = AsyncMock(return_value=None if row_kind is None else _category_row())
+        if open_count is not None:
+            mock_db.count_open_tickets_by_category = AsyncMock(return_value=open_count)
 
         await tickets_cog.delete_category.callback(tickets_cog, ctx, category_id="cat-uuid-001")
 
         embed = _sent_embed(ctx)
-        assert "Wrong Guild" in (embed.title or "") or "Servidor Incorrecto" in (embed.title or "")
-
-    async def test_delete_category_in_use(
-        self,
-        tickets_cog: TicketsCog,
-        mock_db,
-    ) -> None:
-        """delete_category with open tickets → error embed."""
-        ctx = _guild_ctx("123456789")
-
-        row = _category_row()
-        mock_db.get_ticket_category = AsyncMock(return_value=row)
-        mock_db.count_open_tickets_by_category = AsyncMock(return_value=3)
-
-        await tickets_cog.delete_category.callback(tickets_cog, ctx, category_id="cat-uuid-001")
-
-        embed = _sent_embed(ctx)
-        assert "In Use" in (embed.title or "")
+        assert title_fragment in (embed.title or "")
 
     async def test_delete_category_success(
         self,
