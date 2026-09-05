@@ -614,35 +614,31 @@ class TestTicketActionsView:
 class TestAutoCloseStaleTickets:
     """Tests for auto_close_stale_tickets task."""
 
-    async def test_auto_close_closes_stale_tickets(
+    @pytest.mark.parametrize(
+        ("check_kwargs",),
+        [
+            pytest.param(False, id="auto-close-closes-stale-tickets"),
+            pytest.param(True, id="auto-close-passes-manual-false"),
+        ],
+    )
+    async def test_auto_close_stale(
         self,
         tickets_cog: TicketsCog,
         ticket_bot: MagicMock,
         ticket_guild: MagicMock,
         mock_ticket_channel: MagicMock,
+        check_kwargs: bool,
     ) -> None:
-        """Stale tickets are closed, fresh tickets untouched."""
+        """Stale tickets are closed via close_ticket_full (fresh untouched by
+        the ignores-fresh sibling); row 2 pins manual=False (silent delete)."""
         _auto_close_env(ticket_bot, ticket_guild, mock_ticket_channel)
 
         await tickets_cog.auto_close_stale_tickets()
 
         ticket_bot.ticket_service.close_ticket_full.assert_called_once()
-
-    async def test_auto_close_passes_manual_false(
-        self,
-        tickets_cog: TicketsCog,
-        ticket_bot: MagicMock,
-        ticket_guild: MagicMock,
-        mock_ticket_channel: MagicMock,
-    ) -> None:
-        """Auto-close MUST call close_ticket_full with manual=False (silent delete)."""
-        _auto_close_env(ticket_bot, ticket_guild, mock_ticket_channel)
-
-        await tickets_cog.auto_close_stale_tickets()
-
-        ticket_bot.ticket_service.close_ticket_full.assert_called_once()
-        call_kwargs = ticket_bot.ticket_service.close_ticket_full.call_args.kwargs
-        assert call_kwargs["manual"] is False
+        if check_kwargs:
+            call_kwargs = ticket_bot.ticket_service.close_ticket_full.call_args.kwargs
+            assert call_kwargs["manual"] is False
 
     async def test_auto_close_ignores_fresh_tickets(
         self,
