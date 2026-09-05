@@ -131,31 +131,21 @@ class TestCanLogInChannel:
     """Tests for the channel visibility filter."""
 
     @pytest.mark.asyncio
-    async def test_text_channel_visible_returns_true(self) -> None:
-        """TextChannel where @everyone can read_messages → True."""
-        channel = make_mock_channel(everyone_read_messages=True)
+    @pytest.mark.parametrize(
+        ("everyone_read_messages", "expected"),
+        [
+            pytest.param(True, True, id="text-everyone-can-read"),
+            pytest.param(None, True, id="text-no-overwrite-defaults-visible"),
+            pytest.param(False, False, id="text-everyone-hidden"),
+        ],
+    )
+    async def test_text_channel_visibility(self, everyone_read_messages: bool | None, expected: bool) -> None:
+        """TextChannel visibility follows the @everyone read_messages overwrite."""
+        channel = make_mock_channel(everyone_read_messages=everyone_read_messages)
         service, _, _ = await _setup_service_and_config()
 
         result = service.can_log_in_channel(channel)
-        assert result is True
-
-    @pytest.mark.asyncio
-    async def test_text_channel_no_overwrite_returns_true(self) -> None:
-        """TextChannel with no @everyone overwrite → True (defaults to visible)."""
-        channel = make_mock_channel(everyone_read_messages=None)
-        service, _, _ = await _setup_service_and_config()
-
-        result = service.can_log_in_channel(channel)
-        assert result is True
-
-    @pytest.mark.asyncio
-    async def test_text_channel_hidden_returns_false(self) -> None:
-        """TextChannel where @everyone read_messages=False → False."""
-        channel = make_mock_channel(everyone_read_messages=False)
-        service, _, _ = await _setup_service_and_config()
-
-        result = service.can_log_in_channel(channel)
-        assert result is False
+        assert result is expected
 
     @pytest.mark.asyncio
     async def test_voice_channel_returns_false(self) -> None:
@@ -176,18 +166,23 @@ class TestLoggingRoutingGuards:
     """Log methods should silently skip when logging is disabled or channel is missing."""
 
     @pytest.mark.asyncio
-    async def test_log_disabled_skips_send(self) -> None:
-        """When log_enabled is False, no embed should be sent."""
-        service, mock_bot, _ = await _setup_service_and_config(log_enabled=False)
-        msg = make_mock_message(content="edited", channel=make_mock_channel())
-
-        await service.log_message_edit("123456789", msg, msg)
-        assert mock_bot.get_channel.call_count == 0
-
-    @pytest.mark.asyncio
-    async def test_missing_log_channel_skips_send(self) -> None:
-        """When log_channel_id is None, no embed should be sent."""
-        service, mock_bot, _ = await _setup_service_and_config(log_channel_id=None)
+    @pytest.mark.parametrize(
+        ("log_channel_id", "log_enabled"),
+        [
+            pytest.param("999999999", False, id="log-disabled"),
+            pytest.param(None, True, id="log-channel-id-none"),
+        ],
+    )
+    async def test_routing_guard_skips_send(
+        self,
+        log_channel_id: str | None,
+        log_enabled: bool,
+    ) -> None:
+        """When routing guard fails, no channel lookup or embed send occurs."""
+        service, mock_bot, _ = await _setup_service_and_config(
+            log_channel_id=log_channel_id,
+            log_enabled=log_enabled,
+        )
         msg = make_mock_message(content="edited", channel=make_mock_channel())
 
         await service.log_message_edit("123456789", msg, msg)
@@ -512,26 +507,19 @@ class TestPrivateChannelFilter:
     """Logging should skip events from channels invisible to @everyone."""
 
     @pytest.mark.asyncio
-    async def test_message_delete_in_private_channel_skips(self) -> None:
-        """When a message is deleted in a private channel, no embed is sent."""
+    @pytest.mark.parametrize("log_method", ["log_message_delete", "log_message_edit"])
+    async def test_message_in_private_channel_skips(self, log_method: str) -> None:
+        """When a message event comes from a private channel, no embed is sent."""
         service, _, mock_log_channel = await _setup_service_and_config()
         private_channel = make_mock_channel(name="staff-only", everyone_read_messages=False)
-        msg = make_mock_message(content="secret", channel=private_channel)
 
-        await service.log_message_delete("123456789", msg)
-
-        # Should not send to log channel because the source channel is private.
-        mock_log_channel.send.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_message_edit_in_private_channel_skips(self) -> None:
-        """When a message is edited in a private channel, no embed is sent."""
-        service, _, mock_log_channel = await _setup_service_and_config()
-        private_channel = make_mock_channel(name="staff-only", everyone_read_messages=False)
-        before = make_mock_message(content="old", channel=private_channel)
-        after = make_mock_message(content="new", channel=private_channel)
-
-        await service.log_message_edit("123456789", before, after)
+        if log_method == "log_message_delete":
+            msg = make_mock_message(content="secret", channel=private_channel)
+            await getattr(service, log_method)("123456789", msg)
+        else:
+            before = make_mock_message(content="old", channel=private_channel)
+            after = make_mock_message(content="new", channel=private_channel)
+            await getattr(service, log_method)("123456789", before, after)
 
         mock_log_channel.send.assert_not_called()
 

@@ -91,50 +91,49 @@ class TestComputeLevel:
 
     # -- xp_for_level --------------------------------------------------------
 
-    def test_xp_for_level_0(self, service: EconomyService) -> None:
-        """Level 0 threshold should be 0 XP (starting point)."""
-        result = service.compute_xp_for_level(0, base=100, multiplier=1.5)
-        assert result == 0
-
-    def test_xp_for_level_1_defaults(self, service: EconomyService) -> None:
-        """Level 1 threshold = base * multiplier^1 = 100 * 1.5 = 150."""
-        result = service.compute_xp_for_level(1, base=100, multiplier=1.5)
-        assert result == 150.0
-
-    def test_xp_for_level_3(self, service: EconomyService) -> None:
-        """Level 3 threshold = 100 * 1.5^3 = 100 * 3.375 = 337.5."""
-        result = service.compute_xp_for_level(3, base=100, multiplier=1.5)
-        assert result == pytest.approx(337.5)
-
-    def test_xp_for_level_custom_base(self, service: EconomyService) -> None:
-        """Custom base and multiplier should produce correct threshold."""
-        result = service.compute_xp_for_level(2, base=200, multiplier=2.0)
-        assert result == 800.0  # 200 * 2^2
+    @pytest.mark.parametrize(
+        ("level", "base", "multiplier", "expected"),
+        [
+            pytest.param(0, 100, 1.5, 0, id="level-0-is-zero"),
+            pytest.param(1, 100, 1.5, 150.0, id="level-1-defaults"),
+            pytest.param(3, 100, 1.5, 337.5, id="level-3-cubic"),
+            pytest.param(2, 200, 2.0, 800.0, id="custom-base-multiplier"),
+        ],
+    )
+    def test_xp_for_level(
+        self,
+        service: EconomyService,
+        level: int,
+        base: int,
+        multiplier: float,
+        expected: float,
+    ) -> None:
+        """Threshold = base * multiplier^level (0 XP at level 0)."""
+        result = service.compute_xp_for_level(level, base=base, multiplier=multiplier)
+        assert result == pytest.approx(expected)
 
     # -- compute_level -------------------------------------------------------
 
-    def test_compute_level_zero_xp(self, service: EconomyService) -> None:
-        """0 XP should yield level 0."""
-        result = service.compute_level(0, base=100, multiplier=1.5)
-        assert result == 0
-
-    def test_compute_level_at_threshold(self, service: EconomyService) -> None:
-        """Exactly at level 1 threshold (150 XP) should yield level 1."""
-        result = service.compute_level(150, base=100, multiplier=1.5)
-        assert result == 1
-
-    def test_compute_level_between(self, service: EconomyService) -> None:
-        """250 XP is above level 2 threshold (150) but below level 3 (337.5)."""
-        result = service.compute_level(250, base=100, multiplier=1.5)
-        assert result == 2
-
-    def test_compute_level_high(self, service: EconomyService) -> None:
-        """High XP with large multiplier should yield correct level."""
-        # XP thresholds with base=100, mult=3.0:
-        # L1=300, L2=900, L3=2700, L4=8100
-        # 5000 XP → level 3 (5000 >= 2700, 5000 < 8100)
-        result = service.compute_level(5000, base=100, multiplier=3.0)
-        assert result == 3
+    @pytest.mark.parametrize(
+        ("xp", "base", "multiplier", "expected_level"),
+        [
+            pytest.param(0, 100, 1.5, 0, id="zero-xp"),
+            pytest.param(150, 100, 1.5, 1, id="exactly-at-threshold"),
+            pytest.param(250, 100, 1.5, 2, id="between-thresholds"),
+            pytest.param(5000, 100, 3.0, 3, id="high-xp-large-multiplier"),
+        ],
+    )
+    def test_compute_level(
+        self,
+        service: EconomyService,
+        xp: int,
+        base: int,
+        multiplier: float,
+        expected_level: int,
+    ) -> None:
+        """Level = highest threshold <= xp (150→L1, 250→L2, 5000 w/ 3.0→L3)."""
+        result = service.compute_level(xp, base=base, multiplier=multiplier)
+        assert result == expected_level
 
     def test_compute_level_deterministic(self, service: EconomyService) -> None:
         """Same input should always produce same output."""
@@ -144,26 +143,26 @@ class TestComputeLevel:
 
     # -- xp_progress ---------------------------------------------------------
 
-    def test_xp_progress_at_level_0(self, service: EconomyService) -> None:
-        """Progress at level 0: fraction of XP toward level 1 (threshold 150)."""
-        current, needed = service.xp_progress(50, level=0, base=100, multiplier=1.5)
-        assert current == 50
-        assert needed == 150.0  # xp_for_level(1) - xp_for_level(0) = 150 - 0
-
-    def test_xp_progress_mid_level(self, service: EconomyService) -> None:
-        """Progress at level 2 with 250 XP: current=25, needed=112.5 for level 3."""
-        # Level 2 threshold: 100 * 1.5^2 = 225
-        # Level 3 threshold: 100 * 1.5^3 = 337.5
-        current, needed = service.xp_progress(250, level=2, base=100, multiplier=1.5)
-        assert current == 25.0  # 250 - 225
-        assert needed == pytest.approx(112.5)  # 337.5 - 225
-
-    def test_xp_progress_exactly_at_next(self, service: EconomyService) -> None:
-        """At exactly the level 1 threshold from level 0."""
-        # Level 0 → 1: threshold is 150
-        current, needed = service.xp_progress(150, level=0, base=100, multiplier=1.5)
-        assert current == 150.0
-        assert needed == 150.0
+    @pytest.mark.parametrize(
+        ("xp", "level", "expected_current", "expected_needed"),
+        [
+            pytest.param(50, 0, 50, 150.0, id="at-level-0"),
+            pytest.param(250, 2, 25.0, 112.5, id="mid-level"),
+            pytest.param(150, 0, 150.0, 150.0, id="exactly-at-next"),
+        ],
+    )
+    def test_xp_progress(
+        self,
+        service: EconomyService,
+        xp: int,
+        level: int,
+        expected_current: float,
+        expected_needed: float,
+    ) -> None:
+        """Progress = (xp - threshold(level), threshold(level+1) - threshold(level))."""
+        current, needed = service.xp_progress(xp, level=level, base=100, multiplier=1.5)
+        assert current == pytest.approx(expected_current)
+        assert needed == pytest.approx(expected_needed)
 
 
 # ---------------------------------------------------------------------------
@@ -313,8 +312,8 @@ class TestGainXp:
         user_id = "111111111"
 
         # Pre-populate cache
-        cache.set(f"{guild_id}:leaderboard:xp", [{"dummy": True}], ttl=30)
-        assert cache.get(f"{guild_id}:leaderboard:xp") is not None
+        cache.set(cache_key(guild_id, "leaderboard:xp"), [{"dummy": True}], ttl=30)
+        assert cache.get(cache_key(guild_id, "leaderboard:xp")) is not None
 
         mock_db.get_economy_config.return_value = default_config_row
         mock_db.get_member.return_value = None
@@ -322,8 +321,8 @@ class TestGainXp:
 
         await service.gain_xp(guild_id, user_id)
 
-        assert cache.get(f"{guild_id}:leaderboard:xp") is None
-        assert cache.get(f"{guild_id}:leaderboard:coins") is None
+        assert cache.get(cache_key(guild_id, "leaderboard:xp")) is None
+        assert cache.get(cache_key(guild_id, "leaderboard:coins")) is None
 
 
 # ---------------------------------------------------------------------------
@@ -639,7 +638,7 @@ class TestGetLeaderboard:
         assert result[0]["userId"] == "aaa"
         mock_db.get_leaderboard.assert_called_once_with(guild_id, "xp", 10, 0)
         # Cache should now be populated
-        assert cache.get(f"{guild_id}:leaderboard:xp") is not None
+        assert cache.get(cache_key(guild_id, "leaderboard:xp")) is not None
 
     @pytest.mark.asyncio
     async def test_get_leaderboard_xp_cache_hit(
@@ -651,7 +650,7 @@ class TestGetLeaderboard:
         """Cache hit should return cached data without DB query."""
         guild_id = "123456789"
         cached_data = [{"userId": "zzz", "xp": 999, "coins": 0}]
-        cache.set(f"{guild_id}:leaderboard:xp", cached_data, ttl=30)
+        cache.set(cache_key(guild_id, "leaderboard:xp"), cached_data, ttl=30)
 
         result = await service.get_leaderboard(guild_id, sort_by="xp", limit=10, offset=0)
 
@@ -968,9 +967,7 @@ class TestEconomyConfigCache:
     ) -> None:
         """gain_xp/claim_daily route through the cache-first accessor."""
         mock_db.get_economy_config.return_value = default_config_row
-        member_row["lastXpGain"] = None
-        member_row["lastDaily"] = None
-        mock_db.get_member.return_value = dict(member_row)
+        mock_db.get_member.return_value = {**member_row, "lastXpGain": None, "lastDaily": None}
         mock_db.update_member_xp.return_value = {"xp": 10, "level": 0}
         mock_db.update_member_daily.return_value = {"coins": 100}
 
