@@ -2069,37 +2069,23 @@ class TestTicketViewDecoratorDefaults:
         """Find a button by custom_id."""
         return next(c for c in view.children if isinstance(c, discord.ui.Button) and c.custom_id == custom_id)
 
-    def test_ticket_panel_open_button_default_is_spanish(self) -> None:
-        """TicketPanelView decorator default for Open Ticket MUST be 'Abrir Ticket'."""
-        from bot.views.tickets import TicketPanelView
+    @pytest.mark.parametrize(
+        "view_cls, custom_id, expected_label",
+        [
+            ("TicketPanelView", "ticket:open", "Abrir Ticket"),
+            ("TicketActionsView", "ticket:claim", "Reclamar"),
+            ("TicketActionsView", "ticket:close", "Cerrar"),
+            ("TicketActionsView", "ticket:edit-category", "Editar Categoría"),
+        ],
+        ids=["panel_open", "actions_claim", "actions_close", "actions_edit_category"],
+    )
+    def test_button_decorator_default_is_spanish(self, view_cls: str, custom_id: str, expected_label: str) -> None:
+        """View decorator default for the given button MUST be the Spanish label."""
+        from bot.views import tickets as tickets_views
 
-        view = TicketPanelView(guild_id="")
-        btn = self._get_button_by_id(view, "ticket:open")
-        assert btn.label == "Abrir Ticket"
-
-    def test_ticket_actions_claim_default_is_spanish(self) -> None:
-        """TicketActionsView decorator default for Claim MUST be 'Reclamar'."""
-        from bot.views.tickets import TicketActionsView
-
-        view = TicketActionsView(guild_id="")
-        btn = self._get_button_by_id(view, "ticket:claim")
-        assert btn.label == "Reclamar"
-
-    def test_ticket_actions_close_default_is_spanish(self) -> None:
-        """TicketActionsView decorator default for Close MUST be 'Cerrar'."""
-        from bot.views.tickets import TicketActionsView
-
-        view = TicketActionsView(guild_id="")
-        btn = self._get_button_by_id(view, "ticket:close")
-        assert btn.label == "Cerrar"
-
-    def test_ticket_actions_edit_category_default_is_spanish(self) -> None:
-        """TicketActionsView decorator default for Edit Category MUST be 'Editar Categoría'."""
-        from bot.views.tickets import TicketActionsView
-
-        view = TicketActionsView(guild_id="")
-        btn = self._get_button_by_id(view, "ticket:edit-category")
-        assert btn.label == "Editar Categoría"
+        view = getattr(tickets_views, view_cls)(guild_id="")
+        btn = self._get_button_by_id(view, custom_id)
+        assert btn.label == expected_label
 
 
 # ===========================================================================
