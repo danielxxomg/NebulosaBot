@@ -27,8 +27,8 @@ vi.mock("@/lib/actions/ticket-actions", () => ({
 
 const GUILD_ID = "123456789012345678";
 
-function buildAuditRow(overrides: Partial<TicketAudit> = {}): TicketAudit {
-  return {
+const buildAuditRow = (overrides: Partial<TicketAudit> = {}): TicketAudit => (
+  {
     action: "claim",
     actorId: "900000000000000001",
     createdAt: "2026-07-01T12:00:00.000Z",
@@ -38,8 +38,8 @@ function buildAuditRow(overrides: Partial<TicketAudit> = {}): TicketAudit {
     reason: null,
     ticketId: "ticket-uuid-0001",
     ...overrides,
-  };
-}
+  }
+);
 
 beforeEach(() => {
   vi.clearAllMocks();

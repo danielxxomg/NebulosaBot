@@ -63,7 +63,7 @@ export interface TicketNoteChainSpies {
  * `update().eq()` (reopen/transfer). The `ticket_note` table supports the
  * list/single/insert/delete chains used by the note actions.
  */
-export function buildMockServiceClient(overrides: {
+export const buildMockServiceClient = (overrides: {
   guildSelectResult?: { data: unknown; error: null } | { data: null; error: Error };
   guildUpdateError?: Error | null;
   economyUpsertError?: Error | null;
@@ -76,7 +76,7 @@ export function buildMockServiceClient(overrides: {
   ticketNoteSingleResult?: { data: unknown; error: null } | { data: null; error: Error };
   ticketNoteInsertResult?: { data: unknown | null; error: Error | null };
   ticketNoteDeleteResult?: { data: unknown | null; error: Error | null };
-}) {
+}) => {
   const eqChain = {
     single: vi.fn().mockResolvedValue(overrides.guildSelectResult ?? { data: null, error: null }),
   };
@@ -240,13 +240,13 @@ export function buildMockServiceClient(overrides: {
       upsert: greetingUpsert,
     },
   };
-}
+};
 
 // ---------------------------------------------------------------------------
 // Auth session helpers
 // ---------------------------------------------------------------------------
 
-export function buildAuthSession(overrides: {
+export const buildAuthSession = (overrides: {
   hasSession: boolean;
   hasProviderToken: boolean;
   /**
@@ -255,7 +255,7 @@ export function buildAuthSession(overrides: {
    * the author identity (e.g. addTicketNote) get a deterministic value.
    */
   discordUserId?: string;
-}) {
+}) => {
   if (!overrides.hasSession) {
     return { data: { session: null } };
   }
@@ -271,13 +271,13 @@ export function buildAuthSession(overrides: {
       },
     },
   };
-}
+};
 
 // ---------------------------------------------------------------------------
 // Discord mock helpers
 // ---------------------------------------------------------------------------
 
-export function buildDiscordMocks(adminGuildId: string) {
+export const buildDiscordMocks = (adminGuildId: string) => {
   const fetchUserGuilds = vi
     .fn()
     .mockResolvedValue([
@@ -292,41 +292,41 @@ export function buildDiscordMocks(adminGuildId: string) {
   });
 
   return { fetchUserGuilds, hasAdministratorPerm };
-}
+};
 
 // ---------------------------------------------------------------------------
 // FormData builder
 // ---------------------------------------------------------------------------
 
-export function buildFormData(entries: Record<string, string>): FormData {
+export const buildFormData = (entries: Record<string, string>): FormData => {
   const fd = new FormData();
   for (const [key, value] of Object.entries(entries)) {
     fd.append(key, value);
   }
   return fd;
-}
+};
 
 // ---------------------------------------------------------------------------
 // Assertion helpers
 // ---------------------------------------------------------------------------
 
-export function assertAuthError(result: ActionResult): void {
+export const assertAuthError = (result: ActionResult): void => {
   expect(result.success).toBe(false);
   if (!result.success) {
     expect(result.error).toMatch(/authenticated|admin/iu);
   }
-}
+};
 
-export function assertFieldError(result: ActionResult, field: string): void {
+export const assertFieldError = (result: ActionResult, field: string): void => {
   expect(result.success).toBe(false);
   if (!result.success) {
     expect(result.field).toBe(field);
   }
-}
+};
 
-export function assertSuccess(result: ActionResult): void {
+export const assertSuccess = (result: ActionResult): void => {
   expect(result.success).toBe(true);
   if (result.success) {
     expect(result.message).toBeTruthy();
   }
-}
+};

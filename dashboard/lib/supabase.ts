@@ -8,12 +8,12 @@ import { cookies } from "next/headers";
  * Used in Client Components for real-time subscriptions and
  * client-side data fetching from the browser.
  */
-export function createClient() {
-  return createBrowserClient(
+export const createClient = () => 
+  createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-}
+  )
+;
 
 /**
  * Create a server-side Supabase client using cookie-based auth.
@@ -21,7 +21,7 @@ export function createClient() {
  * Used in Server Components, Server Actions, and Route Handlers.
  * Automatically reads/writes the auth session cookie via `next/headers`.
  */
-export async function createServerSupabaseClient() {
+export const createServerSupabaseClient = async () => {
   const cookieStore = await cookies();
 
   return createServerClient(
@@ -50,7 +50,7 @@ export async function createServerSupabaseClient() {
       },
     }
   );
-}
+};
 
 /**
  * Create a server-side Supabase client using the service role key.
@@ -58,7 +58,7 @@ export async function createServerSupabaseClient() {
  * Bypasses Row Level Security. Use ONLY in trusted server contexts
  * (Server Components, Server Actions) — NEVER expose to the browser.
  */
-export async function createServiceClient() {
+export const createServiceClient = async () => {
   const cookieStore = await cookies();
 
   return createServerClient(
@@ -87,4 +87,4 @@ export async function createServiceClient() {
       },
     }
   );
-}
+};

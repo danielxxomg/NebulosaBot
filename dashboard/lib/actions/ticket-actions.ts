@@ -85,13 +85,13 @@ const AUDIT_PAGE_SIZE = 20;
  * as the `authorId` for note inserts and the `actorId` for note-delete
  * ownership checks.
  */
-async function resolveSessionUserId(): Promise<string> {
+const resolveSessionUserId = async (): Promise<string> => {
   const supabase = await createServerSupabaseClient();
   const {
     data: { session },
   } = await supabase.auth.getSession();
   return session?.user?.identities?.[0]?.id ?? session?.user?.id ?? "unknown";
-}
+};
 
 /**
  * Server-exposed wrapper around {@link resolveSessionUserId}.
@@ -104,9 +104,9 @@ async function resolveSessionUserId(): Promise<string> {
  * Returns `"unknown"` when no session is available (the page layout guard
  * ensures a session exists before this is reachable in practice).
  */
-export async function getCurrentUserId(): Promise<string> {
-  return resolveSessionUserId();
-}
+export const getCurrentUserId = async (): Promise<string> => 
+  resolveSessionUserId()
+;
 
 /**
  * Fetch up to {@link TICKET_PAGE_LIMIT} tickets for a guild, newest first.
@@ -116,9 +116,7 @@ export async function getCurrentUserId(): Promise<string> {
  * Guild isolation is enforced via `.eq("guildId", guildId)` so tickets
  * from other guilds can never leak into the result set.
  */
-export async function getTicketsForGuild(
-  guildId: string
-): Promise<TicketListResult> {
+export const getTicketsForGuild = async (guildId: string): Promise<TicketListResult> => {
   const authError = await verifyGuildAdmin(
     guildId,
     "You must be a server administrator to view tickets."
@@ -140,7 +138,7 @@ export async function getTicketsForGuild(
   }
 
   return { data: (tickets as Ticket[]) ?? [], error: null };
-}
+};
 
 // ---------------------------------------------------------------------------
 // Ticket-scoped mutation / note actions
@@ -158,9 +156,7 @@ export async function getTicketsForGuild(
  * Returns `{ guildId }` on success, or `{ error }` describing a database,
  * not-found, or auth failure.
  */
-async function resolveTicketGuild(
-  ticketId: string
-): Promise<{ guildId: string } | { error: string }> {
+const resolveTicketGuild = async (ticketId: string): Promise<{ guildId: string } | { error: string }> => {
   const serviceClient = await createServiceClient();
   const { data, error } = await serviceClient
     .from("ticket")
@@ -185,7 +181,7 @@ async function resolveTicketGuild(
   }
 
   return { guildId };
-}
+};
 
 /**
  * Return "Reopen in Discord" guidance for a closed ticket (decision #2a /
@@ -198,9 +194,7 @@ async function resolveTicketGuild(
  * flip would create a zombie ticket with no Discord channel (the original
  * channel is deleted on close). The bot's `/reopen` creates the new channel.
  */
-export async function getReopenGuidance(
-  ticketId: string
-): Promise<ReopenGuidanceResult> {
+export const getReopenGuidance = async (ticketId: string): Promise<ReopenGuidanceResult> => {
   const resolved = await resolveTicketGuild(ticketId);
   if ("error" in resolved) {
     return { data: null, error: resolved.error };
@@ -250,7 +244,7 @@ export async function getReopenGuidance(
     data: { command: `/reopen ticket:#${padded}`, ticketNumber },
     error: null,
   };
-}
+};
 
 /**
  * Transfer a ticket's claim to a different staff member (decision #3 /
@@ -262,10 +256,7 @@ export async function getReopenGuidance(
  * claimant. Auth-gated by {@link resolveTicketGuild}: only an administrator of
  * the ticket's guild may transfer it.
  */
-export async function transferTicket(
-  ticketId: string,
-  newClaimedBy: string
-): Promise<TicketMutationResult> {
+export const transferTicket = async (ticketId: string, newClaimedBy: string): Promise<TicketMutationResult> => {
   const resolved = await resolveTicketGuild(ticketId);
   if ("error" in resolved) {
     return { data: null, error: resolved.error };
@@ -282,7 +273,7 @@ export async function transferTicket(
   }
 
   return { data: null, error: null };
-}
+};
 
 /**
  * Fetch the internal notes attached to a ticket, newest first.
@@ -292,9 +283,7 @@ export async function transferTicket(
  * the ticket's guild (guild isolation — a note on guild A's ticket is never
  * exposed to an admin of guild B).
  */
-export async function getTicketNotes(
-  ticketId: string
-): Promise<TicketNoteListResult> {
+export const getTicketNotes = async (ticketId: string): Promise<TicketNoteListResult> => {
   const resolved = await resolveTicketGuild(ticketId);
   if ("error" in resolved) {
     return { data: null, error: resolved.error };
@@ -313,7 +302,7 @@ export async function getTicketNotes(
   }
 
   return { data: (notes as TicketNote[]) ?? [], error: null };
-}
+};
 
 /**
  * Add an internal note to a ticket.
@@ -329,10 +318,7 @@ export async function getTicketNotes(
  * Auth-gated by {@link resolveTicketGuild}: only an administrator of the
  * ticket's guild may add notes.
  */
-export async function addTicketNote(
-  ticketId: string,
-  content: string
-): Promise<TicketMutationResult> {
+export const addTicketNote = async (ticketId: string, content: string): Promise<TicketMutationResult> => {
   const resolved = await resolveTicketGuild(ticketId);
   if ("error" in resolved) {
     return { data: null, error: resolved.error };
@@ -390,7 +376,7 @@ export async function addTicketNote(
   }
 
   return { data: null, error: null };
-}
+};
 
 /**
  * Delete an internal note by id (decision #4 / TI-032 / TI-035).
@@ -401,9 +387,7 @@ export async function addTicketNote(
  * guild is resolved and authorized via {@link resolveTicketGuild}. An admin of
  * guild A can therefore never delete a note attached to guild B's ticket.
  */
-export async function deleteTicketNote(
-  noteId: string
-): Promise<TicketMutationResult> {
+export const deleteTicketNote = async (noteId: string): Promise<TicketMutationResult> => {
   const serviceClient = await createServiceClient();
 
   // 1. Resolve the note (need ticketId + authorId for ownership).
@@ -448,7 +432,7 @@ export async function deleteTicketNote(
   }
 
   return { data: null, error: null };
-}
+};
 
 /**
  * Fetch paginated `ticket_audit` rows for a guild, newest first (TI-038 /
@@ -464,11 +448,7 @@ export async function deleteTicketNote(
  * @param ticketId Optional ticket id filter (narrows to one ticket's history).
  * @param page 1-indexed page number (defaults to 1).
  */
-export async function getTicketAudit(
-  guildId: string,
-  ticketId?: string,
-  page: number = 1
-): Promise<TicketAuditListResult> {
+export const getTicketAudit = async (guildId: string, ticketId?: string, page: number = 1): Promise<TicketAuditListResult> => {
   const authError = await verifyGuildAdmin(
     guildId,
     "You must be a server administrator to view the ticket audit trail."
@@ -500,4 +480,4 @@ export async function getTicketAudit(
   }
 
   return { data: (rows as TicketAudit[]) ?? [], error: null };
-}
+};

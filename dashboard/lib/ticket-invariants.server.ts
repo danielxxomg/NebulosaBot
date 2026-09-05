@@ -25,10 +25,10 @@ import { NOTE_DEDUP_WINDOW_SECONDS } from "./ticket-invariants";
  * This mirrors `" ".join(content.strip().lower().split())` from the Python
  * helper and makes `"  Hello   World  "` hash identically to `"hello world"`.
  */
-export function computeNoteHash(content: string): string {
+export const computeNoteHash = (content: string): string => {
   const normalized = content.trim().toLowerCase().split(/\s+/u).join(" ");
   return createHash("sha256").update(normalized, "utf-8").digest("hex");
-}
+};
 
 /**
  * Return `true` if `newHash` matches a recent same-author note.
@@ -39,11 +39,6 @@ export function computeNoteHash(content: string): string {
  * the hash membership comparison — keeping it pure and trivially testable,
  * mirroring `is_duplicate_note` in Python.
  */
-export function isDuplicateNote(
-  newHash: string,
-  _authorId: string,
-  existingNoteHashes: string[],
-  _windowSeconds: number = NOTE_DEDUP_WINDOW_SECONDS
-): boolean {
-  return existingNoteHashes.includes(newHash);
-}
+export const isDuplicateNote = (newHash: string, _authorId: string, existingNoteHashes: string[], _windowSeconds: number = NOTE_DEDUP_WINDOW_SECONDS): boolean => 
+  existingNoteHashes.includes(newHash)
+;

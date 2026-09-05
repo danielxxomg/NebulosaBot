@@ -9,7 +9,7 @@ import type { NextRequest } from 'next/server';
  * unauthenticated users to /login. Exempts login, auth callback, static
  * assets, and Next.js internals from the guard.
  */
-export async function middleware(request: NextRequest) {
+export const middleware = async (request: NextRequest) => {
   const { supabaseResponse, session } = await updateSession(request);
 
   const { pathname } = request.nextUrl;
@@ -32,7 +32,7 @@ export async function middleware(request: NextRequest) {
   }
 
   return supabaseResponse;
-}
+};
 
 /**
  * Match every route EXCEPT:

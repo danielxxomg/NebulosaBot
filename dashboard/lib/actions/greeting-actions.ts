@@ -12,10 +12,7 @@ import type { ActionResult } from "@/lib/types";
  * updates the existing row. Channel IDs are validated as Discord snowflakes,
  * and message lengths are capped to prevent abuse.
  */
-export async function updateGreetingConfig(
-  guildId: string,
-  formData: FormData
-): Promise<ActionResult> {
+export const updateGreetingConfig = async (guildId: string, formData: FormData): Promise<ActionResult> => {
   // 1. Auth re-check.
   const authError = await verifyGuildAdmin(
     guildId,
@@ -88,4 +85,4 @@ export async function updateGreetingConfig(
   revalidatePath(`/guilds/${guildId}`, "layout");
 
   return { message: "Greeting configuration saved.", success: true };
-}
+};

@@ -34,7 +34,7 @@ import { NOTE_CAP } from "@/lib/ticket-invariants";
  * Staff-only by construction: the page only renders rows for administrators
  * (the data action auth-gates).
  */
-export function NotesPanel({ ticketId }: { ticketId: string }) {
+export const NotesPanel = ({ ticketId }: { ticketId: string }) => {
   const [notes, setNotes] = useState<TicketNote[] | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -45,7 +45,7 @@ export function NotesPanel({ ticketId }: { ticketId: string }) {
 
   const atCap = notes !== null && notes.length >= NOTE_CAP;
 
-  async function loadNotes() {
+  const loadNotes = async () => {
     setIsLoading(true);
     setLoadError(null);
     const [notesResult, userResult] = await Promise.all([
@@ -60,7 +60,7 @@ export function NotesPanel({ ticketId }: { ticketId: string }) {
     }
     setCurrentUserId(userResult);
     setIsLoading(false);
-  }
+  };
 
   // Fetch on mount (and whenever the target ticket changes). The panel is
   // only mounted when open, so this is effectively "load on open".
@@ -70,7 +70,7 @@ export function NotesPanel({ ticketId }: { ticketId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticketId]);
 
-  async function handleAdd(event: FormEvent<HTMLFormElement>) {
+  const handleAdd = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const content = draft.trim();
     if (!content || atCap) {return;}
@@ -83,9 +83,9 @@ export function NotesPanel({ ticketId }: { ticketId: string }) {
     }
     setDraft("");
     await loadNotes();
-  }
+  };
 
-  async function handleDelete(noteId: string) {
+  const handleDelete = async (noteId: string) => {
     setDeletingId(noteId);
     const result = await deleteTicketNote(noteId);
     setDeletingId(null);
@@ -94,7 +94,7 @@ export function NotesPanel({ ticketId }: { ticketId: string }) {
       return;
     }
     await loadNotes();
-  }
+  };
 
   const showEmpty = !isLoading && notes !== null && notes.length === 0;
 
@@ -187,4 +187,4 @@ export function NotesPanel({ ticketId }: { ticketId: string }) {
       )}
     </div>
   );
-}
+};

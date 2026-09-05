@@ -32,8 +32,8 @@ import type { Ticket, GuildConfig, TicketNote } from "@/lib/types";
 // Mock factories (shared across dashboard contract tests — task 4.15 refactor)
 // ---------------------------------------------------------------------------
 
-function ticketRow(overrides: Partial<Ticket> = {}): Ticket {
-  return {
+const ticketRow = (overrides: Partial<Ticket> = {}): Ticket => (
+  {
     authorId: "111111111",
     categoryId: null,
     channelId: "444444444",
@@ -48,11 +48,11 @@ function ticketRow(overrides: Partial<Ticket> = {}): Ticket {
     ticketNumber: 1,
     transcriptUrl: null,
     ...overrides,
-  };
-}
+  }
+);
 
-function guildConfig(overrides: Partial<GuildConfig> = {}): GuildConfig {
-  return {
+const guildConfig = (overrides: Partial<GuildConfig> = {}): GuildConfig => (
+  {
     active: true,
     id: "123456789",
     language: "en",
@@ -65,24 +65,24 @@ function guildConfig(overrides: Partial<GuildConfig> = {}): GuildConfig {
     ticketPanelMessageId: null,
     welcomeEnabled: false,
     ...overrides,
-  };
-}
+  }
+);
 
-function noteRow(overrides: Partial<TicketNote> = {}): TicketNote {
-  return {
+const noteRow = (overrides: Partial<TicketNote> = {}): TicketNote => (
+  {
     authorId: "111111111",
     content: "hi",
     createdAt: "2026-07-04T12:00:00.000Z",
     id: "note-uuid-001",
     ticketId: "ticket-uuid-001",
     ...overrides,
-  };
-}
+  }
+);
 
 /// Shared `_parentRow` for subticket scenarios (mirrors the Python contract).
-function parentRow(parentId = "parent-1", parentOfParent: string | null = null) {
-  return { guildId: "guildA", id: parentId, parentId: parentOfParent };
-}
+const parentRow = (parentId = "parent-1", parentOfParent: string | null = null) => (
+  { guildId: "guildA", id: parentId, parentId: parentOfParent }
+);
 
 beforeEach(() => {
   vi.clearAllMocks();

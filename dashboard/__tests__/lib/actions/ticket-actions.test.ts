@@ -54,8 +54,8 @@ const SESSION_USER_ID = "111222333444555666";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function buildTicket(overrides: Partial<Ticket> = {}): Ticket {
-  return {
+const buildTicket = (overrides: Partial<Ticket> = {}): Ticket => (
+  {
     authorId: "999999999999999999",
     categoryId: null,
     channelId: "888888888888888888",
@@ -70,22 +70,22 @@ function buildTicket(overrides: Partial<Ticket> = {}): Ticket {
     ticketNumber: 1,
     transcriptUrl: null,
     ...overrides,
-  };
-}
+  }
+);
 
-function buildTicketNote(overrides: Partial<TicketNote> = {}): TicketNote {
-  return {
+const buildTicketNote = (overrides: Partial<TicketNote> = {}): TicketNote => (
+  {
     authorId: SESSION_USER_ID,
     content: "Internal note text.",
     createdAt: new Date().toISOString(),
     id: crypto.randomUUID(),
     ticketId: TICKET_ID,
     ...overrides,
-  };
-}
+  }
+);
 
-function buildAuditRow(overrides: Partial<TicketAudit> = {}): TicketAudit {
-  return {
+const buildAuditRow = (overrides: Partial<TicketAudit> = {}): TicketAudit => (
+  {
     action: "claim",
     actorId: "900000000000000001",
     createdAt: new Date().toISOString(),
@@ -95,10 +95,10 @@ function buildAuditRow(overrides: Partial<TicketAudit> = {}): TicketAudit {
     reason: null,
     ticketId: TICKET_ID,
     ...overrides,
-  };
-}
+  }
+);
 
-function setupAuth({
+const setupAuth = ({
   hasSession = true,
   hasProviderToken = true,
   guildActive = true,
@@ -119,7 +119,7 @@ function setupAuth({
   ticketAuditData = [] as TicketAudit[],
   ticketAuditError = null as Error | null,
   discordUserId = SESSION_USER_ID,
-} = {}) {
+} = {}) => {
   mockGetSession.mockResolvedValue(
     buildAuthSession({ discordUserId, hasProviderToken, hasSession })
   );
@@ -173,7 +173,7 @@ function setupAuth({
   ]);
 
   return svc;
-}
+};
 
 beforeEach(() => {
   vi.clearAllMocks();

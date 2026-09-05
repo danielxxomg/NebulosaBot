@@ -48,8 +48,8 @@ import { NotesPanel } from "@/app/(authenticated)/guilds/[guildId]/tickets/_comp
 
 const GUILD_ID = "123456789012345678";
 
-function buildTicket(overrides: Partial<Ticket> = {}): Ticket {
-  return {
+const buildTicket = (overrides: Partial<Ticket> = {}): Ticket => (
+  {
     authorId: "999999999999999999",
     categoryId: null,
     channelId: "888888888888888888",
@@ -64,30 +64,30 @@ function buildTicket(overrides: Partial<Ticket> = {}): Ticket {
     ticketNumber: 100,
     transcriptUrl: null,
     ...overrides,
-  };
-}
+  }
+);
 
-function buildNote(overrides: Partial<TicketNote> = {}): TicketNote {
-  return {
+const buildNote = (overrides: Partial<TicketNote> = {}): TicketNote => (
+  {
     authorId: "111",
     content: "Sample note",
     createdAt: "2025-03-01T12:00:00.000Z",
     id: crypto.randomUUID(),
     ticketId: "t1",
     ...overrides,
-  };
-}
+  }
+);
 
 /**
  * The page is an async server component: `await Page(...)` resolves to the
  * rendered React element, which we then hand to `render`.
  */
-async function renderPage() {
+const renderPage = async () => {
   const ui = await TicketsPage({
     params: Promise.resolve({ guildId: GUILD_ID }),
   });
   return render(ui);
-}
+};
 
 beforeEach(() => {
   vi.clearAllMocks();

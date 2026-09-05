@@ -12,10 +12,7 @@ import type { ActionResult } from "@/lib/types";
  * updates the existing row. All numeric fields are validated for
  * reasonable bounds before persisting.
  */
-export async function updateEconomyConfig(
-  guildId: string,
-  formData: FormData
-): Promise<ActionResult> {
+export const updateEconomyConfig = async (guildId: string, formData: FormData): Promise<ActionResult> => {
   // 1. Auth re-check.
   const authError = await verifyGuildAdmin(
     guildId,
@@ -96,4 +93,4 @@ export async function updateEconomyConfig(
   revalidatePath(`/guilds/${guildId}`, "layout");
 
   return { message: "Economy configuration saved.", success: true };
-}
+};

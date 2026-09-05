@@ -44,7 +44,7 @@ const GUILD_ID = "123456789012345678";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function setupAuth({
+const setupAuth = ({
   hasSession = true,
   hasProviderToken = true,
   guildActive = true,
@@ -54,7 +54,7 @@ function setupAuth({
   hasProviderToken?: boolean;
   guildActive?: boolean;
   isAdmin?: boolean;
-} = {}) {
+} = {}) => {
   mockGetSession.mockResolvedValue(buildAuthSession({ hasProviderToken, hasSession }));
 
   const svc = buildMockServiceClient({
@@ -76,7 +76,7 @@ function setupAuth({
   });
 
   mockRevalidatePath.mockClear();
-}
+};
 
 beforeEach(() => {
   vi.clearAllMocks();

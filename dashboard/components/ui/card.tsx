@@ -2,12 +2,12 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-function Card({
+const Card = ({
   className,
   size = "default",
   ...props
-}: React.ComponentProps<"div"> & { size?: "default" | "sm" }) {
-  return (
+}: React.ComponentProps<"div"> & { size?: "default" | "sm" }) => 
+  (
     <div
       data-slot="card"
       data-size={size}
@@ -18,10 +18,10 @@ function Card({
       {...props}
     />
   )
-}
+;
 
-function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
-  return (
+const CardHeader = ({ className, ...props }: React.ComponentProps<"div">) => 
+  (
     <div
       data-slot="card-header"
       className={cn(
@@ -31,10 +31,10 @@ function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
       {...props}
     />
   )
-}
+;
 
-function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
-  return (
+const CardTitle = ({ className, ...props }: React.ComponentProps<"div">) => 
+  (
     <div
       data-slot="card-title"
       className={cn(
@@ -44,20 +44,20 @@ function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
       {...props}
     />
   )
-}
+;
 
-function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
-  return (
+const CardDescription = ({ className, ...props }: React.ComponentProps<"div">) => 
+  (
     <div
       data-slot="card-description"
       className={cn("text-sm text-muted-foreground", className)}
       {...props}
     />
   )
-}
+;
 
-function CardAction({ className, ...props }: React.ComponentProps<"div">) {
-  return (
+const CardAction = ({ className, ...props }: React.ComponentProps<"div">) => 
+  (
     <div
       data-slot="card-action"
       className={cn(
@@ -67,20 +67,20 @@ function CardAction({ className, ...props }: React.ComponentProps<"div">) {
       {...props}
     />
   )
-}
+;
 
-function CardContent({ className, ...props }: React.ComponentProps<"div">) {
-  return (
+const CardContent = ({ className, ...props }: React.ComponentProps<"div">) => 
+  (
     <div
       data-slot="card-content"
       className={cn("px-(--card-spacing)", className)}
       {...props}
     />
   )
-}
+;
 
-function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
-  return (
+const CardFooter = ({ className, ...props }: React.ComponentProps<"div">) => 
+  (
     <div
       data-slot="card-footer"
       className={cn(
@@ -90,7 +90,7 @@ function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
       {...props}
     />
   )
-}
+;
 
 export {
   Card,

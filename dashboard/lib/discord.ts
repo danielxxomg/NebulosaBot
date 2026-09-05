@@ -12,7 +12,7 @@ interface CacheEntry<T> {
 // Simple in-memory cache.
 const cache = new Map<string, CacheEntry<unknown>>();
 
-function getCached<T>(key: string): T | null {
+const getCached = <T>(key: string): T | null => {
   const entry = cache.get(key) as CacheEntry<T> | undefined;
   if (!entry) {return null;}
   if (Date.now() > entry.expiresAt) {
@@ -20,11 +20,11 @@ function getCached<T>(key: string): T | null {
     return null;
   }
   return entry.data;
-}
+};
 
-function setCache<T>(key: string, data: T, ttlMs = 60_000): void {
+const setCache = <T>(key: string, data: T, ttlMs = 60_000): void => {
   cache.set(key, { data, expiresAt: Date.now() + ttlMs });
-}
+};
 
 /**
  * Fetch the list of guilds the authenticated user belongs to.
@@ -32,9 +32,7 @@ function setCache<T>(key: string, data: T, ttlMs = 60_000): void {
  * @param accessToken - Discord OAuth2 access token.
  * @returns Filtered list of guilds where the bot is expected to be present.
  */
-export async function fetchUserGuilds(
-  accessToken: string
-): Promise<DiscordGuild[]> {
+export const fetchUserGuilds = async (accessToken: string): Promise<DiscordGuild[]> => {
   const cacheKey = `guilds:${accessToken.slice(-16)}`;
 
   const cached = getCached<DiscordGuild[]>(cacheKey);
@@ -53,7 +51,7 @@ export async function fetchUserGuilds(
   const guilds: DiscordGuild[] = await res.json();
   setCache(cacheKey, guilds);
   return guilds;
-}
+};
 
 /**
  * Fetch information about a specific guild.
@@ -63,13 +61,13 @@ export async function fetchUserGuilds(
  * @param guildId - Discord guild ID.
  * @returns Guild info with name, icon, owner, member count, etc.
  */
-export async function fetchGuildInfo(guildId: string): Promise<{
+export const fetchGuildInfo = async (guildId: string): Promise<{
   id: string;
   name: string;
   icon: string | null;
   owner_id: string;
   approximate_member_count?: number;
-}> {
+}> => {
   const cacheKey = `guild:${guildId}`;
 
   const cached = getCached<ReturnType<typeof fetchGuildInfo>>(cacheKey);
@@ -88,7 +86,7 @@ export async function fetchGuildInfo(guildId: string): Promise<{
   const guild = await res.json();
   setCache(cacheKey, guild);
   return guild;
-}
+};
 
 /**
  * Check if a user has the ADMINISTRATOR permission in a guild.
@@ -96,8 +94,8 @@ export async function fetchGuildInfo(guildId: string): Promise<{
  * @param permissions - String-encoded permission bitfield from Discord API.
  * @returns True if the ADMINISTRATOR bit (0x8) is set.
  */
-export function hasAdministratorPerm(permissions: string): boolean {
+export const hasAdministratorPerm = (permissions: string): boolean => {
   const permsBigInt = BigInt(permissions);
   const ADMINISTRATOR = 0x8n;
   return (permsBigInt & ADMINISTRATOR) === ADMINISTRATOR;
-}
+};

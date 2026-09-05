@@ -10,7 +10,7 @@ import { NextResponse } from "next/server";
  *
  * GET /api/auth/callback?code={code}&next={path}
  */
-export async function GET(request: Request) {
+export const GET = async (request: Request) => {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
   const next = searchParams.get("next") ?? "/";
@@ -30,4 +30,4 @@ export async function GET(request: Request) {
 
   // Redirect to the page the user originally requested (or home).
   return NextResponse.redirect(`${origin}${next}`);
-}
+};

@@ -19,7 +19,7 @@ vi.mock("@/lib/actions/greeting-actions", () => ({
 
 import GreetingConfigPage from "@/app/(authenticated)/guilds/[guildId]/greeting/page";
 
-function setupGreeting(data: Record<string, unknown> | null) {
+const setupGreeting = (data: Record<string, unknown> | null) => {
   const terminal = { maybeSingle: vi.fn().mockResolvedValue({ data, error: null }) };
   const query = {
     select: vi.fn().mockReturnValue({
@@ -27,9 +27,9 @@ function setupGreeting(data: Record<string, unknown> | null) {
     }),
   };
   mockCreateServiceClient.mockResolvedValue({ from: vi.fn().mockReturnValue(query) });
-}
+};
 
-function findConfigForm(node: unknown): { props: { fields: unknown[] } } {
+const findConfigForm = (node: unknown): { props: { fields: unknown[] } } => {
   if (node && typeof node === "object") {
     const candidate = node as { type?: unknown; props?: { children?: unknown; fields?: unknown[] } };
     if (candidate.type === mockConfigForm && candidate.props?.fields) {
@@ -49,7 +49,7 @@ function findConfigForm(node: unknown): { props: { fields: unknown[] } } {
     }
   }
   throw new Error("ConfigForm element not found");
-}
+};
 
 describe("GreetingConfigPage onboarding setup control", () => {
   beforeEach(() => {

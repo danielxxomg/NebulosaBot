@@ -26,7 +26,7 @@ export interface TicketTreeNode {
  * Extracted as a pure function so the grouping logic is testable without
  * rendering the page (no React/Discord mocks required).
  */
-export function buildTicketTree(tickets: Ticket[]): TicketTreeNode[] {
+export const buildTicketTree = (tickets: Ticket[]): TicketTreeNode[] => {
   const byId = new Map<string, Ticket>();
   for (const ticket of tickets) {
     byId.set(ticket.id, ticket);
@@ -49,4 +49,4 @@ export function buildTicketTree(tickets: Ticket[]): TicketTreeNode[] {
     }
   }
   return roots;
-}
+};

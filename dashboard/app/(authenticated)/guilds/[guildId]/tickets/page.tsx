@@ -49,7 +49,7 @@ const NEUTRAL_BADGE = {
   label: "Unknown",
 };
 
-function StatusBadge({ status }: { status: TicketStatus }) {
+const StatusBadge = ({ status }: { status: TicketStatus }) => {
   const tone = STATUS_BADGE[status] ?? NEUTRAL_BADGE;
   return (
     <span
@@ -59,7 +59,7 @@ function StatusBadge({ status }: { status: TicketStatus }) {
       {tone.label}
     </span>
   );
-}
+};
 
 interface StatCardProps {
   label: string;
@@ -67,8 +67,8 @@ interface StatCardProps {
   dotClassName: string;
 }
 
-function StatCard({ label, count, dotClassName }: StatCardProps) {
-  return (
+const StatCard = ({ label, count, dotClassName }: StatCardProps) => 
+  (
     <Card>
       <CardContent className="flex items-center justify-between">
         <div className="space-y-1">
@@ -83,19 +83,19 @@ function StatCard({ label, count, dotClassName }: StatCardProps) {
         />
       </CardContent>
     </Card>
-  );
-}
+  )
+;
 
-function PageHeader() {
-  return (
+const PageHeader = () => 
+  (
     <div>
       <h1 className="text-2xl font-bold">Tickets</h1>
       <p className="mt-1 text-muted-foreground">
         Monitor support tickets for this guild.
       </p>
     </div>
-  );
-}
+  )
+;
 
 // ---------------------------------------------------------------------------
 // Sub-ticket tree
@@ -107,7 +107,7 @@ function PageHeader() {
  * hierarchy is conveyed by text, not by indentation alone. The Actions cell
  * holds the client {@link TicketRowActions} leaf.
  */
-function TicketRow({
+const TicketRow = ({
   ticket,
   isChild,
   parentNumber,
@@ -115,8 +115,8 @@ function TicketRow({
   ticket: Ticket;
   isChild: boolean;
   parentNumber?: number;
-}) {
-  return (
+}) => 
+  (
     <tr className="border-b border-border last:border-0">
       <td className="px-3 py-2 font-medium text-foreground">
         <div
@@ -153,8 +153,8 @@ function TicketRow({
         <TicketRowActions ticket={ticket} />
       </td>
     </tr>
-  );
-}
+  )
+;
 
 /**
  * Read-only ticket overview for a guild.
@@ -163,7 +163,8 @@ function TicketRow({
  * newest first. Auth and guild isolation are enforced by
  * `getTicketsForGuild`; this component only renders what the action returns.
  */
-export default async function TicketsPage({ params }: TicketsPageProps) {
+/** Tickets page — authenticated guild ticket list (route default export). */
+const TicketsPage = async ({ params }: TicketsPageProps) => {
   const { guildId } = await params;
   const result = await getTicketsForGuild(guildId);
 
@@ -281,4 +282,6 @@ export default async function TicketsPage({ params }: TicketsPageProps) {
       <AuditPanel guildId={guildId} />
     </div>
   );
-}
+};
+
+export default TicketsPage;
