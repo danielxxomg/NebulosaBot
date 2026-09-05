@@ -325,16 +325,22 @@ class TestCategorySelect:
         ticket_interaction: MagicMock,
         ticket_guild: MagicMock,
     ) -> None:
-        """Category selection → modal sent as first response (no defer)."""
+        """Category selection → modal sent as first response (no defer).
+
+        Carries the assertions of the former test_category_select_sends_modal_
+        not_defer twin (deduped in the S6 ceiling cut — byte-identical setup
+        and asserts)."""
         ticket_interaction.client = ticket_bot
 
         select = _CategorySelect(options=[], guild=ticket_guild, categories=[])
         select._values = ["cat-uuid-001"]
 
+        # Patch send_modal so we can verify it was called instead of defer.
         ticket_interaction.response.send_modal = AsyncMock()
 
         await select.callback(ticket_interaction)
 
+        # send_modal called — NOT defer.
         ticket_interaction.response.send_modal.assert_awaited_once()
         ticket_interaction.response.defer.assert_not_awaited()
 
@@ -367,27 +373,6 @@ class TestCategorySelect:
 
 class TestTicketIntakeModal:
     """Tests for TicketIntakeModal — the intake form shown after category select."""
-
-    async def test_category_select_sends_modal_not_defer(
-        self,
-        ticket_bot: MagicMock,
-        ticket_interaction: MagicMock,
-        ticket_guild: MagicMock,
-    ) -> None:
-        """Category selection MUST send_modal as first response (no defer)."""
-        ticket_interaction.client = ticket_bot
-
-        select = _CategorySelect(options=[], guild=ticket_guild, categories=[])
-        select._values = ["cat-uuid-001"]
-
-        # Patch send_modal so we can verify it was called instead of defer.
-        ticket_interaction.response.send_modal = AsyncMock()
-
-        await select.callback(ticket_interaction)
-
-        # send_modal called — NOT defer.
-        ticket_interaction.response.send_modal.assert_awaited_once()
-        ticket_interaction.response.defer.assert_not_awaited()
 
     async def test_modal_submit_defers_then_creates_channel(
         self,
@@ -563,28 +548,6 @@ class TestTicketActionsView:
         ticket_bot.ticket_service.claim_ticket.assert_awaited_once()
         ticket_interaction.response.edit_message.assert_awaited_once()
 
-    async def test_claim_already_claimed(
-        self,
-        ticket_bot: MagicMock,
-        ticket_interaction: MagicMock,
-        mock_db,
-    ) -> None:
-        """Already claimed ticket → error embed."""
-        ticket_interaction.client = ticket_bot
-        # PR2: Claim is mod-gated — make the clicker a mod so we reach the
-        # "Already Claimed" branch instead of the mod-deny branch.
-        ticket_interaction.user.guild_permissions.administrator = True
-        ticket_bot._guild_mod_role_cache = {}
-        ticket_row = _ticket_row(status="claimed")
-        ticket_row["claimedBy"] = "999999999"
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=ticket_row)
-
-        view = TicketActionsView()
-        await view.claim_button.callback(ticket_interaction)
-
-        embed = _interaction_embed(ticket_interaction)
-        assert embed.title is not None
-
     async def test_close_button_generates_transcript(
         self,
         ticket_bot: MagicMock,
@@ -614,35 +577,31 @@ class TestTicketActionsView:
 class TestAutoCloseStaleTickets:
     """Tests for auto_close_stale_tickets task."""
 
-    async def test_auto_close_closes_stale_tickets(
+    @pytest.mark.parametrize(
+        ("check_kwargs",),
+        [
+            pytest.param(False, id="auto-close-closes-stale-tickets"),
+            pytest.param(True, id="auto-close-passes-manual-false"),
+        ],
+    )
+    async def test_auto_close_stale(
         self,
         tickets_cog: TicketsCog,
         ticket_bot: MagicMock,
         ticket_guild: MagicMock,
         mock_ticket_channel: MagicMock,
+        check_kwargs: bool,
     ) -> None:
-        """Stale tickets are closed, fresh tickets untouched."""
+        """Stale tickets are closed via close_ticket_full (fresh untouched by
+        the ignores-fresh sibling); row 2 pins manual=False (silent delete)."""
         _auto_close_env(ticket_bot, ticket_guild, mock_ticket_channel)
 
         await tickets_cog.auto_close_stale_tickets()
 
         ticket_bot.ticket_service.close_ticket_full.assert_called_once()
-
-    async def test_auto_close_passes_manual_false(
-        self,
-        tickets_cog: TicketsCog,
-        ticket_bot: MagicMock,
-        ticket_guild: MagicMock,
-        mock_ticket_channel: MagicMock,
-    ) -> None:
-        """Auto-close MUST call close_ticket_full with manual=False (silent delete)."""
-        _auto_close_env(ticket_bot, ticket_guild, mock_ticket_channel)
-
-        await tickets_cog.auto_close_stale_tickets()
-
-        ticket_bot.ticket_service.close_ticket_full.assert_called_once()
-        call_kwargs = ticket_bot.ticket_service.close_ticket_full.call_args.kwargs
-        assert call_kwargs["manual"] is False
+        if check_kwargs:
+            call_kwargs = ticket_bot.ticket_service.close_ticket_full.call_args.kwargs
+            assert call_kwargs["manual"] is False
 
     async def test_auto_close_ignores_fresh_tickets(
         self,
@@ -713,18 +672,35 @@ class TestTicketPanelViewEdgeCases:
 class TestClaimEdgeCases:
     """Edge cases for claim button."""
 
-    async def test_claim_no_ticket(
+    @pytest.mark.parametrize(
+        ("row",),
+        [
+            pytest.param(None, id="claim-no-ticket"),
+            pytest.param("claimed", id="claim-already-claimed"),
+        ],
+    )
+    async def test_claim_denials(
         self,
         ticket_bot: MagicMock,
         ticket_interaction: MagicMock,
         mock_db,
+        row: str | None,
     ) -> None:
-        """Claim on non-ticket channel → error embed."""
+        """Claim denials surface an error embed: a non-ticket channel (no
+        row) and an already-claimed ticket (claimedBy another mod) both deny.
+
+        Parametrized (S6 ceiling cut): both rows pass the mod gate (admin
+        fallback) and share the embed assert; the branch differs per row.
+        """
         ticket_interaction.client = ticket_bot
-        # PR2: pass the mod gate so the "not a ticket channel" branch is reached.
         ticket_interaction.user.guild_permissions.administrator = True
         ticket_bot._guild_mod_role_cache = {}
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=None)
+        if row is None:
+            mock_db.get_ticket_by_channel = AsyncMock(return_value=None)
+        else:
+            claimed_row = _ticket_row(status="claimed")
+            claimed_row["claimedBy"] = "999999999"
+            mock_db.get_ticket_by_channel = AsyncMock(return_value=claimed_row)
 
         view = TicketActionsView()
         await view.claim_button.callback(ticket_interaction)
@@ -736,32 +712,26 @@ class TestClaimEdgeCases:
 class TestCloseEdgeCases:
     """Edge cases for close button."""
 
-    async def test_close_no_ticket(
+    @pytest.mark.parametrize(
+        ("row_status",),
+        [
+            pytest.param(None, id="close-no-ticket"),
+            pytest.param("closed", id="close-already-closed"),
+        ],
+    )
+    async def test_close_denials(
         self,
         ticket_bot: MagicMock,
         ticket_interaction: MagicMock,
         mock_db,
+        row_status: str | None,
     ) -> None:
-        """Close on non-ticket channel → error embed."""
+        """Close denials surface the same 'Close Failed' embed: a non-ticket
+        channel (no row) and an already-closed ticket both deny."""
         ticket_interaction.client = ticket_bot
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=None)
-
-        view = TicketActionsView()
-        await view.close_button.callback(ticket_interaction)
-
-        embed = _interaction_embed_no_once(ticket_interaction)
-        assert "Close Failed" in (embed.title or "")
-
-    async def test_close_already_closed(
-        self,
-        ticket_bot: MagicMock,
-        ticket_interaction: MagicMock,
-        mock_db,
-    ) -> None:
-        """Close already-closed ticket → error embed."""
-        ticket_interaction.client = ticket_bot
-        row = _ticket_row(status="closed")
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=row)
+        mock_db.get_ticket_by_channel = AsyncMock(
+            return_value=None if row_status is None else _ticket_row(status=row_status)
+        )
 
         view = TicketActionsView()
         await view.close_button.callback(ticket_interaction)
@@ -1037,53 +1007,46 @@ class TestSlashCommands:
         ctx.channel = MagicMock()
         return ctx
 
-    async def test_ticket_panel_deploys_panel(
+    @pytest.mark.parametrize(
+        ("overrides", "expect_title", "expect_desc"),
+        [
+            pytest.param(False, None, None, id="panel-deploys-defaults"),
+            pytest.param(True, "Mi Panel", "Abre un ticket", id="panel-explicit-overrides"),
+        ],
+    )
+    async def test_ticket_panel_deploy_args(
         self,
         tickets_cog: TicketsCog,
         ticket_bot: MagicMock,
-        mock_db,
+        overrides: bool,
+        expect_title: str | None,
+        expect_desc: str | None,
     ) -> None:
-        """ticket_panel command delegates to deploy_ticket_panel with None defaults."""
+        """ticket_panel delegates to deploy_ticket_panel: None defaults by
+        default; explicit title/desc pass through as-is (success embed sent).
+
+        Parametrized (S6 ceiling fix-2): both rows share the deploy-contract
+        assert with per-case expected values.
+        """
         ctx = self._panel_ctx()
+        kwargs: dict[str, Any] = {}
+        if overrides:
+            kwargs = {"title": expect_title, "description_text": expect_desc}
 
         with patch("bot.cogs.tickets.deploy_ticket_panel", new_callable=AsyncMock) as mock_deploy:
-            await tickets_cog.ticket_panel.callback(tickets_cog, ctx)
+            await tickets_cog.ticket_panel.callback(tickets_cog, ctx, **kwargs)
 
         mock_deploy.assert_awaited_once_with(
             ctx.channel,
             "123456789",
             bot=ticket_bot,
             guild=ctx.guild,
-            title=None,
-            description_text=None,
+            title=expect_title,
+            description_text=expect_desc,
         )
-        # Success embed sent.
-        ctx.send.assert_awaited()
-
-    async def test_ticket_panel_explicit_overrides_pass_through(
-        self,
-        tickets_cog: TicketsCog,
-        ticket_bot: MagicMock,
-    ) -> None:
-        """ticket_panel with explicit title/desc passes them through as-is."""
-        ctx = self._panel_ctx()
-
-        with patch("bot.cogs.tickets.deploy_ticket_panel", new_callable=AsyncMock) as mock_deploy:
-            await tickets_cog.ticket_panel.callback(
-                tickets_cog,
-                ctx,
-                title="Mi Panel",
-                description_text="Abre un ticket",
-            )
-
-        mock_deploy.assert_awaited_once_with(
-            ctx.channel,
-            "123456789",
-            bot=ticket_bot,
-            guild=ctx.guild,
-            title="Mi Panel",
-            description_text="Abre un ticket",
-        )
+        if not overrides:
+            # Success embed sent.
+            ctx.send.assert_awaited()
 
     async def test_ticket_panel_no_guild(
         self,
@@ -1152,53 +1115,35 @@ class TestSlashCommands:
         embed = _sent_embed(ctx)
         assert "Duplicate" in (embed.title or "")
 
-    async def test_delete_category_not_found(
+    # delete_category denial rows: (ctx guild, category row or None, open-count stub,
+    # title fragment). Parametrized (S6 ceiling fix-2): not-found / wrong-guild /
+    # in-use share the delete_category denial scaffold with per-case wiring.
+    _DELETE_DENIALS: ClassVar[list[Any]] = [
+        pytest.param("123456789", None, None, "Not Found", id="delete-category-not-found"),
+        pytest.param("999999999", "row", None, "Servidor Incorrecto", id="delete-category-wrong-guild"),
+        pytest.param("123456789", "row", 3, "In Use", id="delete-category-in-use"),
+    ]
+
+    @pytest.mark.parametrize(("ctx_guild", "row_kind", "open_count", "title_fragment"), _DELETE_DENIALS)
+    async def test_delete_category_denials(
         self,
         tickets_cog: TicketsCog,
         mock_db,
+        ctx_guild: str,
+        row_kind: str | None,
+        open_count: int | None,
+        title_fragment: str,
     ) -> None:
-        """delete_category with invalid ID → error embed."""
-        ctx = _guild_ctx(123456789)
-
-        mock_db.get_ticket_category = AsyncMock(return_value=None)
-
-        await tickets_cog.delete_category.callback(tickets_cog, ctx, category_id="nonexistent")
-
-        embed = _sent_embed(ctx)
-        assert "Not Found" in (embed.title or "")
-
-    async def test_delete_category_wrong_guild(
-        self,
-        tickets_cog: TicketsCog,
-        mock_db,
-    ) -> None:
-        """delete_category for category in another guild → error embed."""
-        ctx = _guild_ctx("999999999")
-
-        row = _category_row()  # guildId = "123456789"
-        mock_db.get_ticket_category = AsyncMock(return_value=row)
+        """delete_category denial → error embed with the case's title fragment."""
+        ctx = _guild_ctx(ctx_guild)
+        mock_db.get_ticket_category = AsyncMock(return_value=None if row_kind is None else _category_row())
+        if open_count is not None:
+            mock_db.count_open_tickets_by_category = AsyncMock(return_value=open_count)
 
         await tickets_cog.delete_category.callback(tickets_cog, ctx, category_id="cat-uuid-001")
 
         embed = _sent_embed(ctx)
-        assert "Wrong Guild" in (embed.title or "") or "Servidor Incorrecto" in (embed.title or "")
-
-    async def test_delete_category_in_use(
-        self,
-        tickets_cog: TicketsCog,
-        mock_db,
-    ) -> None:
-        """delete_category with open tickets → error embed."""
-        ctx = _guild_ctx("123456789")
-
-        row = _category_row()
-        mock_db.get_ticket_category = AsyncMock(return_value=row)
-        mock_db.count_open_tickets_by_category = AsyncMock(return_value=3)
-
-        await tickets_cog.delete_category.callback(tickets_cog, ctx, category_id="cat-uuid-001")
-
-        embed = _sent_embed(ctx)
-        assert "In Use" in (embed.title or "")
+        assert title_fragment in (embed.title or "")
 
     async def test_delete_category_success(
         self,

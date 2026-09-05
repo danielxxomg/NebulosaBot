@@ -1011,7 +1011,6 @@ class TestPollFallback:
         assert gt_values[table] == "2025-06-01T09:30:00+00:00"
 
     @pytest.mark.asyncio
-    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         ("with_preflight_state", "expect_recreated"),
         [
