@@ -56,7 +56,8 @@ supabase/.temp/
 # Local audit report (GGA cycles) — not tracked
 AUDITORIA-GGA-C1-C3.md
 
-# GGA review config — tracked (project policy). Local provider override: .gga.local
+# GGA review config — local only (not tracked; each dev keeps their own)
+.gga
 .gga.local
 .pi/
 
