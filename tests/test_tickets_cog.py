@@ -732,32 +732,26 @@ class TestClaimEdgeCases:
 class TestCloseEdgeCases:
     """Edge cases for close button."""
 
-    async def test_close_no_ticket(
+    @pytest.mark.parametrize(
+        ("row_status",),
+        [
+            pytest.param(None, id="close-no-ticket"),
+            pytest.param("closed", id="close-already-closed"),
+        ],
+    )
+    async def test_close_denials(
         self,
         ticket_bot: MagicMock,
         ticket_interaction: MagicMock,
         mock_db,
+        row_status: str | None,
     ) -> None:
-        """Close on non-ticket channel → error embed."""
+        """Close denials surface the same 'Close Failed' embed: a non-ticket
+        channel (no row) and an already-closed ticket both deny."""
         ticket_interaction.client = ticket_bot
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=None)
-
-        view = TicketActionsView()
-        await view.close_button.callback(ticket_interaction)
-
-        embed = _interaction_embed_no_once(ticket_interaction)
-        assert "Close Failed" in (embed.title or "")
-
-    async def test_close_already_closed(
-        self,
-        ticket_bot: MagicMock,
-        ticket_interaction: MagicMock,
-        mock_db,
-    ) -> None:
-        """Close already-closed ticket → error embed."""
-        ticket_interaction.client = ticket_bot
-        row = _ticket_row(status="closed")
-        mock_db.get_ticket_by_channel = AsyncMock(return_value=row)
+        mock_db.get_ticket_by_channel = AsyncMock(
+            return_value=None if row_status is None else _ticket_row(status=row_status)
+        )
 
         view = TicketActionsView()
         await view.close_button.callback(ticket_interaction)
