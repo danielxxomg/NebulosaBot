@@ -2334,46 +2334,39 @@ class TestReopenByTicketRef:
         mock_db.get_ticket_by_number.assert_not_awaited()
         ticket_bot.ticket_service.reopen_ticket.assert_awaited_once()
 
-    async def test_reopen_bad_ref_shows_error(
+    # Unresolved-ref scenarios: (ticket_ref literal, get_ticket stub,
+    # get_ticket_by_number stub, expected outcome note). Parametrized (S6
+    # ceiling cut): all three surface the same error embed with no reopen —
+    # unparseable ref, valid-number-miss, and cross-guild UUID.
+    _REOPEN_REF_ERRORS: ClassVar[list[Any]] = [
+        pytest.param("not-a-ticket", None, None, id="bad-ref-shows-error"),
+        pytest.param("#9999", False, None, id="missing-ticket-shows-error"),
+        pytest.param(
+            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            {"id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "guildId": "999000999"},
+            None,
+            id="wrong-guild-denied",
+        ),
+    ]
+
+    @pytest.mark.parametrize(("ticket_ref", "get_ticket_row", "by_number_row"), _REOPEN_REF_ERRORS)
+    async def test_reopen_ref_error_shows_embed(
         self,
         tickets_cog: TicketsCog,
         slash_ctx: MagicMock,
         mock_db,
+        ticket_ref: str,
+        get_ticket_row: dict | None,
+        by_number_row: dict | None,
     ) -> None:
-        """An unparseable ticket_ref MUST surface an error_embed (no reopen)."""
-        mock_db.get_ticket_by_number = AsyncMock(return_value=None)
-        mock_db.get_ticket = AsyncMock(return_value=None)
+        """Unresolved ticket_ref (unparseable / no match / other guild) MUST
+        surface an error_embed with no reopen. The cross-guild row carries a
+        ticket found but belonging to a DIFFERENT guild (999000999)."""
+        mock_db.get_ticket = AsyncMock(return_value=get_ticket_row)
+        if by_number_row is not None:
+            mock_db.get_ticket_by_number = AsyncMock(return_value=by_number_row)
 
-        await tickets_cog.reopen.callback(tickets_cog, slash_ctx, ticket_ref="not-a-ticket")
-
-        _sent_embed(slash_ctx)
-
-    async def test_reopen_missing_ticket_shows_error(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        mock_db,
-    ) -> None:
-        """A valid number that matches no ticket MUST surface an error_embed."""
-        mock_db.get_ticket_by_number = AsyncMock(return_value=None)
-
-        await tickets_cog.reopen.callback(tickets_cog, slash_ctx, ticket_ref="#9999")
-
-        _sent_embed(slash_ctx)
-
-    async def test_reopen_wrong_guild_denied(
-        self,
-        tickets_cog: TicketsCog,
-        slash_ctx: MagicMock,
-        mock_db,
-    ) -> None:
-        """A UUID ref belonging to a different guild MUST be denied."""
-        uuid_str = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-        # Ticket found but belongs to a DIFFERENT guild.
-        other_guild_row = {**_ticket_row(status="closed"), "id": uuid_str, "guildId": "999000999"}
-        mock_db.get_ticket = AsyncMock(return_value=other_guild_row)
-
-        await tickets_cog.reopen.callback(tickets_cog, slash_ctx, ticket_ref=uuid_str)
+        await tickets_cog.reopen.callback(tickets_cog, slash_ctx, ticket_ref=ticket_ref)
 
         _sent_embed(slash_ctx)
 
