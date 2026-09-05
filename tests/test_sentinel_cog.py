@@ -515,34 +515,29 @@ class TestAuditReasonLocalization:
         assert log_args[4] == t("123456789", "sentinel.unmute.audit_reason")
 
     @pytest.mark.asyncio
-    async def test_lock_audit_reason_localized(
+    @pytest.mark.parametrize(
+        "action, reason_key",
+        [
+            ("lock", "sentinel.lock.audit_reason"),
+            ("unlock", "sentinel.unlock.audit_reason"),
+        ],
+        ids=["lock", "unlock"],
+    )
+    async def test_audit_reason_localized(
         self,
         sentinel_cog: SentinelCog,
         sentinel_bot: MagicMock,
         sentinel_ctx: MagicMock,
+        action: str,
+        reason_key: str,
     ) -> None:
-        """lock → audit reason resolves sentinel.lock.audit_reason."""
+        """lock/unlock → audit reason resolves the action's sentinel key."""
         sentinel_ctx.channel.set_permissions = AsyncMock()
 
-        await sentinel_cog.lock.callback(sentinel_cog, sentinel_ctx, None)
+        await getattr(sentinel_cog, action).callback(sentinel_cog, sentinel_ctx, None)
 
         log_args = sentinel_bot.logging_service.log_moderation_action.await_args.args
-        assert log_args[4] == t("123456789", "sentinel.lock.audit_reason", channel=sentinel_ctx.channel.mention)
-
-    @pytest.mark.asyncio
-    async def test_unlock_audit_reason_localized(
-        self,
-        sentinel_cog: SentinelCog,
-        sentinel_bot: MagicMock,
-        sentinel_ctx: MagicMock,
-    ) -> None:
-        """unlock → audit reason resolves sentinel.unlock.audit_reason."""
-        sentinel_ctx.channel.set_permissions = AsyncMock()
-
-        await sentinel_cog.unlock.callback(sentinel_cog, sentinel_ctx, None)
-
-        log_args = sentinel_bot.logging_service.log_moderation_action.await_args.args
-        assert log_args[4] == t("123456789", "sentinel.unlock.audit_reason", channel=sentinel_ctx.channel.mention)
+        assert log_args[4] == t("123456789", reason_key, channel=sentinel_ctx.channel.mention)
 
     @pytest.mark.asyncio
     async def test_unban_audit_reason_localized(
