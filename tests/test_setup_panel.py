@@ -39,13 +39,17 @@ class TestSetupPanelViewExists:
         assert view.timeout is None, "Persistent view must have timeout=None"
 
     def test_static_custom_ids(self) -> None:
-        """View must expose static custom_ids setup:nav / setup:refresh / setup:close and pattern setup:{module}:{action}."""
+        """View must expose static custom_ids setup:tab:<module> / setup:refresh / setup:close and pattern setup:{module}:{action}."""
         from bot.views.setup_panel import SetupPanelView
 
         view = SetupPanelView()
         ids = {getattr(c, "custom_id", None) for c in view.children if hasattr(c, "custom_id")}
-        # nav, refresh, close are static; module actions are also static literals like setup:tickets:create_category
-        assert "setup:nav" in ids, f"missing setup:nav in {ids}"
+        # tab buttons, refresh, close are static; module actions are also static literals like setup:tickets:create_category
+        assert "setup:tab:tickets" in ids, f"missing setup:tab:tickets in {ids}"
+        assert "setup:tab:welcome" in ids, f"missing setup:tab:welcome in {ids}"
+        assert "setup:tab:goodbye" in ids, f"missing setup:tab:goodbye in {ids}"
+        assert "setup:tab:log" in ids, f"missing setup:tab:log in {ids}"
+        assert "setup:tab:language" in ids, f"missing setup:tab:language in {ids}"
         assert "setup:refresh" in ids, f"missing setup:refresh in {ids}"
         assert "setup:close" in ids, f"missing setup:close in {ids}"
         # at least one module action id must follow setup:{module}:{action} pattern
@@ -202,9 +206,9 @@ class TestSetupPanelInteractions:
         from bot.views.setup_panel import SetupPanelView
 
         view = SetupPanelView()
-        # Find the Select with custom_id setup:nav
-        select = next(c for c in view.children if getattr(c, "custom_id", None) == "setup:nav")
-        # Mock interaction for select
+        # Find the tab button with custom_id setup:tab:welcome
+        tab_btn = next(c for c in view.children if getattr(c, "custom_id", None) == "setup:tab:welcome")
+        # Mock interaction for button
         interaction = MagicMock(spec=discord.Interaction)
         interaction.response = MagicMock()
         interaction.response.edit_message = AsyncMock()
@@ -220,24 +224,18 @@ class TestSetupPanelInteractions:
         interaction.guild_id = 123456789
         interaction.user = MagicMock(spec=discord.Member)
         interaction.user.guild_permissions.administrator = True
-        interaction.data = {"values": ["tickets"], "custom_id": "setup:nav"}
-        # Need to mock guild_service for render recompute
-        # Interaction.client is bot
+        interaction.data = {"custom_id": "setup:tab:welcome"}
+        # Need to mock guild_service and greeting_service for render recompute
         bot = MagicMock()
         bot.guild_service = MagicMock()
         bot.guild_service.get_config = AsyncMock(return_value=MagicMock(language="es"))
+        bot.greeting_service = MagicMock()
+        bot.greeting_service.get_config = AsyncMock(return_value=MagicMock(guild_id="123456789"))
         bot.db = MagicMock()
         bot.db.get_ticket_categories = AsyncMock(return_value=[])
         interaction.client = bot
 
-        # Invoke callback — discord.py Select callback is at select.callback
-        # select.values is derived from interaction.data by production, so no need to set directly
-        # The view's select handler is typically view.<method>; find it
-        # For SetupPanelView we expect a callback that edits message
-        # Call the view's select handler directly if exists, else simulate
-        # Find any method that is bound to custom_id setup:nav
-        # We will call view's internal handler: for test, assume select callback edits
-        await select.callback(interaction)
+        await tab_btn.callback(interaction)
 
         # Must edit same message, not send new
         interaction.response.edit_message.assert_awaited_once()

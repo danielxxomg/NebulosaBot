@@ -216,12 +216,10 @@ async def handle_template_select_flow(
         return
     await persist(guild_id, template_id, bot)
     embed = await module.render_async(guild_id, bot=bot)
-    # Re-render the picker with the current label; never pass view=None —
-    # discord.py serializes it as components: [] and strips every control
-    # from the panel message (verify-report CRITICAL #1 probe 2).
-    select = build_template_select(guild_id, kind)
-    select.callback = module._on_template_select
-    await interaction.response.edit_message(embed=embed, view=TemplateRefreshView(select))
+    from bot.views.setup_panel import SetupPanelView  # noqa: PLC0415 -- cycle-break
+
+    view = SetupPanelView(current_module=kind, guild_id=guild_id)
+    await interaction.response.edit_message(embed=embed, view=view)
     p = f"setup.module.{kind}"
     await interaction.followup.send(
         embed=success_embed(

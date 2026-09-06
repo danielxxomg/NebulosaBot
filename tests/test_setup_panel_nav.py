@@ -67,8 +67,8 @@ class TestBreadcrumbReflectsSelection:
         from bot.views.setup_panel import SetupPanelView
 
         view = SetupPanelView()
-        select = next(c for c in view.children if getattr(c, "custom_id", None) == "setup:nav")
-        # Simulate selecting welcome (even if module not fully implemented, breadcrumb should change)
+        tab_btn = next(c for c in view.children if getattr(c, "custom_id", None) == "setup:tab:welcome")
+        # Simulate clicking welcome tab button
         interaction = MagicMock(spec=discord.Interaction)
         interaction.response = MagicMock()
         interaction.response.edit_message = AsyncMock()
@@ -82,15 +82,17 @@ class TestBreadcrumbReflectsSelection:
         interaction.guild_id = 222
         interaction.user = MagicMock(spec=discord.Member)
         interaction.user.guild_permissions.administrator = True
-        interaction.data = {"values": ["welcome"], "custom_id": "setup:nav"}
+        interaction.data = {"custom_id": "setup:tab:welcome"}
         bot = MagicMock()
         bot.guild_service = MagicMock()
         bot.guild_service.get_config = AsyncMock(return_value=MagicMock(language="es"))
+        bot.greeting_service = MagicMock()
+        bot.greeting_service.get_config = AsyncMock(return_value=MagicMock(guild_id="222"))
         bot.db = MagicMock()
         bot.db.get_ticket_categories = AsyncMock(return_value=[])
         interaction.client = bot
 
-        await select.callback(interaction)
+        await tab_btn.callback(interaction)
 
         interaction.response.edit_message.assert_awaited_once()
         kwargs = interaction.response.edit_message.call_args.kwargs
@@ -103,6 +105,7 @@ class TestBreadcrumbReflectsSelection:
         assert "welcome" in author.lower() or "welcome" in (embed.title or "").lower() or "welcome" in footer.lower(), (
             f"breadcrumb must reflect welcome, got author={author!r}"
         )
+        assert kwargs["view"].current_module == "welcome"
 
 
 class TestRefreshShowsLiveState:
