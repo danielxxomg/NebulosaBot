@@ -198,9 +198,9 @@ class GoodbyeSetupModule:
             )
             return
 
-        embed = await self.render_async(guild_id, bot=bot)
-        from bot.views.setup_panel import SetupPanelView  # noqa: PLC0415 -- cycle-break
+        from bot.views.setup_panel import SetupPanelView, _build_embed  # noqa: PLC0415 -- cycle-break
 
+        embed = await _build_embed(guild_id, "goodbye", bot=bot, mod=self)
         view = SetupPanelView(current_module="goodbye", guild_id=guild_id)
         await interaction.response.edit_message(embed=embed, view=view)
         await interaction.followup.send(
@@ -229,9 +229,9 @@ class GoodbyeSetupModule:
             )
             return
 
-        embed = await self.render_async(guild_id, bot=bot)
-        from bot.views.setup_panel import SetupPanelView  # noqa: PLC0415 -- cycle-break
+        from bot.views.setup_panel import SetupPanelView, _build_embed  # noqa: PLC0415 -- cycle-break
 
+        embed = await _build_embed(guild_id, "goodbye", bot=bot, mod=self)
         view = SetupPanelView(current_module="goodbye", guild_id=guild_id)
         await interaction.response.edit_message(embed=embed, view=view)
         await interaction.followup.send(

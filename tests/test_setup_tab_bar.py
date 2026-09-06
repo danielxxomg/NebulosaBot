@@ -14,13 +14,19 @@ Validates:
 
 from __future__ import annotations
 
+from typing import Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
 
-from bot.core.i18n import load_locales
-from bot.views.setup_panel import TAB_MODULES, SetupPanelView
+from bot.core.i18n import load_locales, set_guild_language
+from bot.views.setup_modules._template_picker import handle_template_select_flow
+from bot.views.setup_modules.goodbye import GoodbyeSetupModule
+from bot.views.setup_modules.language import LanguageSetupModule
+from bot.views.setup_modules.log import LogSetupModule
+from bot.views.setup_modules.welcome import WelcomeSetupModule
+from bot.views.setup_panel import TAB_MODULES, SetupPanelView, _build_embed
 
 # Load locales for test assertions
 load_locales()
@@ -250,8 +256,6 @@ class TestSetupChannelPersistence:
 
     @pytest.mark.asyncio
     async def test_log_select_channel_and_clear(self) -> None:
-        from bot.views.setup_modules.log import LogSetupModule
-
         mod = LogSetupModule()
         bot = MagicMock()
         bot.guild_service = MagicMock()
@@ -276,8 +280,11 @@ class TestSetupChannelPersistence:
         bot.guild_service.save_config.assert_awaited_once_with(cfg)
         inter.response.edit_message.assert_awaited_once()
         edit_view = inter.response.edit_message.call_args.kwargs["view"]
+        edit_embed = inter.response.edit_message.call_args.kwargs["embed"]
         assert isinstance(edit_view, SetupPanelView)
         assert edit_view.current_module == "log"
+        assert edit_embed.author is not None and edit_embed.author.name
+        assert getattr(edit_embed.footer, "text", "") == "nbpanel|module=log"
         inter.followup.send.assert_awaited_once()
 
         # 2. Clear channel
@@ -297,14 +304,15 @@ class TestSetupChannelPersistence:
         bot.guild_service.save_config.assert_awaited_once_with(cfg)
         inter_clear.response.edit_message.assert_awaited_once()
         clear_view = inter_clear.response.edit_message.call_args.kwargs["view"]
+        clear_embed = inter_clear.response.edit_message.call_args.kwargs["embed"]
         assert isinstance(clear_view, SetupPanelView)
         assert clear_view.current_module == "log"
+        assert clear_embed.author is not None and clear_embed.author.name
+        assert getattr(clear_embed.footer, "text", "") == "nbpanel|module=log"
         inter_clear.followup.send.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_welcome_select_channel_and_clear(self) -> None:
-        from bot.views.setup_modules.welcome import WelcomeSetupModule
-
         mod = WelcomeSetupModule()
         bot = MagicMock()
         bot.greeting_service = MagicMock()
@@ -329,8 +337,11 @@ class TestSetupChannelPersistence:
         bot.greeting_service.save_config.assert_awaited_once_with(cfg)
         inter.response.edit_message.assert_awaited_once()
         edit_view = inter.response.edit_message.call_args.kwargs["view"]
+        edit_embed = inter.response.edit_message.call_args.kwargs["embed"]
         assert isinstance(edit_view, SetupPanelView)
         assert edit_view.current_module == "welcome"
+        assert edit_embed.author is not None and edit_embed.author.name
+        assert getattr(edit_embed.footer, "text", "") == "nbpanel|module=welcome"
         inter.followup.send.assert_awaited_once()
 
         # 2. Clear channel
@@ -350,14 +361,15 @@ class TestSetupChannelPersistence:
         bot.greeting_service.save_config.assert_awaited_once_with(cfg)
         inter_clear.response.edit_message.assert_awaited_once()
         clear_view = inter_clear.response.edit_message.call_args.kwargs["view"]
+        clear_embed = inter_clear.response.edit_message.call_args.kwargs["embed"]
         assert isinstance(clear_view, SetupPanelView)
         assert clear_view.current_module == "welcome"
+        assert clear_embed.author is not None and clear_embed.author.name
+        assert getattr(clear_embed.footer, "text", "") == "nbpanel|module=welcome"
         inter_clear.followup.send.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_goodbye_select_channel_and_clear(self) -> None:
-        from bot.views.setup_modules.goodbye import GoodbyeSetupModule
-
         mod = GoodbyeSetupModule()
         bot = MagicMock()
         bot.greeting_service = MagicMock()
@@ -382,8 +394,11 @@ class TestSetupChannelPersistence:
         bot.greeting_service.save_config.assert_awaited_once_with(cfg)
         inter.response.edit_message.assert_awaited_once()
         edit_view = inter.response.edit_message.call_args.kwargs["view"]
+        edit_embed = inter.response.edit_message.call_args.kwargs["embed"]
         assert isinstance(edit_view, SetupPanelView)
         assert edit_view.current_module == "goodbye"
+        assert edit_embed.author is not None and edit_embed.author.name
+        assert getattr(edit_embed.footer, "text", "") == "nbpanel|module=goodbye"
         inter.followup.send.assert_awaited_once()
 
         # 2. Clear channel
@@ -403,8 +418,11 @@ class TestSetupChannelPersistence:
         bot.greeting_service.save_config.assert_awaited_once_with(cfg)
         inter_clear.response.edit_message.assert_awaited_once()
         clear_view = inter_clear.response.edit_message.call_args.kwargs["view"]
+        clear_embed = inter_clear.response.edit_message.call_args.kwargs["embed"]
         assert isinstance(clear_view, SetupPanelView)
         assert clear_view.current_module == "goodbye"
+        assert clear_embed.author is not None and clear_embed.author.name
+        assert getattr(clear_embed.footer, "text", "") == "nbpanel|module=goodbye"
         inter_clear.followup.send.assert_awaited_once()
 
 
@@ -414,8 +432,6 @@ class TestSetupLanguagePersistence:
     @pytest.mark.parametrize(("action", "lang"), [("set_es", "es"), ("set_en", "en")])
     @pytest.mark.asyncio
     async def test_language_switch_persists_and_edits(self, action: str, lang: str) -> None:
-        from bot.views.setup_modules.language import LanguageSetupModule
-
         mod = LanguageSetupModule()
         bot = MagicMock()
         bot.guild_service = MagicMock()
@@ -438,8 +454,11 @@ class TestSetupLanguagePersistence:
         bot.guild_service.save_config.assert_awaited_once_with(cfg)
         inter.response.edit_message.assert_awaited_once()
         edit_view = inter.response.edit_message.call_args.kwargs["view"]
+        edit_embed = inter.response.edit_message.call_args.kwargs["embed"]
         assert isinstance(edit_view, SetupPanelView)
         assert edit_view.current_module == "language"
+        assert edit_embed.author is not None and edit_embed.author.name
+        assert getattr(edit_embed.footer, "text", "") == "nbpanel|module=language"
 
 
 class TestSetupTabBarPermissions:
@@ -487,3 +506,133 @@ class TestSetupTabBarPermissions:
         with patch("bot.views.setup_panel.can_member", new=AsyncMock(return_value=True)) as mock_can:
             assert await view.interaction_check(inter) is True
             mock_can.assert_awaited_with(required_perm, inter.user, "1234")
+
+
+class TestSetupTabBarRefreshPreservation:
+    """Validate clicking refresh on a panel after module interaction preserves the active tab."""
+
+    @pytest.mark.parametrize("active_mod", ["welcome", "goodbye", "log", "language"])
+    @pytest.mark.asyncio
+    async def test_refresh_preserves_active_tab_from_footer(self, active_mod: str) -> None:
+        bot = MagicMock()
+        bot.guild_service = MagicMock()
+        bot.guild_service.get_config = AsyncMock(return_value=MagicMock(log_channel_id="999", language="es"))
+        bot.greeting_service = MagicMock()
+        bot.greeting_service.get_config = AsyncMock(
+            return_value=MagicMock(
+                welcome_channel_id="111",
+                goodbye_channel_id="222",
+                welcome_enabled=True,
+                goodbye_enabled=True,
+            )
+        )
+        bot.db = MagicMock()
+        bot.db.get_ticket_categories = AsyncMock(return_value=[])
+
+        embed = await _build_embed("777", active_mod, bot=bot)
+        assert embed.footer is not None
+        assert embed.footer.text == f"nbpanel|module={active_mod}"
+
+        msg = MagicMock()
+        msg.embeds = [embed]
+
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild = MagicMock(spec=discord.Guild)
+        inter.guild.id = 777
+        inter.client = bot
+        inter.message = msg
+        inter.response = MagicMock()
+        inter.response.edit_message = AsyncMock()
+
+        # View handling the interaction might be a persistent view default (e.g. tickets)
+        view = SetupPanelView(current_module="tickets", guild_id="777")
+        await view.refresh_button.callback(inter)
+
+        inter.response.edit_message.assert_awaited_once()
+        rebuilt_view = inter.response.edit_message.call_args.kwargs["view"]
+        assert isinstance(rebuilt_view, SetupPanelView)
+        assert rebuilt_view.current_module == active_mod, (
+            f"Expected refreshed view to stay on '{active_mod}', but got '{rebuilt_view.current_module}'"
+        )
+
+
+class TestSetupTabBarLocalization:
+    """Validate tab button labels in Spanish and English."""
+
+    def test_tab_bar_labels_es(self) -> None:
+        set_guild_language("888", "es")
+        view = SetupPanelView(current_module="tickets", guild_id="888")
+
+        expected_labels = {
+            "setup:tab:tickets": "Tickets",
+            "setup:tab:welcome": "Entrada",
+            "setup:tab:goodbye": "Salida",
+            "setup:tab:log": "Logs",
+            "setup:tab:language": "Idioma",
+        }
+        for child in view.children:
+            cid = _get_cid(child)
+            if cid in expected_labels:
+                assert isinstance(child, discord.ui.Button)
+                assert child.label == expected_labels[cid], (
+                    f"Label for {cid} in ES was {child.label!r}, expected {expected_labels[cid]!r}"
+                )
+
+    def test_tab_bar_labels_en(self) -> None:
+        set_guild_language("999", "en")
+        view = SetupPanelView(current_module="tickets", guild_id="999")
+
+        expected_labels = {
+            "setup:tab:tickets": "Tickets",
+            "setup:tab:welcome": "Welcome",
+            "setup:tab:goodbye": "Goodbye",
+            "setup:tab:log": "Logs",
+            "setup:tab:language": "Language",
+        }
+        for child in view.children:
+            cid = _get_cid(child)
+            if cid in expected_labels:
+                assert isinstance(child, discord.ui.Button)
+                assert child.label == expected_labels[cid], (
+                    f"Label for {cid} in EN was {child.label!r}, expected {expected_labels[cid]!r}"
+                )
+
+
+class TestSetupTabBarTemplatePickerPreservesFrame:
+    """Validate handle_template_select_flow retains author breadcrumb and footer token."""
+
+    @pytest.mark.parametrize("kind", ["welcome", "goodbye"])
+    @pytest.mark.asyncio
+    async def test_template_select_preserves_embed_frame(self, kind: Literal["welcome", "goodbye"]) -> None:
+        module = WelcomeSetupModule() if kind == "welcome" else GoodbyeSetupModule()
+        bot = MagicMock()
+        bot.greeting_service = MagicMock()
+        cfg = MagicMock(welcome_template_id=None, goodbye_template_id=None)
+        bot.greeting_service.get_config = AsyncMock(return_value=cfg)
+        bot.greeting_service.save_config = AsyncMock()
+
+        persist_mock = AsyncMock()
+
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild = MagicMock(spec=discord.Guild)
+        inter.guild.id = 555
+        inter.client = bot
+        inter.data = {"values": ["gaming_neon"]}
+        inter.user = MagicMock(spec=discord.Member)
+        inter.user.guild_permissions.administrator = True
+        inter.response = MagicMock()
+        inter.response.edit_message = AsyncMock()
+        inter.followup = MagicMock()
+        inter.followup.send = AsyncMock()
+
+        with patch("bot.views.setup_modules._template_picker.can_member", new=AsyncMock(return_value=True)):
+            await handle_template_select_flow(module, inter, kind, persist=persist_mock)
+
+        persist_mock.assert_awaited_once_with("555", "gaming_neon", bot)
+        inter.response.edit_message.assert_awaited_once()
+        edit_embed = inter.response.edit_message.call_args.kwargs["embed"]
+        edit_view = inter.response.edit_message.call_args.kwargs["view"]
+        assert isinstance(edit_view, SetupPanelView)
+        assert edit_view.current_module == kind
+        assert edit_embed.author is not None and edit_embed.author.name
+        assert getattr(edit_embed.footer, "text", "") == f"nbpanel|module={kind}"

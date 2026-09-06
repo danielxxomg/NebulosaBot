@@ -215,9 +215,9 @@ async def handle_template_select_flow(
         await _send_unknown_action(interaction, kind, guild_id, "select_template")
         return
     await persist(guild_id, template_id, bot)
-    embed = await module.render_async(guild_id, bot=bot)
-    from bot.views.setup_panel import SetupPanelView  # noqa: PLC0415 -- cycle-break
+    from bot.views.setup_panel import SetupPanelView, _build_embed  # noqa: PLC0415 -- cycle-break
 
+    embed = await _build_embed(guild_id, kind, bot=bot, mod=module)
     view = SetupPanelView(current_module=kind, guild_id=guild_id)
     await interaction.response.edit_message(embed=embed, view=view)
     p = f"setup.module.{kind}"

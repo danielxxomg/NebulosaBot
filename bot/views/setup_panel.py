@@ -51,20 +51,26 @@ def _parse_module_from_footer(embed: discord.Embed | None) -> str:
     return "tickets"
 
 
-async def _build_embed(guild_id: str, module_key: str, bot: typing.Any | None = None) -> discord.Embed:
+async def _build_embed(
+    guild_id: str,
+    module_key: str,
+    bot: typing.Any | None = None,
+    *,
+    mod: typing.Any | None = None,
+) -> discord.Embed:
     """Build panel embed for module_key, recomputing from services cache-first."""
     b = bot or _get_setup_bot()
     # Try module render
-    mod = MODULES.get(module_key)
+    target_mod = mod if mod is not None else MODULES.get(module_key)
     embed: discord.Embed | None = None
-    if mod is not None:
+    if target_mod is not None:
         # Prefer async render_async if available
         try:
-            if hasattr(mod, "render_async"):
-                embed = await mod.render_async(guild_id, bot=b)  # ty:ignore[call-non-callable]
+            if hasattr(target_mod, "render_async"):
+                embed = await target_mod.render_async(guild_id, bot=b)  # ty:ignore[call-non-callable]
             else:
                 # sync render may still be callable
-                res = mod.render(guild_id)
+                res = target_mod.render(guild_id)
                 if hasattr(res, "__await__"):
                     embed = await res  # noqa: PGH003  # ty:ignore[invalid-await]
                 else:
@@ -100,6 +106,13 @@ TAB_EMOJIS: dict[str, str] = {
     "goodbye": "🚪",
     "log": "📜",
     "language": "🌐",
+}
+TAB_LABELS: dict[str, str] = {
+    "tickets": "setup.panel.tab.tickets",
+    "welcome": "setup.panel.tab.welcome",
+    "goodbye": "setup.panel.tab.goodbye",
+    "log": "setup.panel.tab.log",
+    "language": "setup.panel.tab.language",
 }
 
 
@@ -149,11 +162,9 @@ class SetupPanelView(discord.ui.View):
             if isinstance(child, discord.ui.Button):
                 child.style = discord.ButtonStyle.primary if is_active else discord.ButtonStyle.secondary
                 child.disabled = is_active
-                localized_tab = t(gid, f"setup.panel.tab.{tab_name}")
-                if localized_tab != f"setup.panel.tab.{tab_name}":
-                    child.label = localized_tab
-                else:
-                    child.label = tab_name.capitalize()
+                key = TAB_LABELS.get(tab_name)
+                if key:
+                    child.label = t(gid, key)
                 child.emoji = TAB_EMOJIS.get(tab_name, child.emoji)
                 child.row = 0
         elif cid == "setup:refresh" and isinstance(child, discord.ui.Button):
@@ -203,6 +214,7 @@ class SetupPanelView(discord.ui.View):
     # Tab Bar Buttons — Row 0 (5 tabs)
     # ------------------------------------------------------------------
     @discord.ui.button(
+        label=t(None, "setup.panel.tab.tickets"),
         emoji="🎫",
         custom_id="setup:tab:tickets",
         row=0,
@@ -211,6 +223,7 @@ class SetupPanelView(discord.ui.View):
         await self._switch_tab(interaction, "tickets")
 
     @discord.ui.button(
+        label=t(None, "setup.panel.tab.welcome"),
         emoji="👋",
         custom_id="setup:tab:welcome",
         row=0,
@@ -219,6 +232,7 @@ class SetupPanelView(discord.ui.View):
         await self._switch_tab(interaction, "welcome")
 
     @discord.ui.button(
+        label=t(None, "setup.panel.tab.goodbye"),
         emoji="🚪",
         custom_id="setup:tab:goodbye",
         row=0,
@@ -227,6 +241,7 @@ class SetupPanelView(discord.ui.View):
         await self._switch_tab(interaction, "goodbye")
 
     @discord.ui.button(
+        label=t(None, "setup.panel.tab.log"),
         emoji="📜",
         custom_id="setup:tab:log",
         row=0,
@@ -235,6 +250,7 @@ class SetupPanelView(discord.ui.View):
         await self._switch_tab(interaction, "log")
 
     @discord.ui.button(
+        label=t(None, "setup.panel.tab.language"),
         emoji="🌐",
         custom_id="setup:tab:language",
         row=0,
@@ -271,9 +287,11 @@ class SetupPanelView(discord.ui.View):
             msg = getattr(interaction, "message", None)
             embeds = getattr(msg, "embeds", []) if msg else []
             embed0 = embeds[0] if embeds else None
-            parsed = _parse_module_from_footer(embed0)
-            if parsed in TAB_MODULES:
-                current = parsed
+            footer_text = getattr(getattr(embed0, "footer", None), "text", None) or ""
+            if "nbpanel|module=" in footer_text:
+                parsed = _parse_module_from_footer(embed0)
+                if parsed in TAB_MODULES:
+                    current = parsed
         except Exception:  # noqa: BLE001, S110
             pass
 
