@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import logging
 import typing
 
@@ -59,11 +60,13 @@ class LanguageSetupModule:
                 label=t(guild_id, "setup.module.language.set_es_button"),
                 style=discord.ButtonStyle.secondary,
                 custom_id="setup:language:set_es",
+                row=2,
             ),
             discord.ui.Button(
                 label=t(guild_id, "setup.module.language.set_en_button"),
                 style=discord.ButtonStyle.secondary,
                 custom_id="setup:language:set_en",
+                row=2,
             ),
         ]
 
@@ -97,6 +100,9 @@ class LanguageSetupModule:
                 cfg = await bot.guild_service.get_config(guild_id)
                 cfg.language = lang
                 await bot.guild_service.save_config(cfg)
+                from bot.core.i18n import set_guild_language  # noqa: PLC0415 -- cycle-break
+
+                set_guild_language(guild_id, lang)
             except Exception:  # noqa: BLE001
                 logger.exception("Language set failed")
                 await interaction.response.send_message(
@@ -108,6 +114,25 @@ class LanguageSetupModule:
                     ephemeral=True,
                 )
                 return
+
+            from bot.views.setup_panel import SetupPanelView, _build_embed  # noqa: PLC0415 -- cycle-break
+
+            embed = await _build_embed(guild_id, "language", bot=bot, mod=self)
+            view = SetupPanelView(current_module="language", guild_id=guild_id)
+            edit_fn = getattr(interaction.response, "edit_message", None)
+            if inspect.iscoroutinefunction(edit_fn) or hasattr(edit_fn, "assert_awaited"):
+                await interaction.response.edit_message(embed=embed, view=view)
+                if hasattr(interaction, "followup") and hasattr(interaction.followup, "send"):
+                    await interaction.followup.send(
+                        embed=success_embed(
+                            t(guild_id, "setup.module.language.success_title"),
+                            t(guild_id, "setup.module.language.success_description", language=lang),
+                            guild_id=guild_id,
+                        ),
+                        ephemeral=True,
+                    )
+                return
+
             await interaction.response.send_message(
                 embed=success_embed(
                     t(guild_id, "setup.module.language.success_title"),

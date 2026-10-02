@@ -6,6 +6,7 @@ Kind-specific glue over the shared factory in
 
 from __future__ import annotations
 
+import inspect
 import logging
 import typing
 
@@ -14,7 +15,7 @@ import discord
 from bot.core.i18n import t
 from bot.utils.brand import INFO
 from bot.utils.checks import can_member  # noqa: F401  # re-export: test patch target
-from bot.utils.embeds import error_embed
+from bot.utils.embeds import error_embed, success_embed
 from bot.views.setup_modules._template_picker import (  # noqa: PLC0415  # facade indirection
     build_template_select,
     handle_preview_flow,
@@ -192,61 +193,147 @@ class WelcomeSetupModule:
 
     def components(self, guild_id: str, bot: typing.Any | None = None) -> list[discord.ui.Item]:  # noqa: ARG002
         select = build_template_select(guild_id, "welcome")
+        select.row = 2
         select.callback = self._on_template_select  # type: ignore[method-assign]
         return [
-            discord.ui.Button(
-                label=t(guild_id, "setup.module.welcome.channel_button"),
-                style=discord.ButtonStyle.secondary,
-                custom_id="setup:welcome:set_channel",
-            ),
-            discord.ui.Button(
-                label=t(guild_id, "setup.module.welcome.toggle_button"),
-                style=discord.ButtonStyle.secondary,
-                custom_id="setup:welcome:toggle",
-            ),
-            discord.ui.Button(
-                label=t(guild_id, "setup.module.welcome.message_button"),
-                style=discord.ButtonStyle.secondary,
-                custom_id="setup:welcome:set_message",
-            ),
-            discord.ui.Button(
-                label=t(guild_id, "setup.module.welcome.card_toggle_button"),
-                style=discord.ButtonStyle.secondary,
-                custom_id="setup:welcome:card_toggle",
-            ),
-            discord.ui.Button(
-                label=t(guild_id, "setup.module.welcome.theme_button"),
-                style=discord.ButtonStyle.secondary,
-                custom_id="setup:welcome:set_theme",
-            ),
             select,
+            discord.ui.ChannelSelect(
+                custom_id="setup:welcome:select_channel",
+                channel_types=[discord.ChannelType.text],
+                placeholder=t(guild_id, "setup.module.welcome.channel_select_placeholder"),
+                min_values=1,
+                max_values=1,
+                row=3,
+            ),
             discord.ui.Button(
-                label=t(guild_id, "setup.module.welcome.onboarding_button"),
-                style=discord.ButtonStyle.secondary,
-                custom_id="setup:welcome:set_onboarding",
+                label=t(guild_id, "setup.module.welcome.clear_button"),
+                style=discord.ButtonStyle.danger,
+                custom_id="setup:welcome:clear",
+                emoji="🗑️",
+                row=4,
             ),
             discord.ui.Button(
                 label=t(guild_id, "setup.module.welcome.test_button"),
-                style=discord.ButtonStyle.primary,
+                style=discord.ButtonStyle.secondary,
                 custom_id="setup:welcome:test",
+                emoji="🔔",
+                row=4,
             ),
         ]
+
+    async def _handle_select_channel(
+        self, interaction: discord.Interaction, guild_id: str, bot: typing.Any, action: str
+    ) -> None:
+        channel_id: str | None = None
+        data = getattr(interaction, "data", None)
+        if isinstance(data, dict):
+            vals = data.get("values") or []
+            if vals:
+                v = vals[0]
+                channel_id = str(getattr(v, "id", v))
+        vals_attr = getattr(interaction, "values", None)
+        if channel_id is None and vals_attr:
+            v = vals_attr[0]
+            channel_id = str(getattr(v, "id", v))
+
+        if not channel_id:
+            await interaction.response.send_message(
+                embed=error_embed(
+                    t(guild_id, "setup.module.welcome.error_title"),
+                    t(guild_id, "setup.module.welcome.unknown_action", action=action),
+                    guild_id=guild_id,
+                ),
+                ephemeral=True,
+            )
+            return
+
+        try:
+            cfg = await bot.greeting_service.get_config(guild_id)
+            cfg.welcome_channel_id = channel_id
+            await bot.greeting_service.save_config(cfg)
+        except Exception:
+            logger.exception("Failed to save welcome channel for guild %s", guild_id)
+            await interaction.response.send_message(
+                embed=error_embed(
+                    t(guild_id, "setup.module.welcome.error_title"),
+                    t(guild_id, "setup.module.welcome.error_bot_unavailable"),
+                    guild_id=guild_id,
+                ),
+                ephemeral=True,
+            )
+            return
+
+        from bot.views.setup_panel import SetupPanelView, _build_embed  # noqa: PLC0415 -- cycle-break
+
+        embed = await _build_embed(guild_id, "welcome", bot=bot, mod=self)
+        view = SetupPanelView(current_module="welcome", guild_id=guild_id)
+        await interaction.response.edit_message(embed=embed, view=view)
+        await interaction.followup.send(
+            embed=success_embed(
+                t(guild_id, "setup.module.welcome.channel_set_title"),
+                t(guild_id, "setup.module.welcome.channel_set_description", channel=f"<#{channel_id}>"),
+                guild_id=guild_id,
+            ),
+            ephemeral=True,
+        )
+
+    async def _handle_clear(self, interaction: discord.Interaction, guild_id: str, bot: typing.Any) -> None:
+        try:
+            cfg = await bot.greeting_service.get_config(guild_id)
+            cfg.welcome_channel_id = None
+            await bot.greeting_service.save_config(cfg)
+        except Exception:
+            logger.exception("Failed to clear welcome channel for guild %s", guild_id)
+            await interaction.response.send_message(
+                embed=error_embed(
+                    t(guild_id, "setup.module.welcome.error_title"),
+                    t(guild_id, "setup.module.welcome.error_bot_unavailable"),
+                    guild_id=guild_id,
+                ),
+                ephemeral=True,
+            )
+            return
+
+        from bot.views.setup_panel import SetupPanelView, _build_embed  # noqa: PLC0415 -- cycle-break
+
+        embed = await _build_embed(guild_id, "welcome", bot=bot, mod=self)
+        view = SetupPanelView(current_module="welcome", guild_id=guild_id)
+        await interaction.response.edit_message(embed=embed, view=view)
+        await interaction.followup.send(
+            embed=success_embed(
+                t(guild_id, "setup.module.welcome.channel_cleared_title"),
+                t(guild_id, "setup.module.welcome.channel_cleared_description"),
+                guild_id=guild_id,
+            ),
+            ephemeral=True,
+        )
 
     async def handle(self, interaction: discord.Interaction, action: str) -> None:
         guild = interaction.guild
         if guild is None:
-            error_embed(
+            embed = error_embed(
                 t(None, "setup.module.welcome.error_guild_only_title"),
                 t(None, "setup.module.welcome.error_guild_only_description"),
             )
+            send_fn = getattr(interaction.response, "send_message", None)
+            if inspect.iscoroutinefunction(send_fn) or hasattr(send_fn, "assert_awaited"):
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+            elif callable(send_fn):
+                send_fn(embed=embed, ephemeral=True)
             return
         guild_id = str(guild.id)
         bot = self._resolve_bot(interaction)
         if bot is None or getattr(bot, "greeting_service", None) is None:
-            error_embed(
+            embed = error_embed(
                 t(guild_id, "setup.module.welcome.error_title"),
                 t(guild_id, "setup.module.welcome.error_bot_unavailable"),
+                guild_id=guild_id,
             )
+            send_fn = getattr(interaction.response, "send_message", None)
+            if inspect.iscoroutinefunction(send_fn) or hasattr(send_fn, "assert_awaited"):
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+            elif callable(send_fn):
+                send_fn(embed=embed, ephemeral=True)
             return
 
         if action == "test":
@@ -255,6 +342,13 @@ class WelcomeSetupModule:
         if action == "select_template":
             await self._handle_template_select(interaction)
             return
+        if action == "select_channel":
+            await self._handle_select_channel(interaction, guild_id, bot, action)
+            return
+        if action == "clear":
+            await self._handle_clear(interaction, guild_id, bot)
+            return
+
         if action in ("set_channel", "toggle", "set_message", "card_toggle", "set_theme", "set_onboarding"):
             await interaction.response.send_message(
                 embed=discord.Embed(

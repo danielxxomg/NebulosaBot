@@ -303,6 +303,13 @@
         "log": "Registro",
         "language": "Idioma"
       },
+      "tab": {
+        "tickets": "Tickets",
+        "welcome": "Entrada",
+        "goodbye": "Salida",
+        "log": "Logs",
+        "language": "Idioma"
+      },
       "error_module_not_loaded": "Módulo {module} no cargado"
     },
     "module": {
@@ -404,7 +411,13 @@
         "template_label": "Plantilla de tarjeta",
         "template_placeholder": "Elegí una plantilla...",
         "template_select_title": "Plantilla de bienvenida",
-        "template_select_description": "Elegí la plantilla visual para la tarjeta de bienvenida."
+        "template_select_description": "Elegí la plantilla visual para la tarjeta de bienvenida.",
+        "channel_select_placeholder": "Selecciona un canal de bienvenida...",
+        "clear_button": "Desvincular canal",
+        "channel_set_title": "✅ Canal de Bienvenida Actualizado",
+        "channel_set_description": "Canal de bienvenida establecido en {channel}.",
+        "channel_cleared_title": "✅ Canal de Bienvenida Desvinculado",
+        "channel_cleared_description": "El canal de bienvenida ha sido desvinculado."
       },
       "goodbye": {
         "title": "Configuración de Despedida",
@@ -434,7 +447,13 @@
         "template_label": "Plantilla de tarjeta",
         "template_placeholder": "Elegí una plantilla...",
         "template_select_title": "Plantilla de despedida",
-        "template_select_description": "Elegí la plantilla visual para la tarjeta de despedida."
+        "template_select_description": "Elegí la plantilla visual para la tarjeta de despedida.",
+        "channel_select_placeholder": "Selecciona un canal de despedida...",
+        "clear_button": "Desvincular canal",
+        "channel_set_title": "✅ Canal de Despedida Actualizado",
+        "channel_set_description": "Canal de despedida establecido en {channel}.",
+        "channel_cleared_title": "✅ Canal de Despedida Desvinculado",
+        "channel_cleared_description": "El canal de despedida ha sido desvinculado."
       },
       "log": {
         "title": "Configuración de Registro",
@@ -442,8 +461,13 @@
         "not_configured": "No configurado",
         "channel_label": "Canal de registro",
         "set_channel_button": "Configurar Canal",
-        "clear_button": "Limpiar",
+        "clear_button": "Desvincular canal",
         "test_button": "Probar",
+        "channel_select_placeholder": "Selecciona un canal para registros...",
+        "channel_set_title": "✅ Canal de Registro Actualizado",
+        "channel_set_description": "Canal de registro establecido en {channel}.",
+        "channel_cleared_title": "✅ Canal de Registro Desvinculado",
+        "channel_cleared_description": "El canal de registro ha sido desvinculado.",
         "error_title": "Error de Configuración",
         "error_bot_unavailable": "Bot no disponible. Intenta de nuevo.",
         "error_guild_only_title": "Solo Servidores",

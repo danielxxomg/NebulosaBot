@@ -51,20 +51,26 @@ def _parse_module_from_footer(embed: discord.Embed | None) -> str:
     return "tickets"
 
 
-async def _build_embed(guild_id: str, module_key: str, bot: typing.Any | None = None) -> discord.Embed:
+async def _build_embed(
+    guild_id: str,
+    module_key: str,
+    bot: typing.Any | None = None,
+    *,
+    mod: typing.Any | None = None,
+) -> discord.Embed:
     """Build panel embed for module_key, recomputing from services cache-first."""
     b = bot or _get_setup_bot()
     # Try module render
-    mod = MODULES.get(module_key)
+    target_mod = mod if mod is not None else MODULES.get(module_key)
     embed: discord.Embed | None = None
-    if mod is not None:
+    if target_mod is not None:
         # Prefer async render_async if available
         try:
-            if hasattr(mod, "render_async"):
-                embed = await mod.render_async(guild_id, bot=b)  # ty:ignore[call-non-callable]
+            if hasattr(target_mod, "render_async"):
+                embed = await target_mod.render_async(guild_id, bot=b)  # ty:ignore[call-non-callable]
             else:
                 # sync render may still be callable
-                res = mod.render(guild_id)
+                res = target_mod.render(guild_id)
                 if hasattr(res, "__await__"):
                     embed = await res  # noqa: PGH003  # ty:ignore[invalid-await]
                 else:
@@ -93,90 +99,174 @@ async def _build_embed(guild_id: str, module_key: str, bot: typing.Any | None = 
     return embed
 
 
+TAB_MODULES = ("tickets", "welcome", "goodbye", "log", "language")
+TAB_EMOJIS: dict[str, str] = {
+    "tickets": "🎫",
+    "welcome": "👋",
+    "goodbye": "🚪",
+    "log": "📜",
+    "language": "🌐",
+}
+TAB_LABELS: dict[str, str] = {
+    "tickets": "setup.panel.tab.tickets",
+    "welcome": "setup.panel.tab.welcome",
+    "goodbye": "setup.panel.tab.goodbye",
+    "log": "setup.panel.tab.log",
+    "language": "setup.panel.tab.language",
+}
+
+
 class SetupPanelView(discord.ui.View):
-    """Persistent setup panel view (timeout=None, static custom_ids)."""
+    """Persistent setup panel view (timeout=None, static custom_ids) with Tab Bar layout."""
 
-    def __init__(self, guild_id: str | None = None) -> None:
+    def __init__(
+        self,
+        current_module: str = "tickets",
+        guild_id: str | None = None,
+        *,
+        module: str | None = None,
+    ) -> None:
         super().__init__(timeout=None)
-        # Localize static labels via t() for i18n coverage (persistent view uses guild_id or default)
-        gid = guild_id or "0"
-        for child in self.children:
-            cid = getattr(child, "custom_id", None)
-            if cid == "setup:nav" and isinstance(child, discord.ui.Select):
-                child.placeholder = t(gid, "setup.panel.select_placeholder")
-                # Localize options
-                for opt in child.options:
-                    key = f"setup.panel.option.{opt.value}"
-                    localized = t(gid, key)
-                    if localized != key:
-                        opt.label = localized
-            elif cid == "setup:refresh" and isinstance(child, discord.ui.Button):
-                child.label = t(gid, "setup.panel.refresh_button")
-            elif cid == "setup:close" and isinstance(child, discord.ui.Button):
-                child.label = t(gid, "setup.panel.close_button")
-            elif cid == "setup:tickets:create_category" and isinstance(child, discord.ui.Button):
-                child.label = t(gid, "setup.module.tickets.create_button")
-            elif cid == "setup:tickets:delete_category" and isinstance(child, discord.ui.Button):
-                child.label = t(gid, "setup.module.tickets.delete_button")
-            elif cid == "setup:tickets:list_categories" and isinstance(child, discord.ui.Button):
-                child.label = t(gid, "setup.module.tickets.list_button")
-            elif cid == "setup:tickets:configure_fields" and isinstance(child, discord.ui.Button):
-                child.label = t(gid, "setup.module.tickets.fields_button")
 
-        # Attach the per-kind template pickers from the registered greeting
-        # modules (welcome/goodbye) so the runtime panel exposes and routes
-        # them. Each select keeps its module-bound callback (persistent
-        # custom_id; greeting.manage gate enforced by module handler + panel
-        # interaction_check). One full-width select per module row.
-        for module_key in ("welcome", "goodbye"):
-            mod = MODULES.get(module_key)
-            if mod is None:
-                continue
-            for item in mod.components(gid):
-                cid = getattr(item, "custom_id", None)
-                if cid in _TEMPLATE_SELECT_IDS and cid not in {getattr(c, "custom_id", None) for c in self.children}:
+        # Disambiguate arguments: e.g. SetupPanelView("123456789")
+        if current_module not in TAB_MODULES and (current_module.isdigit() or guild_id is None):
+            guild_id = current_module
+            current_module = "tickets"
+        if module is not None:
+            current_module = module
+        if current_module not in TAB_MODULES:
+            current_module = "tickets"
+
+        self.current_module: str = current_module
+        gid = guild_id or "0"
+
+        # 1. Configure Row 0 Tab Buttons & Row 1 Action Buttons
+        for child in list(self.children):
+            self._configure_child(child, gid)
+
+        # 2. Add contextual components for non-ticket modules
+        if self.current_module != "tickets":
+            mod = MODULES.get(self.current_module)
+            if mod is not None:
+                for item in mod.components(gid):
+                    self._bind_contextual_item(item)
                     self.add_item(item)
 
+    def _configure_child(self, child: discord.ui.Item, gid: str) -> None:
+        cid = getattr(child, "custom_id", None)
+        if not cid:
+            return
+        if cid.startswith("setup:tab:"):
+            tab_name = cid.split(":")[-1]
+            is_active = tab_name == self.current_module
+            if isinstance(child, discord.ui.Button):
+                child.style = discord.ButtonStyle.primary if is_active else discord.ButtonStyle.secondary
+                child.disabled = is_active
+                key = TAB_LABELS.get(tab_name)
+                if key:
+                    child.label = t(gid, key)
+                child.emoji = TAB_EMOJIS.get(tab_name, child.emoji)
+                child.row = 0
+        elif cid == "setup:refresh" and isinstance(child, discord.ui.Button):
+            child.label = t(gid, "setup.panel.refresh_button")
+            child.row = 1
+        elif cid == "setup:close" and isinstance(child, discord.ui.Button):
+            child.label = t(gid, "setup.panel.close_button")
+            child.row = 1
+        elif cid.startswith("setup:tickets:"):
+            self._configure_ticket_child(child, cid, gid)
+
+    def _configure_ticket_child(self, child: discord.ui.Item, cid: str, gid: str) -> None:
+        if self.current_module != "tickets":
+            self.remove_item(child)
+            return
+        if not isinstance(child, discord.ui.Button):
+            return
+        child.row = 2
+        label_keys = {
+            "setup:tickets:create_category": "setup.module.tickets.create_button",
+            "setup:tickets:delete_category": "setup.module.tickets.delete_button",
+            "setup:tickets:list_categories": "setup.module.tickets.list_button",
+            "setup:tickets:configure_fields": "setup.module.tickets.fields_button",
+        }
+        if cid in label_keys:
+            child.label = t(gid, label_keys[cid])
+
+    def _bind_contextual_item(self, item: discord.ui.Item) -> None:
+        cid = getattr(item, "custom_id", None)
+        if not cid or not cid.startswith("setup:"):
+            return
+        parts = cid.split(":")
+        if len(parts) >= 3:
+            mod_key = parts[1]
+            act = parts[2]
+            existing_cb = getattr(item, "callback", None)
+            if existing_cb is None or getattr(existing_cb, "__qualname__", "").endswith("callback"):
+
+                async def _item_cb(interaction: discord.Interaction, m=mod_key, a=act) -> None:
+                    module = MODULES.get(m)
+                    if module is not None:
+                        await module.handle(interaction, a)
+
+                item.callback = _item_cb  # type: ignore[method-assign]
+
     # ------------------------------------------------------------------
-    # Navigation Select — custom_id setup:nav
+    # Tab Bar Buttons — Row 0 (5 tabs)
     # ------------------------------------------------------------------
-    @discord.ui.select(
-        custom_id="setup:nav",
-        placeholder=t(None, "setup.panel.select_placeholder"),
-        options=[
-            discord.SelectOption(label=t(None, "setup.panel.option.tickets"), value="tickets", emoji="🎫"),
-            discord.SelectOption(label=t(None, "setup.panel.option.welcome"), value="welcome", emoji="👋"),
-            discord.SelectOption(label=t(None, "setup.panel.option.goodbye"), value="goodbye", emoji="👋"),
-            discord.SelectOption(label=t(None, "setup.panel.option.log"), value="log", emoji="📝"),
-            discord.SelectOption(label=t(None, "setup.panel.option.language"), value="language", emoji="🌐"),
-        ],
+    @discord.ui.button(
+        label=t(None, "setup.panel.tab.tickets"),
+        emoji="🎫",
+        custom_id="setup:tab:tickets",
+        row=0,
     )
-    async def nav_select(self, interaction: discord.Interaction, select: discord.ui.Select) -> None:
+    async def tab_tickets(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # noqa: ARG002
+        await self._switch_tab(interaction, "tickets")
+
+    @discord.ui.button(
+        label=t(None, "setup.panel.tab.welcome"),
+        emoji="👋",
+        custom_id="setup:tab:welcome",
+        row=0,
+    )
+    async def tab_welcome(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # noqa: ARG002
+        await self._switch_tab(interaction, "welcome")
+
+    @discord.ui.button(
+        label=t(None, "setup.panel.tab.goodbye"),
+        emoji="🚪",
+        custom_id="setup:tab:goodbye",
+        row=0,
+    )
+    async def tab_goodbye(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # noqa: ARG002
+        await self._switch_tab(interaction, "goodbye")
+
+    @discord.ui.button(
+        label=t(None, "setup.panel.tab.log"),
+        emoji="📜",
+        custom_id="setup:tab:log",
+        row=0,
+    )
+    async def tab_log(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # noqa: ARG002
+        await self._switch_tab(interaction, "log")
+
+    @discord.ui.button(
+        label=t(None, "setup.panel.tab.language"),
+        emoji="🌐",
+        custom_id="setup:tab:language",
+        row=0,
+    )
+    async def tab_language(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # noqa: ARG002
+        await self._switch_tab(interaction, "language")
+
+    async def _switch_tab(self, interaction: discord.Interaction, chosen_tab: str) -> None:
         guild = interaction.guild
         guild_id = str(guild.id) if guild else "0"
-        bot = getattr(interaction, "client", None)
-        # Prefer interaction.data values (Discord payload) over select.values for testability
-        chosen = "tickets"
-        try:
-            data = getattr(interaction, "data", None)
-            if isinstance(data, dict):
-                vals = data.get("values") or []
-                if vals:
-                    chosen = vals[0]
-                elif getattr(select, "values", None):
-                    chosen = select.values[0]
-            elif getattr(select, "values", None):
-                # Fallback to select.values when data not dict
-                if select.values:
-                    chosen = select.values[0]
-        except Exception:  # noqa: BLE001
-            chosen = "tickets"
-        # Validate chosen is known module; fallback to tickets
-        if chosen not in ("tickets", "welcome", "goodbye", "log", "language"):
-            chosen = "tickets"
-        embed = await _build_embed(guild_id, chosen, bot=bot)
-        # Recompute labels for module components? Keep view as is; just edit message
-        await interaction.response.edit_message(embed=embed, view=self)
+        bot = getattr(interaction, "client", None) or _get_setup_bot()
+        if chosen_tab not in TAB_MODULES:
+            chosen_tab = "tickets"
+        embed = await _build_embed(guild_id, chosen_tab, bot=bot)
+        new_view = SetupPanelView(current_module=chosen_tab, guild_id=guild_id)
+        await interaction.response.edit_message(embed=embed, view=new_view)
 
     # ------------------------------------------------------------------
     # Refresh — custom_id setup:refresh
@@ -191,31 +281,44 @@ class SetupPanelView(discord.ui.View):
     async def refresh_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # noqa: ARG002
         guild = interaction.guild
         guild_id = str(guild.id) if guild else "0"
-        bot = getattr(interaction, "client", None)
-        # Determine current module from footer token (survives restart)
-        current = "tickets"
+        bot = getattr(interaction, "client", None) or _get_setup_bot()
+        current = getattr(self, "current_module", "tickets") or "tickets"
         try:
             msg = getattr(interaction, "message", None)
             embeds = getattr(msg, "embeds", []) if msg else []
             embed0 = embeds[0] if embeds else None
-            current = _parse_module_from_footer(embed0)
-        except Exception:  # noqa: BLE001
-            current = "tickets"
-        # Re-read live state: trigger cache-first reads before rebuild
+            footer_text = getattr(getattr(embed0, "footer", None), "text", None) or ""
+            if "nbpanel|module=" in footer_text:
+                parsed = _parse_module_from_footer(embed0)
+                if parsed in TAB_MODULES:
+                    current = parsed
+        except Exception:  # noqa: BLE001, S110
+            pass
+
         if bot is not None:
-            try:
-                if hasattr(bot, "guild_service") and bot.guild_service is not None:
+            if current in ("log", "language") and hasattr(bot, "guild_service") and bot.guild_service is not None:
+                try:
                     await bot.guild_service.get_config(guild_id)
-            except Exception:
-                logger.debug("Refresh get_config failed", exc_info=True)
-            try:
-                if hasattr(bot, "db") and bot.db is not None:
-                    # Tickets live state
+                except Exception:
+                    logger.debug("Refresh get_config failed", exc_info=True)
+            elif (
+                current in ("welcome", "goodbye")
+                and hasattr(bot, "greeting_service")
+                and bot.greeting_service is not None
+            ):
+                try:
+                    await bot.greeting_service.get_config(guild_id)
+                except Exception:
+                    logger.debug("Refresh get_config failed", exc_info=True)
+            elif current == "tickets" and hasattr(bot, "db") and bot.db is not None:
+                try:
                     await bot.db.get_ticket_categories(guild_id)
-            except Exception:
-                logger.debug("Refresh get_ticket_categories failed", exc_info=True)
+                except Exception:
+                    logger.debug("Refresh get_ticket_categories failed", exc_info=True)
+
         embed = await _build_embed(guild_id, current, bot=bot)
-        await interaction.response.edit_message(embed=embed, view=self)
+        new_view = SetupPanelView(current_module=current, guild_id=guild_id)
+        await interaction.response.edit_message(embed=embed, view=new_view)
 
     # ------------------------------------------------------------------
     # Close — custom_id setup:close
@@ -233,14 +336,12 @@ class SetupPanelView(discord.ui.View):
             msg = getattr(interaction, "message", None)
             if msg is not None and hasattr(msg, "delete"):
                 await msg.delete()
-            else:
-                # Fallback: try interaction.message
-                await interaction.message.delete()  # ty:ignore[unresolved-attribute]
+            elif hasattr(interaction, "message") and interaction.message is not None:
+                await interaction.message.delete()
         except discord.NotFound:
             pass
         except Exception:
             logger.exception("Failed to delete setup panel message")
-        # Acknowledge if not already responded? Message delete is enough; try to defer if needed
         try:
             if not interaction.response.is_done():
                 await interaction.response.defer()
@@ -370,14 +471,23 @@ class SetupPanelView(discord.ui.View):
                 # generic panel action — allow any module permission or deny? For nav/refresh/close, allow broader
                 # For S2a, only tickets.manage exists; check tickets.manage as generic gate
                 permission = None  # will check any module permission
-            elif len(parts) == 3:
+            elif len(parts) == 3 and parts[1] == "tab":
+                module_key = parts[2]
+                mod = MODULES.get(module_key)
+                if mod is not None:
+                    permission = getattr(mod, "permission_key", None)
+                elif module_key in ("welcome", "goodbye"):
+                    permission = "greeting.manage"
+                else:
+                    permission = "tickets.manage"
+            elif len(parts) >= 3:
                 module_key = parts[1]
                 mod = MODULES.get(module_key)
                 if mod is not None:
                     permission = getattr(mod, "permission_key", None)
                 else:
                     # Fallback mapping
-                    if module_key == "tickets":
+                    if module_key in ("tickets", "log", "language"):
                         permission = "tickets.manage"
                     elif module_key in ("welcome", "goodbye"):
                         permission = "greeting.manage"
