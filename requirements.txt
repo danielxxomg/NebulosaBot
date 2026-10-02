@@ -9,7 +9,7 @@ aiosignal==1.4.0
     # via aiohttp
 annotated-types==0.7.0
     # via pydantic
-anyio==4.14.0
+anyio==4.15.1
     # via httpx
 attrs==26.1.0
     # via aiohttp
@@ -19,6 +19,7 @@ certifi==2026.5.20
     # via
     #   httpcore
     #   httpx
+    #   sentry-sdk
 cffi==2.0.0 ; platform_python_implementation != 'PyPy'
     # via cryptography
 cryptography==50.0.0
@@ -83,7 +84,7 @@ pydantic==2.13.4
     #   supabase-auth
 pydantic-core==2.46.4
     # via pydantic
-pyjwt==2.13.0
+pyjwt==2.15.1
     # via
     #   nebulosabot
     #   supabase-auth
@@ -91,6 +92,8 @@ python-dotenv==1.2.2
     # via nebulosabot
 realtime==2.31.0
     # via supabase
+sentry-sdk==2.22.0
+    # via nebulosabot
 storage3==2.31.0
     # via supabase
 strenum==0.4.15
@@ -101,7 +104,13 @@ supabase-auth==2.31.0
     # via supabase
 supabase-functions==2.31.0
     # via supabase
-typing-extensions==4.15.0
+typing-extensions==4.15.0 ; python_full_version >= '3.15'
+    # via
+    #   pydantic
+    #   pydantic-core
+    #   realtime
+    #   typing-inspection
+typing-extensions==4.16.0 ; python_full_version < '3.15'
     # via
     #   aiohttp
     #   aiosignal
@@ -115,6 +124,8 @@ typing-inspection==0.4.2
     # via pydantic
 tzdata==2026.3 ; sys_platform == 'win32'
     # via psycopg
+urllib3==2.8.0
+    # via sentry-sdk
 websockets==15.0.1
     # via realtime
 yarl==1.24.2
