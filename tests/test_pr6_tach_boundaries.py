@@ -8,11 +8,19 @@ Runner: uv run pytest tests/test_pr6_tach_boundaries.py -v
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import tomllib
 from pathlib import Path
 
 import yaml
+
+from bot.core.ticket_ref import TicketRef, parse_ticket_ref
+from bot.core.ticket_ref import TicketRef as CoreRef
+from bot.core.ticket_ref import parse_ticket_ref as core_parse
+from bot.services.ticket_invariants import TicketRef as ServiceRef
+from bot.services.ticket_invariants import parse_ticket_ref as svc_parse
+from bot.utils.ticket_helpers import resolve_ticket_for_reopen
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = PROJECT_ROOT / "pyproject.toml"
@@ -46,8 +54,6 @@ class TestTicketRefMove:
         assert CORE_TICKET_REF.exists(), "bot/core/ticket_ref.py missing — move not done"
 
     def test_core_ticket_ref_exports(self) -> None:
-        from bot.core.ticket_ref import TicketRef, parse_ticket_ref
-
         assert TicketRef is not None
         assert parse_ticket_ref is not None
         # functional check
@@ -57,16 +63,12 @@ class TestTicketRefMove:
         assert ref.uuid is None
 
     def test_core_ticket_ref_uuid(self) -> None:
-        from bot.core.ticket_ref import parse_ticket_ref
-
         uuid_str = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
         ref = parse_ticket_ref(uuid_str)
         assert ref is not None
         assert ref.uuid == uuid_str
 
     def test_core_ticket_ref_none_cases(self) -> None:
-        from bot.core.ticket_ref import parse_ticket_ref
-
         assert parse_ticket_ref(None) is None
         assert parse_ticket_ref("") is None
         assert parse_ticket_ref("   ") is None
@@ -74,11 +76,6 @@ class TestTicketRefMove:
 
     def test_shim_keeps_importers_green(self) -> None:
         # 6.2 shim: imports via old path must still work and be same object
-        from bot.core.ticket_ref import TicketRef as CoreRef
-        from bot.core.ticket_ref import parse_ticket_ref as core_parse
-        from bot.services.ticket_invariants import TicketRef as ServiceRef
-        from bot.services.ticket_invariants import parse_ticket_ref as svc_parse
-
         assert CoreRef is ServiceRef, "shim must re-export same TicketRef"
         assert core_parse is svc_parse, "shim must re-export same parse_ticket_ref"
 
@@ -111,8 +108,6 @@ class TestTicketHelpersImport:
         assert "from bot.services.ticket_invariants import parse_ticket_ref" not in content, content[:600]
 
     def test_helpers_function_still_works(self) -> None:
-        from bot.utils.ticket_helpers import resolve_ticket_for_reopen  # noqa: F401
-
         assert resolve_ticket_for_reopen is not None
 
 
@@ -231,27 +226,40 @@ class TestTachToml:
 class TestTachBoundaryEnforcement:
     """6.5 RED: temp models→cogs import must be caught by tach check."""
 
-    def test_models_to_cogs_violation_detected(self) -> None:
-        ticket_py = PROJECT_ROOT / "bot" / "models" / "ticket.py"
-        original = ticket_py.read_text()
+    def test_models_to_cogs_violation_detected(self, tmp_path: Path) -> None:
+        real_ticket = PROJECT_ROOT / "bot" / "models" / "ticket.py"
+        real_content = real_ticket.read_text(encoding="utf-8")
+        real_mtime = real_ticket.stat().st_mtime_ns
+
+        # Run fault injection in an isolated fixture copy to preserve real checkout
+        shutil.copy(TACH_TOML, tmp_path / "tach.toml")
+        shutil.copytree(PROJECT_ROOT / "bot", tmp_path / "bot")
+        subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+
+        fixture_ticket = tmp_path / "bot" / "models" / "ticket.py"
+        original = fixture_ticket.read_text(encoding="utf-8")
         try:
-            # Inject a forbidden import at top
+            # Inject a forbidden import at top of fixture copy
             injected = "from bot.cogs.tickets import TicketsCog  # tach violation probe\n" + original
-            ticket_py.write_text(injected)
-            result = _run(["uv", "run", "tach", "check"])
+            fixture_ticket.write_text(injected, encoding="utf-8")
+            result = _run(["uv", "run", "--project", str(PROJECT_ROOT), "tach", "check"], cwd=tmp_path)
             if "No such file" in result.stderr or "Failed to spawn" in result.stderr:
-                result = _run(["uv", "run", "--with", "tach", "tach", "check"])
+                result = _run(["uv", "run", "--with", "tach", "tach", "check"], cwd=tmp_path)
             assert result.returncode != 0, f"tach check should fail on models->cogs: {result.stdout} {result.stderr}"
             assert "bot.models" in result.stdout + result.stderr or "bot.cogs" in result.stdout + result.stderr, (
                 result.stdout + result.stderr
             )
         finally:
-            ticket_py.write_text(original)
+            fixture_ticket.write_text(original, encoding="utf-8")
             # ensure green after removal
-            result2 = _run(["uv", "run", "tach", "check"])
+            result2 = _run(["uv", "run", "--project", str(PROJECT_ROOT), "tach", "check"], cwd=tmp_path)
             if "No such file" in result2.stderr or "Failed to spawn" in result2.stderr:
-                result2 = _run(["uv", "run", "--with", "tach", "tach", "check"])
+                result2 = _run(["uv", "run", "--with", "tach", "tach", "check"], cwd=tmp_path)
             assert result2.returncode == 0, f"tach check should pass after removal: {result2.stdout} {result2.stderr}"
+
+        # Real checkout preservation contract
+        assert real_ticket.read_text(encoding="utf-8") == real_content
+        assert real_ticket.stat().st_mtime_ns == real_mtime
 
 
 # ---------------------------------------------------------------------------
