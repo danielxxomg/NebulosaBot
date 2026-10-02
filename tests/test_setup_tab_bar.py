@@ -14,7 +14,7 @@ Validates:
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -26,7 +26,7 @@ from bot.views.setup_modules.goodbye import GoodbyeSetupModule
 from bot.views.setup_modules.language import LanguageSetupModule
 from bot.views.setup_modules.log import LogSetupModule
 from bot.views.setup_modules.welcome import WelcomeSetupModule
-from bot.views.setup_panel import TAB_MODULES, SetupPanelView, _build_embed
+from bot.views.setup_panel import TAB_MODULES, SetupPanelView, _build_embed, _parse_module_from_footer
 
 # Load locales for test assertions
 load_locales()
@@ -109,6 +109,26 @@ class TestSetupTabBarLayout:
         rows_used = {_get_row(c) for c in view.children if _get_row(c) is not None}
         assert max(rows_used) <= 4, f"Module {mod} exceeds 5 Discord rows: {rows_used}"
         assert min(rows_used) >= 0
+
+    @pytest.mark.parametrize("mod", TAB_MODULES)
+    def test_view_component_limits_and_select_isolation(self, mod: str) -> None:
+        """Discord limits: <= 25 items, <= 5 buttons per row, selects isolated on their own row."""
+        view = SetupPanelView(current_module=mod)
+        assert len(view.children) <= 25, f"Module {mod} exceeds 25 Discord components: {len(view.children)}"
+        rows: dict[int, list[discord.ui.Item]] = {}
+        for child in view.children:
+            r = _get_row(child)
+            assert r is not None, f"Child {_get_cid(child)} missing row"
+            rows.setdefault(r, []).append(child)
+
+        for r, items in rows.items():
+            selects = [i for i in items if isinstance(i, (discord.ui.Select, discord.ui.ChannelSelect))]
+            buttons = [i for i in items if isinstance(i, discord.ui.Button)]
+            if selects:
+                assert len(items) == 1, (
+                    f"Row {r} in module {mod} violates select isolation: has select and other items {items}"
+                )
+            assert len(buttons) <= 5, f"Row {r} in module {mod} exceeds 5 buttons: {len(buttons)}"
 
 
 class TestSetupTabContextualRows:
@@ -507,11 +527,78 @@ class TestSetupTabBarPermissions:
             assert await view.interaction_check(inter) is True
             mock_can.assert_awaited_with(required_perm, inter.user, "1234")
 
+    @pytest.mark.parametrize(
+        ("custom_id", "required_perm"),
+        [
+            ("setup:tickets:create_category", "tickets.manage"),
+            ("setup:tickets:delete_category", "tickets.manage"),
+            ("setup:tickets:list_categories", "tickets.manage"),
+            ("setup:tickets:configure_fields", "tickets.manage"),
+            ("setup:log:select_channel", "tickets.manage"),
+            ("setup:log:clear", "tickets.manage"),
+            ("setup:language:set_es", "tickets.manage"),
+            ("setup:language:set_en", "tickets.manage"),
+            ("setup:welcome:select_channel", "greeting.manage"),
+            ("setup:welcome:clear", "greeting.manage"),
+            ("setup:goodbye:select_channel", "greeting.manage"),
+            ("setup:goodbye:clear", "greeting.manage"),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_contextual_action_requires_corresponding_permission(
+        self, custom_id: str, required_perm: str
+    ) -> None:
+        view = SetupPanelView(current_module="tickets")
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild = MagicMock(spec=discord.Guild)
+        inter.guild.id = 5678
+        inter.user = MagicMock(spec=discord.Member)
+        inter.user.guild_permissions.administrator = False
+        inter.data = {"custom_id": custom_id}
+        inter.response = MagicMock()
+        inter.response.send_message = AsyncMock()
+
+        # Denied when perm check returns False
+        with patch("bot.views.setup_panel.can_member", new=AsyncMock(return_value=False)) as mock_can:
+            assert await view.interaction_check(inter) is False
+            mock_can.assert_awaited_with(required_perm, inter.user, "5678")
+            inter.response.send_message.assert_awaited_once()
+
+        # Granted when perm check returns True
+        with patch("bot.views.setup_panel.can_member", new=AsyncMock(return_value=True)) as mock_can:
+            assert await view.interaction_check(inter) is True
+            mock_can.assert_awaited_with(required_perm, inter.user, "5678")
+
+    @pytest.mark.parametrize("custom_id", ["setup:refresh", "setup:close"])
+    @pytest.mark.asyncio
+    async def test_generic_action_allows_any_module_permission(self, custom_id: str) -> None:
+        view = SetupPanelView(current_module="tickets")
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild = MagicMock(spec=discord.Guild)
+        inter.guild.id = 5678
+        inter.user = MagicMock(spec=discord.Member)
+        inter.user.guild_permissions.administrator = False
+        inter.data = {"custom_id": custom_id}
+        inter.response = MagicMock()
+        inter.response.send_message = AsyncMock()
+
+        # Denied when neither permission is held
+        with patch("bot.views.setup_panel.can_member", new=AsyncMock(return_value=False)):
+            assert await view.interaction_check(inter) is False
+            inter.response.send_message.assert_awaited_once()
+
+        # Granted if either tickets.manage or greeting.manage is held
+        async def _mock_can_member(perm: str, _user: Any, _guild_id: str) -> bool:
+            return perm == "greeting.manage"
+
+        with patch("bot.views.setup_panel.can_member", new=AsyncMock(side_effect=_mock_can_member)):
+            assert await view.interaction_check(inter) is True
+
 
 class TestSetupTabBarRefreshPreservation:
     """Validate clicking refresh on a panel after module interaction preserves the active tab."""
 
-    @pytest.mark.parametrize("active_mod", ["welcome", "goodbye", "log", "language"])
+    @pytest.mark.parametrize("active_mod", TAB_MODULES)
     @pytest.mark.asyncio
     async def test_refresh_preserves_active_tab_from_footer(self, active_mod: str) -> None:
         bot = MagicMock()
@@ -597,6 +684,72 @@ class TestSetupTabBarLocalization:
                     f"Label for {cid} in EN was {child.label!r}, expected {expected_labels[cid]!r}"
                 )
 
+    def test_row_1_action_labels_localized(self) -> None:
+        set_guild_language("888", "es")
+        view_es = SetupPanelView(current_module="tickets", guild_id="888")
+        refresh_es = next(c for c in view_es.children if _get_cid(c) == "setup:refresh")
+        close_es = next(c for c in view_es.children if _get_cid(c) == "setup:close")
+        assert isinstance(refresh_es, discord.ui.Button)
+        assert isinstance(close_es, discord.ui.Button)
+        assert refresh_es.label == "Actualizar"
+        assert close_es.label == "Cerrar"
+
+        set_guild_language("999", "en")
+        view_en = SetupPanelView(current_module="tickets", guild_id="999")
+        refresh_en = next(c for c in view_en.children if _get_cid(c) == "setup:refresh")
+        close_en = next(c for c in view_en.children if _get_cid(c) == "setup:close")
+        assert isinstance(refresh_en, discord.ui.Button)
+        assert isinstance(close_en, discord.ui.Button)
+        assert refresh_en.label == "Refresh"
+        assert close_en.label == "Close"
+
+    @pytest.mark.parametrize(
+        ("lang", "expected_breadcrumbs"),
+        [
+            (
+                "es",
+                {
+                    "tickets": "Tickets",
+                    "welcome": "Bienvenida",
+                    "goodbye": "Despedida",
+                    "log": "Registro",
+                    "language": "Idioma",
+                },
+            ),
+            (
+                "en",
+                {
+                    "tickets": "Tickets",
+                    "welcome": "Welcome",
+                    "goodbye": "Goodbye",
+                    "log": "Log",
+                    "language": "Language",
+                },
+            ),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_embed_author_breadcrumb_localized(self, lang: str, expected_breadcrumbs: dict[str, str]) -> None:
+        gid = f"locale_{lang}"
+        set_guild_language(gid, lang)
+        bot = MagicMock()
+        bot.guild_service = MagicMock()
+        bot.guild_service.get_config = AsyncMock(return_value=MagicMock(language=lang, log_channel_id=None))
+        bot.greeting_service = MagicMock()
+        bot.greeting_service.get_config = AsyncMock(
+            return_value=MagicMock(guild_id=gid, welcome_channel_id=None, goodbye_channel_id=None)
+        )
+        bot.db = MagicMock()
+        bot.db.get_ticket_categories = AsyncMock(return_value=[])
+
+        for mod, expected_author in expected_breadcrumbs.items():
+            embed = await _build_embed(gid, mod, bot=bot)
+            assert embed.author is not None
+            assert embed.author.name == expected_author, (
+                f"Expected author for {mod} in {lang} to be {expected_author!r}, got {embed.author.name!r}"
+            )
+            assert getattr(embed.footer, "text", "") == f"nbpanel|module={mod}"
+
 
 class TestSetupTabBarTemplatePickerPreservesFrame:
     """Validate handle_template_select_flow retains author breadcrumb and footer token."""
@@ -636,3 +789,72 @@ class TestSetupTabBarTemplatePickerPreservesFrame:
         assert edit_view.current_module == kind
         assert edit_embed.author is not None and edit_embed.author.name
         assert getattr(edit_embed.footer, "text", "") == f"nbpanel|module={kind}"
+
+
+class TestSetupTabBarPersistentRouting:
+    """Validate restart persistence and footer token parsing across all tabs."""
+
+    @pytest.mark.asyncio
+    async def test_setup_hook_registers_all_five_tab_views(self) -> None:
+        from bot.bot import NebulosaBot  # noqa: PLC0415 -- facade indirection
+        from bot.config import BotConfig  # noqa: PLC0415 -- facade indirection
+
+        registered: list[discord.ui.View] = []
+        bot = NebulosaBot(
+            config=BotConfig(
+                discord_token="t",
+                supabase_url="https://x.supabase.co",
+                supabase_key="test-key",
+            ),
+            intents=discord.Intents.default(),
+        )
+        with (
+            patch("bot.bot.Database") as db_cls,
+            patch("bot.bot.RealtimeCacheSubscriber") as sub_cls,
+            patch.object(bot, "load_extension", new=AsyncMock()),
+            patch.object(type(bot.tree), "sync", AsyncMock()),
+            patch("bot.bot.load_locales"),
+            patch("bot.bot.validate_slash_localizations"),
+            patch.object(type(bot.tree), "set_translator", new=AsyncMock()),
+            patch.object(type(bot), "add_view", side_effect=lambda view, *, message_id=None: registered.append(view)),
+        ):
+            db_cls.return_value.connect = AsyncMock()
+            sub_cls.return_value.start = AsyncMock()
+            await bot.setup_hook()
+
+        panel_views = [v for v in registered if isinstance(v, SetupPanelView)]
+        assert len(panel_views) == 5, f"Expected 5 SetupPanelView instances, got {len(panel_views)}"
+        registered_modules = [v.current_module for v in panel_views]
+        assert registered_modules == list(TAB_MODULES)
+
+        for view in panel_views:
+            assert view.timeout is None
+            for child in view.children:
+                cid = _get_cid(child)
+                assert cid is not None
+                assert cid.startswith("setup:")
+
+    @pytest.mark.parametrize(
+        ("footer_text", "expected_mod"),
+        [
+            (None, "tickets"),
+            ("", "tickets"),
+            ("random footer text", "tickets"),
+            ("nbpanel|module=tickets", "tickets"),
+            ("nbpanel|module=welcome", "welcome"),
+            ("nbpanel|module=goodbye", "goodbye"),
+            ("nbpanel|module=log", "log"),
+            ("nbpanel|module=language", "language"),
+            ("nbpanel|module=unknown_foo", "unknown_foo"),
+        ],
+    )
+    def test_parse_module_from_footer_matrix(self, footer_text: str | None, expected_mod: str) -> None:
+        if footer_text is None:
+            embed = discord.Embed(title="No footer")
+        else:
+            embed = discord.Embed(title="With footer")
+            embed.set_footer(text=footer_text)
+        assert _parse_module_from_footer(embed) == expected_mod
+
+    def test_parse_module_from_footer_none_embed(self) -> None:
+        assert _parse_module_from_footer(None) == "tickets"
