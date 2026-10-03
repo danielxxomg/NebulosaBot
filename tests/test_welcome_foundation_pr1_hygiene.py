@@ -62,6 +62,14 @@ class TestVersionHygiene:
         version = _project_version()
         assert re.fullmatch(r"\d+\.\d+\.\d+", version), f"pyproject version {version!r} is not X.Y.Z"
 
+    def test_changelog_all_bracketed_headings_are_semver(self) -> None:
+        """All bracketed version headings in CHANGELOG.md must follow SemVer X.Y.Z format."""
+        text = (PROJECT_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        headings = re.findall(r"^##\s*\[v?([^\]]+)\]", text, re.MULTILINE)
+        assert headings, "CHANGELOG.md must contain bracketed release headings"
+        for version in headings:
+            assert re.fullmatch(r"\d+\.\d+\.\d+", version), f"Changelog version {version!r} is not X.Y.Z"
+
 
 GITIGNORE_PATTERNS = (".ty_cache/", ".hypothesis/", "*.tsbuildinfo", "**/.next/")
 

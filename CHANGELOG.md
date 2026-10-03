@@ -2,11 +2,37 @@
 
 All notable changes to NebulosaBot are documented here.
 
-## Cycle 5 — Quality Zero (unreleased; v1.0 readiness)
+## [1.1.0] - 2026-10-03
 
-> Unbracketed by design: version headings are pinned to pyproject by
-> `TestVersionHygiene`; retitle this section `## [1.0.0] - <date>` when cutting
-> the release.
+### Added
+- Weekly encrypted backup profile specification (`supabase-dump-encrypted`). Note: backup encryption profile is specified, but `BACKUP_ENCRYPTION_KEY` is not provisioned in the live environment, no successful backup run has ever been observed, and isolated restore acceptance has never been executed; this does not constitute production readiness.
+- Database connection guard verifying connection health, fail-closed handling, and credential prerequisites prior to operations.
+- Application data reset and cleanup runbook (`docs/runbooks/reset-procedure.md`) specifying controlled read-only pre-reset inventory and human sign-off gates without direct execution.
+- Release and rollback runbook (`docs/runbooks/release-and-rollback.md`) documenting pre-cut verification gates, multi-surface version bump sequence, local Git rollback steps, and recovery constraints.
+
+### Changed
+- Reconciled version surfaces across `pyproject.toml`, `bot/__init__.py`, `uv.lock`, and embedded `dashboard/package.json` to 1.1.0.
+  - Historical reconciliation note: Git release tag `v1.0.0` was cut on 2026-08-26 while repository metadata in `pyproject.toml` and `bot/__init__.py` declared `0.9.0`. Version 1.1.0 reconciles this historical metadata gap directly without backfilling intermediate release tags.
+- Documented rollback irreversibility in staging-live parity runbook (`docs/runbooks/staging-live-parity.md`): migration 025 permanently dropped legacy table `ticket_backup_categoryid_text_20260818`, rendering migration 018 `DOWN` script unexecutable and requiring full database backup restoration for rollback.
+- Hardened credential-scrubbing patterns and validation guards to prevent secret exposure in diagnostics.
+
+### Fixed
+- Synchronized embedded dashboard package metadata and package-lock to prevent client-bot release divergence.
+
+### Notes
+- The section previously titled `## Cycle 5 — Quality Zero (unreleased; v1.0 readiness)` is
+  retitled below as `## [1.0.0] - 2026-08-26`. That retitle is a **historical reconciliation,
+  not a fix delivered in 1.1.0**, and it is recorded here rather than under `### Fixed` so the
+  two are not conflated.
+  - Provenance of that section's date and content: the `v1.0.0` git tag (annotated, tagger date
+    2026-08-26) and the tree at that tag. It was NOT reconstructed from a pre-existing 1.0.0
+    changelog entry, because no such entry ever existed — the section had been sitting
+    unbracketed and mislabeled as unreleased.
+  - Verified against the tag: `bot/services/image_service.py` is already absent at `v1.0.0`,
+    `AGENTS.md` is already at v3 there, and migrations through `029` are already present. The
+    work described in that section had therefore already shipped inside `v1.0.0`.
+
+## [1.0.0] - 2026-08-26
 
 ### Added
 - Fatal `ty` type gate (`error-on-warning = true`); tests/ diagnostics 495 → 0.
