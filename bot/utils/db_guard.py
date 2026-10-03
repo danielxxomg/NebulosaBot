@@ -24,8 +24,12 @@ POSTGRES_SCHEMES: frozenset[str] = frozenset({"postgres", "postgresql"})
 POSTGRES_POOLER_PORT: int = 5432
 
 # Pattern matching credentials in URIs (scheme://user:pass@ or scheme://user@).
-# Captures up to the last '@' before authority terminates (handling '@' inside passwords).
-_URI_CREDENTIALS_RE: re.Pattern[str] = re.compile(r"([a-zA-Z][a-zA-Z0-9+.-]*://)([^/\s?#]+)@")
+# The leading \b anchors the scheme so a long non-URI alphabetic token is not
+# rescanned at every start position (quadratic backtracking).
+# The userinfo class deliberately allows '?', '#' and '@' so credentials
+# containing raw delimiters or an embedded '@' are still fully redacted; the
+# match ends at the LAST '@' before the authority terminates.
+_URI_CREDENTIALS_RE: re.Pattern[str] = re.compile(r"\b([a-zA-Z][a-zA-Z0-9+.-]*://)([^/\s]+)@")
 
 # Pattern matching secret query parameters or key-value config assignments.
 # Handles quoted values containing spaces and special characters.
@@ -114,9 +118,10 @@ def scrub_error(text: str) -> str:
     Known limits (deliberate, do not "fix" without weighing fail-closed):
       - A password containing a RAW (unencoded) space is only partially redacted,
         because the userinfo character class excludes whitespace. Percent-encoded
-        forms (``%20``, ``%40``) are redacted completely, which is what a
-        well-formed conninfo actually produces; a raw-space password is malformed
-        and rejected by libpq before this helper ever sees it.
+        forms (``%20``, ``%40``) are redacted completely. Callers pass arbitrary
+        error and log text to this helper, so a malformed conninfo containing a
+        raw-space password CAN reach it; callers must not assume libpq rejected
+        the input first. Treat raw-space credentials as a residual leak risk.
       - Secret-parameter redaction is intentionally fail-closed and NOT
         shape-aware: ``password=<anything>`` is redacted even when the value is
         ordinary prose. Requiring a minimum length or a non-alphabetic character

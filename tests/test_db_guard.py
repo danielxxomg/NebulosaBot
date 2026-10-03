@@ -7,6 +7,7 @@ non-empty) and credential/socket scrubbing for safe error propagation.
 from __future__ import annotations
 
 import os
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -21,7 +22,7 @@ from bot.utils.db_guard import (
     scrub_error,
     validate_db_url,
 )
-from scripts.apply_staging_migration import run_psql_migration
+from scripts.apply_staging_migration import STDERR_LOG_LIMIT, run_psql_migration
 
 
 class TestValidateDbUrl:
@@ -135,6 +136,34 @@ class TestScrubError:
         assert "pooler.supabase.com:5432/postgres" in scrubbed
         assert scrubbed == "postgresql://***:***@pooler.supabase.com:5432/postgres"
 
+    @pytest.mark.parametrize(
+        "raw_userinfo",
+        [
+            "user:p?ss",  # raw '?' inside userinfo
+            "user:p#ss",  # raw '#' inside userinfo
+            "user:p?ss#frag",
+            "user:p%20ss",  # percent-encoded space must still work
+        ],
+    )
+    def test_scrubs_credentials_with_raw_delimiters_in_userinfo(self, raw_userinfo: str) -> None:
+        """Raw '?' or '#' inside userinfo must not defeat credential redaction."""
+        raw = f"postgres://{raw_userinfo}@pooler.supabase.com:5432/db"
+        scrubbed = scrub_error(raw)
+        assert "p?ss" not in scrubbed
+        assert "p#ss" not in scrubbed
+        assert "p%20ss" not in scrubbed
+        assert "pooler.supabase.com:5432/db" in scrubbed
+
+    def test_scrub_error_is_linear_on_long_non_uri_token(self) -> None:
+        """A long alphabetic token with no URI delimiter must not trigger quadratic backtracking."""
+        # The unanchored scheme prefix used to rescan the whole token at every start
+        # position. Regression guard: a large alphabetic blob must scrub quickly.
+        blob = "a" * 200_000
+        start = time.perf_counter()
+        scrub_error(blob)
+        elapsed = time.perf_counter() - start
+        assert elapsed < 1.0, f"scrub_error took {elapsed:.3f}s on a {len(blob)}-char non-URI token"
+
     def test_scrubs_quoted_secret_params_containing_spaces(self) -> None:
         """Quoted secret parameter values containing spaces must be fully redacted."""
         raw = (
@@ -242,3 +271,24 @@ class TestScrubError:
         assert secret not in msg
         # Must contain the redacted marker from scrub-before-truncate
         assert "***:***@" in msg
+
+    def test_run_psql_migration_bounds_scrub_input_on_pathological_stderr(self) -> None:
+        """run_psql_migration must bound sanitizer work so huge stderr cannot stall the failure path."""
+        # Many short alphabetic lines: no URI delimiter, so the redaction regex has
+        # nothing to match and would previously rescan the entire blob.
+        stderr = "\n".join("a" * 200 for _ in range(20_000))
+        assert len(stderr) > STDERR_LOG_LIMIT * 10
+        fake_proc = MagicMock(returncode=1, stderr=stderr, stdout="")
+
+        start = time.perf_counter()
+        with (
+            patch.dict(os.environ, {"LIVE_SUPABASE": "1", "DB_URL": "postgresql://u:p@pooler.supabase.com:5432/db"}),
+            patch("scripts.apply_staging_migration.subprocess.run", return_value=fake_proc),
+            pytest.raises(RuntimeError) as exc_info,
+        ):
+            run_psql_migration(db_url="postgresql://u:p@pooler.supabase.com:5432/db")
+        elapsed = time.perf_counter() - start
+
+        msg = str(exc_info.value)
+        assert elapsed < 2.0, f"failure path took {elapsed:.3f}s on {len(stderr)} chars of stderr"
+        assert len(msg) < STDERR_LOG_LIMIT + 200
