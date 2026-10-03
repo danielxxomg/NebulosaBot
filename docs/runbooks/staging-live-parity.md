@@ -2,14 +2,14 @@
 
 Staging proof for deferred S3 evidence: real credential gate, direct catalog, tracked 018 8-step DDL, EXPLAIN index policy, and RS256/HS256 JWT rotation. Stacked-to-main final slice (S4.3) — **docs-only**, no DDL or code moves.
 
-> **S4 gates** — every change MUST stay `mypy 0 · ruff 0 · 2030+ passed` and live `LIVE_SUPABASE=1 DB_URL=… uv run pytest -m live --run-live -q` must prove a **real DB path**, not a fake. Mocked `PASS_WITH_WARNINGS` is rejected.
+> **S4 gates** — every change MUST stay `ty 0 · ruff 0 · 3202 passed` and live `LIVE_SUPABASE=1 DB_URL=… uv run pytest -m live --run-live -q` must prove a **real DB path**, not a fake. Mocked `PASS_WITH_WARNINGS` is rejected.
 
 ## Quick path (happy path)
 
 1. Ensure staging creds present: `LIVE_SUPABASE=1` + `DB_URL` (or `SUPABASE_DB_URL`/`DATABASE_URL`) + `SUPABASE_URL` + `SUPABASE_KEY` + JWKS vars below.
 2. Verify gates before any live window:
    ```bash
-   uv run mypy bot tests
+   uv run ty check bot tests
    uv run ruff check bot tests scripts
    uv run pytest -q
    python -m py_compile bot/__main__.py
@@ -149,9 +149,9 @@ The 12-name inventory `GUILD_SCOPE_GAPS` (ID-only DB methods that are not direct
 
 | Check | Command | Expected |
 |-------|---------|----------|
-| Types | `uv run mypy bot tests` | `0 errors` |
+| Types | `uv run ty check bot tests` | `0 errors` |
 | Lint/format | `uv run ruff check bot tests scripts` · `uv run ruff format --check bot tests scripts` | clean |
-| Baseline | `uv run pytest -q` | `2030 passed 7 skipped` (or higher after S4.3), no failures |
+| Baseline | `uv run pytest -q` | `3202 passed 19 skipped`, no failures |
 | Live no-creds | `uv run pytest -m live --run-live --no-cov -q` | warning path — gate fails, no mocked PASS |
 | Live real DB | `LIVE_SUPABASE=1 DB_URL=postgresql://… uv run pytest -m live --run-live --no-cov -q` | `4 passed` (incl. real DB/RPC) |
 
@@ -159,7 +159,7 @@ The 12-name inventory `GUILD_SCOPE_GAPS` (ID-only DB methods that are not direct
 
 - [ ] Staging window approved, low-traffic, before/after catalog baseline captured
 - [ ] `LIVE_SUPABASE=1` + real `DB_URL` gate passes (`used_real_db == True`)
-- [ ] `mypy 0`, `ruff 0`, `uv run pytest -q` green; `python -m py_compile bot/__main__.py` clean
+- [ ] `ty 0`, `ruff 0`, `uv run pytest -q` green; `python -m py_compile bot/__main__.py` clean
 - [ ] 018 applied via tracked `psql -f migrations/018_ticket_integrity_fks.sql` only; `EXPLAIN` receipt attached; only `idx_ticket_guild_number` dropped
 - [ ] JWT `jwks_uri` + bounded `kid` refresh + `iss/aud/exp/role` + RS256/HS256 allowlist verified (`test_jwks_verifier.py`)
 - [ ] `GUILD_SCOPE_GAP_HISTORY` 12 + `guild_scope_runtime_closed == 12` confirmed

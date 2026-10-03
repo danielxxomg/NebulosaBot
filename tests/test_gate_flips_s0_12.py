@@ -1,10 +1,10 @@
-"""S0.12 gate flips — betterleaks blocking, coverage floor 80.
+"""S0.12 gate flips — betterleaks blocking, coverage floor 80.5.
 
 clean-1.0 S0.12:
 - the ``security-advisory`` job (betterleaks + OSV-Scanner) in
   ``code-quality.yml`` loses its ``continue-on-error`` escape hatch —
   full-scan triage is clean, so secrets scanning is now BLOCKING;
-- the pytest coverage floor rises 75 → 80 in every invocation surface
+- the pytest coverage floor rises 75 → 80.5 in every invocation surface
   that passes it explicitly (pyproject addopts, ci.yml, Makefile).
 """
 
@@ -50,15 +50,21 @@ def test_other_advisory_jobs_keep_their_escape_hatch(code_quality_config: dict) 
     assert vulture and vulture[0].get("continue-on-error") is not True
 
 
-def test_pyproject_coverage_floor_is_80() -> None:
-    """pyproject addopts MUST enforce --cov-fail-under=80 and no stale 75."""
+def test_pyproject_coverage_floor_is_80_5() -> None:
+    """pyproject addopts MUST enforce --cov-fail-under=80.5 and no stale 75/80."""
     text = (_PROJECT_ROOT / "pyproject.toml").read_text()
-    assert "--cov-fail-under=80" in text, "coverage floor must be 80 (S0.12)"
+    assert "--cov-fail-under=80.5" in text, "coverage floor must be 80.5"
     assert "--cov-fail-under=75" not in text, "stale 75 floor still present in pyproject addopts"
+    assert not any(token == "--cov-fail-under=80" for token in text.split()), (
+        "stale 80 floor still present in pyproject addopts"
+    )
 
 
 def test_makefile_coverage_gate_matches_floor() -> None:
-    """Makefile test/cov targets pass --cov-fail-under=80 explicitly."""
+    """Makefile test/cov targets pass --cov-fail-under=80.5 explicitly."""
     makefile = (_PROJECT_ROOT / "Makefile").read_text()
-    assert "--cov-fail-under=80" in makefile
+    assert "--cov-fail-under=80.5" in makefile
     assert "--cov-fail-under=75" not in makefile
+    assert not any(token == "--cov-fail-under=80" for token in makefile.split()), (
+        "stale 80 floor still present in Makefile"
+    )

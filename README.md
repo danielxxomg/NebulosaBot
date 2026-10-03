@@ -32,6 +32,7 @@ cd dashboard && pnpm install && pnpm dev
 
 ```
 bot/cogs/      → Discord interaction only
+bot/views/     → Discord UI views and components
 bot/services/  → business logic + cache integration (testable without Discord)
 bot/core/      → cache (TTLCache), Realtime subscriber, DB facade
 bot/core/db/   → table mixins (guild, greeting, ticket, etc.)
@@ -49,12 +50,23 @@ dashboard/lib/actions/ → Server Actions gated by verifyGuildAdmin
 
 - `Diagramas/` — sequence/ER/command diagrams
 - `openspec/` — specs, design, tasks
+- `docs/development.md` — local development guide and workflows
+- `docs/MANUAL.md` — operational manual and features
+- `docs/ops/rotation.md` — secret and credential rotation runbook
 - `docs/runbooks/` — staging/live parity, incident flows
+
+## Historical SDD Archive
+
+Completed spec-driven changes are preserved read-only under `openspec/changes/archive/` (73 changes, immutable historical record).
+
+## Memory Pointers
+
+Persistent project context and decisions are tracked in Engram under project `nebulosabot`, active relaunch tracking in task doc `odd/tasks/relaunch-readiness.md`, with topics under `odd/*`.
 
 ## Testing
 
 ```bash
-uv run pytest              # full suite (≥75% coverage)
+uv run pytest              # full suite (≥80.50% coverage)
 uv run ruff check .        # lint
 uv run ty check            # type check
 uv run tach check          # boundary check

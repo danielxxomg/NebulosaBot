@@ -138,7 +138,7 @@ class OcioCog(commands.Cog, name="Ocio"):
         return self.eight_ball
 
     # ==================================================================
-    # Error handler — cooldown (app path only; prefix path handled globally)
+    # Error handler — cooldown (app path only; text prefix path is inert in slash-only surface)
     # ==================================================================
 
     async def cog_app_command_error(

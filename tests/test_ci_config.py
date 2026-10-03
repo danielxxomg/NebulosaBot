@@ -3,7 +3,7 @@
 Covers the ci-workflow-file and qa-ci-pipeline spec scenarios:
     - Matrix includes Python 3.13
     - fail-fast disabled
-    - Coverage gate --cov-fail-under=75 in pytest invocation
+    - Coverage gate --cov-fail-under=80.5 in pytest invocation
 """
 
 from __future__ import annotations
@@ -90,10 +90,10 @@ class TestCIFailFast:
 
 
 class TestCICoverageGate:
-    """CI MUST pass --cov-fail-under=80 to pytest (clean-1.0 S0.12 floor)."""
+    """CI MUST pass --cov-fail-under=80.5 to pytest (clean-1.0 floor)."""
 
-    def test_pytest_has_cov_fail_under_80(self, ci_config: dict) -> None:
-        """The 'Tests with coverage' step MUST pass --cov-fail-under=80."""
+    def test_pytest_has_cov_fail_under_80_5(self, ci_config: dict) -> None:
+        """The 'Tests with coverage' step MUST pass --cov-fail-under=80.5."""
         steps = ci_config["jobs"]["qa-matrix"]["steps"]
         test_step = None
         for step in steps:
@@ -106,5 +106,6 @@ class TestCICoverageGate:
 
         assert test_step is not None, "No pytest step found in qa-matrix job"
         run_cmd = test_step.get("run", "")
-        assert "--cov-fail-under=80" in run_cmd, f"--cov-fail-under=80 not in pytest command: {run_cmd}"
-        assert "--cov-fail-under=75" not in run_cmd, "stale 75 floor must not linger alongside the 80 gate"
+        assert "--cov-fail-under=80.5" in run_cmd, f"--cov-fail-under=80.5 not in pytest command: {run_cmd}"
+        assert "--cov-fail-under=75" not in run_cmd, "stale 75 floor must not linger alongside the 80.5 gate"
+        assert not any(part == "--cov-fail-under=80" for part in run_cmd.split()), "stale 80 floor must not linger"

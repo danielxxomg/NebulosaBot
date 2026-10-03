@@ -89,7 +89,7 @@ class TestOpenspecConfigHygiene:
         raw = (PROJECT_ROOT / "openspec" / "config.yaml").read_text(encoding="utf-8")
         assert "type_checker: ty" in raw or tc == "ty", f"type_checker must be ty, got {tc!r}"
 
-    def test_coverage_threshold_is_0_75(self) -> None:
+    def test_coverage_threshold_is_0_8050(self) -> None:
         raw = (PROJECT_ROOT / "openspec" / "config.yaml").read_text(encoding="utf-8")
         # verify.coverage_threshold or testing.coverage
         cfg = yaml.safe_load(raw)
@@ -99,7 +99,7 @@ class TestOpenspecConfigHygiene:
             thr = cfg["verify"]["coverage_threshold"]
         elif "testing" in cfg and "coverage" in cfg["testing"]:
             thr = cfg["testing"]["coverage"].get("threshold")
-        assert thr == 0.75 or "coverage_threshold: 0.75" in raw, f"coverage_threshold must be 0.75, got {thr!r}"
+        assert thr == 0.8050 or "coverage_threshold: 0.8050" in raw, f"coverage_threshold must be 0.8050, got {thr!r}"
 
     def test_review_budget_is_800(self) -> None:
         raw = (PROJECT_ROOT / "openspec" / "config.yaml").read_text(encoding="utf-8")
@@ -115,7 +115,7 @@ class TestOpenspecConfigHygiene:
 
 
 class TestReadmeHygiene:
-    """1.4 README.md exists and is non-empty"""
+    """1.4 README.md exists and is non-empty, with coverage claim and active guides."""
 
     def test_readme_exists_and_nonempty(self) -> None:
         readme = PROJECT_ROOT / "README.md"
@@ -123,6 +123,11 @@ class TestReadmeHygiene:
         text = readme.read_text(encoding="utf-8").strip()
         assert len(text) > 100, "README.md must be non-empty (>100 chars)"
         assert "NebulosaBot" in text
+        assert "≥80.50%" in text, "README must document coverage claim ≥80.50%"
+        assert "docs/development.md" in text, "README must reference docs/development.md"
+        assert "docs/MANUAL.md" in text, "README must reference docs/MANUAL.md"
+        assert "docs/ops/rotation.md" in text, "README must reference docs/ops/rotation.md"
+        assert (PROJECT_ROOT / "docs" / "ops" / "rotation.md").exists(), "docs/ops/rotation.md must exist"
 
 
 REQUIRED_ENV_VARS = ("DISCORD_TOKEN", "SUPABASE_URL", "SUPABASE_KEY")

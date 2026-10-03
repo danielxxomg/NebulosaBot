@@ -1,8 +1,8 @@
 """Validate Makefile for tooling-rigor change.
 
 Covers the makefile-dx spec scenarios:
-    - make cov target passes --cov-fail-under=80
-    - make test target passes --cov-fail-under=80
+    - make cov target passes --cov-fail-under=80.5
+    - make test target passes --cov-fail-under=80.5
 """
 
 from __future__ import annotations
@@ -39,11 +39,13 @@ def cov_target(makefile_content: str) -> str:
 
 
 class TestMakefileCov:
-    """make cov MUST pass --cov-fail-under=80 (clean-1.0 S0.12 floor)."""
+    """make cov MUST pass --cov-fail-under=80.5 (clean-1.0 floor)."""
 
-    def test_cov_target_has_fail_under_80(self, cov_target: str) -> None:
-        """cov target MUST include --cov-fail-under=80."""
-        assert "--cov-fail-under=80" in cov_target, f"--cov-fail-under=80 not in cov target:\n{cov_target}"
+    def test_cov_target_has_fail_under_80_5(self, cov_target: str) -> None:
+        """cov target MUST include --cov-fail-under=80.5."""
+        assert "--cov-fail-under=80.5" in cov_target, f"--cov-fail-under=80.5 not in cov target:\n{cov_target}"
+        assert "--cov-fail-under=75" not in cov_target, "stale 75 floor must not linger"
+        assert not any(part == "--cov-fail-under=80" for part in cov_target.split()), "stale 80 floor must not linger"
 
     def test_cov_target_has_cov_report(self, cov_target: str) -> None:
         """cov target MUST include --cov-report for output."""
@@ -56,11 +58,13 @@ class TestMakefileCov:
 
 
 class TestMakefileTest:
-    """make test MUST pass --cov-fail-under=80 (clean-1.0 S0.12 floor)."""
+    """make test MUST pass --cov-fail-under=80.5 (clean-1.0 floor)."""
 
-    def test_test_target_has_fail_under_80(self, test_target: str) -> None:
-        """test target MUST include --cov-fail-under=80."""
-        assert "--cov-fail-under=80" in test_target, f"--cov-fail-under=80 not in test target:\n{test_target}"
+    def test_test_target_has_fail_under_80_5(self, test_target: str) -> None:
+        """test target MUST include --cov-fail-under=80.5."""
+        assert "--cov-fail-under=80.5" in test_target, f"--cov-fail-under=80.5 not in test target:\n{test_target}"
+        assert "--cov-fail-under=75" not in test_target, "stale 75 floor must not linger"
+        assert not any(part == "--cov-fail-under=80" for part in test_target.split()), "stale 80 floor must not linger"
 
 
 # ---------------------------------------------------------------------------

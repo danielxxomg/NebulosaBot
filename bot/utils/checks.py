@@ -377,7 +377,7 @@ def _resolve_mod_role_id_from_bot(bot: Any, guild_id: int | None) -> int | None:
     """Shared resolver: look up the configured moderator role ID from cache.
 
     Used by both the interaction-based path (``_resolve_mod_role_id``) and the
-    context-based prefix path. Reads ``bot._guild_mod_role_cache`` and returns
+    context-based path (inert prefix compatibility). Reads ``bot._guild_mod_role_cache`` and returns
     ``None`` when unconfigured or the cached value is malformed.
     """
     # Phase 3+: GuildService populates this cache.

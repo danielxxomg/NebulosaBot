@@ -67,9 +67,9 @@ class TestCredentialWindowAndGates:
         assert "psql" in n
         assert "018_ticket_integrity_fks" in text or "018" in text
 
-    def test_mypy_ruff_pytest_gates_documented(self) -> None:
+    def test_ty_ruff_pytest_gates_documented(self) -> None:
         text = _read_runbook()
-        assert "mypy" in text.lower()
+        assert "ty" in text.lower()
         assert "ruff" in text.lower()
         assert "pytest" in text.lower()
 

@@ -7,6 +7,7 @@ instance with appropriate intents, and connects to Discord.
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
 import os
 
@@ -62,8 +63,6 @@ def _scrub(event: dict[str, Any], _hint: dict[str, Any]) -> dict[str, Any] | Non
     the host. Returns None to drop the event only when it would still
     carry PII after scrubbing — otherwise returns the scrubbed event.
     """
-    import copy  # noqa: PLC0415 -- stdlib import inside function for lazy reuse boundary
-
     scrubbed = copy.deepcopy(event)
     # Drop raw message content — never send raw user content.
     scrubbed.pop("message", None)
@@ -146,7 +145,8 @@ async def main() -> None:
     logger.info("Loading configuration ...")
     config = BotConfig.from_env()
 
-    # Intents — message_content is required for prefix commands to work.
+    # Intents — message_content intent is required for the ticket close-timer
+    # trigger (',' in ticket channels); command prefix is inert.
     # Voice observatory (PR3 D1): requires Voice States intent. Prerequisite:
     # you MUST enable the Voice States intent in the Discord Developer Portal
     # (Bot → Privileged Gateway Intents → Voice States) or on_voice_state_update
