@@ -2,7 +2,8 @@ name: Supabase Backup
 
 on:
   schedule:
-    - cron: "0 2 * * *"
+    # Run weekly at 02:00 UTC on Sunday
+    - cron: "0 2 * * 0"
   workflow_dispatch:
 
 permissions:
@@ -17,10 +18,32 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Install PostgreSQL client
+      - name: Install PostgreSQL client and GPG
         run: |
           sudo apt-get update
-          sudo apt-get install -y postgresql-client
+          sudo apt-get install -y postgresql-client gnupg
+
+      - name: Preflight check database connection URL
+        # Root cause of historical run 36835825347: empty SUPABASE_DB_URL caused pg_dump
+        # to fall back to local Unix domain socket (/var/run/postgresql/.s.PGSQL.5432).
+        # We fail closed here BEFORE invoking pg_dump.
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "${SUPABASE_DB_URL// }" ]; then
+            echo "::error::SUPABASE_DB_URL secret is empty or missing. Preflight failed."
+            exit 1
+          fi
+          # Check pooler/supabase markers or standard port
+          case "$SUPABASE_DB_URL" in
+            *pooler*|*supabase*|*:5432/*)
+              echo "Preflight check passed: URL contains expected pooler marker."
+              ;;
+            *)
+              echo "::error::SUPABASE_DB_URL does not contain pooler/supabase marker or standard port."
+              exit 1
+              ;;
+          esac
 
       - name: Dump Supabase DB (pooler)
         env:
@@ -28,9 +51,33 @@ jobs:
         run: |
           pg_dump "$SUPABASE_DB_URL" -Fc -f dump.pgdump
 
-      - name: Upload artifact
+      - name: Encrypt database dump (GPG symmetric)
+        # Symmetrically encrypt the dump using BACKUP_ENCRYPTION_KEY secret (documented TBD).
+        # Fails explicitly with clear message if secret is missing rather than silent skip.
+        env:
+          BACKUP_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+        run: |
+          if [ -z "${BACKUP_KEY// }" ]; then
+            echo "::error::BACKUP_ENCRYPTION_KEY secret is not set. Encrypted backup cannot proceed."
+            exit 1
+          fi
+          gpg --batch --yes --symmetric --cipher-algo AES256 --passphrase "$BACKUP_KEY" -o dump.pgdump.gpg dump.pgdump
+          rm -f dump.pgdump
+
+      - name: Upload encrypted artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: supabase-dump
-          path: dump.pgdump
-          retention-days: 7
+          name: supabase-dump-encrypted
+          path: dump.pgdump.gpg
+          retention-days: 30
+
+      # Alerting note: Failure and staleness alerting are delivered via native
+      # GitHub Actions workflow-run notifications; no separate webhook secret required.
+      #
+      # Isolated restore acceptance procedure (CI recipe text):
+      # To test restoration safely without mutating live systems:
+      #   1. Spin up an ephemeral PostgreSQL service container (postgres:15-alpine).
+      #   2. Decrypt: gpg --batch --decrypt --passphrase "$BACKUP_KEY" -o restored.pgdump dump.pgdump.gpg
+      #   3. Verify table inventory: pg_restore --list restored.pgdump
+      #   4. Test restore into ephemeral DB: pg_restore -d "postgres://test:test@localhost:5432/test" restored.pgdump
+      #   5. Run sanity queries on ephemeral DB, then tear down container.

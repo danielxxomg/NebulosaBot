@@ -36,6 +36,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from bot.utils.db_guard import scrub_error
+
 logger = logging.getLogger(__name__)
 
 # Tracked migration allowlist — no arbitrary file fallback.
@@ -273,7 +275,8 @@ def run_psql_migration(
     # before/after capture: backup + VALIDATE live in SQL; psql executes atomically per statement.
     result = subprocess.run(argv, shell=False, timeout=timeout, capture_output=True, text=True, check=False)  # noqa: S603
     if result.returncode != 0:
-        msg = f"psql migration failed (exit {result.returncode}): {result.stderr[:2000]}"
+        scrubbed_stderr = scrub_error(result.stderr[:2000])
+        msg = f"psql migration failed (exit {result.returncode}): {scrubbed_stderr}"
         raise RuntimeError(msg)
     return LiveGateResult(passed=True, reasons=(), used_real_db=True)
 
