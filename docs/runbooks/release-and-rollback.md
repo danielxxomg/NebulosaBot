@@ -35,11 +35,17 @@ Before cutting any release candidate or tagging a release, all of the following 
 | **Python Test Suite** | Full test suite green (0 failures) | `uv run pytest -q` |
 | **Dashboard Tests** | Embedded Next.js client suite green | `(cd dashboard && npm test --silent)` |
 | **Type Checking** | Zero `ty` diagnostic errors | `uv run ty check bot/ tests/` |
-| **Linter & Style** | Ruff lint and format check clean | `uv run ruff check bot/ tests/ scripts/` && `uv run ruff format --check bot/ tests/` |
+| **Linter & Style** | Ruff lint and format check clean | `uv run ruff check bot/ tests/ scripts/ && uv run ruff format --check bot/ tests/` |
 | **Lockfile Sync** | `uv.lock` perfectly aligned with `pyproject.toml` | `uv lock --check` |
 | **Release Candidate Guard** | Dedicated release candidate test passes | `uv run pytest tests/test_release_candidate.py -q --no-cov` |
 | **Hygiene Tests** | Base hygiene assertions pass | `uv run pytest tests/test_welcome_foundation_pr1_hygiene.py -q --no-cov` |
 | **Review & Risk** | GGA code review passes with native risks assessed | Verify review log against active `AGENTS.md` rules |
+
+> **Exit status matters.** Every command in this runbook MUST be run so its process exit
+> status is preserved. Do **not** pipe a verification command into `tail`, `head`, `grep`
+> or similar: with default shell semantics the pipeline's status is that of the LAST
+> command, so a failing test piped into `tail` exits `0` and reports false success. Use
+> the unpiped form, or `set -o pipefail` when output must be trimmed.
 
 ---
 
@@ -74,14 +80,14 @@ version. Update `dashboard/package.json`:
   "version": "X.Y.Z"
 }
 ```
-The root package version in `dashboard/package-lock.json` must match. Edit the `"version"`
-field of the root entry (`packages[""].version`) and the top-level `"version"` field, then
-verify the client still builds and passes:
+The root package version in `dashboard/package-lock.json` must match. The lock declares the
+root version in **two** places — the top-level `"version"` and `packages[""].version` —
+and BOTH must be updated, or the release candidate guard fails:
 ```bash
-(cd dashboard && npm test --silent 2>&1 | tail -5)
+(cd dashboard && npm test --silent)
 ```
 `tests/test_release_candidate.py::TestDashboardVersionDivergence` fails if either dashboard
-surface is left behind during a bump.
+surface, or either lock field, is left behind during a bump.
 
 ### 3.4 Step 4: Reconcile CHANGELOG.md
 1. Ensure the newest bracketed release section matches the release target:
@@ -100,7 +106,8 @@ surface is left behind during a bump.
      release history stays documented as a gap rather than reconstructed.
 
 ### 3.5 Step 5: Verification Suite
-Run the full verification battery:
+Run the full verification battery. Run these unpiped (or under `set -o pipefail`) so a
+failure cannot be masked by the trimming command:
 ```bash
 uv run pytest tests/test_release_candidate.py tests/test_welcome_foundation_pr1_hygiene.py -q --no-cov
 uv run pytest -q
@@ -108,7 +115,7 @@ uv run ruff check bot/ tests/ scripts/
 uv run ruff format --check bot/ tests/
 uv run ty check bot/ tests/
 uv lock --check
-(cd dashboard && npm test --silent 2>&1 | tail -5)
+(cd dashboard && npm test --silent)
 ```
 
 ---
