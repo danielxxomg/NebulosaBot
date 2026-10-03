@@ -6,6 +6,9 @@ non-empty) and credential/socket scrubbing for safe error propagation.
 
 from __future__ import annotations
 
+import os
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from bot.utils.db_guard import (
@@ -18,6 +21,7 @@ from bot.utils.db_guard import (
     scrub_error,
     validate_db_url,
 )
+from scripts.apply_staging_migration import run_psql_migration
 
 
 class TestValidateDbUrl:
@@ -115,8 +119,41 @@ class TestScrubError:
         raw = "Failed to connect to postgresql://postgres:s3cr3t_p@ss@db.pooler.supabase.com:6543/postgres"
         scrubbed = scrub_error(raw)
         assert "s3cr3t_p@ss" not in scrubbed
+        assert "p@ss" not in scrubbed
+        assert "ss@" not in scrubbed
         assert "postgres" in scrubbed or "***" in scrubbed
-        assert "db.pooler.supabase.com:6543/postgres" in scrubbed
+        assert "@db.pooler.supabase.com:6543/postgres" in scrubbed
+
+    def test_scrubs_password_containing_at_symbol_completely(self) -> None:
+        """Password containing '@' must leave no secret fragment behind."""
+        raw = "postgresql://user:s3cr3t_p@ss@pooler.supabase.com:5432/postgres"
+        scrubbed = scrub_error(raw)
+        assert "s3cr3t_p@ss" not in scrubbed
+        assert "s3cr3t" not in scrubbed
+        assert "p@ss" not in scrubbed
+        assert "ss@" not in scrubbed
+        assert "pooler.supabase.com:5432/postgres" in scrubbed
+        assert scrubbed == "postgresql://***:***@pooler.supabase.com:5432/postgres"
+
+    def test_scrubs_quoted_secret_params_containing_spaces(self) -> None:
+        """Quoted secret parameter values containing spaces must be fully redacted."""
+        raw = (
+            'options: password="secret with spaces" '
+            "token='token with spaces' "
+            'key="key with spaces & symbols; inside" '
+            "api_key='spaced api key' "
+            "normal_param=unaffected"
+        )
+        scrubbed = scrub_error(raw)
+        assert "secret with spaces" not in scrubbed
+        assert "token with spaces" not in scrubbed
+        assert "key with spaces" not in scrubbed
+        assert "spaced api key" not in scrubbed
+        assert "password=[REDACTED]" in scrubbed
+        assert "token=[REDACTED]" in scrubbed
+        assert "key=[REDACTED]" in scrubbed
+        assert "api_key=[REDACTED]" in scrubbed
+        assert "normal_param=unaffected" in scrubbed
 
     def test_scrubs_query_param_secrets(self) -> None:
         """Query parameters carrying secrets must have values redacted."""
@@ -165,3 +202,43 @@ class TestScrubError:
     def test_handles_empty_or_blank_input(self) -> None:
         """Empty string input returns empty string without error."""
         assert scrub_error("") == ""
+
+    def test_scrub_before_truncate_preserves_boundary_secrets(self) -> None:
+        """Secrets crossing or beyond the 2000-character boundary must not be resurrected by truncation."""
+        secret_token = "s3cr3t_token_at_boundary_98765"
+        # Place URI credential starting at position 1980, so truncation at 2000 would cut mid-credential
+        prefix = "error_log_line: " * 123  # > 1950 chars
+        raw = f"{prefix}postgresql://user:{secret_token}@aws-0.pooler.supabase.com:5432/app"
+        assert len(raw) > 2000
+
+        # Truncate-first (the historical flaw):
+        flawed_truncate_first = scrub_error(raw[:2000])
+        # Scrub-first (the hardened behavior):
+        hardened_scrub_first = scrub_error(raw)[:2000]
+
+        # In scrub-first, credentials are completely scrubbed before length truncation
+        assert secret_token not in hardened_scrub_first
+        assert "***:***@" in hardened_scrub_first
+        # In flawed truncate-first, the secret was truncated before '@', leaking user info or secret prefix
+        assert hardened_scrub_first != flawed_truncate_first
+
+    def test_run_psql_migration_scrubs_before_truncating_stderr(self) -> None:
+        """apply_staging_migration.run_psql_migration must scrub full stderr before truncating to 2000 chars."""
+        secret = "super_secret_boundary_pass_999"
+        # Construct stderr where credential ends after char 2000 in raw form,
+        # but the replacement '***:***@' fits within the 2000 character limit.
+        prefix = "A" * 1970
+        stderr = f"{prefix}postgresql://user:{secret}@pooler.supabase.com:5432/db"
+        fake_proc = MagicMock(returncode=1, stderr=stderr, stdout="")
+
+        with (
+            patch.dict(os.environ, {"LIVE_SUPABASE": "1", "DB_URL": "postgresql://u:p@pooler.supabase.com:5432/db"}),
+            patch("scripts.apply_staging_migration.subprocess.run", return_value=fake_proc),
+            pytest.raises(RuntimeError) as exc_info,
+        ):
+            run_psql_migration(db_url="postgresql://u:p@pooler.supabase.com:5432/db")
+
+        msg = str(exc_info.value)
+        assert secret not in msg
+        # Must contain the redacted marker from scrub-before-truncate
+        assert "***:***@" in msg

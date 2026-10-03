@@ -26,24 +26,20 @@ jobs:
       - name: Preflight check database connection URL
         # Root cause of historical run 36835825347: empty SUPABASE_DB_URL caused pg_dump
         # to fall back to local Unix domain socket (/var/run/postgresql/.s.PGSQL.5432).
-        # We fail closed here BEFORE invoking pg_dump.
+        # We fail closed here BEFORE invoking pg_dump using bot.utils.db_guard.validate_db_url.
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
-          if [ -z "${SUPABASE_DB_URL// }" ]; then
-            echo "::error::SUPABASE_DB_URL secret is empty or missing. Preflight failed."
-            exit 1
-          fi
-          # Check pooler/supabase markers or standard port
-          case "$SUPABASE_DB_URL" in
-            *pooler*|*supabase*|*:5432/*)
-              echo "Preflight check passed: URL contains expected pooler marker."
-              ;;
-            *)
-              echo "::error::SUPABASE_DB_URL does not contain pooler/supabase marker or standard port."
-              exit 1
-              ;;
-          esac
+          python3 -c "
+          import os, sys
+          from bot.utils.db_guard import validate_db_url
+
+          res = validate_db_url(os.environ.get('SUPABASE_DB_URL'))
+          if not res.ok:
+              print(f'::error::SUPABASE_DB_URL preflight validation failed: {res.reason}')
+              sys.exit(1)
+          print(f'Preflight check passed: {res.reason}')
+          "
 
       - name: Dump Supabase DB (pooler)
         env:
@@ -71,8 +67,12 @@ jobs:
           path: dump.pgdump.gpg
           retention-days: 30
 
-      # Alerting note: Failure and staleness alerting are delivered via native
-      # GitHub Actions workflow-run notifications; no separate webhook secret required.
+      # Alerting note: Workflow failure notifications are delivered via native
+      # GitHub Actions workflow-run notifications; no separate webhook secret is configured.
+      # Note on freshness/staleness: GitHub Actions `schedule` triggers do not fire when the
+      # platform or runner infrastructure is unavailable, so a MISSING run cannot be detected
+      # by this workflow itself. Freshness/staleness monitoring requires an EXTERNAL deadline
+      # check (or a real alerting integration) that is NOT configured here.
       #
       # Isolated restore acceptance procedure (CI recipe text):
       # To test restoration safely without mutating live systems:

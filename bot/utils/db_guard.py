@@ -24,11 +24,13 @@ POSTGRES_SCHEMES: frozenset[str] = frozenset({"postgres", "postgresql"})
 POSTGRES_POOLER_PORT: int = 5432
 
 # Pattern matching credentials in URIs (scheme://user:pass@ or scheme://user@).
-_URI_CREDENTIALS_RE: re.Pattern[str] = re.compile(r"([a-zA-Z][a-zA-Z0-9+.-]*://)([^@/\s]+)@")
+# Captures up to the last '@' before authority terminates (handling '@' inside passwords).
+_URI_CREDENTIALS_RE: re.Pattern[str] = re.compile(r"([a-zA-Z][a-zA-Z0-9+.-]*://)([^/\s?#]+)@")
 
 # Pattern matching secret query parameters or key-value config assignments.
+# Handles quoted values containing spaces and special characters.
 _SECRET_PARAMS_RE: re.Pattern[str] = re.compile(
-    r"""(?i)\b((?:password|secret|token|key|api_key)\s*=\s*)(?:["'][^"'\s&;]+["']|[^\s&;'"\)]+)"""
+    r"""(?i)\b((?:password|secret|token|key|api_key)\s*=\s*)(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|[^\s&;'\"\)]+)"""
 )
 
 # Pattern matching PostgreSQL Unix domain socket paths.
@@ -102,10 +104,24 @@ def scrub_error(text: str) -> str:
     """Redact credentials and socket paths from error and log messages.
 
     Redacts:
-      - URI credentials (e.g. ``scheme://user:pass@host``).
+      - URI credentials (e.g. ``scheme://user:pass@host``), including
+        passwords containing ``@`` symbols.
       - Secret query parameters and key-value options (``password``, ``secret``,
-        ``token``, ``key``, ``api_key``).
+        ``token``, ``key``, ``api_key``), including single- or double-quoted
+        values containing spaces.
       - PostgreSQL Unix domain socket paths (e.g. ``/var/run/postgresql/.s.PGSQL.5432``).
+
+    Known limits (deliberate, do not "fix" without weighing fail-closed):
+      - A password containing a RAW (unencoded) space is only partially redacted,
+        because the userinfo character class excludes whitespace. Percent-encoded
+        forms (``%20``, ``%40``) are redacted completely, which is what a
+        well-formed conninfo actually produces; a raw-space password is malformed
+        and rejected by libpq before this helper ever sees it.
+      - Secret-parameter redaction is intentionally fail-closed and NOT
+        shape-aware: ``password=<anything>`` is redacted even when the value is
+        ordinary prose. Requiring a minimum length or a non-alphabetic character
+        would risk leaking short real secrets, so the default stays conservative
+        at the cost of log readability.
 
     Args:
         text: Raw error or log message string.

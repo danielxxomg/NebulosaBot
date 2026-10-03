@@ -16,6 +16,14 @@ ALT_RUNBOOK = pathlib.Path("docs/staging-live-parity.md")
 
 
 def _read_runbook() -> str:
+    """Read the parity runbook, accepting either the canonical or legacy path.
+
+    Returns:
+        str: Full runbook text.
+
+    Raises:
+        AssertionError: When neither the canonical nor the legacy path exists.
+    """
     if RUNBOOK.exists():
         return RUNBOOK.read_text(encoding="utf-8")
     if ALT_RUNBOOK.exists():
@@ -25,10 +33,20 @@ def _read_runbook() -> str:
 
 
 def _norm(text: str) -> str:
+    """Normalize runbook text for whitespace- and case-insensitive matching.
+
+    Args:
+        text: Raw runbook content.
+
+    Returns:
+        str: Lowercased text with all whitespace runs collapsed to single spaces.
+    """
     return " ".join(text.lower().split())
 
 
 class TestRunbookExists:
+    """Assert the parity runbook exists at a known path and carries real content."""
+
     def test_runbook_file_exists(self) -> None:
         assert RUNBOOK.exists() or ALT_RUNBOOK.exists(), f"runbook missing: {RUNBOOK} or {ALT_RUNBOOK}"
 
@@ -38,6 +56,8 @@ class TestRunbookExists:
 
 
 class TestCredentialWindowAndGates:
+    """Assert the runbook documents the credential window, tracked psql call and quality gates."""
+
     def test_live_supabase_and_db_url_documented(self) -> None:
         text = _read_runbook()
         assert "LIVE_SUPABASE=1" in text
@@ -81,6 +101,8 @@ class TestCredentialWindowAndGates:
 
 
 class Test018DdlSteps:
+    """Assert the runbook documents the 8-step ordered DDL contract and its rollback matrix."""
+
     def test_eight_steps_documented(self) -> None:
         text = _read_runbook()
         n = _norm(text)
@@ -104,6 +126,8 @@ class Test018DdlSteps:
 
 
 class TestExplainWorkload:
+    """Assert the runbook documents the EXPLAIN ANALYZE BUFFERS index-retention policy."""
+
     def test_explain_analyze_buffers_documented(self) -> None:
         text = _read_runbook()
         assert "EXPLAIN" in text
@@ -131,6 +155,8 @@ class TestExplainWorkload:
 
 
 class TestJwtRotationDocs:
+    """Assert the runbook documents JWKS-based RS256 rotation and HS256 rejection."""
+
     def test_jwks_uri_documented(self) -> None:
         text = _read_runbook()
         assert "jwks_uri" in text.lower() or "jwks_url" in text.lower() or "JWKS" in text
@@ -166,6 +192,8 @@ class TestJwtRotationDocs:
 
 
 class TestHistoricalRenameNote:
+    """Assert the runbook explains the GUILD_SCOPE_GAP_HISTORY rename rationale."""
+
     def test_guild_scope_gap_history_documented(self) -> None:
         text = _read_runbook()
         assert "GUILD_SCOPE_GAP_HISTORY" in text
@@ -180,3 +208,15 @@ class TestHistoricalRenameNote:
         assert "12" in text
         n = _norm(text)
         assert "runtime" in n or "closed" in n or "closure" in n
+
+
+class TestRollbackHonesty:
+    """Assert the runbook does not promise a rollback path that no longer exists."""
+
+    def test_migration_025_drop_and_irreversibility_documented(self) -> None:
+        """Runbook must explicitly state migration 025 dropped the backup table making DOWN irreversible."""
+        text = _read_runbook()
+        n = _norm(text)
+        assert "025" in text
+        assert "irreversible" in n
+        assert "pre-window" in n or "database backup" in n
