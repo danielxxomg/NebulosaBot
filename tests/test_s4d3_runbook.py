@@ -10,6 +10,7 @@ Strict TDD: this file MUST FAIL before GREEN (runbook absent) and PASS after.
 from __future__ import annotations
 
 import pathlib
+import re
 
 RUNBOOK = pathlib.Path("docs/runbooks/staging-live-parity.md")
 ALT_RUNBOOK = pathlib.Path("docs/staging-live-parity.md")
@@ -42,6 +43,11 @@ def _norm(text: str) -> str:
         str: Lowercased text with all whitespace runs collapsed to single spaces.
     """
     return " ".join(text.lower().split())
+
+
+def _has_ty_gate(text: str) -> bool:
+    """Check if quality gate documents the ty check command shape."""
+    return bool(re.search(r"\bty\s+check\b", text.lower()))
 
 
 class TestRunbookExists:
@@ -87,9 +93,24 @@ class TestCredentialWindowAndGates:
         assert "psql" in n
         assert "018_ticket_integrity_fks" in text or "018" in text
 
+    def test_ty_check_synthetic_mutant_false_pass_and_rejection(self) -> None:
+        """P1.3: An isolated synthetic mutant containing 'integrity' and 'priority'
+
+        demonstrates that bare 'ty' false-passes, while the hardened gate rejects it.
+        """
+        mutant = (
+            "# Staging Live Parity Checklist\n"
+            "- Ensure foreign key integrity across tables.\n"
+            "- High priority: verify ruff lint and pytest suite.\n"
+        )
+        # Demonstrate false-pass of the old bare 'ty' substring check:
+        assert "ty" in mutant.lower()
+        # The hardened gate must reject the mutant because 'ty check' is absent:
+        assert not _has_ty_gate(mutant)
+
     def test_ty_ruff_pytest_gates_documented(self) -> None:
         text = _read_runbook()
-        assert "ty" in text.lower()
+        assert _has_ty_gate(text)
         assert "ruff" in text.lower()
         assert "pytest" in text.lower()
 
