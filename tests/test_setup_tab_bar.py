@@ -14,12 +14,15 @@ Validates:
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
 
+from bot.bot import NebulosaBot
+from bot.config import BotConfig
 from bot.core.i18n import load_locales, set_guild_language
 from bot.views.setup_modules._template_picker import handle_template_select_flow
 from bot.views.setup_modules.goodbye import GoodbyeSetupModule
@@ -290,7 +293,8 @@ class TestSetupChannelPersistence:
         inter.client = bot
         inter.data = {"values": ["1234567890"]}
         inter.response = MagicMock()
-        inter.response.edit_message = AsyncMock()
+        inter.response.defer = AsyncMock()
+        inter.edit_original_response = AsyncMock()
         inter.followup = MagicMock()
         inter.followup.send = AsyncMock()
 
@@ -298,9 +302,9 @@ class TestSetupChannelPersistence:
 
         assert cfg.log_channel_id == "1234567890"
         bot.guild_service.save_config.assert_awaited_once_with(cfg)
-        inter.response.edit_message.assert_awaited_once()
-        edit_view = inter.response.edit_message.call_args.kwargs["view"]
-        edit_embed = inter.response.edit_message.call_args.kwargs["embed"]
+        inter.edit_original_response.assert_awaited_once()
+        edit_view = inter.edit_original_response.call_args.kwargs["view"]
+        edit_embed = inter.edit_original_response.call_args.kwargs["embed"]
         assert isinstance(edit_view, SetupPanelView)
         assert edit_view.current_module == "log"
         assert edit_embed.author is not None and edit_embed.author.name
@@ -314,7 +318,8 @@ class TestSetupChannelPersistence:
         inter_clear.guild.id = 111
         inter_clear.client = bot
         inter_clear.response = MagicMock()
-        inter_clear.response.edit_message = AsyncMock()
+        inter_clear.response.defer = AsyncMock()
+        inter_clear.edit_original_response = AsyncMock()
         inter_clear.followup = MagicMock()
         inter_clear.followup.send = AsyncMock()
 
@@ -322,14 +327,284 @@ class TestSetupChannelPersistence:
 
         assert cfg.log_channel_id is None
         bot.guild_service.save_config.assert_awaited_once_with(cfg)
-        inter_clear.response.edit_message.assert_awaited_once()
-        clear_view = inter_clear.response.edit_message.call_args.kwargs["view"]
-        clear_embed = inter_clear.response.edit_message.call_args.kwargs["embed"]
+        inter_clear.edit_original_response.assert_awaited_once()
+        clear_view = inter_clear.edit_original_response.call_args.kwargs["view"]
+        clear_embed = inter_clear.edit_original_response.call_args.kwargs["embed"]
         assert isinstance(clear_view, SetupPanelView)
         assert clear_view.current_module == "log"
         assert clear_embed.author is not None and clear_embed.author.name
         assert getattr(clear_embed.footer, "text", "") == "nbpanel|module=log"
         inter_clear.followup.send.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_log_select_channel_defers_before_save_config(self) -> None:
+        """P1.2: Acknowledge/defer before awaiting save_config, then edit original response."""
+        mod = LogSetupModule()
+        bot = MagicMock()
+        bot.guild_service = MagicMock()
+        cfg = MagicMock(log_channel_id=None)
+        bot.guild_service.get_config = AsyncMock(return_value=cfg)
+
+        call_order: list[str] = []
+
+        async def _fake_defer() -> None:
+            call_order.append("defer")
+
+        async def _fake_save(c: Any) -> None:  # noqa: ARG001
+            call_order.append("save_config")
+
+        bot.guild_service.save_config = AsyncMock(side_effect=_fake_save)
+
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild = MagicMock(spec=discord.Guild)
+        inter.guild.id = 111
+        inter.client = bot
+        inter.data = {"values": ["1234567890"]}
+        inter.response = MagicMock()
+        inter.response.defer = AsyncMock(side_effect=_fake_defer)
+        inter.response.is_done.return_value = False
+        inter.response.edit_message = AsyncMock()
+        inter.edit_original_response = AsyncMock()
+        inter.followup = MagicMock()
+        inter.followup.send = AsyncMock()
+
+        await mod.handle(inter, "select_channel")
+
+        assert call_order == ["defer", "save_config"]
+        inter.response.defer.assert_awaited_once()
+        inter.edit_original_response.assert_awaited_once()
+        inter.response.edit_message.assert_not_called()
+        inter.followup.send.assert_awaited_once()
+        kwargs = inter.followup.send.call_args.kwargs
+        assert kwargs.get("ephemeral") is True
+
+    @pytest.mark.asyncio
+    async def test_log_clear_defers_before_save_config(self) -> None:
+        """P1.2: Acknowledge/defer before awaiting clear save_config, then edit original response."""
+        mod = LogSetupModule()
+        bot = MagicMock()
+        bot.guild_service = MagicMock()
+        cfg = MagicMock(log_channel_id="1234567890")
+        bot.guild_service.get_config = AsyncMock(return_value=cfg)
+
+        call_order: list[str] = []
+
+        async def _fake_defer() -> None:
+            call_order.append("defer")
+
+        async def _fake_save(c: Any) -> None:  # noqa: ARG001
+            call_order.append("save_config")
+
+        bot.guild_service.save_config = AsyncMock(side_effect=_fake_save)
+
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild = MagicMock(spec=discord.Guild)
+        inter.guild.id = 111
+        inter.client = bot
+        inter.response = MagicMock()
+        inter.response.defer = AsyncMock(side_effect=_fake_defer)
+        inter.response.is_done.return_value = False
+        inter.response.edit_message = AsyncMock()
+        inter.edit_original_response = AsyncMock()
+        inter.followup = MagicMock()
+        inter.followup.send = AsyncMock()
+
+        await mod.handle(inter, "clear")
+
+        assert call_order == ["defer", "save_config"]
+        inter.response.defer.assert_awaited_once()
+        inter.edit_original_response.assert_awaited_once()
+        inter.response.edit_message.assert_not_called()
+        inter.followup.send.assert_awaited_once()
+        kwargs = inter.followup.send.call_args.kwargs
+        assert kwargs.get("ephemeral") is True
+
+    @pytest.mark.asyncio
+    async def test_log_save_config_error_avoids_second_response_attempt(self) -> None:
+        """P1.2: Error after deferral sends ephemeral followup, avoiding second response."""
+        mod = LogSetupModule()
+        bot = MagicMock()
+        bot.guild_service = MagicMock()
+        cfg = MagicMock(log_channel_id=None)
+        bot.guild_service.get_config = AsyncMock(return_value=cfg)
+        bot.guild_service.save_config = AsyncMock(side_effect=RuntimeError("Database failure"))
+
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild = MagicMock(spec=discord.Guild)
+        inter.guild.id = 111
+        inter.client = bot
+        inter.data = {"values": ["1234567890"]}
+        inter.response = MagicMock()
+        inter.response.defer = AsyncMock()
+        inter.response.is_done.return_value = False
+        inter.response.send_message = AsyncMock()
+        inter.edit_original_response = AsyncMock()
+        inter.followup = MagicMock()
+        inter.followup.send = AsyncMock()
+
+        await mod.handle(inter, "select_channel")
+
+        inter.response.defer.assert_awaited_once()
+        inter.response.send_message.assert_not_called()
+        inter.edit_original_response.assert_not_called()
+        inter.followup.send.assert_awaited_once()
+        kwargs = inter.followup.send.call_args.kwargs
+        assert kwargs.get("ephemeral") is True
+
+    @pytest.mark.asyncio
+    async def test_log_late_io_completion(self) -> None:
+        """P1.2: Late I/O completion still results in single persistence and edit paths."""
+        mod = LogSetupModule()
+        bot = MagicMock()
+        bot.guild_service = MagicMock()
+        cfg = MagicMock(log_channel_id=None)
+        bot.guild_service.get_config = AsyncMock(return_value=cfg)
+
+        async def _delayed_save(c: Any) -> None:  # noqa: ARG001
+            await asyncio.sleep(0.01)
+
+        bot.guild_service.save_config = AsyncMock(side_effect=_delayed_save)
+
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild = MagicMock(spec=discord.Guild)
+        inter.guild.id = 111
+        inter.client = bot
+        inter.data = {"values": ["1234567890"]}
+        inter.response = MagicMock()
+        inter.response.defer = AsyncMock()
+        inter.response.is_done.return_value = False
+        inter.edit_original_response = AsyncMock()
+        inter.followup = MagicMock()
+        inter.followup.send = AsyncMock()
+
+        await mod.handle(inter, "select_channel")
+
+        assert bot.guild_service.save_config.await_count == 1
+        assert inter.response.defer.await_count == 1
+        assert inter.edit_original_response.await_count == 1
+        assert inter.followup.send.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_log_select_channel_failed_defer_aborts_persistence_and_response(self) -> None:
+        """P1.2: Failed acknowledgement must abort config mutation and post-response actions."""
+        mod = LogSetupModule()
+        bot = MagicMock()
+        bot.guild_service = MagicMock()
+        cfg = MagicMock(log_channel_id=None)
+        bot.guild_service.get_config = AsyncMock(return_value=cfg)
+        bot.guild_service.save_config = AsyncMock()
+
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild = MagicMock(spec=discord.Guild)
+        inter.guild.id = 111
+        inter.client = bot
+        inter.data = {"values": ["1234567890"]}
+        inter.response = MagicMock()
+        inter.response.defer = AsyncMock(side_effect=RuntimeError("Gateway timeout during defer"))
+        inter.response.is_done.return_value = False
+        inter.response.send_message = AsyncMock()
+        inter.edit_original_response = AsyncMock()
+        inter.followup = MagicMock()
+        inter.followup.send = AsyncMock()
+
+        await mod.handle(inter, "select_channel")
+
+        inter.response.defer.assert_awaited_once()
+        bot.guild_service.save_config.assert_not_called()
+        assert cfg.log_channel_id is None
+        inter.edit_original_response.assert_not_called()
+        inter.followup.send.assert_not_called()
+        inter.response.send_message.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_log_clear_failed_defer_aborts_persistence_and_response(self) -> None:
+        """P1.2: Failed acknowledgement on clear must abort config mutation and post-response actions."""
+        mod = LogSetupModule()
+        bot = MagicMock()
+        bot.guild_service = MagicMock()
+        cfg = MagicMock(log_channel_id="1234567890")
+        bot.guild_service.get_config = AsyncMock(return_value=cfg)
+        bot.guild_service.save_config = AsyncMock()
+
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild = MagicMock(spec=discord.Guild)
+        inter.guild.id = 111
+        inter.client = bot
+        inter.response = MagicMock()
+        inter.response.defer = AsyncMock(side_effect=RuntimeError("Gateway timeout during clear defer"))
+        inter.response.is_done.return_value = False
+        inter.response.send_message = AsyncMock()
+        inter.edit_original_response = AsyncMock()
+        inter.followup = MagicMock()
+        inter.followup.send = AsyncMock()
+
+        await mod.handle(inter, "clear")
+
+        inter.response.defer.assert_awaited_once()
+        bot.guild_service.save_config.assert_not_called()
+        assert cfg.log_channel_id == "1234567890"
+        inter.edit_original_response.assert_not_called()
+        inter.followup.send.assert_not_called()
+        inter.response.send_message.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_log_select_channel_already_acknowledged_does_not_double_defer(self) -> None:
+        """P1.2: Previously acknowledged interaction skips defer and persists without double-ack."""
+        mod = LogSetupModule()
+        bot = MagicMock()
+        bot.guild_service = MagicMock()
+        cfg = MagicMock(log_channel_id=None)
+        bot.guild_service.get_config = AsyncMock(return_value=cfg)
+        bot.guild_service.save_config = AsyncMock()
+
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild = MagicMock(spec=discord.Guild)
+        inter.guild.id = 111
+        inter.client = bot
+        inter.data = {"values": ["1234567890"]}
+        inter.response = MagicMock()
+        inter.response.defer = AsyncMock()
+        inter.response.is_done.return_value = True
+        inter.edit_original_response = AsyncMock()
+        inter.followup = MagicMock()
+        inter.followup.send = AsyncMock()
+
+        await mod.handle(inter, "select_channel")
+
+        inter.response.defer.assert_not_called()
+        bot.guild_service.save_config.assert_awaited_once_with(cfg)
+        assert cfg.log_channel_id == "1234567890"
+        inter.edit_original_response.assert_awaited_once()
+        inter.followup.send.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_log_clear_already_acknowledged_does_not_double_defer(self) -> None:
+        """P1.2: Previously acknowledged interaction on clear skips defer and persists without double-ack."""
+        mod = LogSetupModule()
+        bot = MagicMock()
+        bot.guild_service = MagicMock()
+        cfg = MagicMock(log_channel_id="1234567890")
+        bot.guild_service.get_config = AsyncMock(return_value=cfg)
+        bot.guild_service.save_config = AsyncMock()
+
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild = MagicMock(spec=discord.Guild)
+        inter.guild.id = 111
+        inter.client = bot
+        inter.response = MagicMock()
+        inter.response.defer = AsyncMock()
+        inter.response.is_done.return_value = True
+        inter.edit_original_response = AsyncMock()
+        inter.followup = MagicMock()
+        inter.followup.send = AsyncMock()
+
+        await mod.handle(inter, "clear")
+
+        inter.response.defer.assert_not_called()
+        bot.guild_service.save_config.assert_awaited_once_with(cfg)
+        assert cfg.log_channel_id is None
+        inter.edit_original_response.assert_awaited_once()
+        inter.followup.send.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_welcome_select_channel_and_clear(self) -> None:
@@ -796,9 +1071,6 @@ class TestSetupTabBarPersistentRouting:
 
     @pytest.mark.asyncio
     async def test_setup_hook_registers_all_five_tab_views(self) -> None:
-        from bot.bot import NebulosaBot  # noqa: PLC0415 -- facade indirection
-        from bot.config import BotConfig  # noqa: PLC0415 -- facade indirection
-
         registered: list[discord.ui.View] = []
         bot = NebulosaBot(
             config=BotConfig(
