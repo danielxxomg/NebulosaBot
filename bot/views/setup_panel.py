@@ -438,110 +438,102 @@ class SetupPanelView(discord.ui.View):
     # ------------------------------------------------------------------
     # Authorization
     # ------------------------------------------------------------------
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:  # noqa: C901
-        # Admin always passes
-        try:
-            if getattr(getattr(interaction.user, "guild_permissions", None), "administrator", False):
-                return True
-        except Exception:  # noqa: BLE001, S110
-            pass
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return await _check_setup_interaction(interaction)
 
-        # Determine required permission from custom_id or footer module
-        custom_id: str | None = None
+
+async def _check_setup_interaction(interaction: discord.Interaction) -> bool:  # noqa: C901
+    """Resolve authorization for setup panel component interactions.
+
+    Grants administrators full access. Resolves permissions either by specific
+    module mapping for tab buttons and contextual actions or via generic fallback
+    allowing access if the member holds any configured module permission (tickets.manage
+    or greeting.manage, applicable to generic panel actions such as setup:nav,
+    setup:refresh, and setup:close). Unauthorized attempts receive an ephemeral
+    error response.
+    """
+    # Admin always passes
+    try:
+        if getattr(getattr(interaction.user, "guild_permissions", None), "administrator", False):
+            return True
+    except Exception:  # noqa: BLE001, S110
+        pass
+
+    # Determine required permission from custom_id or footer module
+    custom_id: str | None = None
+    try:
+        custom_id = getattr(interaction.data, "get", lambda k, d=None: None)("custom_id")  # noqa: ARG005, PGH003
+        if custom_id is None:
+            # interaction.data is dict
+            data = getattr(interaction, "data", {}) or {}
+            custom_id = data.get("custom_id") if isinstance(data, dict) else getattr(data, "custom_id", None)
+    except Exception:  # noqa: BLE001
+        custom_id = None
+    if custom_id is None:
+        # Try to infer from interaction's component
         try:
-            custom_id = getattr(interaction.data, "get", lambda k, d=None: None)("custom_id")  # noqa: ARG005, PGH003
-            if custom_id is None:
-                # interaction.data is dict
-                data = getattr(interaction, "data", {}) or {}
-                custom_id = data.get("custom_id") if isinstance(data, dict) else getattr(data, "custom_id", None)
+            custom_id = getattr(interaction, "custom_id", None)  # noqa: PGH003
         except Exception:  # noqa: BLE001
             custom_id = None
-        if custom_id is None:
-            # Try to infer from interaction's component
-            try:
-                custom_id = getattr(interaction, "custom_id", None)  # noqa: PGH003
-            except Exception:  # noqa: BLE001
-                custom_id = None
 
-        permission: str | None = None
-        if custom_id and custom_id.startswith("setup:"):
-            parts = custom_id.split(":")
-            # setup:nav, setup:refresh, setup:close are generic
-            if len(parts) == 2:
-                # generic panel action — allow any module permission or deny? For nav/refresh/close, allow broader
-                # For S2a, only tickets.manage exists; check tickets.manage as generic gate
-                permission = None  # will check any module permission
-            elif len(parts) == 3 and parts[1] == "tab":
-                module_key = parts[2]
-                mod = MODULES.get(module_key)
-                if mod is not None:
-                    permission = getattr(mod, "permission_key", None)
+    permission: str | None = None
+    if custom_id and custom_id.startswith("setup:"):
+        parts = custom_id.split(":")
+        # setup:nav, setup:refresh, setup:close are generic
+        if len(parts) == 2:
+            # generic panel action — allow any module permission or deny? For nav/refresh/close, allow broader
+            # For S2a, only tickets.manage exists; check tickets.manage as generic gate
+            permission = None  # will check any module permission
+        elif len(parts) == 3 and parts[1] == "tab":
+            module_key = parts[2]
+            mod = MODULES.get(module_key)
+            if mod is not None:
+                permission = getattr(mod, "permission_key", None)
+            elif module_key in ("welcome", "goodbye"):
+                permission = "greeting.manage"
+            else:
+                permission = "tickets.manage"
+        elif len(parts) >= 3:
+            module_key = parts[1]
+            mod = MODULES.get(module_key)
+            if mod is not None:
+                permission = getattr(mod, "permission_key", None)
+            else:
+                # Fallback mapping
+                if module_key in ("tickets", "log", "language"):
+                    permission = "tickets.manage"
                 elif module_key in ("welcome", "goodbye"):
                     permission = "greeting.manage"
                 else:
-                    permission = "tickets.manage"
-            elif len(parts) >= 3:
-                module_key = parts[1]
-                mod = MODULES.get(module_key)
-                if mod is not None:
-                    permission = getattr(mod, "permission_key", None)
-                else:
-                    # Fallback mapping
-                    if module_key in ("tickets", "log", "language"):
-                        permission = "tickets.manage"
-                    elif module_key in ("welcome", "goodbye"):
-                        permission = "greeting.manage"
-                    else:
-                        permission = None
-        else:
-            # Fallback: infer from footer module token
-            try:
-                msg = getattr(interaction, "message", None)
-                embeds = getattr(msg, "embeds", []) if msg else []
-                embed0 = embeds[0] if embeds else None
-                module_key = _parse_module_from_footer(embed0)
-                mod = MODULES.get(module_key)
-                if mod is not None:
-                    permission = getattr(mod, "permission_key", None)
-            except Exception:  # noqa: BLE001
-                permission = None
-
-        guild = getattr(interaction, "guild", None)
-        guild_id = str(getattr(guild, "id", "0")) if guild is not None else None
-        member = getattr(interaction, "user", None)
-
-        # If no specific permission, check any module permission (tickets.manage or greeting.manage)
-        # For generic actions, allow if user has ANY module permission
-        if permission is None:
-            # Check tickets.manage then greeting.manage
-            for perm in ("tickets.manage", "greeting.manage"):
-                try:
-                    if await can_member(perm, member, guild_id):
-                        return True
-                except Exception:  # noqa: BLE001, S112
-                    continue
-            # No grant → deny
-            try:
-                await interaction.response.send_message(
-                    embed=error_embed(
-                        t(guild_id, "setup.panel.error_denied_title"),
-                        t(guild_id, "setup.panel.error_denied_description"),
-                        guild_id=guild_id,
-                    ),
-                    ephemeral=True,
-                )
-            except Exception:
-                logger.exception("Failed to send denied ephemeral")
-            return False
-
-        # Specific permission check
+                    permission = None
+    else:
+        # Fallback: infer from footer module token
         try:
-            allowed = await can_member(permission, member, guild_id)
+            msg = getattr(interaction, "message", None)
+            embeds = getattr(msg, "embeds", []) if msg else []
+            embed0 = embeds[0] if embeds else None
+            module_key = _parse_module_from_footer(embed0)
+            mod = MODULES.get(module_key)
+            if mod is not None:
+                permission = getattr(mod, "permission_key", None)
         except Exception:  # noqa: BLE001
-            allowed = False
-        if allowed:
-            return True
+            permission = None
 
+    guild = getattr(interaction, "guild", None)
+    guild_id = str(getattr(guild, "id", "0")) if guild is not None else None
+    member = getattr(interaction, "user", None)
+
+    # If no specific permission, check any module permission (tickets.manage or greeting.manage)
+    # For generic actions, allow if user has ANY module permission
+    if permission is None:
+        # Check tickets.manage then greeting.manage
+        for perm in ("tickets.manage", "greeting.manage"):
+            try:
+                if await can_member(perm, member, guild_id):
+                    return True
+            except Exception:  # noqa: BLE001, S112
+                continue
+        # No grant → deny
         try:
             await interaction.response.send_message(
                 embed=error_embed(
@@ -554,6 +546,92 @@ class SetupPanelView(discord.ui.View):
         except Exception:
             logger.exception("Failed to send denied ephemeral")
         return False
+
+    # Specific permission check
+    try:
+        allowed = await can_member(permission, member, guild_id)
+    except Exception:  # noqa: BLE001
+        allowed = False
+    if allowed:
+        return True
+
+    try:
+        await interaction.response.send_message(
+            embed=error_embed(
+                t(guild_id, "setup.panel.error_denied_title"),
+                t(guild_id, "setup.panel.error_denied_description"),
+                guild_id=guild_id,
+            ),
+            ephemeral=True,
+        )
+    except Exception:
+        logger.exception("Failed to send denied ephemeral")
+    return False
+
+
+class LegacySetupNavView(discord.ui.View):
+    """Compatibility persistent view for legacy setup:nav select menu components.
+
+    Converts clicked legacy panels in place into the modern SetupPanelView tab layout.
+    """
+
+    def __init__(self, guild_id: str | None = None) -> None:
+        super().__init__(timeout=None)
+        gid = guild_id or "0"
+        for child in self.children:
+            cid = getattr(child, "custom_id", None)
+            if cid == "setup:nav" and isinstance(child, discord.ui.Select):
+                child.placeholder = t(gid, "setup.panel.select_placeholder")
+                for opt in child.options:
+                    key = f"setup.panel.option.{opt.value}"
+                    localized = t(gid, key)
+                    if localized != key:
+                        opt.label = localized
+
+    @discord.ui.select(
+        custom_id="setup:nav",
+        placeholder=t(None, "setup.panel.select_placeholder"),
+        options=[
+            discord.SelectOption(label=t(None, "setup.panel.option.tickets"), value="tickets", emoji="🎫"),
+            discord.SelectOption(label=t(None, "setup.panel.option.welcome"), value="welcome", emoji="👋"),
+            discord.SelectOption(label=t(None, "setup.panel.option.goodbye"), value="goodbye", emoji="🚪"),
+            discord.SelectOption(label=t(None, "setup.panel.option.log"), value="log", emoji="📜"),
+            discord.SelectOption(label=t(None, "setup.panel.option.language"), value="language", emoji="🌐"),
+        ],
+    )
+    async def nav_select(self, interaction: discord.Interaction, select: discord.ui.Select) -> None:
+        """Handle legacy dropdown selection, migrating panel in place to modern tabs.
+
+        Resolves the selected module from the interaction payload or select values,
+        falling back to 'tickets' if missing or unknown. Builds the target module's
+        embed and edits the original message in place with a new SetupPanelView
+        configured to the chosen module.
+        """
+        guild = interaction.guild
+        guild_id = str(guild.id) if guild else "0"
+        bot = getattr(interaction, "client", None) or _get_setup_bot()
+        chosen = "tickets"
+        try:
+            data = getattr(interaction, "data", None)
+            if isinstance(data, dict):
+                vals = data.get("values") or []
+                if vals:
+                    chosen = vals[0]
+                elif getattr(select, "values", None):
+                    chosen = select.values[0]
+            elif getattr(select, "values", None):
+                if select.values:
+                    chosen = select.values[0]
+        except Exception:  # noqa: BLE001
+            chosen = "tickets"
+        if chosen not in TAB_MODULES:
+            chosen = "tickets"
+        embed = await _build_embed(guild_id, chosen, bot=bot)
+        new_view = SetupPanelView(current_module=chosen, guild_id=guild_id)
+        await interaction.response.edit_message(embed=embed, view=new_view)
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return await _check_setup_interaction(interaction)
 
 
 # Register setup modules on import (avoid circular: import after MODULES definition)

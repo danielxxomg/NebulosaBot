@@ -14,10 +14,14 @@ TDD: RED must fail while panel framework absent; GREEN after S2a.4/S2a.6/S2a.9.
 from __future__ import annotations
 
 import inspect
+import pathlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
+
+from bot.cogs.setup import SetupCog
+from bot.views.setup_panel import LegacySetupNavView, SetupPanelView
 
 # ---------------------------------------------------------------------------
 # S2a.4 — SetupPanelView structure
@@ -28,20 +32,14 @@ class TestSetupPanelViewExists:
     """SetupPanelView must exist with timeout=None and static custom_ids."""
 
     def test_view_class_exists(self) -> None:
-        from bot.views.setup_panel import SetupPanelView
-
         assert SetupPanelView is not None
 
     def test_timeout_is_none(self) -> None:
-        from bot.views.setup_panel import SetupPanelView
-
         view = SetupPanelView()
         assert view.timeout is None, "Persistent view must have timeout=None"
 
     def test_static_custom_ids(self) -> None:
         """View must expose static custom_ids setup:tab:<module> / setup:refresh / setup:close and pattern setup:{module}:{action}."""
-        from bot.views.setup_panel import SetupPanelView
-
         view = SetupPanelView()
         ids = {getattr(c, "custom_id", None) for c in view.children if hasattr(c, "custom_id")}
         # tab buttons, refresh, close are static; module actions are also static literals like setup:tickets:create_category
@@ -58,8 +56,6 @@ class TestSetupPanelViewExists:
 
     def test_bot_add_view_registered(self) -> None:
         """bot.bot.NebulosaBot.setup_hook must register SetupPanelView via add_view."""
-        import pathlib
-
         src = pathlib.Path("bot/bot.py").read_text(encoding="utf-8")
         assert "SetupPanelView" in src, "setup_hook must reference SetupPanelView"
         assert "add_view" in src, "setup_hook must call add_view for persistence"
@@ -68,8 +64,6 @@ class TestSetupPanelViewExists:
 
     def test_no_dynamic_custom_ids(self) -> None:
         """All custom_ids must be literal strings, not generated UUIDs or dynamic."""
-        from bot.views.setup_panel import SetupPanelView
-
         view = SetupPanelView()
         for child in view.children:
             cid = getattr(child, "custom_id", None)
@@ -93,8 +87,6 @@ class TestSetupCommandIsPureAppCommand:
 
         # SetupCog.setup_command must be an app_commands.Command (pure) not hybrid
         # hybrid_command exposes .app_command; pure app command is directly app_commands.Command
-        import pathlib
-
         src = pathlib.Path("bot/cogs/setup.py").read_text(encoding="utf-8")
         # Must NOT contain hybrid_command for setup
         assert (
@@ -106,8 +98,6 @@ class TestSetupCommandIsPureAppCommand:
         assert "app_commands.command" in src, "setup must use @app_commands.command"
 
     def test_zero_params(self) -> None:
-        from bot.cogs.setup import SetupCog
-
         bot = MagicMock()
         cog = SetupCog(bot=bot)
         # For app_commands.Group-less command, the command is registered via cog's __cog_app_commands__
@@ -130,16 +120,12 @@ class TestSetupCommandIsPureAppCommand:
         )
 
     def test_default_permissions_administrator(self) -> None:
-        import pathlib
-
         src = pathlib.Path("bot/cogs/setup.py").read_text(encoding="utf-8")
         assert "default_permissions" in src, "setup must carry default_permissions"
         assert "administrator" in src.lower(), "setup default_permissions must gate administrator"
 
     def test_sends_one_non_ephemeral_message(self) -> None:
         """Invoking /setup must send exactly one non-ephemeral message with SetupPanelView."""
-        from bot.cogs.setup import SetupCog
-
         bot = MagicMock()
         cog = SetupCog(bot=bot)
 
@@ -151,10 +137,6 @@ class TestSetupCommandIsPureAppCommand:
 
     @pytest.mark.asyncio
     async def test_setup_sends_non_ephemeral_panel(self) -> None:
-        from unittest.mock import AsyncMock, MagicMock
-
-        from bot.cogs.setup import SetupCog
-
         bot = MagicMock()
         # mock guild_service for render recompute
         bot.guild_service = MagicMock()
@@ -184,8 +166,6 @@ class TestSetupCommandIsPureAppCommand:
         # Must include embed and view
         assert "embed" in kwargs
         assert "view" in kwargs
-        from bot.views.setup_panel import SetupPanelView
-
         assert isinstance(kwargs["view"], SetupPanelView)
         # Embed footer must contain nbpanel token
         embed = kwargs["embed"]
@@ -203,8 +183,6 @@ class TestSetupPanelInteractions:
 
     @pytest.mark.asyncio
     async def test_nav_edits_same_message(self) -> None:
-        from bot.views.setup_panel import SetupPanelView
-
         view = SetupPanelView()
         # Find the tab button with custom_id setup:tab:welcome
         tab_btn = next(c for c in view.children if getattr(c, "custom_id", None) == "setup:tab:welcome")
@@ -245,8 +223,6 @@ class TestSetupPanelInteractions:
 
     @pytest.mark.asyncio
     async def test_close_deletes(self) -> None:
-        from bot.views.setup_panel import SetupPanelView
-
         view = SetupPanelView()
         button = next(c for c in view.children if getattr(c, "custom_id", None) == "setup:close")
         interaction = MagicMock(spec=discord.Interaction)
@@ -275,8 +251,6 @@ class TestSetupPanelInteractionCheck:
 
     @pytest.mark.asyncio
     async def test_admin_passes(self) -> None:
-        from bot.views.setup_panel import SetupPanelView
-
         view = SetupPanelView()
         interaction = MagicMock(spec=discord.Interaction)
         interaction.user = MagicMock(spec=discord.Member)
@@ -293,8 +267,6 @@ class TestSetupPanelInteractionCheck:
 
     @pytest.mark.asyncio
     async def test_non_admin_without_perm_denied_ephemeral(self) -> None:
-        from bot.views.setup_panel import SetupPanelView
-
         view = SetupPanelView()
         interaction = MagicMock(spec=discord.Interaction)
         interaction.user = MagicMock(spec=discord.Member)
@@ -316,8 +288,6 @@ class TestSetupPanelInteractionCheck:
 
     @pytest.mark.asyncio
     async def test_matrix_grant_passes(self) -> None:
-        from bot.views.setup_panel import SetupPanelView
-
         view = SetupPanelView()
         interaction = MagicMock(spec=discord.Interaction)
         interaction.user = MagicMock(spec=discord.Member)
@@ -334,3 +304,125 @@ class TestSetupPanelInteractionCheck:
             result = await view.interaction_check(interaction)
         assert result is True
         interaction.response.send_message.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# P1.1 Legacy navigation view compatibility and registration
+# ---------------------------------------------------------------------------
+
+
+class TestLegacySetupNavView:
+    """P1.1: LegacySetupNavView handles setup:nav, converts legacy panels in place,
+
+    and enforces authorization boundaries.
+    """
+
+    def test_legacy_nav_view_exists_and_static_ids(self) -> None:
+        view = LegacySetupNavView()
+        assert view.timeout is None
+        select = next((c for c in view.children if getattr(c, "custom_id", None) == "setup:nav"), None)
+        assert select is not None, "Missing setup:nav Select component"
+        assert isinstance(select, discord.ui.Select)
+        option_values = {opt.value for opt in select.options}
+        assert {"tickets", "welcome", "goodbye", "log", "language"}.issubset(option_values)
+
+    def test_bot_setup_hook_registers_legacy_nav_view(self) -> None:
+        src = pathlib.Path("bot/bot.py").read_text(encoding="utf-8")
+        assert "LegacySetupNavView" in src, "setup_hook must import LegacySetupNavView"
+        assert "add_view(LegacySetupNavView" in src or "add_view(LegacySetupNavView()" in src
+
+    @pytest.mark.asyncio
+    async def test_legacy_nav_converts_panel_in_place_to_setup_panel_view(self) -> None:
+        view = LegacySetupNavView()
+        select = next(c for c in view.children if getattr(c, "custom_id", None) == "setup:nav")
+
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.response = MagicMock()
+        interaction.response.edit_message = AsyncMock()
+        interaction.response.send_message = AsyncMock()
+        interaction.guild = MagicMock(spec=discord.Guild)
+        interaction.guild.id = 123456789
+        interaction.guild_id = 123456789
+        interaction.user = MagicMock(spec=discord.Member)
+        interaction.user.guild_permissions.administrator = True
+        interaction.data = {"values": ["welcome"]}
+
+        bot = MagicMock()
+        bot.guild_service = MagicMock()
+        bot.guild_service.get_config = AsyncMock(return_value=MagicMock(language="es"))
+        bot.greeting_service = MagicMock()
+        bot.greeting_service.get_config = AsyncMock(return_value=MagicMock(guild_id="123456789"))
+        bot.db = MagicMock()
+        bot.db.get_ticket_categories = AsyncMock(return_value=[])
+        interaction.client = bot
+
+        await select.callback(interaction)
+
+        interaction.response.edit_message.assert_awaited_once()
+        interaction.response.send_message.assert_not_called()
+        kwargs = interaction.response.edit_message.call_args.kwargs
+        new_view = kwargs.get("view")
+        assert isinstance(new_view, SetupPanelView)
+        assert new_view.current_module == "welcome"
+        new_embed = kwargs.get("embed")
+        assert new_embed is not None
+        assert getattr(new_embed.footer, "text", "") == "nbpanel|module=welcome"
+
+    @pytest.mark.asyncio
+    async def test_legacy_nav_fallback_on_unknown_module(self) -> None:
+        view = LegacySetupNavView()
+        select = next(c for c in view.children if getattr(c, "custom_id", None) == "setup:nav")
+
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.response = MagicMock()
+        interaction.response.edit_message = AsyncMock()
+        interaction.guild = MagicMock(spec=discord.Guild)
+        interaction.guild.id = 123456789
+        interaction.user = MagicMock(spec=discord.Member)
+        interaction.user.guild_permissions.administrator = True
+        interaction.data = {"values": ["invalid_unknown_module"]}
+
+        bot = MagicMock()
+        bot.guild_service = MagicMock()
+        bot.guild_service.get_config = AsyncMock(return_value=MagicMock(language="es"))
+        bot.db = MagicMock()
+        bot.db.get_ticket_categories = AsyncMock(return_value=[])
+        interaction.client = bot
+
+        await select.callback(interaction)
+
+        interaction.response.edit_message.assert_awaited_once()
+        kwargs = interaction.response.edit_message.call_args.kwargs
+        new_view = kwargs.get("view")
+        assert isinstance(new_view, SetupPanelView)
+        assert new_view.current_module == "tickets"
+
+    @pytest.mark.asyncio
+    async def test_legacy_nav_interaction_check_admin_passes(self) -> None:
+        view = LegacySetupNavView()
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.user = MagicMock(spec=discord.Member)
+        interaction.user.guild_permissions.administrator = True
+        interaction.guild = MagicMock(spec=discord.Guild)
+        interaction.guild.id = 123456789
+        interaction.data = {"custom_id": "setup:nav"}
+
+        assert await view.interaction_check(interaction) is True
+
+    @pytest.mark.asyncio
+    async def test_legacy_nav_interaction_check_denies_unauthorized_user(self) -> None:
+        view = LegacySetupNavView()
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.user = MagicMock(spec=discord.Member)
+        interaction.user.guild_permissions.administrator = False
+        interaction.guild = MagicMock(spec=discord.Guild)
+        interaction.guild.id = 123456789
+        interaction.data = {"custom_id": "setup:nav"}
+        interaction.response = MagicMock()
+        interaction.response.send_message = AsyncMock()
+
+        with patch("bot.views.setup_panel.can_member", new=AsyncMock(return_value=False)):
+            assert await view.interaction_check(interaction) is False
+        interaction.response.send_message.assert_awaited_once()
+        kwargs = interaction.response.send_message.call_args.kwargs
+        assert kwargs.get("ephemeral") is True
