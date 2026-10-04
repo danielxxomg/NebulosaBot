@@ -6,7 +6,7 @@ import os from "node:os";
 
 describe("Vitest environment loading boundary", () => {
   it("vitest.config.ts explicitly sets envDir: false", async () => {
-    const configPath = path.resolve(__dirname, "../vitest.config.ts");
+    const configPath = path.resolve(process.cwd(), "vitest.config.ts");
     const loaded = await loadConfigFromFile(
       { command: "serve", mode: "test" },
       configPath
@@ -28,7 +28,7 @@ describe("Vitest environment loading boundary", () => {
 
       // Resolve with envDir: false (our required security boundary)
       const safeConfig = await resolveConfig(
-        { root: fixtureDir, envDir: false },
+        { envDir: false, root: fixtureDir },
         "serve",
         "test"
       );
@@ -43,12 +43,12 @@ describe("Vitest environment loading boundary", () => {
       );
       expect(leakyConfig.env.VITE_CANARY_BOUNDARY_LEAK).toBe("leak_detected");
     } finally {
-      fs.rmSync(fixtureDir, { recursive: true, force: true });
+      fs.rmSync(fixtureDir, { force: true, recursive: true });
     }
   });
 
   it("resolved project vitest config has envDir: false", async () => {
-    const configPath = path.resolve(__dirname, "../vitest.config.ts");
+    const configPath = path.resolve(process.cwd(), "vitest.config.ts");
     const resolved = await resolveConfig(
       { configFile: configPath },
       "serve",
