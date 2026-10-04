@@ -1,22 +1,16 @@
 """Welcome setup module — parity with legacy /welcome group + preview.
 
-Kind-specific glue over the shared factory in
-``bot.views.setup_modules._template_picker`` (jscpd budget extraction).
+Kind-specific configuration deriving from GreetingSetupModuleBase.
 """
 
 from __future__ import annotations
 
-import inspect
 import logging
 import typing
 
-import discord
-
-from bot.core.i18n import t
-from bot.utils.brand import INFO
 from bot.utils.checks import can_member  # noqa: F401  # re-export: test patch target
-from bot.utils.embeds import error_embed, success_embed
-from bot.views.setup_modules._template_picker import (  # noqa: PLC0415  # facade indirection
+from bot.views.setup_modules._greeting_base import GreetingSetupModuleBase
+from bot.views.setup_modules._template_picker import (  # noqa: F401  # re-export parity
     build_template_select,
     handle_preview_flow,
     handle_template_select_flow,
@@ -31,95 +25,48 @@ _PREVIEW_CARD_KEYS = ("greetings.card.welcome_title", "greetings.card.member_cou
 logger = logging.getLogger(__name__)
 
 
-class WelcomeSetupModule:
+class WelcomeSetupModule(GreetingSetupModuleBase):
     """Setup module for welcome — gated by greeting.manage."""
 
     key = "welcome"
-    permission_key = "greeting.manage"
-
-    def __init__(self, bot: typing.Any | None = None) -> None:
-        self._bot = bot
-
-    def _resolve_bot(self, interaction: discord.Interaction | None = None) -> typing.Any | None:
-        if self._bot is not None:
-            return self._bot
-        if interaction is not None:
-            return getattr(interaction, "client", None)
-        try:
-            from bot.views.setup_panel import _get_setup_bot  # noqa: PLC0415 -- cycle-breaking circular import
-
-            return _get_setup_bot()
-        except Exception:  # noqa: BLE001
-            return None
-
-    # --- parity helpers (used by tests + editors) -------------------
+    channel_field = "welcome_channel_id"
+    template_field = "welcome_template_id"
+    enabled_field = "welcome_enabled"
+    card_enabled_field = "welcome_card_enabled"
+    editor_actions = (
+        "set_channel",
+        "toggle",
+        "set_message",
+        "card_toggle",
+        "set_theme",
+        "set_onboarding",
+    )
 
     async def set_welcome_channel(self, guild_id: str, channel_id: str) -> None:
-        bot = self._resolve_bot()
-        if bot is None:
-            try:
-                from bot.views.setup_panel import _get_setup_bot  # noqa: PLC0415 -- cycle-breaking circular import
-
-                bot = _get_setup_bot()
-            except Exception:  # noqa: BLE001
-                bot = None
-        if bot is None or getattr(bot, "greeting_service", None) is None:
-            msg = "GreetingService unavailable"
-            raise RuntimeError(msg)
-        cfg = await bot.greeting_service.get_config(guild_id)
-        cfg.welcome_channel_id = channel_id
-        await bot.greeting_service.save_config(cfg)
+        """Persist the welcome channel id."""
+        b, _ = self._require_greeting_service()
+        await self._save_channel(guild_id, channel_id, b)
 
     async def set_welcome_card_enabled(self, guild_id: str, enabled: bool) -> None:
         """Expose orphan column cardEnabled (welcome_card_enabled) for editor."""
-        bot = self._resolve_bot()
-        if bot is None:
-            try:
-                from bot.views.setup_panel import _get_setup_bot  # noqa: PLC0415 -- cycle-breaking circular import
-
-                bot = _get_setup_bot()
-            except Exception:  # noqa: BLE001
-                bot = None
-        if bot is None or getattr(bot, "greeting_service", None) is None:
-            msg = "GreetingService unavailable"
-            raise RuntimeError(msg)
-        cfg = await bot.greeting_service.get_config(guild_id)
+        b, _ = self._require_greeting_service()
+        cfg = await b.greeting_service.get_config(guild_id)
         cfg.welcome_card_enabled = enabled  # orphan: cardEnabled
-        await bot.greeting_service.save_config(cfg)
+        await b.greeting_service.save_config(cfg)
 
     async def set_theme_id(self, guild_id: str, theme_id: str | None) -> None:
         """Expose orphan column themeId."""
-        bot = self._resolve_bot()
-        if bot is None:
-            try:
-                from bot.views.setup_panel import _get_setup_bot  # noqa: PLC0415 -- cycle-breaking circular import
-
-                bot = _get_setup_bot()
-            except Exception:  # noqa: BLE001
-                bot = None
-        if bot is None or getattr(bot, "greeting_service", None) is None:
-            msg = "GreetingService unavailable"
-            raise RuntimeError(msg)
-        cfg = await bot.greeting_service.get_config(guild_id)
+        b, _ = self._require_greeting_service()
+        cfg = await b.greeting_service.get_config(guild_id)
         cfg.theme_id = theme_id  # orphan: themeId
-        await bot.greeting_service.save_config(cfg)
+        await b.greeting_service.save_config(cfg)
 
     async def set_onboarding_channel_id(self, guild_id: str, channel_id: str | None) -> None:
         """Expose orphan column onboardingChannelId."""
-        bot = self._resolve_bot()
-        if bot is None:
-            try:
-                from bot.views.setup_panel import _get_setup_bot  # noqa: PLC0415 -- cycle-breaking circular import
-
-                bot = _get_setup_bot()
-            except Exception:  # noqa: BLE001
-                bot = None
-        if bot is None or getattr(bot, "greeting_service", None) is None:
-            msg = "GreetingService unavailable"
-            raise RuntimeError(msg)
-        cfg = await bot.greeting_service.get_config(guild_id)
+        b, _ = self._require_greeting_service()
+        cfg = await b.greeting_service.get_config(guild_id)
         cfg.onboarding_channel_id = channel_id  # orphan: onboardingChannelId
-        await bot.greeting_service.save_config(cfg)
+        await b.greeting_service.save_config(cfg)
 
     async def set_welcome_template_id(
         self,
@@ -127,259 +74,14 @@ class WelcomeSetupModule:
         template_id: str | None,
         bot: typing.Any | None = None,
     ) -> None:
-        """Persist the per-kind welcome template id (migration 030 column).
+        """Persist the per-kind welcome template id (migration 030 column)."""
+        await self._save_template_id(guild_id, template_id, bot=bot)
 
-        ``bot`` may be passed by callers that already resolved it from the
-        interaction (panel-routed selects run on the MODULES singleton,
-        which holds no bot reference).
-        """
-        bot = bot or self._resolve_bot()
-        if bot is None:
-            try:
-                from bot.views.setup_panel import _get_setup_bot  # noqa: PLC0415 -- cycle-breaking circular import
+    def _render_extra_status_lines(self, guild_id: str, cfg: typing.Any, not_cfg: str) -> list[str]:  # noqa: ARG002
+        theme_display = getattr(cfg, "theme_id", None) or self._t(guild_id, "theme_not_set")
+        return [f"**{self._t(guild_id, 'theme_label')}:** {theme_display}"]
 
-                bot = _get_setup_bot()
-            except Exception:  # noqa: BLE001
-                bot = None
-        if bot is None or getattr(bot, "greeting_service", None) is None:
-            msg = "GreetingService unavailable"
-            raise RuntimeError(msg)
-        cfg = await bot.greeting_service.get_config(guild_id)
-        cfg.welcome_template_id = template_id  # orphan: welcomeTemplateId
-        await bot.greeting_service.save_config(cfg)
-
-    # --- render / components / handle -------------------------------
-
-    def render(self, guild_id: str, bot: typing.Any | None = None) -> discord.Embed:  # noqa: ARG002
-        title = t(guild_id, "setup.module.welcome.title")
-        desc = t(guild_id, "setup.module.welcome.description")
-        return discord.Embed(title=title, description=desc, color=INFO)
-
-    async def render_async(self, guild_id: str, bot: typing.Any | None = None) -> discord.Embed:
-        b = bot or self._resolve_bot()
-        title = t(guild_id, "setup.module.welcome.title")
-        desc = t(guild_id, "setup.module.welcome.description")
-        if b is not None and getattr(b, "greeting_service", None) is not None:
-            try:
-                cfg = await b.greeting_service.get_config(guild_id)
-                # Append live state for refresh test
-                not_cfg = t(guild_id, "setup.module.welcome.not_configured")
-                channel_display = f"<#{cfg.welcome_channel_id}>" if cfg.welcome_channel_id else not_cfg
-                enabled_display = "✅" if cfg.welcome_enabled else "❌"
-                # orphan columns visible in refresh
-                card_display = "✅" if getattr(cfg, "welcome_card_enabled", False) else "❌"
-                theme_display = getattr(cfg, "theme_id", None) or t(guild_id, "setup.module.welcome.theme_not_set")
-                onboarding_display = (
-                    f"<#{cfg.onboarding_channel_id}>"
-                    if getattr(cfg, "onboarding_channel_id", None)
-                    else t(guild_id, "setup.module.welcome.not_configured")
-                )
-                resolved = cfg.welcome_template_id or cfg.theme_id or "default"
-                template_display = t(guild_id, f"templates.greeting.{resolved}.label")
-                if template_display == f"templates.greeting.{resolved}.label":
-                    template_display = resolved
-                desc = (
-                    f"{desc}\n\n"
-                    f"**{t(guild_id, 'setup.module.welcome.channel_label')}:** {channel_display}\n"
-                    f"**{t(guild_id, 'setup.module.welcome.enabled_label')}:** {enabled_display}\n"
-                    f"**{t(guild_id, 'setup.module.welcome.card_enabled_label')}:** {card_display}\n"
-                    f"**{t(guild_id, 'setup.module.welcome.theme_label')}:** {theme_display}\n"
-                    f"**{t(guild_id, 'setup.module.welcome.template_label')}:** {template_display}\n"
-                    f"**{t(guild_id, 'setup.module.welcome.onboarding_label')}:** {onboarding_display}"
-                )
-            except Exception:  # noqa: BLE001
-                logger.debug("Welcome render_async failed", exc_info=True)
-        return discord.Embed(title=title, description=desc, color=INFO)
-
-    def components(self, guild_id: str, bot: typing.Any | None = None) -> list[discord.ui.Item]:  # noqa: ARG002
-        select = build_template_select(guild_id, "welcome")
-        select.row = 2
-        select.callback = self._on_template_select  # type: ignore[method-assign]
-        return [
-            select,
-            discord.ui.ChannelSelect(
-                custom_id="setup:welcome:select_channel",
-                channel_types=[discord.ChannelType.text],
-                placeholder=t(guild_id, "setup.module.welcome.channel_select_placeholder"),
-                min_values=1,
-                max_values=1,
-                row=3,
-            ),
-            discord.ui.Button(
-                label=t(guild_id, "setup.module.welcome.clear_button"),
-                style=discord.ButtonStyle.danger,
-                custom_id="setup:welcome:clear",
-                emoji="🗑️",
-                row=4,
-            ),
-            discord.ui.Button(
-                label=t(guild_id, "setup.module.welcome.test_button"),
-                style=discord.ButtonStyle.secondary,
-                custom_id="setup:welcome:test",
-                emoji="🔔",
-                row=4,
-            ),
-        ]
-
-    async def _handle_select_channel(
-        self, interaction: discord.Interaction, guild_id: str, bot: typing.Any, action: str
-    ) -> None:
-        channel_id: str | None = None
-        data = getattr(interaction, "data", None)
-        if isinstance(data, dict):
-            vals = data.get("values") or []
-            if vals:
-                v = vals[0]
-                channel_id = str(getattr(v, "id", v))
-        vals_attr = getattr(interaction, "values", None)
-        if channel_id is None and vals_attr:
-            v = vals_attr[0]
-            channel_id = str(getattr(v, "id", v))
-
-        if not channel_id:
-            await interaction.response.send_message(
-                embed=error_embed(
-                    t(guild_id, "setup.module.welcome.error_title"),
-                    t(guild_id, "setup.module.welcome.unknown_action", action=action),
-                    guild_id=guild_id,
-                ),
-                ephemeral=True,
-            )
-            return
-
-        try:
-            cfg = await bot.greeting_service.get_config(guild_id)
-            cfg.welcome_channel_id = channel_id
-            await bot.greeting_service.save_config(cfg)
-        except Exception:
-            logger.exception("Failed to save welcome channel for guild %s", guild_id)
-            await interaction.response.send_message(
-                embed=error_embed(
-                    t(guild_id, "setup.module.welcome.error_title"),
-                    t(guild_id, "setup.module.welcome.error_bot_unavailable"),
-                    guild_id=guild_id,
-                ),
-                ephemeral=True,
-            )
-            return
-
-        from bot.views.setup_panel import SetupPanelView, _build_embed  # noqa: PLC0415 -- cycle-break
-
-        embed = await _build_embed(guild_id, "welcome", bot=bot, mod=self)
-        view = SetupPanelView(current_module="welcome", guild_id=guild_id)
-        await interaction.response.edit_message(embed=embed, view=view)
-        await interaction.followup.send(
-            embed=success_embed(
-                t(guild_id, "setup.module.welcome.channel_set_title"),
-                t(guild_id, "setup.module.welcome.channel_set_description", channel=f"<#{channel_id}>"),
-                guild_id=guild_id,
-            ),
-            ephemeral=True,
-        )
-
-    async def _handle_clear(self, interaction: discord.Interaction, guild_id: str, bot: typing.Any) -> None:
-        try:
-            cfg = await bot.greeting_service.get_config(guild_id)
-            cfg.welcome_channel_id = None
-            await bot.greeting_service.save_config(cfg)
-        except Exception:
-            logger.exception("Failed to clear welcome channel for guild %s", guild_id)
-            await interaction.response.send_message(
-                embed=error_embed(
-                    t(guild_id, "setup.module.welcome.error_title"),
-                    t(guild_id, "setup.module.welcome.error_bot_unavailable"),
-                    guild_id=guild_id,
-                ),
-                ephemeral=True,
-            )
-            return
-
-        from bot.views.setup_panel import SetupPanelView, _build_embed  # noqa: PLC0415 -- cycle-break
-
-        embed = await _build_embed(guild_id, "welcome", bot=bot, mod=self)
-        view = SetupPanelView(current_module="welcome", guild_id=guild_id)
-        await interaction.response.edit_message(embed=embed, view=view)
-        await interaction.followup.send(
-            embed=success_embed(
-                t(guild_id, "setup.module.welcome.channel_cleared_title"),
-                t(guild_id, "setup.module.welcome.channel_cleared_description"),
-                guild_id=guild_id,
-            ),
-            ephemeral=True,
-        )
-
-    async def handle(self, interaction: discord.Interaction, action: str) -> None:
-        guild = interaction.guild
-        if guild is None:
-            embed = error_embed(
-                t(None, "setup.module.welcome.error_guild_only_title"),
-                t(None, "setup.module.welcome.error_guild_only_description"),
-            )
-            send_fn = getattr(interaction.response, "send_message", None)
-            if inspect.iscoroutinefunction(send_fn) or hasattr(send_fn, "assert_awaited"):
-                await interaction.response.send_message(embed=embed, ephemeral=True)
-            elif callable(send_fn):
-                send_fn(embed=embed, ephemeral=True)
-            return
-        guild_id = str(guild.id)
-        bot = self._resolve_bot(interaction)
-        if bot is None or getattr(bot, "greeting_service", None) is None:
-            embed = error_embed(
-                t(guild_id, "setup.module.welcome.error_title"),
-                t(guild_id, "setup.module.welcome.error_bot_unavailable"),
-                guild_id=guild_id,
-            )
-            send_fn = getattr(interaction.response, "send_message", None)
-            if inspect.iscoroutinefunction(send_fn) or hasattr(send_fn, "assert_awaited"):
-                await interaction.response.send_message(embed=embed, ephemeral=True)
-            elif callable(send_fn):
-                send_fn(embed=embed, ephemeral=True)
-            return
-
-        if action == "test":
-            await self._handle_test(interaction)
-            return
-        if action == "select_template":
-            await self._handle_template_select(interaction)
-            return
-        if action == "select_channel":
-            await self._handle_select_channel(interaction, guild_id, bot, action)
-            return
-        if action == "clear":
-            await self._handle_clear(interaction, guild_id, bot)
-            return
-
-        if action in ("set_channel", "toggle", "set_message", "card_toggle", "set_theme", "set_onboarding"):
-            await interaction.response.send_message(
-                embed=discord.Embed(
-                    title=t(guild_id, "setup.module.welcome.editor_title"),
-                    description=t(guild_id, "setup.module.welcome.editor_description"),
-                    color=INFO,
-                ),
-                ephemeral=True,
-            )
-            return
-        await interaction.response.send_message(
-            embed=error_embed(
-                t(guild_id, "setup.module.welcome.error_title"),
-                t(guild_id, "setup.module.welcome.unknown_action", action=action),
-                guild_id=guild_id,
-            ),
-            ephemeral=True,
-        )
-
-    async def _on_template_select(self, interaction: discord.Interaction) -> None:
-        """Select callback — dispatches to the module handler (persistent reroute path)."""
-        await self.handle(interaction, "select_template")
-
-    async def _handle_template_select(self, interaction: discord.Interaction) -> None:
-        """Persist the picked template (greeting.manage gated) and refresh the panel."""
-        await handle_template_select_flow(
-            self,
-            interaction,
-            "welcome",
-            persist=self.set_welcome_template_id,
-        )
-
-    async def _handle_test(self, interaction: discord.Interaction) -> None:
-        await handle_preview_flow(self, interaction, "welcome")
+    def _render_post_template_status_lines(self, guild_id: str, cfg: typing.Any, not_cfg: str) -> list[str]:
+        onboarding_id = getattr(cfg, "onboarding_channel_id", None)
+        onboarding_display = f"<#{onboarding_id}>" if onboarding_id else not_cfg
+        return [f"**{self._t(guild_id, 'onboarding_label')}:** {onboarding_display}"]
