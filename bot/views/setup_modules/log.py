@@ -158,6 +158,65 @@ class LogSetupModule:
             ephemeral=True,
         )
 
+    async def _update_log_channel(
+        self,
+        interaction: discord.Interaction,
+        guild_id: str,
+        bot: typing.Any,
+        channel_id: str | None,
+        action_name: str,
+        success_title_key: str,
+        success_desc_key: str,
+        **desc_kwargs: typing.Any,
+    ) -> None:
+        is_done_fn = getattr(getattr(interaction, "response", None), "is_done", None)
+        is_already_done = bool(is_done_fn() if callable(is_done_fn) else False)
+        if not is_already_done:
+            try:
+                await interaction.response.defer()
+            except Exception:
+                logger.exception("Failed to acknowledge interaction in log %s (guild=%s)", action_name, guild_id)
+                return
+
+        try:
+            cfg = await bot.guild_service.get_config(guild_id)
+            cfg.log_channel_id = channel_id
+            await bot.guild_service.save_config(cfg)
+        except Exception:
+            logger.exception("Failed to %s log channel for guild %s", "save" if channel_id else "clear", guild_id)
+            err_embed = error_embed(
+                t(guild_id, "setup.module.log.error_title"),
+                t(guild_id, "setup.module.log.preview_error_description"),
+                guild_id=guild_id,
+            )
+            followup = getattr(interaction, "followup", None)
+            followup_send = getattr(followup, "send", None) if followup is not None else None
+            if callable(followup_send) and (
+                inspect.iscoroutinefunction(followup_send) or hasattr(followup_send, "assert_awaited")
+            ):
+                await interaction.followup.send(embed=err_embed, ephemeral=True)
+            else:
+                await interaction.response.send_message(embed=err_embed, ephemeral=True)
+            return
+
+        from bot.views.setup_panel import SetupPanelView, _build_embed  # noqa: PLC0415 -- cycle-break
+
+        embed = await _build_embed(guild_id, "log", bot=bot, mod=self)
+        view = SetupPanelView(current_module="log", guild_id=guild_id)
+        edit_orig = getattr(interaction, "edit_original_response", None)
+        if callable(edit_orig) and (inspect.iscoroutinefunction(edit_orig) or hasattr(edit_orig, "assert_awaited")):
+            await interaction.edit_original_response(embed=embed, view=view)
+        else:
+            await interaction.response.edit_message(embed=embed, view=view)
+        await interaction.followup.send(
+            embed=success_embed(
+                t(guild_id, success_title_key),
+                t(guild_id, success_desc_key, **desc_kwargs),
+                guild_id=guild_id,
+            ),
+            ephemeral=True,
+        )
+
     async def _handle_select_channel(
         self, interaction: discord.Interaction, guild_id: str, bot: typing.Any, action: str
     ) -> None:
@@ -184,101 +243,26 @@ class LogSetupModule:
             )
             return
 
-        is_done_fn = getattr(getattr(interaction, "response", None), "is_done", None)
-        is_already_done = bool(is_done_fn() if callable(is_done_fn) else False)
-        if not is_already_done:
-            try:
-                await interaction.response.defer()
-            except Exception:
-                logger.exception("Failed to acknowledge interaction in log select_channel (guild=%s)", guild_id)
-                return
-
-        try:
-            cfg = await bot.guild_service.get_config(guild_id)
-            cfg.log_channel_id = channel_id
-            await bot.guild_service.save_config(cfg)
-        except Exception:
-            logger.exception("Failed to save log channel for guild %s", guild_id)
-            err_embed = error_embed(
-                t(guild_id, "setup.module.log.error_title"),
-                t(guild_id, "setup.module.log.preview_error_description"),
-                guild_id=guild_id,
-            )
-            followup = getattr(interaction, "followup", None)
-            followup_send = getattr(followup, "send", None) if followup is not None else None
-            if callable(followup_send) and (
-                inspect.iscoroutinefunction(followup_send) or hasattr(followup_send, "assert_awaited")
-            ):
-                await interaction.followup.send(embed=err_embed, ephemeral=True)
-            else:
-                await interaction.response.send_message(embed=err_embed, ephemeral=True)
-            return
-
-        from bot.views.setup_panel import SetupPanelView, _build_embed  # noqa: PLC0415 -- cycle-break
-
-        embed = await _build_embed(guild_id, "log", bot=bot, mod=self)
-        view = SetupPanelView(current_module="log", guild_id=guild_id)
-        edit_orig = getattr(interaction, "edit_original_response", None)
-        if callable(edit_orig) and (inspect.iscoroutinefunction(edit_orig) or hasattr(edit_orig, "assert_awaited")):
-            await interaction.edit_original_response(embed=embed, view=view)
-        else:
-            await interaction.response.edit_message(embed=embed, view=view)
-        await interaction.followup.send(
-            embed=success_embed(
-                t(guild_id, "setup.module.log.channel_set_title"),
-                t(guild_id, "setup.module.log.channel_set_description", channel=f"<#{channel_id}>"),
-                guild_id=guild_id,
-            ),
-            ephemeral=True,
+        await self._update_log_channel(
+            interaction,
+            guild_id,
+            bot,
+            channel_id,
+            "select_channel",
+            "setup.module.log.channel_set_title",
+            "setup.module.log.channel_set_description",
+            channel=f"<#{channel_id}>",
         )
 
     async def _handle_clear(self, interaction: discord.Interaction, guild_id: str, bot: typing.Any) -> None:
-        is_done_fn = getattr(getattr(interaction, "response", None), "is_done", None)
-        is_already_done = bool(is_done_fn() if callable(is_done_fn) else False)
-        if not is_already_done:
-            try:
-                await interaction.response.defer()
-            except Exception:
-                logger.exception("Failed to acknowledge interaction in log clear (guild=%s)", guild_id)
-                return
-
-        try:
-            cfg = await bot.guild_service.get_config(guild_id)
-            cfg.log_channel_id = None
-            await bot.guild_service.save_config(cfg)
-        except Exception:
-            logger.exception("Failed to clear log channel for guild %s", guild_id)
-            err_embed = error_embed(
-                t(guild_id, "setup.module.log.error_title"),
-                t(guild_id, "setup.module.log.preview_error_description"),
-                guild_id=guild_id,
-            )
-            followup = getattr(interaction, "followup", None)
-            followup_send = getattr(followup, "send", None) if followup is not None else None
-            if callable(followup_send) and (
-                inspect.iscoroutinefunction(followup_send) or hasattr(followup_send, "assert_awaited")
-            ):
-                await interaction.followup.send(embed=err_embed, ephemeral=True)
-            else:
-                await interaction.response.send_message(embed=err_embed, ephemeral=True)
-            return
-
-        from bot.views.setup_panel import SetupPanelView, _build_embed  # noqa: PLC0415 -- cycle-break
-
-        embed = await _build_embed(guild_id, "log", bot=bot, mod=self)
-        view = SetupPanelView(current_module="log", guild_id=guild_id)
-        edit_orig = getattr(interaction, "edit_original_response", None)
-        if callable(edit_orig) and (inspect.iscoroutinefunction(edit_orig) or hasattr(edit_orig, "assert_awaited")):
-            await interaction.edit_original_response(embed=embed, view=view)
-        else:
-            await interaction.response.edit_message(embed=embed, view=view)
-        await interaction.followup.send(
-            embed=success_embed(
-                t(guild_id, "setup.module.log.channel_cleared_title"),
-                t(guild_id, "setup.module.log.channel_cleared_description"),
-                guild_id=guild_id,
-            ),
-            ephemeral=True,
+        await self._update_log_channel(
+            interaction,
+            guild_id,
+            bot,
+            None,
+            "clear",
+            "setup.module.log.channel_cleared_title",
+            "setup.module.log.channel_cleared_description",
         )
 
     async def handle(self, interaction: discord.Interaction, action: str) -> None:
