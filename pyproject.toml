@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nebulosabot"
-version = "0.9.0"
+version = "1.1.0"
 description = "Discord bot with moderation, economy, and ticket system — powered by Supabase"
 readme = "README.md"
 license = {text = "MIT"}
@@ -45,11 +45,15 @@ dev = [
     "ruff==0.15.20",
     "ty==0.0.18",
     "tach==0.35.0",
+    "gitpython>=3.1.60",
     "vulture==2.14",
 ]
 
 [tool.uv]
 default-groups = ["dev"]
+constraint-dependencies = [
+    "anyio>=4.14.2",
+]
 
 [project.urls]
 Repository = "https://github.com/gentle-programming/NebulosaBot"
@@ -57,7 +61,7 @@ Repository = "https://github.com/gentle-programming/NebulosaBot"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "--cov=bot --cov-fail-under=80 --randomly-seed=42"
+addopts = "--cov=bot --cov-fail-under=80.5 --randomly-seed=42"
 markers = [
     "live: credential-gated live Supabase read-only verifier (requires LIVE_SUPABASE=1 + SUPABASE_URL or --run-live)",
 ]

@@ -24,32 +24,38 @@ _GOODBYE_SELECT_ID = "setup:goodbye:select_template"
 _TEMPLATE_IDS = ("default", "gaming_neon", "sunset_wave", "minimal_light")
 
 
-def _panel_select_ids() -> set[str | None]:
-    from bot.views.setup_panel import SetupPanelView  # noqa: PLC0415 -- facade indirection
+def _panel_select_ids(module: str | None = None) -> set[str | None]:
+    from bot.views.setup_panel import TAB_MODULES, SetupPanelView  # noqa: PLC0415 -- facade indirection
 
-    view = SetupPanelView()
-    return {getattr(c, "custom_id", None) for c in view.children}
+    if module is not None:
+        view = SetupPanelView(current_module=module)
+        return {getattr(c, "custom_id", None) for c in view.children}
+    ids: set[str | None] = set()
+    for m in TAB_MODULES:
+        v = SetupPanelView(current_module=m)
+        ids.update(getattr(c, "custom_id", None) for c in v.children)
+    return ids
 
 
 class TestPanelCarriesTemplatePickers:
-    """SetupPanelView must attach both module template selects at construction."""
+    """SetupPanelView must attach module template selects when on welcome/goodbye tabs."""
 
     def test_panel_contains_welcome_template_select(self) -> None:
-        assert _WELCOME_SELECT_ID in _panel_select_ids(), (
-            "SetupPanelView must carry setup:welcome:select_template (runtime /setup reachability)"
+        assert _WELCOME_SELECT_ID in _panel_select_ids("welcome"), (
+            "SetupPanelView must carry setup:welcome:select_template on welcome tab"
         )
 
     def test_panel_contains_goodbye_template_select(self) -> None:
-        assert _GOODBYE_SELECT_ID in _panel_select_ids(), (
-            "SetupPanelView must carry setup:goodbye:select_template (runtime /setup reachability)"
+        assert _GOODBYE_SELECT_ID in _panel_select_ids("goodbye"), (
+            "SetupPanelView must carry setup:goodbye:select_template on goodbye tab"
         )
 
     def test_panel_pickers_offer_exactly_four_registry_options(self) -> None:
         """Both panel-attached pickers mirror the four-template registry."""
         from bot.views.setup_panel import SetupPanelView  # noqa: PLC0415 -- facade indirection
 
-        view = SetupPanelView()
-        for cid in (_WELCOME_SELECT_ID, _GOODBYE_SELECT_ID):
+        for cid, mod in ((_WELCOME_SELECT_ID, "welcome"), (_GOODBYE_SELECT_ID, "goodbye")):
+            view = SetupPanelView(current_module=mod)
             select = next(c for c in view.children if getattr(c, "custom_id", None) == cid)
             assert isinstance(select, discord.ui.Select)
             values = tuple(opt.value for opt in select.options)
@@ -59,12 +65,13 @@ class TestPanelCarriesTemplatePickers:
         """Panel keeps timeout=None with static custom_ids after picker wiring."""
         from bot.views.setup_panel import SetupPanelView  # noqa: PLC0415 -- facade indirection
 
-        view = SetupPanelView()
-        assert view.timeout is None
-        for child in view.children:
-            cid = getattr(child, "custom_id", None)
-            if cid is not None:
-                assert cid.startswith("setup:"), f"custom_id must stay in the static setup: namespace, got {cid!r}"
+        for mod in ("welcome", "goodbye"):
+            view = SetupPanelView(current_module=mod)
+            assert view.timeout is None
+            for child in view.children:
+                cid = getattr(child, "custom_id", None)
+                if cid is not None:
+                    assert cid.startswith("setup:"), f"custom_id must stay in the static setup: namespace, got {cid!r}"
 
 
 def _panel_interaction(
@@ -140,7 +147,7 @@ class TestPanelPickerRouting:
         )
         bot.greeting_service.save_config = AsyncMock(return_value=None)
 
-        view = SetupPanelView()
+        view = SetupPanelView(current_module=kind)
         select = next(c for c in view.children if getattr(c, "custom_id", None) == select_id)
         assert isinstance(select, discord.ui.Select)
 
@@ -184,7 +191,7 @@ class TestPanelPickerRouting:
         )
         bot.greeting_service.save_config = AsyncMock(return_value=None)
 
-        view = SetupPanelView()
+        view = SetupPanelView(current_module="welcome")
         select = next(c for c in view.children if getattr(c, "custom_id", None) == _WELCOME_SELECT_ID)
         assert isinstance(select, discord.ui.Select)
 
@@ -234,7 +241,7 @@ class TestPanelPickerRouting:
         )
         bot.greeting_service.save_config = AsyncMock(return_value=None)
 
-        view = SetupPanelView()
+        view = SetupPanelView(current_module="welcome")
         select = next(c for c in view.children if getattr(c, "custom_id", None) == _WELCOME_SELECT_ID)
         assert isinstance(select, discord.ui.Select)
 
@@ -277,7 +284,7 @@ class TestPanelPickerRouting:
         bot.greeting_service.get_config = AsyncMock(return_value=MagicMock(guild_id=guild_id))
         bot.greeting_service.save_config = AsyncMock(return_value=None)
 
-        view = SetupPanelView()
+        view = SetupPanelView(current_module="welcome")
         select = next(c for c in view.children if getattr(c, "custom_id", None) == _WELCOME_SELECT_ID)
         assert isinstance(select, discord.ui.Select)
 
@@ -371,33 +378,29 @@ class TestSetupPanelCoverage:
 
         view = SetupPanelView(guild_id="123456789")
         assert view.timeout is None
-        # Should have nav select + buttons + 2 template pickers
         cids = {getattr(c, "custom_id", None) for c in view.children}
-        assert "setup:nav" in cids
+        assert "setup:tab:tickets" in cids
+        assert "setup:tab:welcome" in cids
         assert "setup:refresh" in cids
         assert "setup:close" in cids
 
     @pytest.mark.asyncio
-    async def test_nav_select_with_invalid_choice_falls_back_to_tickets(self) -> None:
-        """nav_select with unknown module choice falls back to tickets."""
+    async def test_tab_switch_with_invalid_choice_falls_back_to_tickets(self) -> None:
+        """_switch_tab with unknown module choice falls back to tickets."""
         from bot.views.setup_panel import SetupPanelView  # noqa: PLC0415 -- facade indirection
 
         view = SetupPanelView()
-        select = next(c for c in view.children if getattr(c, "custom_id", None) == "setup:nav")
-        assert isinstance(select, discord.ui.Select)
         inter = MagicMock(spec=discord.Interaction)
         inter.guild = MagicMock(spec=discord.Guild)
         inter.guild.id = 123456789
         inter.client = MagicMock()
-        inter.data = {"values": ["not_a_module"]}
         inter.response = MagicMock()
         inter.response.edit_message = AsyncMock()
-        # Also set select.values to match fallback path
-        select._values = ["not_a_module"]
-        # Patch _build_embed to avoid needing full MODULES
         with patch("bot.views.setup_panel._build_embed", new=AsyncMock(return_value=discord.Embed(title="t"))):
-            await view.nav_select.callback(inter)
+            await view._switch_tab(inter, "not_a_module")
         assert inter.response.edit_message.await_count == 1
+        kwargs = inter.response.edit_message.call_args.kwargs
+        assert kwargs["view"].current_module == "tickets"
 
     @pytest.mark.asyncio
     async def test_refresh_button_uses_footer_module(self) -> None:
@@ -515,24 +518,12 @@ class TestSetupPanelCoverage:
         assert embed.author is not None
         assert embed.author.name  # Should be non-empty (localized or capitalized)
 
-    @pytest.mark.asyncio
-    async def test_nav_select_exception_falls_back_to_tickets(self) -> None:
-        """nav_select exception handling falls back to tickets."""
+    def test_tab_view_default_tickets_on_invalid_module(self) -> None:
+        """SetupPanelView defaults current_module to tickets if invalid module given."""
         from bot.views.setup_panel import SetupPanelView  # noqa: PLC0415 -- facade indirection
 
-        view = SetupPanelView()
-        inter = MagicMock(spec=discord.Interaction)
-        inter.guild = MagicMock(spec=discord.Guild)
-        inter.guild.id = 999
-        inter.client = MagicMock()
-        # Make data raise
-        inter.data = property
-        inter.response = MagicMock()
-        inter.response.edit_message = AsyncMock()
-        # This will hit exception branch and fallback to tickets
-        with patch("bot.views.setup_panel._build_embed", new=AsyncMock(return_value=discord.Embed(title="fallback"))):
-            await view.nav_select.callback(inter)
-        assert inter.response.edit_message.await_count == 1
+        view = SetupPanelView(current_module="invalid_module_foo")
+        assert view.current_module == "tickets"
 
     @pytest.mark.asyncio
     async def test_interaction_check_footer_fallback(self) -> None:
@@ -698,7 +689,7 @@ class TestSetupPanelCoverage:
         inter.user.roles = []
         inter.guild = MagicMock(spec=discord.Guild)
         inter.guild.id = 42
-        inter.data = {"custom_id": "setup:nav"}
+        inter.data = {"custom_id": "setup:refresh"}
         inter.message = MagicMock()
         inter.message.embeds = []
         inter.response = MagicMock()
@@ -781,10 +772,10 @@ class TestSetupHookRegistersPanelWithPickers:
 
         panels = [v for v in registered if isinstance(v, SetupPanelView)]
         assert panels, "setup_hook must execute add_view() with a SetupPanelView instance"
-        child_ids = {getattr(c, "custom_id", None) for c in panels[0].children}
-        assert _WELCOME_SELECT_ID in child_ids, (
-            "registered panel must carry setup:welcome:select_template (restart routing)"
+        all_child_ids = {getattr(c, "custom_id", None) for p in panels for c in p.children}
+        assert _WELCOME_SELECT_ID in all_child_ids, (
+            "registered panels must carry setup:welcome:select_template (restart routing)"
         )
-        assert _GOODBYE_SELECT_ID in child_ids, (
-            "registered panel must carry setup:goodbye:select_template (restart routing)"
+        assert _GOODBYE_SELECT_ID in all_child_ids, (
+            "registered panels must carry setup:goodbye:select_template (restart routing)"
         )

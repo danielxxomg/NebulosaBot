@@ -303,6 +303,13 @@
         "log": "Log",
         "language": "Language"
       },
+      "tab": {
+        "tickets": "Tickets",
+        "welcome": "Welcome",
+        "goodbye": "Goodbye",
+        "log": "Logs",
+        "language": "Language"
+      },
       "error_module_not_loaded": "Module {module} not loaded"
     },
     "module": {
@@ -404,7 +411,13 @@
         "template_label": "Card template",
         "template_placeholder": "Pick a template...",
         "template_select_title": "Welcome template",
-        "template_select_description": "Choose the visual template for the welcome card."
+        "template_select_description": "Choose the visual template for the welcome card.",
+        "channel_select_placeholder": "Select a welcome channel...",
+        "clear_button": "Unlink channel",
+        "channel_set_title": "✅ Welcome Channel Updated",
+        "channel_set_description": "Welcome channel set to {channel}.",
+        "channel_cleared_title": "✅ Welcome Channel Unlinked",
+        "channel_cleared_description": "Welcome channel has been unlinked."
       },
       "goodbye": {
         "title": "Goodbye Configuration",
@@ -434,7 +447,13 @@
         "template_label": "Card template",
         "template_placeholder": "Pick a template...",
         "template_select_title": "Goodbye template",
-        "template_select_description": "Choose the visual template for the goodbye card."
+        "template_select_description": "Choose the visual template for the goodbye card.",
+        "channel_select_placeholder": "Select a goodbye channel...",
+        "clear_button": "Unlink channel",
+        "channel_set_title": "✅ Goodbye Channel Updated",
+        "channel_set_description": "Goodbye channel set to {channel}.",
+        "channel_cleared_title": "✅ Goodbye Channel Unlinked",
+        "channel_cleared_description": "Goodbye channel has been unlinked."
       },
       "log": {
         "title": "Log Configuration",
@@ -442,8 +461,13 @@
         "not_configured": "Not configured",
         "channel_label": "Log channel",
         "set_channel_button": "Set Channel",
-        "clear_button": "Clear",
+        "clear_button": "Unlink channel",
         "test_button": "Test",
+        "channel_select_placeholder": "Select a log channel...",
+        "channel_set_title": "✅ Log Channel Updated",
+        "channel_set_description": "Log channel set to {channel}.",
+        "channel_cleared_title": "✅ Log Channel Unlinked",
+        "channel_cleared_description": "Log channel has been unlinked.",
         "error_title": "Setup Error",
         "error_bot_unavailable": "Bot unavailable. Please try again.",
         "error_guild_only_title": "Server Only",

@@ -70,7 +70,7 @@ class SetupCog(commands.Cog, name="Setup"):
             raise RuntimeError(msg) from exc  # noqa: TRY003, EM101 -- msg assigned per rule
 
         embed = await _build_embed(guild_id, "tickets", bot=self.bot)
-        view = SetupPanelView()
+        view = SetupPanelView(guild_id=guild_id)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
         logger.info("Guild %s opened /setup panel", guild_id)

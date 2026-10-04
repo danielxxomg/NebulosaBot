@@ -30,7 +30,7 @@ The CI pipeline MUST run on every push to any branch and on every pull request t
 
 ### Requirement: Each job runs lint, type, security, and coverage
 
-Each matrix cell MUST execute ruff check, ruff format --check, mypy, bandit, and pytest with coverage in a single job.
+Each matrix cell MUST execute ruff check, ruff format --check, ty check, and pytest with coverage in a single job.
 
 #### Scenario: Lint failure blocks CI
 
@@ -40,31 +40,25 @@ Each matrix cell MUST execute ruff check, ruff format --check, mypy, bandit, and
 
 #### Scenario: Type error blocks CI
 
-- GIVEN a push introduces a mypy error
+- GIVEN a push introduces a ty error
 - WHEN CI runs on that push
-- THEN the job fails at the mypy step and reports the error location
-
-#### Scenario: Security issue blocks CI
-
-- GIVEN a push introduces a bandit finding at medium severity or above
-- WHEN CI runs on that push
-- THEN the job fails at the bandit step
+- THEN the job fails at the ty step and reports the error location
 
 #### Scenario: Coverage below gate blocks CI
 
-- GIVEN total `bot/` coverage is below the current gate threshold
+- GIVEN total `bot/` coverage is below the current gate threshold (80.5%)
 - WHEN pytest runs with `--cov-fail-under`
 - THEN the job fails with a coverage shortfall message
 
 ### Requirement: Coverage gate ratchet
 
-The CI MUST enforce a coverage floor of 75%. The gate value is read from `pyproject.toml` `addopts`.
+The CI MUST enforce a coverage floor of 80.5%. The gate value is read from `pyproject.toml` `addopts`.
 
-#### Scenario: Coverage gate at 75%
+#### Scenario: Coverage gate at 80.5%
 
-- GIVEN `pyproject.toml` `addopts` sets `--cov-fail-under=75`
+- GIVEN `pyproject.toml` `addopts` sets `--cov-fail-under=80.5`
 - WHEN CI runs on any push or PR
-- THEN coverage at or above 75% passes; below 75% fails
+- THEN coverage at or above 80.5% passes; below 80.5% fails
 
 ### Requirement: asyncio debug enabled in CI
 
@@ -76,21 +70,21 @@ The CI MUST set `PYTHONASYNCIODEBUG=1` in the job environment so latent coroutin
 - WHEN tests run with `PYTHONASYNCIODEBUG=1`
 - THEN the warning is surfaced (either as a test failure if warnings are errors, or logged for review)
 
-### Requirement: pip-audit on push and weekly schedule
+### Requirement: uv audit on push and weekly schedule
 
-The CI MUST run `pip-audit` on every push/PR AND on a weekly cron schedule to catch transitive dependency vulnerabilities.
+The CI MUST run `uv audit` on every push/PR to catch dependency vulnerabilities.
 
-#### Scenario: Push triggers pip-audit
+#### Scenario: Push triggers uv audit
 
 - GIVEN a developer pushes a commit
 - WHEN CI runs
-- THEN `pip-audit` scans all installed dependencies and fails on known vulnerabilities
+- THEN `uv audit` scans all installed dependencies and fails on known vulnerabilities
 
 #### Scenario: Weekly scheduled audit
 
 - GIVEN a week has passed since the last scheduled run
 - WHEN the cron trigger fires
-- THEN `pip-audit` runs against the latest `uv.lock` and reports findings
+- THEN `uv audit` runs and reports findings
 
 ### Requirement: Dependency caching
 
@@ -103,11 +97,11 @@ The CI SHOULD cache Python dependencies between runs to reduce job duration.
 - THEN the cached dependencies are restored and the install step is skipped or accelerated
 
 <!-- BEGIN DELTA: cleanup-stability (qa-ci-pipeline) -->
-<!-- Delta: cleanup-stability — Hygiene & Stability (S1 L3) — blocking gate split: `mypy bot/` S1, `mypy bot tests` S2 (28 tests.* errors) -->
+<!-- Delta: cleanup-stability — Hygiene & Stability — blocking gate: `ty check bot tests`, `ruff`, coverage 80.5% -->
 
-### Requirement: Each job runs lint, type, security, and coverage
+### Requirement: Each job runs lint, type, and coverage
 
-Each matrix cell MUST execute `ruff check bot tests`, `ruff format --check bot tests`, `mypy bot` (blocking; `mypy bot tests` deferred to S2 with 28 inventoried tests.* errors — S1 gates `bot/` only), `bandit -r bot -c pyproject.toml --severity-level medium`, and `pytest --cov=bot --cov-fail-under=75 -q` in a blocking job. `bot/` scope is fully gated; `tests/` type debt is an explicit S2 deferral documented in proposal/specs.
+Each matrix cell MUST execute `ruff check bot tests`, `ruff format --check bot tests`, `ty check bot tests`, and `pytest --cov=bot --cov-fail-under=80.5 -q` in a blocking job.
 
 #### Scenario: Lint failure blocks CI
 
@@ -117,27 +111,21 @@ Each matrix cell MUST execute `ruff check bot tests`, `ruff format --check bot t
 
 #### Scenario: Type error blocks CI
 
-- GIVEN a push introduces a mypy error in `bot/` (S1 gate; `tests/` debt deferred to S2)
-- WHEN CI runs `mypy bot` on that push
-- THEN the mypy step fails and reports the error location
-
-#### Scenario: Security issue blocks CI
-
-- GIVEN a push introduces a medium-or-higher Bandit finding in `bot/`
-- WHEN CI runs on that push
-- THEN the Bandit step fails
+- GIVEN a push introduces a ty error in `bot/` or `tests/`
+- WHEN CI runs `ty check bot tests` on that push
+- THEN the ty step fails and reports the error location
 
 #### Scenario: Coverage below gate blocks CI
 
-- GIVEN total `bot/` coverage is below 75%
-- WHEN pytest runs with `--cov-fail-under=75`
+- GIVEN total `bot/` coverage is below 80.5%
+- WHEN pytest runs with `--cov-fail-under=80.5`
 - THEN the job fails with a coverage shortfall
 
 #### Scenario: Current baseline suite remains accepted
 
-- GIVEN the audited baseline suite contains 1,814 passing tests and 3 skips (was 1,761 at f83e767; now 1814 after PR1-3)
+- GIVEN the audited baseline suite contains 3,202 passing tests and 19 skips
 - WHEN the full pytest gate runs
-- THEN the suite passes and coverage is at least 75%
+- THEN the suite passes and coverage is at least 80.5%
 
 <!-- END DELTA: cleanup-stability (qa-ci-pipeline) -->
 
@@ -146,7 +134,7 @@ Each matrix cell MUST execute `ruff check bot tests`, `ruff format --check bot t
 
 ### Requirement: Daily Supabase dump cron via pooler
 
-CI MUST add `.github/workflows/backup.yml` running daily via cron (`0 2 * * *` UTC) that dumps the Supabase DB through the session pooler (port 5432, `SUPABASE_DB_URL` pooler form), uploads artifact with 7-day retention (`retention-days: 7`), and fails visibly on dump error. Workflow MUST use SHA-pinned actions, `uv`/`pg_dump` available on runner, and MUST NOT log `SUPABASE_DB_URL`/`SENTRY_DSN` secrets. Coverage gate remains `--cov-fail-under=80` (2973 tests, 80.23% actual; headroom 0.23pp — slices MUST keep cov ≥80.23%).
+CI MUST add `.github/workflows/backup.yml` running daily via cron (`0 2 * * *` UTC) that dumps the Supabase DB through the session pooler (port 5432, `SUPABASE_DB_URL` pooler form), uploads artifact with 7-day retention (`retention-days: 7`), and fails visibly on dump error. Workflow MUST use SHA-pinned actions, `uv`/`pg_dump` available on runner, and MUST NOT log `SUPABASE_DB_URL`/`SENTRY_DSN` secrets. Coverage gate remains `--cov-fail-under=80.5` (3202 tests, ~83.4% actual; margin holds — slices MUST keep cov ≥80.5%).
 
 #### Scenario: Cron file exists and triggers daily
 
@@ -169,7 +157,7 @@ CI MUST add `.github/workflows/backup.yml` running daily via cron (`0 2 * * *` U
 #### Scenario: Coverage headroom preserved
 
 - GIVEN S0+S1 slices are applied sequentially
-- WHEN `uv run pytest --cov-fail-under=80` runs (≥2973 passed)
-- THEN cov stays ≥80.23% (0.23pp headroom not regressed)
+- WHEN `uv run pytest --cov-fail-under=80.5` runs (≥3202 passed)
+- THEN cov stays ≥80.5%
 
 <!-- END DELTA: ops-zero-lite (qa-ci-pipeline) -->

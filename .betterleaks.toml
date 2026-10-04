@@ -36,3 +36,32 @@ description = "sha256 content digests cited in archived audit docs"
 paths = ['''^openspec/changes/archive/''']
 rules = ['''generic-api-key''']
 regexes = ['''[0-9a-f]{64}''']
+
+# Synthetic database URIs in test suites — silence ONLY generic-credential-uri
+[[allowlists]]
+description = "synthetic db guard test fixtures verifying database URI password redaction"
+paths = ['''^tests/test_db_guard\.py$''']
+rules = ['''generic-credential-uri''']
+
+[[allowlists]]
+description = "synthetic backup workflow test fixtures verifying database URI redaction"
+paths = ['''^tests/test_backup_workflow\.py$''']
+rules = ['''generic-credential-uri''']
+
+# Documentation prose examples citing fake password redaction test cases
+[[allowlists]]
+description = "task documentation prose examples illustrating credential redaction patterns"
+paths = ['''^odd/tasks/relaunch-readiness\.md$''']
+rules = ['''generic-credential-uri''']
+
+# Workflow comment documenting local test restore recipe
+[[allowlists]]
+description = "backup workflow comment documenting local restore command recipe"
+paths = ['''^\.github/workflows/backup\.yml$''']
+rules = ['''generic-credential-uri''']
+
+# Build artifacts and local test cache — never committed (gitignored)
+[[allowlists]]
+description = "local pytest cache files containing test nodeids and durations"
+paths = ['''^\.pytest_cache/''']
+rules = ['''generic-credential-uri''']

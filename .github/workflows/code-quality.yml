@@ -103,6 +103,10 @@ jobs:
         working-directory: dashboard
         run: npm run lint
 
+      - name: Next.js production build — blocking
+        working-directory: dashboard
+        run: npm run build
+
       # ── Commented out: NOT adopted yet — revisit in dashboard-QA SDD ──
       # Knip — unused files/exports/deps (needs knip.json + baseline):
       #   npx knip --strict

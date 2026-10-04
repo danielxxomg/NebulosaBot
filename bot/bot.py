@@ -34,6 +34,12 @@ from bot.services.rank_renderer import RankRenderer
 from bot.services.ticket_service import TicketService
 from bot.services.transcript_service import TranscriptService
 from bot.utils.embeds import error_embed
+from bot.views.setup_panel import (
+    TAB_MODULES,
+    LegacySetupNavView,
+    SetupPanelView,
+    set_setup_bot,
+)
 from bot.views.tickets import TicketActionsView, TicketPanelView, deploy_ticket_panel
 
 if TYPE_CHECKING:
@@ -247,16 +253,13 @@ class NebulosaBot(commands.Bot):
         # --- 3j. Register persistent views ---
         self.add_view(TicketPanelView())
         self.add_view(TicketActionsView())
-        # S2a: Setup panel persistent view (static custom_ids, breadcrumb token)
+        # Setup panel persistent views (5 active tabs for restart routing)
         try:
-            from bot.views.setup_panel import (  # noqa: PLC0415 -- optional-dependency probe: panel may not be landed in S0
-                SetupPanelView,
-                set_setup_bot,
-            )
-
-            self.add_view(SetupPanelView())
+            for tab_mod in TAB_MODULES:
+                self.add_view(SetupPanelView(current_module=tab_mod))
+            self.add_view(LegacySetupNavView())
             set_setup_bot(self)
-            logger.info("Persistent setup panel view registered")
+            logger.info("Persistent setup panel views registered (%s tabs + legacy nav)", len(TAB_MODULES))
         except Exception:  # noqa: BLE001 -- best-effort retention/cron, never crash setup_hook
             logger.exception("Failed to register SetupPanelView")
         logger.info("Persistent ticket views registered")

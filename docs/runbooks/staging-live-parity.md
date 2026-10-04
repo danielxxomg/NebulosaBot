@@ -2,14 +2,14 @@
 
 Staging proof for deferred S3 evidence: real credential gate, direct catalog, tracked 018 8-step DDL, EXPLAIN index policy, and RS256/HS256 JWT rotation. Stacked-to-main final slice (S4.3) — **docs-only**, no DDL or code moves.
 
-> **S4 gates** — every change MUST stay `mypy 0 · ruff 0 · 2030+ passed` and live `LIVE_SUPABASE=1 DB_URL=… uv run pytest -m live --run-live -q` must prove a **real DB path**, not a fake. Mocked `PASS_WITH_WARNINGS` is rejected.
+> **S4 gates** — every change MUST stay `ty 0 · ruff 0 · 3202 passed` and live `LIVE_SUPABASE=1 DB_URL=… uv run pytest -m live --run-live -q` must prove a **real DB path**, not a fake. Mocked `PASS_WITH_WARNINGS` is rejected.
 
 ## Quick path (happy path)
 
 1. Ensure staging creds present: `LIVE_SUPABASE=1` + `DB_URL` (or `SUPABASE_DB_URL`/`DATABASE_URL`) + `SUPABASE_URL` + `SUPABASE_KEY` + JWKS vars below.
 2. Verify gates before any live window:
    ```bash
-   uv run mypy bot tests
+   uv run ty check bot tests
    uv run ruff check bot tests scripts
    uv run pytest -q
    python -m py_compile bot/__main__.py
@@ -28,7 +28,7 @@ Staging proof for deferred S3 evidence: real credential gate, direct catalog, tr
 | Supabase creds | `SUPABASE_URL` + `SUPABASE_KEY` (`sb_secret_` modern or verified JWT legacy). `health_probe` read-only `guild`/`ticket` probes stay fail-closed. |
 | JWKS creds | `SUPABASE_JWKS_URL` (or `SUPABASE_JWKS_URI`/`JWKS_URL`) + `SUPABASE_JWT_ISSUER` + `SUPABASE_JWT_AUDIENCE` — required for RS256 path (see JWT rotation). |
 | Window | Short-lived secrets (`sb_secret_`, `DB_URL`) only for the S4 window. Create from the staging project's dashboard/connection string, use, then revoke/rotate immediately after S4.2 evidence is captured. |
-| Revocation | After the window: revoke/rotate the short-lived secrets in the provider dashboard, unset `DB_URL`/`LIVE_SUPABASE` in the shell, and verify `uv run pytest -m live --run-live -q` returns to the warning path. The 018 `DOWN` backup `ticket_backup_categoryid_text_20260818` is retained until parity is accepted; then drop at operator discretion. |
+| Revocation | After the window: revoke/rotate the short-lived secrets in the provider dashboard, unset `DB_URL`/`LIVE_SUPABASE` in the shell, and verify `uv run pytest -m live --run-live -q` returns to the warning path. Note: migration 025 dropped backup table `ticket_backup_categoryid_text_20260818`; the `DOWN` restore path via this table is NOT executable after Cycle 5 and is IRREVERSIBLE. Recovery requires restoring the pre-window database backup. |
 
 **Read-only contract:** live acceptance and 018 application issue only `SELECT`/`EXPLAIN`/migration DDL via `psql -v ON_ERROR_STOP=1 -f migrations/018_ticket_integrity_fks.sql` (`shell=False`, fixed argv). No untracked SQL-editor `execute_sql` substitute.
 
@@ -42,7 +42,7 @@ Staging proof for deferred S3 evidence: real credential gate, direct catalog, tr
 ### Ordered steps (preserved in `migrations/018_ticket_integrity_fks.sql`)
 
 1. **Preflight** `DO $preflight$` — aborts before any `TEXT→UUID USING` cast on: `idx_ticket_active_slot` / `idx_ticket_active_channel` / `idx_ticket_guild_number` duplicates, `21/21` invalid `categoryId` UUIDs, missing/deep `parentId` (depth 1), `ticket_note` orphans (`0`), `ticket_audit` retention (`1 orphan + 1 guild mismatch` only). Any `RAISE EXCEPTION` prevents steps 2–8.
-2. **`ticket.categoryId TEXT → UUID USING`** cast with explicit `USING` and backup `ticket_backup_categoryid_text_20260818` (restore `TEXT` via `DOWN`).
+2. **`ticket.categoryId TEXT → UUID USING`** cast with explicit `USING` and historical backup `ticket_backup_categoryid_text_20260818` (migration 025 dropped this table; `DOWN` restore is NOT executable after Cycle 5 and is IRREVERSIBLE; recovery requires pre-window database backup restore).
 3. **Child indexes** for `parentId` / `ticket_note.ticketId` / `ticket_audit.ticketId`.
 4. **`parentId → ticket.id ON DELETE RESTRICT`**.
 5. **`categoryId → ticket_category.id ON DELETE SET NULL`**.
@@ -60,7 +60,7 @@ Staging proof for deferred S3 evidence: real credential gate, direct catalog, tr
 | Step | Rollback |
 |------|----------|
 | Preflight fail | Abort — no schema/ticket mutation attempted. Investigate duplicate/UUID/orphan counts. |
-| After start (lock/timeout or cast/FK failure) | Abort `psql` on non-zero exit / timeout; run the `DOWN migration` section in the same file (drops new constraints/indexes, restores `ticket.categoryId TEXT` via `ticket_backup_categoryid_text_20260818`), then restore from the pre-window DB backup if `DOWN` cannot recover. `lock_timeout`/`statement_timeout` are set at the top of the file. |
+| After start (lock/timeout or cast/FK failure) | Abort `psql` on non-zero exit / timeout. The historical `DOWN migration` path via `ticket_backup_categoryid_text_20260818` is NOT executable after Cycle 5 because migration 025 dropped that table (IRREVERSIBLE). The actual recovery path is to restore from the pre-window database backup. `lock_timeout`/`statement_timeout` are set at the top of the file. |
 | Post-apply drift | Re-verify `9/7/0`, `6 FKs`, `4 pubs`, `19 identity`, typed `categoryId`; run `uv run pytest -m live --run-live -q` with `DB_URL`; revert commits with `git revert` if DDL must be unwound. |
 
 ### Tracked command
@@ -149,9 +149,9 @@ The 12-name inventory `GUILD_SCOPE_GAPS` (ID-only DB methods that are not direct
 
 | Check | Command | Expected |
 |-------|---------|----------|
-| Types | `uv run mypy bot tests` | `0 errors` |
+| Types | `uv run ty check bot tests` | `0 errors` |
 | Lint/format | `uv run ruff check bot tests scripts` · `uv run ruff format --check bot tests scripts` | clean |
-| Baseline | `uv run pytest -q` | `2030 passed 7 skipped` (or higher after S4.3), no failures |
+| Baseline | `uv run pytest -q` | `3202 passed 19 skipped`, no failures |
 | Live no-creds | `uv run pytest -m live --run-live --no-cov -q` | warning path — gate fails, no mocked PASS |
 | Live real DB | `LIVE_SUPABASE=1 DB_URL=postgresql://… uv run pytest -m live --run-live --no-cov -q` | `4 passed` (incl. real DB/RPC) |
 
@@ -159,7 +159,7 @@ The 12-name inventory `GUILD_SCOPE_GAPS` (ID-only DB methods that are not direct
 
 - [ ] Staging window approved, low-traffic, before/after catalog baseline captured
 - [ ] `LIVE_SUPABASE=1` + real `DB_URL` gate passes (`used_real_db == True`)
-- [ ] `mypy 0`, `ruff 0`, `uv run pytest -q` green; `python -m py_compile bot/__main__.py` clean
+- [ ] `ty 0`, `ruff 0`, `uv run pytest -q` green; `python -m py_compile bot/__main__.py` clean
 - [ ] 018 applied via tracked `psql -f migrations/018_ticket_integrity_fks.sql` only; `EXPLAIN` receipt attached; only `idx_ticket_guild_number` dropped
 - [ ] JWT `jwks_uri` + bounded `kid` refresh + `iss/aud/exp/role` + RS256/HS256 allowlist verified (`test_jwks_verifier.py`)
 - [ ] `GUILD_SCOPE_GAP_HISTORY` 12 + `guild_scope_runtime_closed == 12` confirmed
@@ -170,6 +170,6 @@ The 12-name inventory `GUILD_SCOPE_GAPS` (ID-only DB methods that are not direct
 - `bot/config.py` — `_verify_jwt_rs256` (JWKS RS256 + bounded `kid` refresh, `iss/aud/exp/role`, `alg` allowlist; HS256 legacy via `SUPABASE_JWT_SECRET`)
 - `bot/services/live_catalog.py` — `LiveAcceptanceGate` (real DB/RPC only, 19 exact identity, `PGRST205` disclaimer)
 - `bot/services/schema_inventory.py` — `GUILD_SCOPE_GAP_HISTORY` (12 historical) + `GUILD_SCOPE_RUNTIME_CLOSED`
-- `scripts/apply_staging_migration.py` — `build_psql_argv` (`shell=False`, `ON_ERROR_STOP`, 018 allowlist, `check_live_gate`), `BACKUP_TABLE = ticket_backup_categoryid_text_20260818`
+- `scripts/apply_staging_migration.py` — `build_psql_argv` (`shell=False`, `ON_ERROR_STOP`, 018 allowlist, `check_live_gate`), `BACKUP_TABLE = ticket_backup_categoryid_text_20260818` (historical reference; dropped by migration 025 making `DOWN` non-executable/IRREVERSIBLE; pre-window database backup required for recovery)
 - `migrations/018_ticket_integrity_fks.sql` — 8-step ordered DDL + backup/timeouts/`DOWN`
 - `tests/test_s4d3_runbook.py` / `tests/test_jwks_verifier.py` / `tests/test_live_catalog.py` / `tests/test_s4d2b_018_live.py`

@@ -92,7 +92,7 @@ S4 deletions MUST occur LAST. Each deleted file MUST carry proof: (a) live/param
 <!-- BEGIN DELTA: unified-pending-close (test-suite-governance) -->
 ### Requirement: Suite Metrics Ledger — Per-Slice Measurement
 
-Each slice MUST record before/after: files, lines (`find tests -name "*.py" -exec wc -l {} +`), collected (`--collect-only -q`), `--cov` total. Baseline 175/62,384/3063/81.99% @9871add → lines strictly below 61,480 (the ONLY gate); files within 169-181. Ledger budget 1500 lines/slice bounds suite-size delta per slice and MUST NOT be conflated with the 800 diff-lines/PR review budget — distinct dimensions (suite growth vs reviewer load). Final aim ≤61,300 is ASPIRATIONAL with documented buffer, explicitly NOT a gate. Line-additive slices MUST satisfy the Slice Headroom Gate first. Restoration is parametrization-first: zero D3 deletions by default; any deletion still requires D3 proof per the FAIL-regardless-of-metrics gate below. Coverage scope: `bot/views/setup_modules/welcome.py`, `bot/views/setup_panel.py`, `bot/views/setup_modules/goodbye.py`, `bot/services/live_catalog.py` each to ~80%, funded by probes resurrected from dc371d0. The dashboard pagination unit (`dashboard/__tests__/app/audit-panel.test.tsx:122-169`) is excluded from the Python ledger.
+Each slice MUST record before/after: files, lines (`find tests -name "*.py" -exec wc -l {} +`), collected (`--collect-only -q`), `--cov` total. Baseline 175/62,384/3063/81.99% @9871add → lines strictly below 61,480; files within 169-181. *(Note: per relaunch charter, the 61,480-line ceiling, 169–181 files range, and 100-line headroom are INFORMATIONAL process governance metrics, not automated enforcement gates; zero tests enforce test-line totals, and the authoritative automated gate remains coverage floor ≥80.50%.)* Ledger budget 1500 lines/slice bounds suite-size delta per slice and MUST NOT be conflated with the 800 diff-lines/PR review budget — distinct dimensions (suite growth vs reviewer load). Final aim ≤61,300 is ASPIRATIONAL with documented buffer, explicitly NOT a gate. Line-additive slices MUST satisfy the Slice Headroom Gate first. Restoration is parametrization-first: zero D3 deletions by default; any deletion still requires D3 proof per the FAIL-regardless-of-metrics gate below. Coverage scope: `bot/views/setup_modules/welcome.py`, `bot/views/setup_panel.py`, `bot/views/setup_modules/goodbye.py`, `bot/services/live_catalog.py` each to ~80%, funded by probes resurrected from dc371d0. The dashboard pagination unit (`dashboard/__tests__/app/audit-panel.test.tsx:122-169`) is excluded from the Python ledger.
 
 (Previously: no headroom rule; 1500-vs-800 coexistence undocumented; aim read as gate.)
 
@@ -106,12 +106,14 @@ Each slice MUST record before/after: files, lines (`find tests -name "*.py" -exe
 
 - GIVEN all slices merged
 - WHEN metrics measured
-- THEN lines strictly below 61,480 with total ledger trail, cov ≥80.50%, `ty`/`ruff`/`vulture` 0
+- THEN lines strictly below 61,480 with total ledger trail (informational process governance), cov ≥80.50%, `ty`/`ruff`/`vulture` 0
 - AND every deletion carries D3 proof (FAIL-regardless-of-metrics if any unproved deletion appears)
 <!-- END DELTA: unified-pending-close (test-suite-governance) -->
 
 <!-- BEGIN DELTA: unified-pending-close (test-suite-governance) -->
 ### Requirement: Slice Headroom Gate
+
+*(Note: INFORMATIONAL per relaunch charter — process governance guidance for managing suite expansion, not an automated gate.)*
 
 Before any line-additive test slice lands, the ledger MUST show margin ≥100 lines above the ceiling (lines ≤61,380 at ceiling 61,480). Each slice MUST measure before/after with ledger trail; a slice that would breach the ceiling MUST NOT land.
 

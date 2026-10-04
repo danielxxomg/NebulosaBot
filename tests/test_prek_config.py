@@ -29,13 +29,14 @@ def _load_prek() -> dict:
         return tomllib.load(f)
 
 
-def _run_prek(args: list[str], timeout: int = 120) -> subprocess.CompletedProcess[str]:
+def _run_prek(args: list[str], timeout: int = 120, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     """Run ``uvx prek <args>`` with cold-start pre-warm (D4, flake #5037)."""
-    subprocess.run(["uvx", "prek", "--help"], capture_output=True, timeout=60, cwd=str(PROJECT_ROOT))  # noqa: S607 -- uvx resolved via PATH like the deleted survivor
+    target_cwd = cwd or PROJECT_ROOT
+    subprocess.run(["uvx", "prek", "--help"], capture_output=True, timeout=60, cwd=str(target_cwd))  # noqa: S607 -- uvx resolved via PATH like the deleted survivor
     merged = os.environ.copy()
     return subprocess.run(
         ["uvx", "prek", *args],  # noqa: S607 -- uvx resolved via PATH like the deleted survivor
-        cwd=str(PROJECT_ROOT),
+        cwd=str(target_cwd),
         capture_output=True,
         text=True,
         env=merged,
@@ -210,24 +211,78 @@ class TestPrekHookBehavior:
         result = _run_prek(["validate-config", str(PREK_TOML)])
         assert result.returncode == 0, f"prek validate-config failed: {result.stdout}{result.stderr}"
 
-    def test_prek_run_all_files_exits_zero(self) -> None:
-        result = _run_prek(["run", "--all-files", "--no-progress"])
+    def test_prek_run_all_files_exits_zero(self, tmp_path: Path) -> None:
+        """Run prek hooks in an isolated fixture git repository to protect live checkout."""
+        # Initialize fixture repo
+        git_bin = shutil.which("git") or "git"
+        subprocess.run([git_bin, "init"], cwd=str(tmp_path), check=True, capture_output=True)  # noqa: S607
+        subprocess.run([git_bin, "config", "user.name", "test"], cwd=str(tmp_path), check=True)  # noqa: S607
+        subprocess.run([git_bin, "config", "user.email", "test@example.com"], cwd=str(tmp_path), check=True)  # noqa: S607
+
+        fixture_prek = tmp_path / "prek.toml"
+        fixture_prek.write_text(
+            """[[repos]]
+repo = "builtin"
+hooks = [
+  { id = "trailing-whitespace" },
+  { id = "end-of-file-fixer" },
+]
+""",
+            encoding="utf-8",
+        )
+        clean_file = tmp_path / "clean.py"
+        clean_file.write_text("x = 1\n", encoding="utf-8")
+        subprocess.run([git_bin, "add", "."], cwd=str(tmp_path), check=True)  # noqa: S607
+
+        result = _run_prek(["run", "--all-files", "--no-progress"], cwd=tmp_path)
         combined = result.stdout + result.stderr
         if _betterleaks_guard(combined):
             return
-        assert result.returncode == 0, f"prek run --all-files failed: {combined[:2000]}"
+        assert result.returncode == 0, f"prek run --all-files failed in fixture: {combined[:2000]}"
 
-    def test_trailing_whitespace_hook_blocks(self) -> None:
-        scratch = PROJECT_ROOT / "tests" / "_tmp_prek_trailing_ws.py"
-        try:
-            scratch.write_text("x = 1   \n", encoding="utf-8")
-            result = _run_prek(["run", "--files", str(scratch), "--no-progress"])
-            combined = result.stdout + result.stderr
-            if _betterleaks_guard(combined):
-                return
-            assert result.returncode != 0, f"prek should fail on trailing ws: {combined[:2000]}"
-            low = combined.lower()
-            assert "trailing" in low, f"expected trailing failure, got: {combined[:2000]}"
-        finally:
-            if scratch.exists():
-                scratch.unlink()
+    def test_trailing_whitespace_hook_blocks(self, tmp_path: Path) -> None:
+        """Verify trailing-whitespace hook fails on dirty input in isolated fixture."""
+        git_bin = shutil.which("git") or "git"
+        subprocess.run([git_bin, "init"], cwd=str(tmp_path), check=True, capture_output=True)  # noqa: S607
+        subprocess.run([git_bin, "config", "user.name", "test"], cwd=str(tmp_path), check=True)  # noqa: S607
+        subprocess.run([git_bin, "config", "user.email", "test@example.com"], cwd=str(tmp_path), check=True)  # noqa: S607
+
+        fixture_prek = tmp_path / "prek.toml"
+        fixture_prek.write_text(
+            """[[repos]]
+repo = "builtin"
+hooks = [
+  { id = "trailing-whitespace" },
+]
+""",
+            encoding="utf-8",
+        )
+        dirty_file = tmp_path / "dirty.py"
+        dirty_file.write_text("x = 1   \n", encoding="utf-8")
+        subprocess.run([git_bin, "add", "."], cwd=str(tmp_path), check=True)  # noqa: S607
+
+        result = _run_prek(["run", "--files", str(dirty_file), "--no-progress"], cwd=tmp_path)
+        combined = result.stdout + result.stderr
+        if _betterleaks_guard(combined):
+            return
+        assert result.returncode != 0, f"prek should fail on trailing ws: {combined[:2000]}"
+        low = combined.lower()
+        assert "trailing" in low, f"expected trailing failure, got: {combined[:2000]}"
+        # Real checkout boundary check: no scratch files in live tests directory
+        scratch_files = list((PROJECT_ROOT / "tests").glob("_tmp_prek*"))
+        assert not scratch_files, f"live scratch files must not exist in tests/: {scratch_files}"
+
+    def test_external_review_and_mutating_hooks_isolated_from_pytest(self) -> None:
+        """Document and verify that GGA/external review and mutating hooks are not run inside unit tests.
+
+        Unit tests rely on separate real lint (make lint), type (make type), and architecture
+        (make tach) checks. The GGA hook ('bash .gga') invokes external review tooling and must
+        remain isolated to explicit pre-commit/external review workflows, never running as an
+        un-isolated side-effect of pytest.
+        """
+        hooks = _local_hooks()
+        assert "gga" in hooks
+        assert hooks["gga"].get("entry") == "bash .gga"
+        assert hooks["gga"].get("priority") == "gga"
+        # Verify ruff-check has fix in entry for git hooks, which is why unit tests must isolate execution
+        assert "--fix" in hooks["ruff-check"].get("entry", "")

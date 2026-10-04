@@ -10,12 +10,21 @@ Strict TDD: this file MUST FAIL before GREEN (runbook absent) and PASS after.
 from __future__ import annotations
 
 import pathlib
+import re
 
 RUNBOOK = pathlib.Path("docs/runbooks/staging-live-parity.md")
 ALT_RUNBOOK = pathlib.Path("docs/staging-live-parity.md")
 
 
 def _read_runbook() -> str:
+    """Read the parity runbook, accepting either the canonical or legacy path.
+
+    Returns:
+        str: Full runbook text.
+
+    Raises:
+        AssertionError: When neither the canonical nor the legacy path exists.
+    """
     if RUNBOOK.exists():
         return RUNBOOK.read_text(encoding="utf-8")
     if ALT_RUNBOOK.exists():
@@ -25,10 +34,25 @@ def _read_runbook() -> str:
 
 
 def _norm(text: str) -> str:
+    """Normalize runbook text for whitespace- and case-insensitive matching.
+
+    Args:
+        text: Raw runbook content.
+
+    Returns:
+        str: Lowercased text with all whitespace runs collapsed to single spaces.
+    """
     return " ".join(text.lower().split())
 
 
+def _has_ty_gate(text: str) -> bool:
+    """Check if quality gate documents the ty check command shape."""
+    return bool(re.search(r"\bty\s+check\b", text.lower()))
+
+
 class TestRunbookExists:
+    """Assert the parity runbook exists at a known path and carries real content."""
+
     def test_runbook_file_exists(self) -> None:
         assert RUNBOOK.exists() or ALT_RUNBOOK.exists(), f"runbook missing: {RUNBOOK} or {ALT_RUNBOOK}"
 
@@ -38,6 +62,8 @@ class TestRunbookExists:
 
 
 class TestCredentialWindowAndGates:
+    """Assert the runbook documents the credential window, tracked psql call and quality gates."""
+
     def test_live_supabase_and_db_url_documented(self) -> None:
         text = _read_runbook()
         assert "LIVE_SUPABASE=1" in text
@@ -67,9 +93,24 @@ class TestCredentialWindowAndGates:
         assert "psql" in n
         assert "018_ticket_integrity_fks" in text or "018" in text
 
-    def test_mypy_ruff_pytest_gates_documented(self) -> None:
+    def test_ty_check_synthetic_mutant_false_pass_and_rejection(self) -> None:
+        """P1.3: An isolated synthetic mutant containing 'integrity' and 'priority'
+
+        demonstrates that bare 'ty' false-passes, while the hardened gate rejects it.
+        """
+        mutant = (
+            "# Staging Live Parity Checklist\n"
+            "- Ensure foreign key integrity across tables.\n"
+            "- High priority: verify ruff lint and pytest suite.\n"
+        )
+        # Demonstrate false-pass of the old bare 'ty' substring check:
+        assert "ty" in mutant.lower()
+        # The hardened gate must reject the mutant because 'ty check' is absent:
+        assert not _has_ty_gate(mutant)
+
+    def test_ty_ruff_pytest_gates_documented(self) -> None:
         text = _read_runbook()
-        assert "mypy" in text.lower()
+        assert _has_ty_gate(text)
         assert "ruff" in text.lower()
         assert "pytest" in text.lower()
 
@@ -81,6 +122,8 @@ class TestCredentialWindowAndGates:
 
 
 class Test018DdlSteps:
+    """Assert the runbook documents the 8-step ordered DDL contract and its rollback matrix."""
+
     def test_eight_steps_documented(self) -> None:
         text = _read_runbook()
         n = _norm(text)
@@ -104,6 +147,8 @@ class Test018DdlSteps:
 
 
 class TestExplainWorkload:
+    """Assert the runbook documents the EXPLAIN ANALYZE BUFFERS index-retention policy."""
+
     def test_explain_analyze_buffers_documented(self) -> None:
         text = _read_runbook()
         assert "EXPLAIN" in text
@@ -131,6 +176,8 @@ class TestExplainWorkload:
 
 
 class TestJwtRotationDocs:
+    """Assert the runbook documents JWKS-based RS256 rotation and HS256 rejection."""
+
     def test_jwks_uri_documented(self) -> None:
         text = _read_runbook()
         assert "jwks_uri" in text.lower() or "jwks_url" in text.lower() or "JWKS" in text
@@ -166,6 +213,8 @@ class TestJwtRotationDocs:
 
 
 class TestHistoricalRenameNote:
+    """Assert the runbook explains the GUILD_SCOPE_GAP_HISTORY rename rationale."""
+
     def test_guild_scope_gap_history_documented(self) -> None:
         text = _read_runbook()
         assert "GUILD_SCOPE_GAP_HISTORY" in text
@@ -180,3 +229,15 @@ class TestHistoricalRenameNote:
         assert "12" in text
         n = _norm(text)
         assert "runtime" in n or "closed" in n or "closure" in n
+
+
+class TestRollbackHonesty:
+    """Assert the runbook does not promise a rollback path that no longer exists."""
+
+    def test_migration_025_drop_and_irreversibility_documented(self) -> None:
+        """Runbook must explicitly state migration 025 dropped the backup table making DOWN irreversible."""
+        text = _read_runbook()
+        n = _norm(text)
+        assert "025" in text
+        assert "irreversible" in n
+        assert "pre-window" in n or "database backup" in n

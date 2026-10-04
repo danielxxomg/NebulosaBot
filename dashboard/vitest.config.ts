@@ -4,6 +4,9 @@ import path from "node:path";
 const rootDir = import.meta.dirname;
 
 export default defineConfig({
+  // Disable automatic loading of .env / .env.local files in tests so test
+  // execution remains isolated from local developer credentials and secrets.
+  envDir: false,
   // The project's tsconfig sets `jsx: "preserve"` (required by Next.js/SWC),
   // which Vite/oxc respects and therefore skips JSX transformation — breaking
   // component render tests. Override only for the test pipeline (oxc is the

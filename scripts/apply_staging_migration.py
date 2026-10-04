@@ -36,6 +36,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from bot.utils.db_guard import scrub_error
+
 logger = logging.getLogger(__name__)
 
 # Tracked migration allowlist — no arbitrary file fallback.
@@ -60,8 +62,28 @@ REPAIR_DESYNC_ALLOWLIST: tuple[str, ...] = (
 # when a long txn holds conflicting lock; ON_ERROR_STOP halts. Proven in SQL header.
 LOCK_TIMEOUT = "5s"
 
+# Maximum characters of psql stderr included in the raised RuntimeError message.
+STDERR_LOG_LIMIT = 2000
+
+# Maximum whole lines fed into scrub_error. Bounds sanitizer work on pathological
+# stderr without cutting a credential mid-token (which would defeat redaction).
+SCRUB_INPUT_MAX_LINES = 500
+
 
 def _resolve_db_url(explicit: str | None = None) -> str | None:
+    """Resolve the database URL from an explicit argument or the environment.
+
+    Resolution order is significant and non-obvious: an explicit non-blank value
+    wins, then ``DB_URL``, ``SUPABASE_DB_URL``, ``DATABASE_URL`` in that order.
+    Whitespace-only values are treated as absent so a blank exported variable
+    cannot shadow a later valid fallback.
+
+    Args:
+        explicit: Optional explicit URL that overrides environment lookup.
+
+    Returns:
+        str | None: First non-empty resolved URL, or ``None`` when none is set.
+    """
     if explicit and explicit.strip():
         return explicit.strip()
     for key in ("DB_URL", "SUPABASE_DB_URL", "DATABASE_URL"):
@@ -73,6 +95,15 @@ def _resolve_db_url(explicit: str | None = None) -> str | None:
 
 @dataclass(frozen=True, slots=True)
 class LiveGateResult:
+    """Outcome of a live acceptance gate evaluation.
+
+    Attributes:
+        passed: True only when the gate conditions were satisfied; a fail-closed
+            result is always ``False`` rather than a mocked pass.
+        reasons: Human-readable explanations of why the gate did not pass.
+        used_real_db: True when a real database URL was resolved and used.
+    """
+
     passed: bool
     reasons: tuple[str, ...]
     used_real_db: bool
@@ -273,7 +304,14 @@ def run_psql_migration(
     # before/after capture: backup + VALIDATE live in SQL; psql executes atomically per statement.
     result = subprocess.run(argv, shell=False, timeout=timeout, capture_output=True, text=True, check=False)  # noqa: S603
     if result.returncode != 0:
-        msg = f"psql migration failed (exit {result.returncode}): {result.stderr[:2000]}"
+        # Bound the sanitizer INPUT on a whole-line boundary, then scrub, then
+        # truncate. Truncating first could cut a credential mid-token and defeat
+        # the redaction; scrubbing unbounded stderr exposed the regex to
+        # arbitrarily large input. Taking the first SCRUB_BOUND lines keeps whole
+        # credentials intact while capping the work.
+        bounded = "\n".join(result.stderr.splitlines()[:SCRUB_INPUT_MAX_LINES])
+        scrubbed_stderr = scrub_error(bounded)[:STDERR_LOG_LIMIT]
+        msg = f"psql migration failed (exit {result.returncode}): {scrubbed_stderr}"
         raise RuntimeError(msg)
     return LiveGateResult(passed=True, reasons=(), used_real_db=True)
 
