@@ -526,31 +526,87 @@ that authorization or represents open debt. Ordered by blast radius, not by conv
     - `bot.utils.db_guard.validate_db_url` verified: returns `ok=True`.
   - Offline passphrase copy retained in `~/.nebulosabot-secrets/BACKUP_ENCRYPTION_KEY.txt`.
 
-- [ ] **P0.2 — Observe a real successful backup run (needs P0.1 + real `SUPABASE_DB_URL`)**
-  - Never observed. The scheduled Supabase Backup has been failing: three consecutive
-    scheduled runs failed on the pre-merge master. Failure logs show `SUPABASE_DB_URL`
-    empty in the runner environment, so `pg_dump "$SUPABASE_DB_URL"` fell back to a
-    local Unix socket and died with `connection to server on socket "/var/run/postgresql/.s.PGSQL.5432" failed`.
-    Same root cause as the already-recorded run `36835825347`.
-  - The scheduled backup has NEVER succeeded on master, and the database currently has NO
-    working backup.
-  - The fail-closed preflight and both provisioned secrets (`BACKUP_ENCRYPTION_KEY` and
-    `SUPABASE_DB_URL`) are now on master, so a manual dispatch can finally test it.
-  - Operational blocker: OPEN and NOT solved by P1, quality gates, or merge. P0.3 and P0.4
-    remain blocked. (No backup was successful, no restore was executed, and no reset was performed.)
+- [x] **P0.2 — Observe a real successful backup run — CLOSED at merge `8506053`**
+  - Closed by run [`37872270088`](https://github.com/danielxxomg/NebulosaBot/actions/runs/37872270088)
+    (`workflow_dispatch` on `master`, head `8506053`): every step green.
+  - Artifact produced: `supabase-dump-encrypted`, 100102 bytes, `expired=false`,
+    artifact ID `11590977675`. Artifact zip SHA256
+    `730e40d80666e73671c48569eeb58b4103f7a7f552d0567b179febbb0a040773`.
+  - Encryption proven from the run log: `gpg --batch --yes --symmetric
+    --cipher-algo AES256` with `BACKUP_KEY` from secrets, followed by
+    `rm -f dump.pgdump`, so no plaintext dump survived the step.
+  - Two real defects had to be fixed before this could pass; neither was speculative:
+    - `444db40` + `0ed20cb`: the runner had `pg_dump 16.15` against a server `17.6`, so
+      the dump could not run at all. Now installs the PostgreSQL 17 client from PGDG and
+      calls `/usr/lib/postgresql/17/bin/pg_dump` explicitly.
+    - `0ed20cb` also fixes an ordering defect introduced by `444db40` itself: `gpg
+      --dearmor` ran before `gnupg` was installed, which would have broken the backup on
+      any runner without a preinstalled GPG. Found by the native reliability lens, not
+      by inspection.
+  - Honest limits: the artifact was NOT downloaded and NOT decrypted (production data,
+    requires explicit authorization). Verification is of steps, artifact metadata and
+  logs. The 100102 bytes are the compressed AND encrypted size, not the database size.
 
 - [ ] **P0.3 — Execute isolated restore acceptance (needs P0.2 producing an artifact)**
+  - P0.2 prerequisite is now SATISFIED: a real encrypted artifact exists. This step is
+    no longer blocked by artifact availability.
   - The recipe exists as text in `backup.yml`; it has NEVER been executed. There is
-    currently no proof that a produced artifact can be decrypted and restored.
-  - Requires a disposable Postgres and the key. This is the step that converts
-    "backups are specified" into "backups work".
-  - Operational blocker: OPEN and NOT solved by P1.
+    still no proof that the produced artifact can be decrypted and restored. A backup
+    that has never been restored is not yet a working backup.
+  - Two human inputs are required before any restore can run, and neither is inferable:
+    the destination (a new disposable Supabase project, versus an existing database
+    which would contaminate real data) and the delivery channel for
+    `BACKUP_ENCRYPTION_KEY`. The passphrase must not be pasted into agent chat.
+  - Operational blocker: OPEN. Unblocked by P0.2, blocked on the two decisions above.
 
 - [ ] **P0.4 — Decide the exact reset truncate list (human decision)**
   - `docs/runbooks/reset-procedure.md` Phase 1 inventory is deliberately unresolved.
   - Blocks: any real reset. Phase 2 already requires signed human approval.
-  - Operational blocker: OPEN and NOT solved by P1. This is a release candidate,
-    NOT a stable or production-ready release.
+  - Requires the exact table list from a human; truncating production tables is not
+    an agent decision.
+  - Operational blocker: OPEN and unchanged.
+
+### Post-RC1 operational hardening — CLOSED at `56a84bb`
+
+Both units were required to land P0.2 at all, because the required security checks
+were red and blocked any merge that carried the backup fix.
+
+- [x] **CVE-2026-104874 / GHSA-54p9-h82j-f925 (`multidict`) — CLOSED at `ba11491`**
+  - `ae12085`: `uv.lock` bumps `multidict` 6.7.1 → 6.9.1. Verified minimal: 78 packages
+    before and after, exactly one version changed, `pyproject.toml` untouched so no
+    constraint was loosened.
+  - `3e5abb0`: the repository tracks TWO Python manifests and the fix had to land in
+    both. `requirements.txt` was still pinned to 6.7.1, which is why the `security-advisory`
+    OSV-Scanner gate stayed red after the lock bump alone. Regenerated with the exact
+    command recorded in that file's own header
+    (`uv export --format requirements-txt --no-hashes --no-dev --frozen -o requirements.txt`),
+    one-line delta.
+  - This was NOT self-inflicted: `uv.lock` pinned `multidict 6.7.1` identically on
+    `master` and on the backup branch. The advisory was published after the last green
+    audit. The database changed, not the pin. `uv audit` now reports zero known
+    vulnerabilities across 78 packages.
+  - Regression check: 3300 passed / 19 skipped / 0 failed, coverage 83.85% against an
+    80.5% floor — identical to the `v1.1.0-rc.1` baseline, so no observable regression
+    across the `aiohttp` 3.14.3 → `discord.py` 2.7.1 transport stack.
+
+- [x] **Manifest drift guard — CLOSED at `56a84bb`**
+  - Root cause of the above near-miss: NO check verified `requirements.txt` tracked
+    `uv.lock`, so the two drifted silently. Added a blocking step in the existing
+    `security-advisory` job of `.github/workflows/code-quality.yml` that regenerates the
+    export into a `mktemp` path and fails on any difference.
+  - Verified both directions locally: exits 0 on the current synchronized tree, exits 1
+    with a unified diff and remediation instructions against a deliberately tampered
+    temporary copy. No failure tolerance was added.
+  - The guard normalizes the export header with `sed` because `uv export` embeds its
+  `-o` output path in its own autogenerated header; without that, every run would
+    report a false diff.
+  - Honest limit: `code-quality.yml` triggers only on `pull_request`, never on push.
+    This guard has NOT yet executed in CI. It will first run on the next PR. Only local
+    verification is claimed.
+
+- Release note: tag `v1.1.0-rc.1` still points at `67f92123b6c434bc7adcc2ee967dfffe37a903be`,
+  which PREDATES all of the above. The RC tag no longer reflects `master`. Moving it is
+  a separate release decision and was not taken.
 
 ### P1 — Behavioral defects from native review (deterministic, code-level) — CLOSED
 
@@ -940,14 +996,22 @@ release guard constraints (matching `v0.9.0-debt-zero` and `v0.8.0-qa-modernizat
 Recovery mirror: `odd/relaunch-readiness/tasks`.
 PROGRAM COMPLETE: T1-T6.1, P1, quality gates, build fix, and PR #129 merge/release candidate
 are all closed.
-Operational blockers still open: P0.2 (scheduled backup has NEVER succeeded on master and
-database currently has NO working backup; fail-closed preflight and secrets now on master enable
-manual dispatch test), P0.3 (isolated restore acceptance never executed), P0.4 (exact reset
-truncate list still a human decision). P2.6 remains open and unchanged. Release notes state
-plainly this is NOT production-ready.
+P0.2 CLOSED at merge `8506053`: first real successful backup run, artifact
+`supabase-dump-encrypted` (100102 bytes, GPG AES256, plaintext deleted), after fixing both
+the pg_dump 16-vs-17 mismatch and a gpg/gnupg bootstrap-order defect that the native
+reliability lens caught in the fix itself. Merges that carried it: PR #130 → `8506053`
+(backup fix + ledger), PR #131 → `ba11491` (multidict CVE + `requirements.txt` resync),
+`56a84bb` (manifest drift guard).
+Operational blockers still open: P0.3 (isolated restore acceptance — prerequisite now
+satisfied by a real artifact, but blocked on a human choosing the restore destination and
+a channel for `BACKUP_ENCRYPTION_KEY`) and P0.4 (exact reset truncate list, still a human
+decision). P2.6 remains open and unchanged. Release notes state plainly this is NOT
+production-ready.
+Release tag `v1.1.0-rc.1` (`67f92123b6c434bc7adcc2ee967dfffe37a903be`) predates every fix
+above and no longer reflects `master`; moving it is an undecided release action.
 All remaining work is grouped in the "Pending work plan" section above (P0 disaster recovery →
-P3 publishing), notably P0.2/P0.3 (real backup + restore drills). The task-doc handoff metadata
-below stays unstaged until its own docs unit. No remote permissions have expanded.
+P3 publishing), notably P0.3/P0.4. The task-doc handoff metadata below stays unstaged until
+its own docs unit. No remote permissions have expanded.
 
 Fresh recheck passed all eight commands: 3,113 Python tests, 19 skips, 19 warnings,
 83.27% coverage at seed 42; 249 dashboard tests and the existing lint warning.
