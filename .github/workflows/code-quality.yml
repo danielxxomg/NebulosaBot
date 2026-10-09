@@ -53,6 +53,22 @@ jobs:
           persist-credentials: false
           fetch-depth: 0 # betterleaks history scan needs full refs
 
+      - name: Requirements drift — sync gate (requirements.txt vs uv.lock)
+        run: |
+          TEMP_REQ="$(mktemp)"
+          trap 'rm -f "${TEMP_REQ}"' EXIT
+          uv export --format requirements-txt --no-hashes --no-dev --frozen -o "${TEMP_REQ}"
+          sed -i "s|${TEMP_REQ}|requirements.txt|" "${TEMP_REQ}"
+          if ! diff -u -I '^# *uv export' requirements.txt "${TEMP_REQ}"; then
+            echo "::error::requirements.txt has drifted from uv.lock!"
+            echo "requirements.txt and uv.lock are out of sync."
+            echo "To fix this, regenerate requirements.txt using:"
+            echo "  uv export --format requirements-txt --no-hashes --no-dev --frozen -o requirements.txt"
+            echo "and commit the regenerated requirements.txt file."
+            echo "Never loosen a version pin to resolve drift; always regenerate from uv.lock."
+            exit 1
+          fi
+
       - name: OSV-Scanner — CVE gate (uv.lock + package-lock.json)
         run: |
           curl -sL -o osv-scanner https://github.com/google/osv-scanner/releases/download/v2.5.1/osv-scanner_linux_amd64
