@@ -527,12 +527,17 @@ that authorization or represents open debt. Ordered by blast radius, not by conv
   - Offline passphrase copy retained in `~/.nebulosabot-secrets/BACKUP_ENCRYPTION_KEY.txt`.
 
 - [ ] **P0.2 — Observe a real successful backup run (needs P0.1 + real `SUPABASE_DB_URL`)**
-  - Never observed. Run `36835825347` failed on empty URL → pg_dump fell back to the
-    local Unix socket. The preflight now fails closed BEFORE pg_dump, but that path
-    has never run against a live database.
-  - Requires: key provisioned, real `SUPABASE_DB_URL` secret, a scheduled or manual
-    workflow dispatch. Verifies the artifact is actually produced and uploaded.
-  - Operational blocker: OPEN and NOT solved by P1.
+  - Never observed. The scheduled Supabase Backup has been failing: three consecutive
+    scheduled runs failed on the pre-merge master. Failure logs show `SUPABASE_DB_URL`
+    empty in the runner environment, so `pg_dump "$SUPABASE_DB_URL"` fell back to a
+    local Unix socket and died with `connection to server on socket "/var/run/postgresql/.s.PGSQL.5432" failed`.
+    Same root cause as the already-recorded run `36835825347`.
+  - The scheduled backup has NEVER succeeded on master, and the database currently has NO
+    working backup.
+  - The fail-closed preflight and both provisioned secrets (`BACKUP_ENCRYPTION_KEY` and
+    `SUPABASE_DB_URL`) are now on master, so a manual dispatch can finally test it.
+  - Operational blocker: OPEN and NOT solved by P1, quality gates, or merge. P0.3 and P0.4
+    remain blocked. (No backup was successful, no restore was executed, and no reset was performed.)
 
 - [ ] **P0.3 — Execute isolated restore acceptance (needs P0.2 producing an artifact)**
   - The recipe exists as text in `backup.yml`; it has NEVER been executed. There is
@@ -616,6 +621,61 @@ chose scoped cleanup over a documented bypass:
     first interaction response, so slow rendering can miss Discord's initial-response window.
   - Legacy selected-module render-permission observation from review.
 
+### PR #129 quality-gate closure and release candidate — CLOSED
+
+When PR #129 was opened to merge `feature/relaunch-readiness` into `master`, Code Quality
+was RED in CI and Vercel surfaced a pre-existing master production build failure. All
+blockers were resolved with strict GGA-passed commits and native review, followed by
+merging PR #129 into master and publishing the release candidate.
+
+- [x] **Quality-gate closure — commits 7d9e7ab, 0255076, e6f3541, all GGA PASSED, no bypass**
+  - Code Quality was RED when PR #129 opened. Measured attribution, not assumption:
+    master measured jscpd 2.17% (456 duplicated lines) and passed; the branch measured
+    2.86% (623) and failed against the UNCHANGED 2.50% ceiling in `reports/jscpd-baseline.json`.
+    Per-file duplicated-line delta vs master: welcome 79→142, goodbye 42→91, log 0→40.
+    Fixing only the P1 `log.py` duplication would have left ~2.68%, still failing, so a
+    genuine shared abstraction was required. Extracted `GreetingSetupModuleBase` into
+    `bot/views/setup_modules/_greeting_base.py` with `welcome.py` and `goodbye.py`
+    subclassing it; log select/clear share one acknowledgement handler. Result: `bot/`
+    1.68% (0.82% headroom). No ceiling raised; no test, docstring or comment deleted to
+    move the metric.
+  - Betterleaks: all 18 CI findings were branch-introduced but verified synthetic with
+    ZERO real credentials (13 `tests/test_db_guard.py`, 2 `tests/test_backup_workflow.py`,
+    2 prose examples in this ledger, 1 localhost restore recipe in `.github/workflows/backup.yml`),
+    resolved by extending the existing `.betterleaks.toml` triage policy with narrowly
+    path+rule-scoped allowlists, each documented as verified noise → 0 findings.
+  - Dashboard Oxlint: 4 errors in `dashboard/__tests__/vitest-env.test.ts` introduced by
+    this branch's own `611049f`, fixed without weakening any rule.
+  - Native review: `review-31cfe3cc5024b0a4` approved and acknowledged, authority burned.
+  - Open informational follow-up: `R3-cwd-config` (`process.cwd()` replaced `__dirname`,
+    so config selection depends on the worker's cwd).
+
+- [x] **Dashboard production build — commit fb22fb3, GGA PASSED**
+  - Vercel failed with `Server Actions must be async functions` at
+    `dashboard/lib/actions/ticket-actions.ts`. Attribution proven: `dashboard/lib/`
+    untouched by this branch, offending line byte-identical on master, `next` version
+    identical (15.5.19) both sides, file last written by `98507c7` `refactor(dashboard): remove non-null assertions and async-without-await`,
+    already on master. So it was a PRE-EXISTING master defect that no gate detected,
+    because no workflow ever ran a production build.
+  - Fix: `getCurrentUserId` is now `async (): Promise<string> => await resolveSessionUserId()`;
+    the `await` is required by oxlint's require-await, not incidental.
+  - Coverage gap closed: job `dashboard-lint` in `.github/workflows/code-quality.yml`
+    gained a blocking `Next.js production build — blocking` step running `npm run build`;
+    no existing job, step or gate weakened, no failure tolerance added.
+  - Native review: `review-43ab94d7590f01f0` ran four lenses (risk, resilience, readability,
+    reliability), approved with ZERO findings, acknowledged, authority burned.
+
+- [x] **Merge and release candidate**
+  - PR #129 merged into master as merge commit `67f92123b6c434bc7adcc2ee967dfffe37a903be`
+    with 21 work-unit commits preserved (squash deliberately avoided to keep auditable
+    unit history). All checks green on master including the Vercel dashboard deployment.
+  - Published annotated tag `v1.1.0-rc.1` on the merge commit plus a GitHub release.
+  - Metadata deliberately stays 1.1.0 because the release guards validate `pyproject.toml`
+    and `CHANGELOG` against strict `^\d+\.\d+\.\d+$`; expressing the prerelease in metadata
+    would fail them. Matches existing tag convention (`v0.9.0-debt-zero`, `v0.8.0-qa-modernization`).
+  - P2.6 remains open and unchanged.
+  - Release notes state plainly this is NOT production-ready.
+
 ### P2 — Consistency / quality debt (non-blocking)
 
 - [ ] **P2.1 — Stale DDL reference in `docs/runbooks/staging-live-parity.md`**
@@ -643,12 +703,15 @@ chose scoped cleanup over a documented bypass:
   - A real SemVer prerelease tag cannot pass today's guards. Decide whether to widen
     the regex to official SemVer prerelease+build grammar or version RCs differently.
 
-### P3 — Publishing (requires explicit authorization; NOT done)
+### P3 — Publishing — CLOSED
 
-- [ ] **P3.1 — Decide how to publish the candidate**
-  - 12+ commits ahead of `origin/master`. Nothing pushed, no tag, no PR, no release.
-  - Version is `1.1.0` with an RC posture; P2.6 must be settled before tagging.
-  - `gh auth status` shows an active token with `repo` and `workflow` scopes.
+- [x] **P3.1 — Decide how to publish the candidate (closed via PR #129 and tag `v1.1.0-rc.1`)**
+  - Historical posture: was 12+ commits ahead of `origin/master`, pending PR and release decision.
+  - Completed: PR #129 merged into master as merge commit `67f92123b6c434bc7adcc2ee967dfffe37a903be`
+    (21 work-unit commits preserved), all checks green on master including Vercel dashboard
+    deployment, and annotated tag `v1.1.0-rc.1` published with GitHub release. Metadata remains
+    1.1.0 (matching `v0.9.0-debt-zero` and `v0.8.0-qa-modernization` conventions). P2.6 remains
+    open and unchanged. Release notes state plainly this is NOT production-ready.
 
 ### Accepted limits (documented, deliberate — do NOT "fix" without weighing fail-closed)
 
@@ -671,6 +734,14 @@ written, which aborted `git commit` at tree build. Reliable remedies proven this
 commit with explicit path specs so the commit tree contains only intended paths, and
 `git hash-object -w` the generated file so any such entry resolves. The commit hook's
 own verdict is the authoritative gate and must never be bypassed.
+
+Proven remedies and lessons from subsequent commit gates and verification:
+- GGA's first commit failure was output FORMAT, not code: .gga sets no OPENCODE_AGENT so the tool-capable default agent ran and its raw verdict landed near line 105, outside GGA's first-30-line window. Working invocation uses GGA_OPENCODE_AGENT plus an ephemeral OPENCODE_CONFIG_CONTENT agent with `permission: deny`, same route, writing no config files. Never bypass the hook.
+- GGA reviews STAGED bytes, so worktree cleanups are invisible until staged.
+- An unattributed process re-stages paths on every hook run with index entries pointing at blobs never written, aborting `git commit` at tree build. Remedy: `git hash-object -w` the affected files, and commit with explicit path specs.
+- One pathspec commit still absorbed three unintended files including the generated .gentle-ai-default-agent.json; fixed with the `git reset --soft HEAD~1` recovery already documented plus per-commit file-list verification.
+- Vercel deployment status arrives through the legacy commit-status API and is invisible to the check-runs API; `gh pr checks` is the reliable view.
+- Delegated workers are not always reliable: one hit a usage limit and another returned an empty report or planning notes without writing. Always verify repository state after any delegated task returns.
 
 ## Verification record
 
@@ -804,6 +875,23 @@ own verdict is the authoritative gate and must never be bypassed.
 - Parent documentation qualification occurred after the reported final checks;
   recheck the current candidate after resumption, before a work-unit commit.
 
+### PR #129 quality-gate and dashboard build verification record (commits `7d9e7ab`, `0255076`, `e6f3541`, `fb22fb3`)
+
+- Quality-gate closure (commits `7d9e7ab`, `0255076`, `e6f3541`, all GGA PASSED, no bypass):
+  - Code Quality was RED when PR #129 opened. Measured attribution, not assumption: master measured jscpd 2.17% (456 duplicated lines) and passed; the branch measured 2.86% (623) and failed against the UNCHANGED 2.50% ceiling in `reports/jscpd-baseline.json`. Per-file duplicated-line delta vs master: welcome 79→142, goodbye 42→91, log 0→40. Fixing only the P1 `log.py` duplication would have left ~2.68%, still failing, so a genuine shared abstraction was required. Extracted `GreetingSetupModuleBase` into `bot/views/setup_modules/_greeting_base.py` with `welcome.py` and `goodbye.py` subclassing it; log select/clear share one acknowledgement handler. Result: `bot/` 1.68% (0.82% headroom). No ceiling raised; no test, docstring or comment deleted to move the metric.
+  - Betterleaks: all 18 CI findings were branch-introduced but verified synthetic with ZERO real credentials (13 `tests/test_db_guard.py`, 2 `tests/test_backup_workflow.py`, 2 prose examples in this ledger, 1 localhost restore recipe in `.github/workflows/backup.yml`), resolved by extending the existing `.betterleaks.toml` triage policy with narrowly path+rule-scoped allowlists, each documented as verified noise → 0 findings.
+  - Dashboard Oxlint: 4 errors in `dashboard/__tests__/vitest-env.test.ts` introduced by this branch's own `611049f`, fixed without weakening any rule.
+  - Native review: `review-31cfe3cc5024b0a4` approved and acknowledged, authority burned. Open informational follow-up: `R3-cwd-config` (`process.cwd()` replaced `__dirname`, so config selection depends on the worker's cwd).
+- Dashboard production build (commit `fb22fb3`, GGA PASSED):
+  - Vercel failed with `Server Actions must be async functions` at `dashboard/lib/actions/ticket-actions.ts`. Attribution proven: `dashboard/lib/` untouched by this branch, offending line byte-identical on master, `next` version identical (15.5.19) both sides, file last written by `98507c7` `refactor(dashboard): remove non-null assertions and async-without-await`, already on master. So it was a PRE-EXISTING master defect that no gate detected, because no workflow ever ran a production build.
+  - Fix: `getCurrentUserId` is now `async (): Promise<string> => await resolveSessionUserId()`; the `await` is required by oxlint's require-await, not incidental.
+  - Coverage gap closed: job `dashboard-lint` in `.github/workflows/code-quality.yml` gained a blocking `Next.js production build — blocking` step running `npm run build`; no existing job, step or gate weakened, no failure tolerance added.
+  - Native review: `review-43ab94d7590f01f0` ran four lenses (risk, resilience, readability, reliability), approved with ZERO findings, acknowledged, authority burned.
+- Merge and release candidate:
+  - PR #129 merged into master as merge commit `67f92123b6c434bc7adcc2ee967dfffe37a903be` with 21 work-unit commits preserved (squash deliberately avoided to keep auditable unit history). All checks green on master including the Vercel dashboard deployment.
+  - Published annotated tag `v1.1.0-rc.1` on the merge commit plus a GitHub release. Metadata deliberately stays 1.1.0 because the release guards validate `pyproject.toml` and `CHANGELOG` against strict `^\d+\.\d+\.\d+$`; expressing the prerelease in metadata would fail them. Matches existing tag convention (`v0.9.0-debt-zero`, `v0.8.0-qa-modernization`).
+  - P2.6 remains open and unchanged. Release notes state plainly this is NOT production-ready.
+
 ## Progress and next step
 
 T1 CLOSED at `611049f` (GGA PASSED, native medium/under_budget).
@@ -838,16 +926,28 @@ P1 GROUP CLOSED: All three behavioral defects from native review resolved across
 `3f3e591..add53d4` (6 files, 664 insertions / 163 deletions). Native review
 lineage `review-83bfe838bf7afbad` APPROVED and acknowledged; reviewed boundary
 advances to `add53d4`.
+Quality-gate closure CLOSED at `7d9e7ab`, `0255076`, `e6f3541` (all GGA PASSED, no bypass,
+jscpd `bot/` 1.68% [0.82% headroom], Betterleaks 0 findings, Oxlint clean, native review
+`review-31cfe3cc5024b0a4` APPROVED).
+Dashboard production build CLOSED at `fb22fb3` (GGA PASSED, Server Action async fix,
+blocking `npm run build` step added to `dashboard-lint` CI job, native 4-lens review
+`review-43ab94d7590f01f0` APPROVED with 0 findings).
+Merge and release candidate CLOSED: PR #129 merged into master as merge commit
+`67f92123b6c434bc7adcc2ee967dfffe37a903be` (21 work-unit commits preserved without squash).
+All checks green on master including Vercel dashboard deployment. Annotated tag `v1.1.0-rc.1`
+published on merge commit plus GitHub release. Metadata deliberately kept at 1.1.0 per
+release guard constraints (matching `v0.9.0-debt-zero` and `v0.8.0-qa-modernization` conventions).
 Recovery mirror: `odd/relaunch-readiness/tasks`.
-PROGRAM COMPLETE: T1 through T6.1 and P1 are all closed. Minimal RC1 status achieved
-(P1 fixes + verification complete; push/PR authorized for later action).
-Operational blockers still open: P0.2 (real successful backup run never observed),
-P0.3 (isolated restore acceptance never executed), P0.4 (exact reset truncate list
-still a human decision). This is a release candidate, NOT a stable or production-ready release.
-All remaining work is grouped in the "Pending work plan" section above (P0 disaster
-recovery → P3 publishing), notably P0.2/P0.3 (real backup + restore drills) and P3.1
-(publishing). The task-doc handoff metadata below stays unstaged until its own docs
-unit. No remote permissions have expanded. Running authored total 5055 vs 2,000-5,000 forecast.
+PROGRAM COMPLETE: T1-T6.1, P1, quality gates, build fix, and PR #129 merge/release candidate
+are all closed.
+Operational blockers still open: P0.2 (scheduled backup has NEVER succeeded on master and
+database currently has NO working backup; fail-closed preflight and secrets now on master enable
+manual dispatch test), P0.3 (isolated restore acceptance never executed), P0.4 (exact reset
+truncate list still a human decision). P2.6 remains open and unchanged. Release notes state
+plainly this is NOT production-ready.
+All remaining work is grouped in the "Pending work plan" section above (P0 disaster recovery →
+P3 publishing), notably P0.2/P0.3 (real backup + restore drills). The task-doc handoff metadata
+below stays unstaged until its own docs unit. No remote permissions have expanded.
 
 Fresh recheck passed all eight commands: 3,113 Python tests, 19 skips, 19 warnings,
 83.27% coverage at seed 42; 249 dashboard tests and the existing lint warning.
