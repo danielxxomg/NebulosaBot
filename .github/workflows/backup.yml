@@ -18,10 +18,13 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Install PostgreSQL client and GPG
+      - name: Install PostgreSQL 17 client and GPG
         run: |
+          sudo install -d /etc/apt/keyrings
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor --yes -o /etc/apt/keyrings/postgresql.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
-          sudo apt-get install -y postgresql-client gnupg
+          sudo apt-get install -y postgresql-client-17 gnupg
 
       - name: Preflight check database connection URL
         # Root cause of historical run 36835825347: empty SUPABASE_DB_URL caused pg_dump
@@ -45,7 +48,7 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
-          pg_dump "$SUPABASE_DB_URL" -Fc -f dump.pgdump
+          /usr/lib/postgresql/17/bin/pg_dump "$SUPABASE_DB_URL" -Fc -f dump.pgdump
 
       - name: Encrypt database dump (GPG symmetric)
         # Symmetrically encrypt the dump using BACKUP_ENCRYPTION_KEY secret (documented TBD).
